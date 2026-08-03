@@ -60,6 +60,20 @@ assim que a Fase 2 (Bippa/ERP) existir.
      do WhatsApp, como discutido — depende dos dados reais (Fase 2) estarem no
      ar antes de valer a pena investir nisso.
 
+## Sobre a ideia de WebSocket para eventos do carrinho
+
+Hoje cada + / − na grade já atualiza o carrinho na hora (estado em memória +
+localStorage), e como é tudo dentro da mesma aba/navegador isso já é "tempo
+real" o suficiente — não tem um segundo dispositivo ou pessoa pra sincronizar
+com. WebSocket só compensa quando existe alguém do outro lado ouvindo em tempo
+real: por exemplo, a vendedora montando o carrinho num tablet enquanto a
+cliente acompanha pelo celular, ou o estoque do Bippa avisando "essa cor
+acabou" no meio da navegação. Isso depende de ter um backend (Fase 2) — não faz
+sentido montar um servidor de WebSocket só pra sincronizar uma aba com ela
+mesma. As mudanças de carrinho já passam todas por um único lugar
+(`CartProvider`), então quando a Fase 2 existir, plugar um broadcaster ali é
+uma mudança pequena, não um retrabalho.
+
 ## Fora de escopo por enquanto
 
 - Pagamento/checkout dentro do site (segue via WhatsApp).
