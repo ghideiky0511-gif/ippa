@@ -16,8 +16,8 @@ export default function PedidosPage() {
     <main className="container orders-page">
       <h1>Meus pedidos</h1>
       <p className="orders-hint">
-        Pedidos enviados por este navegador via WhatsApp. Ainda não há integração com um sistema de
-        pedidos real (isso está previsto para a Fase 2, junto com Bippa/ERP).
+        Pedidos enviados por este navegador (via WhatsApp ou pelo fluxo do site). Ainda não há
+        integração com um sistema de pedidos real (isso está previsto para a Fase 2, junto com Bippa/ERP).
       </p>
 
       {orders === null && <p>Carregando...</p>}
@@ -27,9 +27,20 @@ export default function PedidosPage() {
         {orders?.map((order) => (
           <div className="order-card" key={order.id}>
             <div className="order-card-header">
-              <span>{new Date(order.date).toLocaleString('pt-BR')}</span>
+              <span>
+                {new Date(order.date).toLocaleString('pt-BR')}
+                <span className="order-channel-badge">
+                  {order.channel === 'site' ? 'via site' : 'via WhatsApp'}
+                </span>
+              </span>
               <span className="order-total">{formatBRL(order.total)}</span>
             </div>
+            {(order.shipping || order.paymentMethod) && (
+              <div className="order-meta">
+                {order.shipping && <span>Frete: {order.shipping.label}</span>}
+                {order.paymentMethod && <span>Pagamento: {order.paymentMethod}</span>}
+              </div>
+            )}
             <div className="order-items">
               {order.items.map((item) => (
                 <div className="order-item" key={item.key}>

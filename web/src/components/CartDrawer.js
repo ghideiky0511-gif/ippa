@@ -1,10 +1,13 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { formatBRL } from '@/lib/format';
 import { CONFIG } from '@/lib/config';
 import { useCart } from './CartProvider';
+import CartItemRow from './CartItemRow';
 
 export default function CartDrawer() {
+  const router = useRouter();
   const { cart, cartTotal, isCartOpen, closeCart, changeQty, removeFromCart, clearCart, saveOrderToHistory } = useCart();
 
   function checkoutWhatsapp() {
@@ -29,6 +32,11 @@ export default function CartDrawer() {
     clearCart();
   }
 
+  function goToCheckout() {
+    closeCart();
+    router.push('/carrinho');
+  }
+
   return (
     <>
       <div className={'cart-overlay' + (isCartOpen ? ' open' : '')} onClick={closeCart} />
@@ -41,30 +49,16 @@ export default function CartDrawer() {
           {cart.length === 0 ? (
             <div className="cart-empty">Seu carrinho está vazio.</div>
           ) : (
-            cart.map((item) => {
-              const variantParts = [item.color, item.size].filter(Boolean);
-              return (
-                <div className="cart-item" key={item.key}>
-                  <img src={item.image || 'https://via.placeholder.com/100x120?text=Sem+imagem'} alt={item.name} />
-                  <div className="info">
-                    <div className="name">{item.name}</div>
-                    {variantParts.length > 0 && <div className="variant">{variantParts.join(' · ')}</div>}
-                    <div className="qty-row">
-                      <button onClick={() => changeQty(item.key, Math.max(1, item.qty - 1))}>-</button>
-                      <span>{item.qty}</span>
-                      <button onClick={() => changeQty(item.key, item.qty + 1)}>+</button>
-                      <button className="remove" style={{ marginLeft: 10 }} onClick={() => removeFromCart(item.key)}>remover</button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })
+            cart.map((item) => (
+              <CartItemRow key={item.key} item={item} onChangeQty={changeQty} onRemove={removeFromCart} />
+            ))
           )}
         </div>
         <div className="cart-footer">
           <div className="cart-total"><span>Total</span><span>{formatBRL(cartTotal)}</span></div>
           <button className="btn-whatsapp" onClick={checkoutWhatsapp}>Finalizar pedido via WhatsApp</button>
-          <div className="whatsapp-hint">Ao enviar, o pedido fica salvo em "Meus pedidos" neste navegador. Nada é cobrado automaticamente.</div>
+          <button className="btn-site-checkout" onClick={goToCheckout}>Revisar e continuar no site</button>
+          <div className="whatsapp-hint">Ao enviar pelo WhatsApp, o pedido fica salvo em "Meus pedidos" neste navegador. Nada é cobrado automaticamente.</div>
         </div>
       </aside>
     </>

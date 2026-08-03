@@ -11,7 +11,7 @@ export default function Filters({ options, filters, onChange, onClear }) {
       />
       <select
         value={filters.category}
-        onChange={(e) => onChange({ ...filters, category: e.target.value })}
+        onChange={(e) => onChange({ ...filters, category: e.target.value, subcategory: '' })}
       >
         <option value="">Todas as categorias</option>
         {options.categories.map((c) => (

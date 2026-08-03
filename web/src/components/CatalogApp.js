@@ -1,41 +1,53 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import Banner from './Banner';
+import { useSearchParams } from 'next/navigation';
 import Filters from './Filters';
 import ProductCard from './ProductCard';
 import ProductQuickView from './ProductQuickView';
-
-const EMPTY_FILTERS = { term: '', category: '', color: '', size: '' };
+import { getCategories, getColors, getSizes } from '@/lib/catalogFacets';
 
 export default function CatalogApp({ initialProducts }) {
-  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const searchParams = useSearchParams();
+  const [filters, setFilters] = useState(() => ({
+    term: '',
+    category: searchParams.get('categoria') || '',
+    subcategory: searchParams.get('subcategoria') || '',
+    color: '',
+    size: '',
+  }));
   const [quickViewProduct, setQuickViewProduct] = useState(null);
 
-  const options = useMemo(() => {
-    const categories = Array.from(new Set(initialProducts.map((p) => p.category).filter(Boolean))).sort();
-    const colors = Array.from(new Set(initialProducts.flatMap((p) => p.colors || []).filter(Boolean))).sort();
-    const sizes = Array.from(new Set(initialProducts.flatMap((p) => p.sizes || []).filter(Boolean)))
-      .sort((a, b) => (isNaN(a) || isNaN(b) ? a.localeCompare(b) : Number(a) - Number(b)));
-    return { categories, colors, sizes };
-  }, [initialProducts]);
+  const options = useMemo(
+    () => ({
+      categories: getCategories(initialProducts),
+      colors: getColors(initialProducts),
+      sizes: getSizes(initialProducts),
+    }),
+    [initialProducts]
+  );
 
   const filteredProducts = useMemo(() => {
     const term = filters.term.trim().toLowerCase();
     return initialProducts.filter((p) => {
       const matchesTerm = !term || (p.name || '').toLowerCase().includes(term) || (p.id || '').toLowerCase().includes(term);
       const matchesCat = !filters.category || p.category === filters.category;
+      const matchesSubcat = !filters.subcategory || p.subcategory === filters.subcategory;
       const matchesColor = !filters.color || (p.colors || []).includes(filters.color);
       const matchesSize = !filters.size || (p.sizes || []).includes(filters.size);
-      return matchesTerm && matchesCat && matchesColor && matchesSize;
+      return matchesTerm && matchesCat && matchesSubcat && matchesColor && matchesSize;
     });
   }, [initialProducts, filters]);
 
   return (
     <>
-      <Banner />
       <main className="container">
-        <Filters options={options} filters={filters} onChange={setFilters} onClear={() => setFilters(EMPTY_FILTERS)} />
+        <Filters
+          options={options}
+          filters={filters}
+          onChange={setFilters}
+          onClear={() => setFilters({ term: '', category: '', subcategory: '', color: '', size: '' })}
+        />
         <div className="result-count">{filteredProducts.length} produto(s) encontrado(s)</div>
         <div className="grid">
           {filteredProducts.map((p) => (

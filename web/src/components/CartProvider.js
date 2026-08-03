@@ -20,6 +20,9 @@ export function CartProvider({ children }) {
   const [cart, setCart] = useState([]);
   const [isCartOpen, setCartOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  // Frete escolhido no fluxo carrinho -> frete -> pagamento. É transitório
+  // (diferente do carrinho, não precisa sobreviver a dias/reload).
+  const [shipping, setShipping] = useState(null);
 
   // Carrinho vive no localStorage pra sobreviver a navegação entre páginas
   // (catálogo -> detalhe do produto -> meus pedidos) e a reload, já que hoje
@@ -59,12 +62,18 @@ export function CartProvider({ children }) {
     setCart([]);
   }
 
-  function saveOrderToHistory(items, total) {
+  function clearShipping() {
+    setShipping(null);
+  }
+
+  function saveOrderToHistory(items, total, extra = {}) {
     const order = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       date: new Date().toISOString(),
       items,
       total,
+      channel: 'whatsapp',
+      ...extra,
     };
     const orders = readJSON(ORDERS_KEY, []);
     window.localStorage.setItem(ORDERS_KEY, JSON.stringify([order, ...orders]));
@@ -87,8 +96,11 @@ export function CartProvider({ children }) {
       removeFromCart,
       clearCart,
       saveOrderToHistory,
+      shipping,
+      setShipping,
+      clearShipping,
     }),
-    [cart, cartCount, cartTotal, isCartOpen]
+    [cart, cartCount, cartTotal, isCartOpen, shipping]
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

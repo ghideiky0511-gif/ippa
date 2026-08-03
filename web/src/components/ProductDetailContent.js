@@ -1,9 +1,10 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { COLOR_MAP } from '@/lib/config';
 import { formatBRL } from '@/lib/format';
 import { buildVariantMatrix, deliveryLabel } from '@/lib/variants';
+import { resolveGallery, resolveImageForColor } from '@/lib/images';
 import { useCart } from './CartProvider';
 
 const ADDABLE = new Set(['in_stock', 'preorder', 'backorder']);
@@ -11,6 +12,16 @@ const ADDABLE = new Set(['in_stock', 'preorder', 'backorder']);
 export default function ProductDetailContent({ product }) {
   const { cart, addToCart, changeQty, removeFromCart } = useCart();
   const matrix = useMemo(() => buildVariantMatrix(product), [product]);
+  const gallery = useMemo(() => resolveGallery(product), [product]);
+  const [selectedColor, setSelectedColor] = useState(matrix.availableColors[0] || matrix.colors[0] || null);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+
+  const displayImage = resolveImageForColor(product, selectedColor) || gallery[activeImageIndex] || null;
+
+  function pickColor(color) {
+    setSelectedColor(color);
+    setActiveImageIndex(0);
+  }
 
   function qtyInCart(color, size) {
     const key = [product.id, color, size].join('|');
@@ -31,11 +42,26 @@ export default function ProductDetailContent({ product }) {
 
   return (
     <div className="product-detail">
-      <img
-        className="product-detail-image"
-        src={product.image || 'https://via.placeholder.com/500x620?text=Sem+imagem'}
-        alt={product.name}
-      />
+      <div className="product-detail-gallery">
+        <img
+          className="product-detail-image"
+          src={displayImage || 'https://via.placeholder.com/500x620?text=Sem+imagem'}
+          alt={product.name}
+        />
+        {gallery.length > 1 && (
+          <div className="product-detail-thumbs">
+            {gallery.map((src, i) => (
+              <img
+                key={src + i}
+                src={src}
+                alt=""
+                className={'thumb' + (i === activeImageIndex ? ' selected' : '')}
+                onClick={() => setActiveImageIndex(i)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="product-detail-info">
         <div className="cat">{product.category}{product.subcategory ? ` · ${product.subcategory}` : ''}</div>
@@ -43,6 +69,28 @@ export default function ProductDetailContent({ product }) {
         <div className="price">{formatBRL(product.price)}</div>
         {product.description && <p className="product-detail-desc">{product.description}</p>}
 
+        <div className="color-picker">
+          <div className="variant-label">Cor {selectedColor ? `— ${selectedColor}` : ''}</div>
+          <div className="color-options">
+            {matrix.colors.map((c) => (
+              <button
+                key={c}
+                type="button"
+                className={
+                  'color-dot-btn' +
+                  (selectedColor === c ? ' selected' : '') +
+                  (matrix.availableColors.includes(c) ? '' : ' unavailable')
+                }
+                style={{ background: COLOR_MAP[c] || '#ccc' }}
+                title={c}
+                onClick={() => pickColor(c)}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="product-detail-grade">
         <div className="matrix-legend">
           <span><span className="legend-dot legend-ok" />Pronta entrega</span>
           <span><span className="legend-dot legend-preorder" />Pré-venda</span>

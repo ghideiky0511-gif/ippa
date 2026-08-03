@@ -1,8 +1,45 @@
-// Configuração da loja — troque aqui para reaproveitar o catálogo com outra marca.
+// Configuração da loja — troque aqui para reaproveitar o catálogo com outra
+// marca/cliente. Ainda é um arquivo único por deploy (sem multi-tenant real
+// ainda — isso é uma etapa à parte, precisa de banco/login), mas o conteúdo
+// da loja já fica organizado aqui num único lugar fácil de trocar.
 export const CONFIG = {
   storeName: 'Fashion Girl Atacado',
+  logoUrl: '', // opcional; sem logo, mostra o storeName como texto
   whatsappNumber: '', // formato internacional só números, ex: '5511999999999'. Vazio = avisa antes de abrir o link.
-  bannerVideoUrl: '', // URL de um .mp4 para o banner virar vídeo em vez de texto
+
+  home: {
+    // type: 'image' | 'video'. Sem nenhum banner aqui, a home cai num slide
+    // só de texto com o storeName (mesmo fallback do banner antigo).
+    banners: [
+      {
+        id: 'b1',
+        type: 'image',
+        mediaUrl: 'https://cdn-op.vesti.mobi/p/3301/47275ecd-e018-4ed3-a505-e4931a137fc5/99883-lg.jpeg',
+        title: 'Fashion Girl Atacado',
+        subtitle: 'Novidades toda semana — confira a coleção completa',
+      },
+      {
+        id: 'b2',
+        type: 'image',
+        mediaUrl: 'https://cdn-op.vesti.mobi/p/3301/e0512949-5e71-4099-be10-b5cd7bc7561b/95846-lg.png',
+        title: 'Peças em destaque',
+        subtitle: 'Selecionadas pra vender mais rápido no seu ponto',
+      },
+    ],
+    // Curadoria manual por enquanto (lista de IDs de web/src/data/catalog.json).
+    // Fica pronto pra virar sugestão por analytics de venda quando existir
+    // conta de loja/admin — sem precisar mexer no componente que consome isso.
+    featuredProductIds: [
+      'bc4a970c-6194-42c1-a5b9-18b17028e71d',
+      '53c399af-0bda-43f1-b85d-273375fe1765',
+      '47275ecd-e018-4ed3-a505-e4931a137fc5',
+      '6c30a116-7990-4336-bc62-35076e7be068',
+      'e0512949-5e71-4099-be10-b5cd7bc7561b',
+      '34235c31-4a17-4607-bd12-574750500aa9',
+      '7f59a480-a574-4187-a9b3-6b3b53965a83',
+      'afa3c5e1-0094-4267-b19b-43e9ec13ca7b',
+    ],
+  },
 };
 
 export const COLOR_MAP = {

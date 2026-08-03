@@ -18,6 +18,44 @@
   este navegador via WhatsApp (salvo em localStorage no momento do checkout).
 - Protótipo estático da raiz (`index.html`, `catalog.json`) removido — só existe
   a versão Next.js em `web/` daqui pra frente.
+- Fluxo alternativo de checkout pelo próprio site: `/carrinho` (confirmação,
+  com o botão do WhatsApp continuando disponível) → `/frete` (mock, lista fixa
+  em `web/src/lib/shipping.js`, CEP não influencia o cálculo ainda) →
+  `/pagamento` (escolha de Pix/Cartão/Boleto, sem coletar dado de cartão de
+  verdade — é só simulação) → `/pedido-confirmado`. O WhatsApp continua sendo
+  o caminho mais rápido e não foi alterado; este é um segundo caminho pro
+  cliente que preferir fechar direto no site. Pedidos feitos por aqui aparecem
+  em "Meus pedidos" com badge "via site" e mostram frete/forma de pagamento
+  escolhidos.
+- Home de vitrine separada da busca: `/` agora é uma home própria (carrossel
+  de banners/vídeo, menu de categorias com subcategoria em dropdown — hover no
+  desktop, toque no mobile — e produtos em destaque); a grade completa com
+  filtros virou `/catalogo`. Conteúdo da home (banners, destaques) mora em
+  `CONFIG.home` (`web/src/lib/config.js`), curadoria manual por enquanto.
+
+## Sobre personalização por cliente / multi-tenant
+
+O pedido de fundo é cada cliente ter sua própria identidade (cores, logo,
+banners, destaques) e, mais à frente, multi-tenant de verdade — um app só
+servindo vários clientes, com conta de loja (CRUD de peças/layout) e sugestão
+de destaques por analytics de venda. Combinado com o usuário: **isso é um
+projeto à parte**, porque depende de decisões de infraestrutura que não
+existem hoje (banco de dados, autenticação de loja x cliente, hospedagem
+multi-tenant) — não dá pra encaixar de raspão numa tarefa de UI. O que foi
+feito agora é a base que deixa esse caminho mais curto depois:
+
+- Todo o conteúdo "deste cliente" (nome, logo, WhatsApp, banners, produtos em
+  destaque) já mora num lugar só (`CONFIG` em `web/src/lib/config.js`), do
+  mesmo jeito que `/api/catalog` já é o ponto de troca pro dado do Bippa/ERP.
+- Curadoria de destaque é manual hoje (`CONFIG.home.featuredProductIds`), mas
+  já pensada pra virar sugestão por analytics de venda quando existir conta de
+  loja — trocar a fonte dessa lista não exige mexer no componente que
+  consome (`HomeApp`/`ProductCard`).
+- Quando o multi-tenant real for planejado, os pontos que precisam de decisão
+  são: banco de dados (guardar config + catálogo por cliente), autenticação
+  (cliente comprador x conta de loja com permissão de editar layout/cadastrar
+  peça) e como resolver "qual cliente é esse" por request (domínio/subdomínio
+  vs. login). Vale um plano próprio quando for a hora.
 
 ## Limitação importante do "Meus pedidos" atual
 
@@ -35,8 +73,13 @@ assim que a Fase 2 (Bippa/ERP) existir.
    - Criar `POST /api/pedidos` que registra o pedido no Bippa/ERP de verdade; a
      tela `/pedidos` passa a consultar esse endpoint por cliente (precisa de
      login/identificação do cliente, que ainda não existe).
-   - Nesse momento, decidir se o checkout continua indo pro WhatsApp, vira
-     confirmação direta no site, ou os dois.
+   - Trocar `calculateShipping` (`web/src/lib/shipping.js`) por uma cotação real
+     de transportadora, e a seleção de pagamento em `/pagamento` por uma
+     integração de verdade (Pix/cartão/boleto via um gateway) — hoje os dois
+     são só mock de interface, sem cobrança nem frete reais.
+   - O WhatsApp e o checkout pelo site já convivem hoje (o cliente escolhe);
+     não é preciso decidir entre os dois, só amadurecer o segundo quando a
+     Fase 2 chegar.
 
 2. **Identificação do cliente**
    - `/pedidos` hoje é "por navegador" (qualquer um que abrir o site vê só os
@@ -76,6 +119,7 @@ uma mudança pequena, não um retrabalho.
 
 ## Fora de escopo por enquanto
 
-- Pagamento/checkout dentro do site (segue via WhatsApp).
+- Cobrança real (gateway de pagamento) e cotação real de frete — hoje ambos
+  são mock, ver acima.
 - Separação de pedidos (isso é o Bippa, produto complementar).
 - Multi-loja / múltiplas marcas no mesmo catálogo.

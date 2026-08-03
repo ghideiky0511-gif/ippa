@@ -1,8 +1,12 @@
-import CatalogApp from '@/components/CatalogApp';
+import HomeApp from '@/components/HomeApp';
 import catalog from '@/data/catalog.json';
+import { CONFIG } from '@/lib/config';
+import { getCategoryTree, getFeaturedProducts } from '@/lib/catalogFacets';
 
-// Server Component: os dados já vêm prontos no HTML inicial, sem
-// depender de fetch no cliente (o que resolvia o bug do file://).
+// Server Component: home de vitrine (banners, menu de categorias, destaques).
+// A grade completa com filtros vive em /catalogo.
 export default function Page() {
-  return <CatalogApp initialProducts={catalog} />;
+  const categoryTree = getCategoryTree(catalog);
+  const featuredProducts = getFeaturedProducts(catalog, CONFIG.home?.featuredProductIds);
+  return <HomeApp categoryTree={categoryTree} featuredProducts={featuredProducts} />;
 }
