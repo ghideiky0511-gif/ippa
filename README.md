@@ -21,7 +21,7 @@ Abra `http://localhost:3000`. Os dados vêm de Server Components que importam `s
 
 ### Estrutura
 
-- `src/app/page.js` — Server Component, home de vitrine: banner/carrossel, menu de categorias, produtos em destaque (`<HomeApp>`).
+- `src/app/page.js` — Server Component, home de vitrine: banner/carrossel e produtos em destaque (`<HomeApp>`). O menu de categorias não aparece mais aqui — vive no menu lateral global (ver `SideMenu.js`).
 - `src/app/catalogo/page.js` — grade completa com filtros (`<CatalogApp>`) — a antiga home.
 - `src/app/produto/[id]/page.js` — página de detalhe de um produto (grade completa de cor x tamanho, descrição, tipo de entrega).
 - `src/app/carrinho/page.js` — confirmação do carrinho em página cheia (passo 1 do checkout pelo site).
@@ -29,22 +29,25 @@ Abra `http://localhost:3000`. Os dados vêm de Server Components que importam `s
 - `src/app/pagamento/page.js` — escolha de forma de pagamento (Pix/Cartão/Boleto) + confirmação do pedido (mock: nenhuma cobrança real).
 - `src/app/pedido-confirmado/page.js` — tela de sucesso depois de confirmar o pedido pelo site.
 - `src/app/pedidos/page.js` — "Meus pedidos": histórico de pedidos (WhatsApp ou site), salvo em localStorage.
-- `src/app/api/catalog/route.js` — Route Handler que serve o catálogo (hoje estático, amanhã vindo de uma API real).
-- `src/components/AppShell.js` — top nav + carrinho global (fica disponível em todas as páginas).
+- `src/app/api/catalog/route.js` — Route Handler que serve o catálogo (hoje estático, amanhã vindo de uma API real); também é o que o menu lateral consome sob demanda pra busca (ver `SideMenu.js`).
+- `src/app/layout.js` — Server Component raiz; calcula a árvore categoria→subcategoria (`getCategoryTree`) e passa pro `AppShell`, que é global (todas as páginas têm o mesmo menu lateral).
+- `src/components/AppShell.js` — top nav (hamburguer + logo centralizado + links + carrinho) + carrinho global (fica disponível em todas as páginas).
+- `src/components/SideMenu.js` — menu lateral (drawer da esquerda, aberto pelo hamburguer): busca com sugestão ao vivo (por prefixo do nome, busca o catálogo completo sob demanda em `/api/catalog` na primeira vez que abre), destaques de coleção (`CONFIG.home.highlights`) e públicos (`CONFIG.home.audiences`, ex. "Moda teen") — clicar num público abre um segundo painel com a árvore de categorias filtrada por ele, linkando pra `/catalogo?publico=...&categoria=...&subcategoria=...`.
 - `src/components/CartProvider.js` — estado do carrinho (Context + localStorage), frete escolhido (`shipping`, transitório) e histórico de pedidos (`saveOrderToHistory(items, total, extra)`, onde `extra` guarda `channel`/`shipping`/`paymentMethod`).
 - `src/components/CartDrawer.js` / `CartItemRow.js` — drawer lateral do carrinho; a linha de item é compartilhada com a página `/carrinho`.
 - `src/components/CheckoutSteps.js` — indicador "1. Carrinho — 2. Frete — 3. Pagamento" usado nas 3 páginas do checkout pelo site.
-- `src/components/CatalogApp.js` — grade de produtos + filtros + abertura do quick-view. Lê `?categoria=`/`?subcategoria=` da URL (vindo do menu da home) pra pré-selecionar o filtro.
-- `src/components/HomeApp.js` — monta a home: `HomeBanner` + `CategoryMenu` + seção "Produtos em destaque" (mesmos `ProductCard`/`ProductQuickView` da grade).
+- `src/components/CatalogApp.js` — grade de produtos + filtros + abertura do quick-view. Lê `?categoria=`/`?subcategoria=` (menu de categorias) e `?destaque=`/`?publico=` (menu lateral) da URL pra pré-selecionar o filtro.
+- `src/components/HomeApp.js` — monta a home: `HomeBanner` + seção "Produtos em destaque" (mesmos `ProductCard`/`ProductQuickView` da grade).
 - `src/components/HomeBanner.js` — carrossel de banners (`CONFIG.home.banners`, imagem ou vídeo por slide, setas + bolinhas); sem banners configurados, cai num slide de texto com o `storeName`.
-- `src/components/CategoryMenu.js` — menu de categorias; categorias com subcategoria viram dropdown (abre no hover no desktop via CSS `@media (hover:hover)`, e no clique/toque no mobile via estado React), linkando pra `/catalogo?categoria=...&subcategoria=...`.
+- `src/components/CategoryMenu.js` — menu horizontal de categorias com dropdown por hover/clique; não está mais em uso ativo (o menu de categorias vive no `SideMenu` agora), mantido no código pra referência.
 - `src/components/ProductCard.js` — card da grade: imagem, nome, preço, bolinhas de cor disponíveis e botão **+** (abre o quick-view). Não tem mais "adicionar ao carrinho" — isso só existe na página/quick-view de detalhe.
 - `src/components/ProductQuickView.js` — painel lateral (anima da direita) aberto pelo **+** do card, com o conteúdo de `ProductDetailContent`.
 - `src/components/ProductDetailContent.js` — conteúdo compartilhado entre o quick-view e a página `/produto/[id]`: cores (disponíveis e indisponíveis), grade de tamanhos, tipo de entrega (pronta entrega / pré-venda / esgotado), quantidade e adicionar ao carrinho.
 - `src/lib/variants.js` — monta a matriz cor x tamanho de um produto e traduz `availability` em rótulo de entrega.
-- `src/lib/catalogFacets.js` — deriva categorias/cores/tamanhos e a árvore categoria→subcategoria do catálogo, e resolve os produtos em destaque a partir dos IDs no `CONFIG`.
+- `src/lib/catalogFacets.js` — deriva categorias/cores/tamanhos e a árvore categoria→subcategoria do catálogo (categorias cujo nome é uma variação de outra, ex. "BODY ALCA", viram subcategoria dela automaticamente); `getProductsByIds` resolve uma lista de IDs pra produtos (usado por destaques/públicos/featured — `ids: null` é a convenção pra "sem filtro, catálogo inteiro").
+- `src/lib/search.js` — sugestão de busca por prefixo do nome (`getSearchSuggestions`), usada pelo menu lateral; ordem de hoje é a do catálogo, pronta pra virar ranking por popularidade depois.
 - `src/lib/shipping.js` — mock das opções de frete (`calculateShipping(cep)` ignora o CEP hoje; é o ponto de troca pra uma cotação real de transportadora depois).
-- `src/lib/config.js` — `CONFIG` (nome/logo da loja, WhatsApp, banners e produtos em destaque da home) e `COLOR_MAP` (swatches por nome de cor).
+- `src/lib/config.js` — `CONFIG` (nome/logo da loja, WhatsApp, banners, produtos em destaque, destaques de coleção e públicos da home) e `COLOR_MAP` (swatches por nome de cor).
 - `src/data/catalog.json` — cópia do dataset real (285 produtos) usada pelo app.
 
 ## Configuração rápida
@@ -59,6 +62,8 @@ export const CONFIG = {
   home: {
     banners: [{ id: 'b1', type: 'image', mediaUrl: '...', title: '...', subtitle: '...' }], // type: 'image' | 'video'
     featuredProductIds: ['<ids de web/src/data/catalog.json>'], // curadoria manual da vitrine
+    highlights: [{ id: 'verao-2027', label: 'Verão 2027', productIds: ['<ids>'] }], // destaques de coleção no menu lateral
+    audiences: [{ id: 'moda-teen', label: 'Moda teen', productIds: null }], // públicos no menu lateral; productIds: null = catálogo inteiro
   },
 };
 ```
@@ -66,10 +71,11 @@ export const CONFIG = {
 - Sem `whatsappNumber` preenchido, o botão "Finalizar pedido via WhatsApp" avisa para configurar em vez de abrir um link quebrado.
 - Cores fora de `COLOR_MAP` aparecem só como texto (sem swatch colorido).
 - Sem `home.banners`, a home cai num banner de texto só com o `storeName`. Sem `home.featuredProductIds`, a seção de destaques simplesmente não aparece.
+- `highlights`/`audiences` são listas — a loja pode cadastrar quantos quiser sem mexer em componente. `productIds: null` num público é a convenção pra "sem filtro" (mostra o catálogo inteiro); uma lista de IDs filtra de verdade.
 
 ## O que já resolve das dores mapeadas
 
-- Home de vitrine própria (banners/vídeo em carrossel, menu de categorias com subcategoria em dropdown, produtos em destaque) separada da busca (`/catalogo`).
+- Home de vitrine própria (banners/vídeo em carrossel, produtos em destaque) separada da busca (`/catalogo`); logo centralizado no topo e navegação (busca, destaques de coleção, públicos com categorias) num menu lateral (hamburguer), acessível em qualquer página.
 - Filtros reais por categoria/cor/tamanho (não só busca por texto).
 - Identidade visual via variáveis CSS (`--brand-primary` etc.) e conteúdo (`CONFIG`) em vez de layout fixo — ainda um arquivo por deploy, não multi-tenant de verdade (ver `PLANO-PROXIMOS-PASSOS.md`).
 - Pedido pode ser criado remotamente (carrinho + WhatsApp), não só no showroom.

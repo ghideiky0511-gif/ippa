@@ -1,5 +1,7 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import AppShell from "@/components/AppShell";
+import catalog from "@/data/catalog.json";
+import { getCategoryTree } from "@/lib/catalogFacets";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -18,10 +20,11 @@ export const metadata = {
 };
 
 export default function RootLayout({ children }) {
+  const categoryTree = getCategoryTree(catalog);
   return (
     <html lang="pt-BR" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body>
-        <AppShell>{children}</AppShell>
+        <AppShell categoryTree={categoryTree}>{children}</AppShell>
       </body>
     </html>
   );

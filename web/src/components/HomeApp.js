@@ -2,17 +2,15 @@
 
 import { useState } from 'react';
 import HomeBanner from './HomeBanner';
-import CategoryMenu from './CategoryMenu';
 import ProductCard from './ProductCard';
 import ProductQuickView from './ProductQuickView';
 
-export default function HomeApp({ categoryTree, featuredProducts }) {
+export default function HomeApp({ featuredProducts }) {
   const [quickViewProduct, setQuickViewProduct] = useState(null);
 
   return (
     <>
       <HomeBanner />
-      <CategoryMenu categoryTree={categoryTree} />
 
       <main className="container">
         {featuredProducts.length > 0 && (

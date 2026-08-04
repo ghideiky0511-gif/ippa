@@ -28,10 +28,20 @@
   em "Meus pedidos" com badge "via site" e mostram frete/forma de pagamento
   escolhidos.
 - Home de vitrine separada da busca: `/` agora é uma home própria (carrossel
-  de banners/vídeo, menu de categorias com subcategoria em dropdown — hover no
-  desktop, toque no mobile — e produtos em destaque); a grade completa com
-  filtros virou `/catalogo`. Conteúdo da home (banners, destaques) mora em
+  de banners/vídeo e produtos em destaque); a grade completa com filtros
+  virou `/catalogo`. Conteúdo da home (banners, destaques) mora em
   `CONFIG.home` (`web/src/lib/config.js`), curadoria manual por enquanto.
+- Menu lateral global (hamburguer, disponível em toda página): busca com
+  sugestão ao vivo por prefixo do nome (`web/src/lib/search.js`, hoje ordem
+  arbitrária, pronta pra virar ranking por popularidade), destaques de
+  coleção (`CONFIG.home.highlights`, ex. "Verão 2027") e públicos
+  (`CONFIG.home.audiences`, ex. "Moda teen") — cada público abre um segundo
+  painel com as categorias filtradas por ele. Destaques/públicos são listas
+  de IDs de produto (tag), separadas da taxonomia categoria/subcategoria da
+  peça, porque são agrupamentos que se sobrepõem (uma peça pode estar em
+  vários ao mesmo tempo). Categoria/subcategoria continua sendo a
+  classificação física da peça (um valor só, hierárquica). Logo da loja
+  centralizado no topo.
 
 ## Sobre personalização por cliente / multi-tenant
 

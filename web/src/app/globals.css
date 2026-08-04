@@ -28,16 +28,17 @@ a{color:inherit;text-decoration:none}
 .home-banner-dot{width:8px;height:8px;border-radius:50%;border:none;background:rgba(255,255,255,0.5);cursor:pointer;padding:0}
 .home-banner-dot.active{background:#fff}
 
-.category-menu{display:flex;gap:10px;overflow-x:auto;padding:14px 16px;background:#fff;border-bottom:1px solid #eee}
-.category-item{position:relative;flex-shrink:0}
-.category-pill{flex-shrink:0;padding:6px 14px;border-radius:999px;border:1px solid #ddd;font-size:13px;color:var(--brand-text);white-space:nowrap;background:#fff;cursor:pointer;font-family:inherit}
+.category-menu{display:flex;flex-wrap:wrap;gap:10px;padding:14px 16px;background:#fff;border-bottom:1px solid #eee}
+.category-item{position:relative}
+.category-pill{padding:6px 14px;border-radius:999px;border:1px solid #ddd;font-size:13px;color:var(--brand-text);white-space:nowrap;background:#fff;cursor:pointer;font-family:inherit;transition:border-color .15s,color .15s}
 .category-pill:hover{border-color:var(--brand-primary);color:var(--brand-primary)}
 .category-item.open .category-pill{border-color:var(--brand-primary);color:var(--brand-primary)}
 
-.category-submenu{display:none;position:absolute;top:calc(100% + 6px);left:0;background:#fff;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,0.15);min-width:200px;padding:6px;z-index:20;flex-direction:column}
-.category-item.open .category-submenu{display:flex}
+.category-submenu{position:absolute;top:calc(100% + 6px);left:0;background:#fff;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,0.15);min-width:200px;padding:6px;z-index:20;display:flex;flex-direction:column;opacity:0;visibility:hidden;transform:translateY(-6px);transition:opacity .18s ease,transform .18s ease,visibility 0s linear .18s}
+.category-item.align-right .category-submenu{left:auto;right:0}
+.category-item.open .category-submenu{opacity:1;visibility:visible;transform:translateY(0);transition:opacity .18s ease,transform .18s ease}
 @media (hover:hover) and (pointer:fine){
-  .category-item:hover .category-submenu{display:flex}
+  .category-item:hover .category-submenu{opacity:1;visibility:visible;transform:translateY(0);transition:opacity .18s ease,transform .18s ease}
 }
 .category-submenu-item{padding:8px 12px;border-radius:6px;font-size:13px;color:var(--brand-text);white-space:nowrap}
 .category-submenu-item:hover{background:var(--brand-bg);color:var(--brand-primary)}
@@ -48,14 +49,76 @@ a{color:inherit;text-decoration:none}
 
 .container{max-width:1200px;margin:0 auto;padding:0 16px}
 
-.topnav{display:flex;justify-content:space-between;align-items:center;padding:12px 20px;background:#fff;border-bottom:1px solid #eee;position:sticky;top:0;z-index:15}
-.topnav-brand{font-weight:700;color:var(--brand-primary);font-size:16px;display:flex;align-items:center}
+.topnav{position:sticky;top:0;z-index:15;display:flex;justify-content:space-between;align-items:center;padding:12px 20px;background:#fff;border-bottom:1px solid #eee}
+.topnav-brand{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-weight:700;color:var(--brand-primary);font-size:16px;display:flex;align-items:center;text-align:center;white-space:nowrap}
 .topnav-brand img{height:28px;display:block}
 .topnav-links{display:flex;align-items:center;gap:18px;font-size:14px}
 .topnav-links a{color:var(--brand-text)}
 .topnav-links a:hover{color:var(--brand-primary)}
+@media (max-width:768px){
+  /* A marca centralizada (position:absolute) colide com "Catálogo"/"Meus
+     pedidos" em telas estreitas/médias — nessa largura a navegação já vive
+     no menu hamburguer (incluindo os mesmos dois links), então some só o
+     texto aqui (carrinho continua). */
+  .topnav-links a{display:none}
+}
 .topnav-cart{background:none;border:none;cursor:pointer;font-size:16px;display:flex;align-items:center;gap:6px}
 .topnav-cart .count{background:var(--brand-primary);color:#fff;border-radius:50%;padding:1px 7px;font-size:12px}
+
+.sidemenu-trigger{display:flex;flex-direction:column;justify-content:center;gap:4px;background:none;border:none;cursor:pointer;padding:6px;width:32px;height:32px}
+.sidemenu-trigger span{display:block;width:100%;height:2px;background:var(--brand-text);border-radius:2px}
+
+.sidemenu-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);display:none;z-index:60}
+.sidemenu-overlay.open{display:block}
+.sidemenu-drawer{position:fixed;top:0;left:0;bottom:0;width:min(300px,85vw);background:#fff;z-index:61;transform:translateX(-100%);transition:transform .25s ease;overflow:hidden}
+.sidemenu-drawer.open{transform:translateX(0)}
+.sidemenu-panel{position:absolute;top:0;left:0;right:0;bottom:0;overflow-y:auto;transition:transform .25s ease;transform:translateX(0);display:flex;flex-direction:column;background:#fff}
+.sidemenu-panel.shifted{transform:translateX(-100%)}
+.sidemenu-panel-2{transform:translateX(100%)}
+.sidemenu-panel-2.shifted{transform:translateX(0)}
+
+/* >=700px: painel 2 não cobre o painel 1, aparece do lado dele — o drawer
+   cresce (transition no width) e revela a coluna que já está ali, só
+   recortada pelo overflow:hidden do drawer enquanto ele está estreito. */
+@media (min-width:700px){
+  .sidemenu-drawer{width:min(300px,38vw);transition:width .28s ease,transform .25s ease;display:flex}
+  .sidemenu-drawer.panel2-open{width:min(600px,78vw)}
+  .sidemenu-panel,.sidemenu-panel-2{position:static;flex:0 0 min(300px,38vw);transform:none !important;transition:none}
+  .sidemenu-panel-2{border-left:1px solid #eee}
+  .sidemenu-panel-2 .sidemenu-back{display:none}
+}
+
+.sidemenu-header{display:flex;justify-content:flex-end;align-items:center;padding:16px 20px 4px}
+.sidemenu-header button{border:none;background:none;font-size:20px;cursor:pointer;color:var(--brand-text)}
+.sidemenu-back{margin-right:auto;border:none;background:none;font-size:13px !important;cursor:pointer;color:var(--brand-muted);font-weight:400}
+
+.sidemenu-search{padding:8px 20px 16px}
+.sidemenu-search-toggle{display:flex;border:none;background:none;cursor:pointer;padding:6px 0;color:var(--brand-text)}
+.sidemenu-search-box{margin-top:10px}
+.sidemenu-search-box input{width:100%;padding:8px 0;border:none;border-bottom:1px solid #ddd;font-size:14px;font-family:inherit;background:none}
+.sidemenu-search-box input:focus{outline:none;border-color:var(--brand-text)}
+.sidemenu-search-hint{font-size:12px;color:var(--brand-muted);margin-top:10px}
+.sidemenu-search-result{display:flex;gap:10px;align-items:center;padding:10px 0;border-top:1px solid #f5f5f5}
+.sidemenu-search-result img{width:36px;height:45px;object-fit:cover;border-radius:2px;flex-shrink:0;background:#f2f2f2}
+.sidemenu-search-result .name{font-size:13px;color:var(--brand-text)}
+.sidemenu-search-result .price{font-size:12px;color:var(--brand-muted);margin-top:2px}
+
+.sidemenu-section{padding:10px 20px;display:flex;flex-direction:column}
+.sidemenu-section + .sidemenu-section{border-top:1px solid #f0f0f0}
+.sidemenu-highlight-link{padding:9px 0;font-size:14px;color:var(--brand-text)}
+.sidemenu-audience-link{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border:none;background:none;font-size:14px;cursor:pointer;font-family:inherit;color:var(--brand-text);width:100%;text-align:left}
+.sidemenu-audience-link.active{font-weight:600}
+.sidemenu-arrow{color:var(--brand-muted);font-size:15px}
+
+.sidemenu-categories{padding:10px 20px;display:flex;flex-direction:column}
+.sidemenu-category-link{padding:9px 0;font-size:14px;color:var(--brand-text)}
+.sidemenu-category-group{display:flex;flex-direction:column}
+.sidemenu-category-toggle{display:flex;justify-content:space-between;align-items:center;width:100%;padding:9px 0;border:none;background:none;font-size:14px;cursor:pointer;font-family:inherit;color:var(--brand-text);text-align:left}
+.sidemenu-category-toggle .sidemenu-arrow{transition:transform .15s ease}
+.sidemenu-category-toggle.open .sidemenu-arrow{transform:rotate(90deg)}
+.sidemenu-subcategories{display:flex;flex-direction:column;padding:0 0 10px 12px}
+.sidemenu-subcategory-link{padding:7px 0;font-size:13px;color:var(--brand-muted)}
+.sidemenu-subcategory-link.all{color:var(--brand-text)}
 
 .back-link{display:inline-block;margin:16px 0;color:var(--brand-primary);font-weight:600;font-size:14px}
 

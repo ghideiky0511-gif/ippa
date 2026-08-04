@@ -39,6 +39,32 @@ export const CONFIG = {
       '7f59a480-a574-4187-a9b3-6b3b53965a83',
       'afa3c5e1-0094-4267-b19b-43e9ec13ca7b',
     ],
+
+    // Destaques de coleção mostrados no menu lateral (ex.: "Verão 2027").
+    // Lista extensível — a loja pode cadastrar quantos quiser, cada um com
+    // sua própria lista de peças, sem mexer em componente.
+    highlights: [
+      {
+        id: 'verao-2027',
+        label: 'Verão 2027',
+        productIds: [
+          'e0512949-5e71-4099-be10-b5cd7bc7561b', // BLUSA PEPLUM CAIRO
+          'eb5448f4-5b98-42d0-aab0-283962ef4386', // BLUSA PEPLUM TQC ASSIMETRICO
+          '51687075-f3dc-4765-856f-1b6a8ef53d32', // BLUSA BABY LOOK CANELADA
+          '67d997cd-e45d-41e6-89cf-9106152ebf25', // BLUSA CARDIGAN TRICOT
+        ],
+      },
+    ],
+
+    // Públicos/segmentos mostrados no menu lateral (ex.: "Moda teen"). Cada
+    // entrada leva pras categorias filtradas por esse público.
+    // `productIds: null` é a convenção pra "sem filtro, catálogo inteiro" —
+    // usada aqui porque o feed atual já é 100% moda teen. Adicionar um
+    // segundo público (ex. "Moda adulto") com sua própria lista de IDs não
+    // exige mexer em componente nenhum.
+    audiences: [
+      { id: 'moda-teen', label: 'Moda teen', productIds: null },
+    ],
   },
 };
 

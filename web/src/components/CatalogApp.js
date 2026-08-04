@@ -6,6 +6,7 @@ import Filters from './Filters';
 import ProductCard from './ProductCard';
 import ProductQuickView from './ProductQuickView';
 import { getCategories, getColors, getSizes } from '@/lib/catalogFacets';
+import { CONFIG } from '@/lib/config';
 
 export default function CatalogApp({ initialProducts }) {
   const searchParams = useSearchParams();
@@ -15,6 +16,8 @@ export default function CatalogApp({ initialProducts }) {
     subcategory: searchParams.get('subcategoria') || '',
     color: '',
     size: '',
+    destaque: searchParams.get('destaque') || '',
+    publico: searchParams.get('publico') || '',
   }));
   const [quickViewProduct, setQuickViewProduct] = useState(null);
 
@@ -27,17 +30,34 @@ export default function CatalogApp({ initialProducts }) {
     [initialProducts]
   );
 
+  const highlight = useMemo(
+    () => CONFIG.home?.highlights?.find((h) => h.id === filters.destaque),
+    [filters.destaque]
+  );
+  const audience = useMemo(
+    () => CONFIG.home?.audiences?.find((a) => a.id === filters.publico),
+    [filters.publico]
+  );
+
   const filteredProducts = useMemo(() => {
     const term = filters.term.trim().toLowerCase();
     return initialProducts.filter((p) => {
       const matchesTerm = !term || (p.name || '').toLowerCase().includes(term) || (p.id || '').toLowerCase().includes(term);
-      const matchesCat = !filters.category || p.category === filters.category;
-      const matchesSubcat = !filters.subcategory || p.subcategory === filters.subcategory;
+      // Categorias "dobradas" no menu (ex.: BODY ALCA vira subcategoria de
+      // BODY) têm produtos cujo campo `category` real é o nome dobrado — esse
+      // produto some do filtro se a gente só comparar contra `subcategory`.
+      const isFoldedMatch = !!filters.subcategory && p.category === filters.subcategory;
+      const matchesCat = !filters.category || p.category === filters.category || isFoldedMatch;
+      const matchesSubcat = !filters.subcategory || p.subcategory === filters.subcategory || isFoldedMatch;
       const matchesColor = !filters.color || (p.colors || []).includes(filters.color);
       const matchesSize = !filters.size || (p.sizes || []).includes(filters.size);
-      return matchesTerm && matchesCat && matchesSubcat && matchesColor && matchesSize;
+      // Destaque/público são tags de agrupamento (lista de IDs), não a
+      // taxonomia categoria/subcategoria — ver CONFIG.home.highlights/audiences.
+      const matchesHighlight = !highlight || (highlight.productIds || []).includes(p.id);
+      const matchesAudience = !audience || !audience.productIds || audience.productIds.includes(p.id);
+      return matchesTerm && matchesCat && matchesSubcat && matchesColor && matchesSize && matchesHighlight && matchesAudience;
     });
-  }, [initialProducts, filters]);
+  }, [initialProducts, filters, highlight, audience]);
 
   return (
     <>
@@ -46,7 +66,7 @@ export default function CatalogApp({ initialProducts }) {
           options={options}
           filters={filters}
           onChange={setFilters}
-          onClear={() => setFilters({ term: '', category: '', subcategory: '', color: '', size: '' })}
+          onClear={() => setFilters({ term: '', category: '', subcategory: '', color: '', size: '', destaque: '', publico: '' })}
         />
         <div className="result-count">{filteredProducts.length} produto(s) encontrado(s)</div>
         <div className="grid">
