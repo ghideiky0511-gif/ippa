@@ -4,6 +4,7 @@ import Link from 'next/link';
 import ProductDetailContent from './ProductDetailContent';
 import { useCart } from './CartProvider';
 import { formatBRL } from '@/lib/format';
+import type { Product } from '@/lib/types';
 
 function MiniCartPreview() {
   const { cartCount, cartTotal, openCart } = useCart();
@@ -15,7 +16,13 @@ function MiniCartPreview() {
   );
 }
 
-export default function ProductQuickView({ product, onClose }) {
+export default function ProductQuickView({
+  product,
+  onClose,
+}: {
+  product: Product | null;
+  onClose: () => void;
+}) {
   const isOpen = Boolean(product);
   return (
     <>

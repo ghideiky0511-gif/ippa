@@ -1,6 +1,24 @@
 'use client';
 
-export default function Filters({ options, filters, onChange, onClear }) {
+import type { CatalogFilters } from './CatalogApp';
+
+interface FilterOptions {
+  categories: string[];
+  colors: string[];
+  sizes: string[];
+}
+
+export default function Filters({
+  options,
+  filters,
+  onChange,
+  onClear,
+}: {
+  options: FilterOptions;
+  filters: CatalogFilters;
+  onChange: (filters: CatalogFilters) => void;
+  onClear: () => void;
+}) {
   return (
     <div className="controls">
       <input

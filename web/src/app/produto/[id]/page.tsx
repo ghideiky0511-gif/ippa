@@ -1,9 +1,9 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import catalog from '@/data/catalog.json';
+import { catalog } from '@/lib/catalog';
 import ProductDetailContent from '@/components/ProductDetailContent';
 
-export default async function ProductPage({ params }) {
+export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const product = catalog.find((p) => p.id === id);
   if (!product) notFound();

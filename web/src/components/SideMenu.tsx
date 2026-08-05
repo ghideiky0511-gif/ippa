@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { CONFIG } from '@/lib/config';
 import { formatBRL } from '@/lib/format';
 import { getSearchSuggestions } from '@/lib/search';
+import type { CategoryTreeEntry, Highlight, Product } from '@/lib/types';
 
 // Menu lateral global (hamburguer -> drawer da esquerda). Painel 1 tem busca
 // + destaques + públicos. Clicar num público abre o painel 2 (categorias
@@ -13,15 +14,27 @@ import { getSearchSuggestions } from '@/lib/search';
 // não cabem as duas colunas, então o painel 2 desliza por cima do painel 1
 // (mesma técnica de transform+.open do CartDrawer/ProductQuickView), com um
 // "← Voltar" pra reabrir o painel 1.
-export default function SideMenu({ categoryTree }) {
+export default function SideMenu({ categoryTree }: { categoryTree: CategoryTreeEntry[] }) {
   const [open, setOpen] = useState(false);
-  const [panel, setPanel] = useState('menu'); // 'menu' | 'categories'
-  const [activeAudience, setActiveAudience] = useState(null);
-  const [openCategory, setOpenCategory] = useState(null);
+  const [panel, setPanel] = useState<'menu' | 'categories'>('menu');
+  const [activeAudience, setActiveAudience] = useState<string | null>(null);
+  const [openCategory, setOpenCategory] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [catalog, setCatalog] = useState(null);
+  const [catalog, setCatalog] = useState<Product[] | null>(null);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
+  const [highlights, setHighlights] = useState<Highlight[]>([]);
+
+  // Busca no cliente (não no server component do layout) de propósito: assim
+  // só essa chamada fica "sempre fresca" (sem cache), sem forçar o app
+  // inteiro a virar dynamic só pra manter o menu atualizado — ver
+  // web/src/app/api/highlights/route.ts.
+  useEffect(() => {
+    fetch('/api/highlights')
+      .then((r) => r.json())
+      .then(setHighlights)
+      .catch(() => {});
+  }, []);
 
   function closeMenu() {
     setOpen(false);
@@ -42,7 +55,7 @@ export default function SideMenu({ categoryTree }) {
     }
   }
 
-  function toggleAudience(audienceId) {
+  function toggleAudience(audienceId: string) {
     if (panel === 'categories' && activeAudience === audienceId) {
       setPanel('menu');
       return;
@@ -52,7 +65,6 @@ export default function SideMenu({ categoryTree }) {
   }
 
   const suggestions = catalog ? getSearchSuggestions(catalog, query) : [];
-  const highlights = CONFIG.home?.highlights || [];
   const audiences = CONFIG.home?.audiences || [];
 
   return (

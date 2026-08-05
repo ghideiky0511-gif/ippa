@@ -2,59 +2,46 @@
 // marca/cliente. Ainda é um arquivo único por deploy (sem multi-tenant real
 // ainda — isso é uma etapa à parte, precisa de banco/login), mas o conteúdo
 // da loja já fica organizado aqui num único lugar fácil de trocar.
-export const CONFIG = {
+export const CONFIG: {
+  storeName: string;
+  logoUrl: string;
+  whatsappNumber: string;
+  // Opções de previsão de entrega pra quantidade que excede o estoque
+  // (backorder) na grade de cor×tamanho — rótulo livre, cada loja define
+  // os prazos que fazem sentido pro seu fornecedor. Mock por enquanto
+  // (mesmo padrão de web/src/lib/shipping.ts), sem UI de edição — quando o
+  // Bippa/ERP realmente mandar `stockQty` por variante é que vale a pena
+  // decidir se isso vira editável em /admin ou continua fixo por deploy.
+  backorderDeliveryOptions: { id: string; label: string }[];
+  home: {
+    audiences: { id: string; label: string; productIds: string[] | null }[];
+  };
+} = {
   storeName: 'Fashion Girl Atacado',
   logoUrl: '', // opcional; sem logo, mostra o storeName como texto
   whatsappNumber: '', // formato internacional só números, ex: '5511999999999'. Vazio = avisa antes de abrir o link.
 
-  home: {
-    // type: 'image' | 'video'. Sem nenhum banner aqui, a home cai num slide
-    // só de texto com o storeName (mesmo fallback do banner antigo).
-    banners: [
-      {
-        id: 'b1',
-        type: 'image',
-        mediaUrl: 'https://cdn-op.vesti.mobi/p/3301/47275ecd-e018-4ed3-a505-e4931a137fc5/99883-lg.jpeg',
-        title: 'Fashion Girl Atacado',
-        subtitle: 'Novidades toda semana — confira a coleção completa',
-      },
-      {
-        id: 'b2',
-        type: 'image',
-        mediaUrl: 'https://cdn-op.vesti.mobi/p/3301/e0512949-5e71-4099-be10-b5cd7bc7561b/95846-lg.png',
-        title: 'Peças em destaque',
-        subtitle: 'Selecionadas pra vender mais rápido no seu ponto',
-      },
-    ],
-    // Curadoria manual por enquanto (lista de IDs de web/src/data/catalog.json).
-    // Fica pronto pra virar sugestão por analytics de venda quando existir
-    // conta de loja/admin — sem precisar mexer no componente que consome isso.
-    featuredProductIds: [
-      'bc4a970c-6194-42c1-a5b9-18b17028e71d',
-      '53c399af-0bda-43f1-b85d-273375fe1765',
-      '47275ecd-e018-4ed3-a505-e4931a137fc5',
-      '6c30a116-7990-4336-bc62-35076e7be068',
-      'e0512949-5e71-4099-be10-b5cd7bc7561b',
-      '34235c31-4a17-4607-bd12-574750500aa9',
-      '7f59a480-a574-4187-a9b3-6b3b53965a83',
-      'afa3c5e1-0094-4267-b19b-43e9ec13ca7b',
-    ],
+  backorderDeliveryOptions: [
+    { id: '30d', label: 'Em 30 dias' },
+    { id: '60d', label: 'Em 60 dias' },
+    { id: '90d', label: 'Em 90 dias' },
+  ],
 
-    // Destaques de coleção mostrados no menu lateral (ex.: "Verão 2027").
-    // Lista extensível — a loja pode cadastrar quantos quiser, cada um com
-    // sua própria lista de peças, sem mexer em componente.
-    highlights: [
-      {
-        id: 'verao-2027',
-        label: 'Verão 2027',
-        productIds: [
-          'e0512949-5e71-4099-be10-b5cd7bc7561b', // BLUSA PEPLUM CAIRO
-          'eb5448f4-5b98-42d0-aab0-283962ef4386', // BLUSA PEPLUM TQC ASSIMETRICO
-          '51687075-f3dc-4765-856f-1b6a8ef53d32', // BLUSA BABY LOOK CANELADA
-          '67d997cd-e45d-41e6-89cf-9106152ebf25', // BLUSA CARDIGAN TRICOT
-        ],
-      },
-    ],
+  home: {
+    // A lista de sections da home (banners, produtos) NÃO mora mais aqui —
+    // virou web/src/data/homeSections.json, editável em tempo real pela
+    // plataforma admin (GET/PUT em /api/home-sections) e lida por
+    // web/src/app/page.tsx a cada request. Formato de cada item: `type:
+    // 'banner'` com `banners: [{id, type: 'image'|'video', mediaUrl,
+    // title?, subtitle?}]`, ou `type: 'product'` com um único `productId`
+    // — cada produto é seu próprio bloco arrastável/redimensionável, não
+    // uma vitrine com grade fixa (ver web/src/lib/types.ts HomeSection).
+
+    // Destaques de coleção (ex. "Verão 2027") também NÃO moram mais aqui —
+    // viraram web/src/data/highlights.json, editáveis em /colecoes na
+    // plataforma admin (GET/PUT em /api/highlights, drag-and-drop pra
+    // ordenar os produtos dentro da coleção). Lidos em tempo de request
+    // por web/src/app/layout.tsx (menu lateral) e /catalogo (filtro).
 
     // Públicos/segmentos mostrados no menu lateral (ex.: "Moda teen"). Cada
     // entrada leva pras categorias filtradas por esse público.
@@ -68,7 +55,7 @@ export const CONFIG = {
   },
 };
 
-export const COLOR_MAP = {
+export const COLOR_MAP: Record<string, string> = {
   PRETO: '#1a1a1a', BRANCO: '#ffffff', 'OFF WHITE': '#f2ede4', AZUL: '#2b5fa4', 'AZUL CLARO': '#7fb3e0',
   VERMELHO: '#c0392b', VERDE: '#2e8b57', AMARELO: '#f1c40f', ROSA: '#e79fc4', 'ROSA BEBE': '#f5c9dd',
   ROXO: '#8e44ad', LARANJA: '#e67e22', MARROM: '#6b4226', CINZA: '#9a9a9a', DOURADO: '#c9a227',

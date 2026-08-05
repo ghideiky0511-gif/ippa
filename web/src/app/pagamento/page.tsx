@@ -16,7 +16,7 @@ const PAYMENT_METHODS = [
 export default function PagamentoPage() {
   const router = useRouter();
   const { cart, cartTotal, shipping, clearCart, clearShipping, saveOrderToHistory } = useCart();
-  const [paymentMethod, setPaymentMethod] = useState(null);
+  const [paymentMethod, setPaymentMethod] = useState<string | null>(null);
 
   if (cart.length === 0) {
     return (

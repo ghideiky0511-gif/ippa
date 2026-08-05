@@ -1,20 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { FormEvent, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { formatBRL } from '@/lib/format';
 import { calculateShipping } from '@/lib/shipping';
 import { useCart } from '@/components/CartProvider';
 import CheckoutSteps from '@/components/CheckoutSteps';
+import type { ShippingOption } from '@/lib/types';
 
 export default function FretePage() {
   const router = useRouter();
   const { cart, cartTotal, shipping, setShipping } = useCart();
   const [cep, setCep] = useState('');
-  const [options, setOptions] = useState(null);
+  const [options, setOptions] = useState<ShippingOption[] | null>(null);
 
-  function handleCalculate(e) {
+  function handleCalculate(e: FormEvent) {
     e.preventDefault();
     setOptions(calculateShipping(cep));
   }

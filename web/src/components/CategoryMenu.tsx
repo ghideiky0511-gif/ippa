@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import type { CategoryTreeEntry } from '@/lib/types';
 
 // Categorias com subcategoria viram um dropdown: no desktop abre passando o
 // mouse em cima (CSS puro, @media hover:hover), no mobile abre com um toque
@@ -10,10 +11,10 @@ import Link from 'next/link';
 // direita teriam o submenu vazando pra fora da tela — checkAlignment mede
 // isso e vira a ancoragem pra direita quando necessário, evitando o scroll
 // lateral fantasma que isso causava na página inteira.
-export default function CategoryMenu({ categoryTree }) {
-  const [openCategory, setOpenCategory] = useState(null);
-  const [alignRight, setAlignRight] = useState(() => new Set());
-  const submenuRefs = useRef(new Map());
+export default function CategoryMenu({ categoryTree }: { categoryTree: CategoryTreeEntry[] }) {
+  const [openCategory, setOpenCategory] = useState<string | null>(null);
+  const [alignRight, setAlignRight] = useState<Set<string>>(() => new Set());
+  const submenuRefs = useRef(new Map<string, HTMLDivElement>());
 
   // Mede todo mundo já na primeira renderização — sem isso, um submenu que
   // vaza pra fora da tela conta na largura da página antes mesmo do usuário
@@ -26,11 +27,11 @@ export default function CategoryMenu({ categoryTree }) {
 
   if (!categoryTree?.length) return null;
 
-  function toggle(category) {
+  function toggle(category: string) {
     setOpenCategory((current) => (current === category ? null : category));
   }
 
-  function checkAlignment(category) {
+  function checkAlignment(category: string) {
     const el = submenuRefs.current.get(category);
     if (!el) return;
     const overflowsRight = el.getBoundingClientRect().right > window.innerWidth;

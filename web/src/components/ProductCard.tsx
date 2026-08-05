@@ -3,10 +3,17 @@
 import Link from 'next/link';
 import { COLOR_MAP } from '@/lib/config';
 import { formatBRL } from '@/lib/format';
+import type { Product } from '@/lib/types';
 
 const MAX_DOTS = 6;
 
-export default function ProductCard({ product, onOpenDetail }) {
+export default function ProductCard({
+  product,
+  onOpenDetail,
+}: {
+  product: Product;
+  onOpenDetail: (product: Product) => void;
+}) {
   const colors = product.colors || [];
   const shown = colors.slice(0, MAX_DOTS);
   const extra = colors.length - shown.length;

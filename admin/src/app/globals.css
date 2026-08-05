@@ -1,0 +1,357 @@
+:root {
+  --brand-primary: #c2185b;
+  --brand-primary-dark: #8c1046;
+  --brand-bg: #f7f5f6;
+  --brand-card: #ffffff;
+  --brand-text: #2a2a2a;
+  --brand-muted: #767676;
+  --radius: 10px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { max-width: 100vw; }
+body {
+  font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
+  background: var(--brand-bg);
+  color: var(--brand-text);
+}
+button { font: inherit; cursor: pointer; }
+input, textarea { font: inherit; }
+
+.builder {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  min-height: 100vh;
+  align-items: start;
+}
+
+.builder-topbar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  background: var(--brand-card);
+  border-bottom: 1px solid #eadde2;
+}
+.builder-topbar h1 { font-size: 16px; }
+.builder-topbar .status { font-size: 13px; color: var(--brand-muted); margin-right: 12px; }
+.builder-topbar-left { display: flex; align-items: center; gap: 20px; }
+
+.admin-nav { display: flex; gap: 4px; }
+.admin-nav a { font-size: 13px; color: var(--brand-muted); padding: 6px 10px; border-radius: 6px; }
+.admin-nav a:hover { background: var(--brand-bg); }
+.admin-nav a.active { background: var(--brand-bg); color: var(--brand-primary); font-weight: 600; }
+
+.builder-canvas-wrap { padding: 20px 24px 60px; overflow-x: auto; }
+
+.canvas-hint { font-size: 13px; color: var(--brand-muted); margin-bottom: 14px; }
+
+/* Canvas de posição livre: cada bloco é position:absolute (definido inline
+   em CanvasBlock.js via x/y/width/height), então nada aqui reflui quando
+   um bloco muda de tamanho — só quem o adm arrastar move. Fundo pontilhado
+   só pra reforçar a leitura de "área de desenho". Largura fixa em
+   CANVAS_WIDTH (blockRegistry.js, 1200px, igual web/globals.css) — não
+   estica até a toolbox; o que você vê aqui é exatamente a área que vira o
+   site de verdade. Em telas menores que 1200px+300px de toolbox, o wrap
+   acima rola horizontalmente em vez de encolher o canvas (encolher
+   quebraria a correspondência 1:1 com os pixels do site). */
+.builder-canvas {
+  position: relative;
+  width: 1200px;
+  background-color: #fff;
+  background-image: radial-gradient(#e8dbe1 1px, transparent 1px);
+  background-size: 20px 20px; /* mesma grade de 20px em que o arrastar/redimensionar trava, ver CanvasBlock.js */
+  border: 1px solid #eadde2;
+  border-radius: var(--radius);
+}
+.builder-canvas.drag-over { outline: 2px dashed var(--brand-primary); outline-offset: -2px; }
+
+.builder-toolbox {
+  border-left: 1px solid #eadde2;
+  background: var(--brand-card);
+  padding: 18px;
+  min-height: calc(100vh - 53px);
+  position: sticky;
+  top: 53px;
+  overflow-wrap: anywhere;
+  overflow-x: hidden;
+  min-width: 0;
+}
+.builder-toolbox h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--brand-muted); margin-bottom: 12px; }
+.toolbox-list { display: flex; flex-direction: column; gap: 10px; }
+
+.tool-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #eadde2;
+  border-radius: var(--radius);
+  background: var(--brand-bg);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.tool-item:active { cursor: grabbing; }
+.tool-item .tool-icon {
+  width: 28px; height: 28px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--brand-primary); color: #fff; font-size: 14px; flex-shrink: 0;
+}
+.tool-item .tool-label { font-size: 14px; }
+
+.empty-canvas {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--brand-muted);
+}
+.empty-canvas button { margin-top: 12px; }
+
+.block-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--brand-card);
+  border: 2px solid #eadde2;
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: pointer;
+}
+.block-card:hover { border-color: #d8b7c6; }
+.block-card.selected { border-color: var(--brand-primary); box-shadow: 0 4px 16px rgba(194, 24, 91, 0.18); }
+.block-card.interacting { border-color: var(--brand-primary); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); opacity: 0.92; }
+
+.block-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--brand-bg);
+  flex-shrink: 0;
+}
+.block-card-handle {
+  cursor: grab;
+  color: var(--brand-muted);
+  font-size: 18px;
+  touch-action: none;
+  padding: 4px;
+}
+.block-card-handle:active { cursor: grabbing; }
+.block-card-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.block-card-preview { flex: 1; min-height: 0; pointer-events: none; overflow: hidden; }
+
+.block-resize-handle-h {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 12px;
+  cursor: ns-resize;
+  background: var(--brand-bg);
+  touch-action: none;
+}
+.block-resize-handle-h span { width: 32px; height: 3px; border-radius: 2px; background: #d8c3ce; }
+.block-resize-handle-h:hover span { background: var(--brand-primary); }
+
+.block-resize-handle-w {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 12px;
+  width: 8px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.block-resize-handle-w:hover { background: rgba(194, 24, 91, 0.25); }
+
+.block-resize-handle-corner {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 22px;
+  height: 22px;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+.block-resize-handle-corner::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 10px;
+  height: 10px;
+  border-right: 3px solid var(--brand-primary);
+  border-bottom: 3px solid var(--brand-primary);
+  border-radius: 0 0 3px 0;
+  opacity: 0.55;
+}
+.block-resize-handle-corner:hover::after { opacity: 1; }
+
+.position-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid #eadde2;
+}
+
+.panel-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.item-card {
+  border: 1px solid #eadde2;
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.product-item-row { display: flex; align-items: center; gap: 8px; }
+.product-item-row input { flex: 1; min-width: 0; }
+.product-item-preview { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.product-item-preview img { width: 30px; height: 38px; object-fit: cover; border-radius: 4px; background: #eee; flex-shrink: 0; }
+.product-item-name { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.product-item-price { font-size: 11px; color: var(--brand-muted); }
+.product-item-status { font-size: 11px; color: #b3261e; }
+
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field label { font-size: 12px; color: var(--brand-muted); }
+.field input, .field textarea, .field select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #d8c3ce;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 14px;
+  background: #fff;
+}
+.field-row { display: flex; gap: 10px; min-width: 0; }
+.field-row .field { flex: 1; min-width: 0; }
+
+.btn {
+  border: 1px solid #d8c3ce;
+  background: var(--brand-card);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 13px;
+  color: var(--brand-text);
+}
+.btn:hover { background: var(--brand-bg); }
+.btn-primary { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; }
+.btn-primary:hover { background: var(--brand-primary-dark); }
+.btn-danger { color: #b3261e; border-color: #eecfcb; }
+.btn-danger:hover { background: #fbecea; }
+.btn-icon { padding: 6px 9px; }
+
+/* Prévia visual — mesmas classes/estilo de web/src/app/globals.css (.banner,
+   .card, .grid) pra o que aparece aqui no editor bater com o catálogo
+   público de verdade, não um resumo abstrato. */
+.banner { position: relative; height: 240px; background: linear-gradient(135deg, var(--brand-primary), var(--brand-primary-dark)); color: #fff; overflow: hidden; }
+.banner .banner-media { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0.85; }
+.banner-content { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 16px; }
+.banner-content h2 { margin: 0 0 6px; font-size: clamp(18px, 3vw, 26px); }
+.banner-content p { margin: 0; opacity: 0.9; font-size: 13px; }
+.preview-banner.preview-empty { min-height: 140px; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.preview-banner.preview-empty p { color: rgba(255,255,255,0.85); font-size: 13px; max-width: 320px; text-align: center; }
+.preview-badge { position: absolute; right: 10px; bottom: 10px; background: rgba(0,0,0,0.45); color: #fff; font-size: 11px; padding: 3px 8px; border-radius: 999px; }
+
+.preview-empty-block { padding: 16px; color: var(--brand-muted); font-size: 13px; }
+
+.card { background: var(--brand-card); border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); display: flex; flex-direction: column; }
+.card-media { position: relative; aspect-ratio: 9/16; overflow: hidden; }
+.card-media img { width: 100%; height: 100%; object-fit: cover; background: #eee; display: block; }
+.card .body { padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
+.card .cat { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--brand-primary); font-weight: 600; }
+.card .body h3 { margin: 0; font-size: 12px; line-height: 1.3; }
+.card .price { color: #1a1a1a; font-weight: 700; font-size: 13px; }
+
+/* Página /colecoes — lista 1D reordenável (dnd-kit sortable padrão, sem o
+   canvas livre da home) com o mesmo grid de shell (topbar + coluna
+   lateral) do editor de home, pra ficar consistente visualmente. */
+.collections-page { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; align-items: start; }
+
+.collections-sidebar {
+  border-right: 1px solid #eadde2;
+  background: var(--brand-card);
+  padding: 18px;
+  min-height: calc(100vh - 53px);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.collections-list { display: flex; flex-direction: column; gap: 6px; }
+.collection-item { display: flex; align-items: center; gap: 6px; }
+.collection-item-btn {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  border: 1px solid transparent;
+  background: none;
+  border-radius: 8px;
+  padding: 9px 10px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.collection-item-btn:hover { background: var(--brand-bg); }
+.collection-item.active .collection-item-btn { background: var(--brand-bg); border-color: #eadde2; font-weight: 600; }
+.collection-item-count { font-size: 12px; color: var(--brand-muted); }
+.collections-new { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid #eadde2; }
+
+.collections-editor { padding: 24px; max-width: 720px; display: flex; flex-direction: column; gap: 24px; }
+.collections-subheading { font-size: 14px; margin-bottom: 4px; }
+
+.collection-product-list { display: flex; flex-direction: column; gap: 8px; }
+.collection-product-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #eadde2;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--brand-card);
+}
+.collection-product-row img { width: 32px; height: 40px; object-fit: cover; border-radius: 4px; background: #eee; flex-shrink: 0; }
+
+.product-picker-results { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; max-height: 260px; overflow-y: auto; }
+.product-picker-result {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #eadde2;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--brand-card);
+  cursor: pointer;
+  text-align: left;
+}
+.product-picker-result:hover { border-color: var(--brand-primary); }
+.product-picker-result img { width: 28px; height: 35px; object-fit: cover; border-radius: 4px; background: #eee; flex-shrink: 0; }
+
+.share-panel { border: 1px solid #eadde2; border-radius: var(--radius); padding: 16px; background: var(--brand-bg); }
+.share-link-row { display: flex; gap: 8px; margin-top: 8px; }
+.share-link-row input { flex: 1; border: 1px solid #d8c3ce; border-radius: 6px; padding: 8px 10px; font-size: 13px; background: #fff; }
+.share-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }

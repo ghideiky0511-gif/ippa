@@ -1,6 +1,7 @@
+import type { ReactNode } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import AppShell from "@/components/AppShell";
-import catalog from "@/data/catalog.json";
+import { catalog } from "@/lib/catalog";
 import { getCategoryTree } from "@/lib/catalogFacets";
 import "./globals.css";
 
@@ -19,7 +20,7 @@ export const metadata = {
   description: "Catálogo com filtros, carrinho e checkout via WhatsApp",
 };
 
-export default function RootLayout({ children }) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   const categoryTree = getCategoryTree(catalog);
   return (
     <html lang="pt-BR" className={`${geistSans.variable} ${geistMono.variable}`}>

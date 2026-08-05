@@ -12,12 +12,12 @@ html,body{max-width:100vw}
 body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;background:var(--brand-bg);color:var(--brand-text)}
 a{color:inherit;text-decoration:none}
 
-.banner{position:relative;background:linear-gradient(135deg,var(--brand-primary),var(--brand-primary-dark));color:#fff;overflow:hidden}
-.banner .banner-media{width:100%;max-height:320px;object-fit:cover;display:block;opacity:0.85}
+.banner{position:relative;height:320px;background:linear-gradient(135deg,var(--brand-primary),var(--brand-primary-dark));color:#fff;overflow:hidden}
+.banner .banner-media{width:100%;height:100%;object-fit:cover;display:block;opacity:0.85}
 .banner-content{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:16px}
-.banner-content h1{margin:0 0 6px;font-size:clamp(22px,4vw,36px)}
+.banner-content h1,.banner-content h2{margin:0 0 6px;font-size:clamp(22px,4vw,36px)}
 .banner-content p{margin:0;opacity:0.9}
-.banner.no-media{position:static;padding:36px 16px}
+.banner.no-media{position:static;height:auto;padding:36px 16px}
 .banner.no-media .banner-content{position:static}
 
 .home-banner-arrow{position:absolute;top:50%;transform:translateY(-50%);background:rgba(0,0,0,0.35);color:#fff;border:none;width:36px;height:36px;border-radius:50%;font-size:22px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
@@ -44,8 +44,27 @@ a{color:inherit;text-decoration:none}
 .category-submenu-item:hover{background:var(--brand-bg);color:var(--brand-primary)}
 .category-submenu-item.all{font-weight:600;border-bottom:1px solid #eee;margin-bottom:4px;padding-bottom:10px}
 
-.featured-section{margin-top:24px}
-.section-title{font-size:18px;margin-bottom:14px}
+/* Canvas de posição livre: cada bloco fica exatamente onde foi colocado no
+   editor admin (x/y/width/height em px, canvas de referência de 1200px —
+   ver admin/src/lib/blockRegistry.js CANVAS_WIDTH). Nada aqui reflui
+   quando outro bloco muda de tamanho; é tudo position:absolute com
+   coordenada fixa, do jeito que o adm organizou. Coordenada fixa não cabe
+   numa tela de celular, então abaixo de 640px isso vira um empilhamento
+   normal em ordem de `y` (ver a ordenação em HomeApp.tsx), ignorando
+   x/y/width. */
+.home-sections{position:relative;max-width:1200px;margin:0 auto;height:var(--canvas-height,auto)}
+.home-section-item{
+  position:absolute;
+  left:var(--x,0px);
+  top:var(--y,0px);
+  width:var(--w,100%);
+  height:var(--h,auto);
+  overflow:hidden;
+}
+@media (max-width:640px){
+  .home-sections{height:auto;display:flex;flex-direction:column;gap:16px;padding:0 16px}
+  .home-section-item{position:static;left:auto;top:auto;width:100%;height:auto;overflow:visible}
+}
 
 .container{max-width:1200px;margin:0 auto;padding:0 16px}
 
@@ -221,11 +240,43 @@ a{color:inherit;text-decoration:none}
   .product-detail-info{grid-column:2;grid-row:1}
   .product-detail-grade{grid-column:1/-1;grid-row:2}
 }
-.matrix-legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--brand-muted);margin-top:4px}
-.matrix-legend .legend-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:5px}
-.legend-dot.legend-ok{background:#2e8b57}
-.legend-dot.legend-preorder{background:#e67e22}
-.legend-dot.legend-out{background:#b00020}
+/* Painel de previsão de entrega pro excedente (qty acima do stockQty da
+   variante) — aparece acima da grade quando alguma seleção passou do
+   estoque e ainda não tem previsão escolhida. Ver splitStockQty em
+   web/src/lib/variants.ts e CONFIG.backorderDeliveryOptions. */
+.backorder-panel{background:#eef6fc;border:1px solid #cfe8fb;border-radius:var(--radius);padding:12px 14px;margin-bottom:14px;display:flex;flex-direction:column;gap:10px}
+.backorder-panel-title{font-size:13px;font-weight:600;color:#0b5da3}
+.backorder-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;font-size:13px}
+.backorder-row-label strong{color:#0b5da3}
+.backorder-date-options{display:flex;gap:6px;flex-wrap:wrap}
+.backorder-date-btn{border:1px solid #9fd0f2;background:#fff;color:#0b5da3;border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer}
+.backorder-date-btn:hover{background:#0b5da3;color:#fff}
+.backorder-note{color:#0b5da3 !important}
+
+/* Pills selecionáveis (cor / tipo de entrega) acima da grade — filtram a
+   visualização em vez de só informar (era um legend estático antes). */
+.pill-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:6px}
+.pill-filter{border:1px solid #ddd;background:#fff;color:var(--brand-muted);border-radius:999px;padding:6px 14px;font-size:12px;cursor:pointer;white-space:nowrap}
+.pill-filter:hover{border-color:var(--brand-primary);color:var(--brand-primary)}
+.pill-filter.active{border-color:var(--brand-primary);color:var(--brand-primary);font-weight:600}
+.pill-filter-preorder.active{border-color:#e67e22;color:#e67e22;background:rgba(230,126,34,0.08)}
+.pill-filter-instock.active{border-color:#2e8b57;color:#2e8b57;background:rgba(46,139,87,0.08)}
+.matrix-cell-dimmed{opacity:0.3}
+
+/* Packs fechados (grade de fábrica) — só visualização por enquanto, sem
+   "adicionar ao carrinho" (ver Product.packs em web/src/lib/types.ts). */
+.product-packs{margin-top:6px;display:flex;flex-direction:column;gap:8px}
+.product-packs-list{display:flex;flex-direction:column;gap:8px}
+.pack-card{border:1px solid #eee;border-radius:var(--radius);padding:10px 12px;background:var(--brand-card)}
+.pack-card-header{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.pack-card-label{font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px}
+.pack-card-price{font-size:13px;font-weight:700;color:#1a1a1a}
+.pack-card-color{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--brand-muted);margin-top:4px}
+.pack-card-grade{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.pack-grade-chip{background:var(--brand-bg);border-radius:6px;padding:3px 8px;font-size:12px;color:var(--brand-text);display:inline-flex;align-items:center;gap:5px}
+.swatch-sm{width:9px;height:9px}
+.pack-scope-tag{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.03em;border-radius:4px;padding:2px 6px;color:var(--brand-muted);background:var(--brand-bg)}
+.pack-scope-tag.pack-scope-pack{color:#8e44ad;background:rgba(142,68,173,0.08)}
 
 .matrix-table-wrap{overflow-x:auto;margin-top:6px}
 .matrix-table{border-collapse:collapse;width:100%;font-size:12px}
@@ -241,6 +292,7 @@ a{color:inherit;text-decoration:none}
 .qty-stepper button:disabled{opacity:0.35;cursor:not-allowed}
 .qty-stepper button:hover:not(:disabled){border-color:var(--brand-primary);color:var(--brand-primary)}
 .qty-stepper span{min-width:16px;font-weight:700}
+.qty-excess{background:#cfe8fb;color:#0b5da3;border-radius:4px;padding:0 4px;font-size:11px}
 
 .product-page{padding-bottom:60px}
 
@@ -304,3 +356,22 @@ a.checkout-step{color:var(--brand-primary)}
 .order-confirmed-box .checkout-actions{width:100%}
 
 footer{padding:24px 16px;text-align:center;color:var(--brand-muted);font-size:13px}
+
+/* Página de exportação de coleção em PDF (/catalogo/pdf) — o botão vira
+   "Salvar como PDF" na janela de impressão do navegador, sem precisar de
+   biblioteca nenhuma. .no-print some no PDF final; o resto do chrome do
+   site (topnav, menu, carrinho) some pela regra @media print abaixo. */
+.pdf-page{max-width:1000px;margin:0 auto;padding:24px 16px}
+.pdf-page h1{font-size:22px;margin-bottom:20px}
+.pdf-toolbar{display:flex;align-items:center;gap:16px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #eee}
+.pdf-toolbar p{font-size:13px;color:var(--brand-muted)}
+.pdf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px}
+.pdf-item{break-inside:avoid}
+.pdf-item img{width:100%;aspect-ratio:9/16;object-fit:cover;border-radius:6px;background:#eee;display:block}
+.pdf-item-name{font-size:12px;margin-top:6px}
+.pdf-item-price{font-size:12px;font-weight:700;color:#1a1a1a}
+
+@media print{
+  .no-print,.topnav,.sidemenu-overlay,.sidemenu-drawer,.cart-overlay,.cart-drawer,footer{display:none !important}
+  .pdf-page{max-width:none;padding:0}
+}

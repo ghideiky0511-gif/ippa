@@ -1,12 +1,31 @@
 'use client';
 
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
+import type { CartItem, Order, Product, ShippingOption } from '@/lib/types';
 
-const CartContext = createContext(null);
+interface CartContextValue {
+  cart: CartItem[];
+  cartCount: number;
+  cartTotal: number;
+  isCartOpen: boolean;
+  openCart: () => void;
+  closeCart: () => void;
+  addToCart: (product: Product, color: string, size: string, qty: number, stockQty?: number) => void;
+  changeQty: (key: string, qty: number) => void;
+  removeFromCart: (key: string) => void;
+  setBackorderDate: (key: string, date: string | null) => void;
+  clearCart: () => void;
+  saveOrderToHistory: (items: CartItem[], total: number, extra?: Record<string, unknown>) => Order;
+  shipping: ShippingOption | null;
+  setShipping: (shipping: ShippingOption | null) => void;
+  clearShipping: () => void;
+}
+
+const CartContext = createContext<CartContextValue | null>(null);
 const CART_KEY = 'ippa_cart_v1';
 const ORDERS_KEY = 'ippa_orders_v1';
 
-function readJSON(key, fallback) {
+function readJSON<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback;
   try {
     const raw = window.localStorage.getItem(key);
@@ -16,18 +35,24 @@ function readJSON(key, fallback) {
   }
 }
 
-export function CartProvider({ children }) {
-  const [cart, setCart] = useState([]);
+export function CartProvider({ children }: { children: ReactNode }) {
+  // Carrinho começa vazio de propósito (igual ao servidor, que nunca vê
+  // localStorage) e só é lido de verdade no efeito abaixo, depois do
+  // primeiro render — se lêssemos localStorage direto no useState (lazy
+  // initializer), o cliente hidrataria com um valor diferente do HTML
+  // vindo do servidor (que não tem acesso a localStorage) e React acusaria
+  // hydration mismatch. O eslint-disable é porque essa regra normalmente
+  // certa (evitar setState em efeito) não se aplica aqui: é exatamente
+  // esse "atualiza só depois de montar" que evita o mismatch.
+  const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setCartOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   // Frete escolhido no fluxo carrinho -> frete -> pagamento. É transitório
   // (diferente do carrinho, não precisa sobreviver a dias/reload).
-  const [shipping, setShipping] = useState(null);
+  const [shipping, setShipping] = useState<ShippingOption | null>(null);
 
-  // Carrinho vive no localStorage pra sobreviver a navegação entre páginas
-  // (catálogo -> detalhe do produto -> meus pedidos) e a reload, já que hoje
-  // não existe backend de pedidos (isso é Fase 2, via Bippa/ERP).
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ver comentário acima do useState(cart)
     setCart(readJSON(CART_KEY, []));
     setHydrated(true);
   }, []);
@@ -36,7 +61,7 @@ export function CartProvider({ children }) {
     if (hydrated) window.localStorage.setItem(CART_KEY, JSON.stringify(cart));
   }, [cart, hydrated]);
 
-  function addToCart(product, color, size, qty) {
+  function addToCart(product: Product, color: string, size: string, qty: number, stockQty?: number) {
     const key = [product.id, color, size].join('|');
     setCart((prev) => {
       const existing = prev.find((i) => i.key === key);
@@ -45,17 +70,25 @@ export function CartProvider({ children }) {
       }
       return [
         ...prev,
-        { key, id: product.id, name: product.name, image: product.image, color, size, price: product.price, qty },
+        { key, id: product.id, name: product.name, image: product.image, color, size, price: product.price, qty, stockQty },
       ];
     });
   }
 
-  function changeQty(key, qty) {
+  function changeQty(key: string, qty: number) {
     setCart((prev) => prev.map((i) => (i.key === key ? { ...i, qty } : i)));
   }
 
-  function removeFromCart(key) {
+  function removeFromCart(key: string) {
     setCart((prev) => prev.filter((i) => i.key !== key));
+  }
+
+  // `date: null` limpa a previsão escolhida (ex.: se a qty voltar pra
+  // dentro do estoque depois de um decrement).
+  function setBackorderDate(key: string, date: string | null) {
+    setCart((prev) =>
+      prev.map((i) => (i.key === key ? { ...i, backorderDate: date ?? undefined } : i))
+    );
   }
 
   function clearCart() {
@@ -66,8 +99,8 @@ export function CartProvider({ children }) {
     setShipping(null);
   }
 
-  function saveOrderToHistory(items, total, extra = {}) {
-    const order = {
+  function saveOrderToHistory(items: CartItem[], total: number, extra: Record<string, unknown> = {}): Order {
+    const order: Order = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       date: new Date().toISOString(),
       items,
@@ -75,7 +108,7 @@ export function CartProvider({ children }) {
       channel: 'whatsapp',
       ...extra,
     };
-    const orders = readJSON(ORDERS_KEY, []);
+    const orders = readJSON<Order[]>(ORDERS_KEY, []);
     window.localStorage.setItem(ORDERS_KEY, JSON.stringify([order, ...orders]));
     return order;
   }
@@ -94,6 +127,7 @@ export function CartProvider({ children }) {
       addToCart,
       changeQty,
       removeFromCart,
+      setBackorderDate,
       clearCart,
       saveOrderToHistory,
       shipping,
@@ -112,6 +146,6 @@ export function useCart() {
   return ctx;
 }
 
-export function readOrders() {
-  return readJSON(ORDERS_KEY, []);
+export function readOrders(): Order[] {
+  return readJSON<Order[]>(ORDERS_KEY, []);
 }

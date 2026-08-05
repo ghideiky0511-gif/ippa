@@ -1,12 +1,14 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { CartProvider, useCart } from './CartProvider';
 import CartDrawer from './CartDrawer';
 import SideMenu from './SideMenu';
 import { CONFIG } from '@/lib/config';
+import type { CategoryTreeEntry } from '@/lib/types';
 
-function TopNav({ categoryTree }) {
+function TopNav({ categoryTree }: { categoryTree: CategoryTreeEntry[] }) {
   const { cartCount, openCart } = useCart();
   return (
     <nav className="topnav">
@@ -25,7 +27,13 @@ function TopNav({ categoryTree }) {
   );
 }
 
-export default function AppShell({ children, categoryTree }) {
+export default function AppShell({
+  children,
+  categoryTree,
+}: {
+  children: ReactNode;
+  categoryTree: CategoryTreeEntry[];
+}) {
   return (
     <CartProvider>
       <TopNav categoryTree={categoryTree} />

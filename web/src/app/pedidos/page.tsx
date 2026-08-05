@@ -4,9 +4,10 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { formatBRL } from '@/lib/format';
 import { readOrders } from '@/components/CartProvider';
+import type { Order } from '@/lib/types';
 
 export default function PedidosPage() {
-  const [orders, setOrders] = useState(null);
+  const [orders, setOrders] = useState<Order[] | null>(null);
 
   useEffect(() => {
     setOrders(readOrders());

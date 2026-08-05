@@ -1,28 +1,81 @@
 'use client';
 
 import { useState } from 'react';
+import type { CSSProperties } from 'react';
 import HomeBanner from './HomeBanner';
 import ProductCard from './ProductCard';
 import ProductQuickView from './ProductQuickView';
+import { CONFIG } from '@/lib/config';
+import type { Product, ResolvedHomeSection } from '@/lib/types';
 
-export default function HomeApp({ featuredProducts }) {
-  const [quickViewProduct, setQuickViewProduct] = useState(null);
+// Mesmos padrões de admin/src/lib/blockRegistry.js — usados só quando um
+// bloco antigo/manual não trouxer x/y/width/height.
+const DEFAULT_WIDTH = 280;
+const DEFAULT_HEIGHT = 320;
+const BOTTOM_PADDING = 60;
+
+export default function HomeApp({ sections }: { sections: ResolvedHomeSection[] }) {
+  const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
+
+  if (!sections || sections.length === 0) {
+    return (
+      <header className="banner no-media">
+        <div className="banner-content">
+          <h1>{CONFIG.storeName}</h1>
+          <p>Catálogo — MVP de teste</p>
+        </div>
+      </header>
+    );
+  }
+
+  // Ordenado por `y`: é a ordem que o celular usa pra empilhar (ver media
+  // query em globals.css, que ignora x/y/width e vira um fluxo normal) —
+  // sem isso, a ordem visual no celular dependeria da ordem do JSON, não
+  // de onde o bloco realmente está no canvas.
+  const ordered = [...sections].sort((a, b) => (a.y || 0) - (b.y || 0));
+  const firstBannerId = ordered.find((s) => s.type === 'banner')?.id;
+  const canvasHeight = Math.max(
+    400,
+    ...ordered.map((s) => (s.y || 0) + (s.height || DEFAULT_HEIGHT) + BOTTOM_PADDING)
+  );
 
   return (
     <>
-      <HomeBanner />
+      <main className="home-sections" style={{ '--canvas-height': `${canvasHeight}px` } as CSSProperties}>
+        {ordered.map((section) => {
+          // CSS vars em vez de left/top/width direto no style: assim a media
+          // query no globals.css (celular = sempre fluxo normal) consegue
+          // vencer a cascata sem precisar de !important.
+          const posStyle = {
+            '--x': `${section.x || 0}px`,
+            '--y': `${section.y || 0}px`,
+            '--w': `${section.width || DEFAULT_WIDTH}px`,
+            '--h': `${section.height || DEFAULT_HEIGHT}px`,
+          } as CSSProperties;
 
-      <main className="container">
-        {featuredProducts.length > 0 && (
-          <section className="featured-section">
-            <h2 className="section-title">Produtos em destaque</h2>
-            <div className="grid">
-              {featuredProducts.map((p) => (
-                <ProductCard key={p.id} product={p} onOpenDetail={setQuickViewProduct} />
-              ))}
-            </div>
-          </section>
-        )}
+          if (section.type === 'banner') {
+            return (
+              <div key={section.id} className="home-section-item" style={posStyle}>
+                <HomeBanner
+                  banners={section.banners}
+                  fallbackTitle={CONFIG.storeName}
+                  headingLevel={section.id === firstBannerId ? 'h1' : 'h2'}
+                  height={section.height}
+                />
+              </div>
+            );
+          }
+
+          if (section.type === 'product' && section.product) {
+            return (
+              <div key={section.id} className="home-section-item" style={posStyle}>
+                <ProductCard product={section.product} onOpenDetail={setQuickViewProduct} />
+              </div>
+            );
+          }
+
+          return null;
+        })}
       </main>
 
       <ProductQuickView product={quickViewProduct} onClose={() => setQuickViewProduct(null)} />

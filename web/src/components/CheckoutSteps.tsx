@@ -10,7 +10,7 @@ const STEPS = [
 
 // current: rota ativa. reachable: até onde o cliente já avançou (ex.: sem
 // frete escolhido, os passos 2 e 3 não têm link, só o texto).
-export default function CheckoutSteps({ current, reachable }) {
+export default function CheckoutSteps({ current, reachable }: { current: string; reachable: number }) {
   return (
     <div className="checkout-steps">
       {STEPS.map(({ step, label, href }, i) => {

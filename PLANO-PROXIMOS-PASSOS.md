@@ -42,6 +42,25 @@
   vários ao mesmo tempo). Categoria/subcategoria continua sendo a
   classificação física da peça (um valor só, hierárquica). Logo da loja
   centralizado no topo.
+- Primeira fatia da plataforma admin (`admin/`, app Next.js à parte, porta
+  3001 em dev): editor visual da home com blocos arrastáveis (banner
+  foto/vídeo, produto), canvas de posição livre (x/y/largura/altura, nada
+  se move sozinho) — ver seção abaixo. `CONFIG.home.sections` saiu de
+  `web/src/lib/config.js` e virou `web/src/data/homeSections.json`, servido
+  por `GET/PUT /api/home-sections`; `web/src/app/page.tsx` lê esse arquivo
+  em tempo de request (`dynamic = 'force-dynamic'`), então uma edição salva
+  no admin aparece no catálogo sem rebuild. Ainda sem login no admin — ver
+  limitações abaixo.
+- Segunda fatia do admin: `/colecoes` — coleções nomeadas de produtos (ex.
+  "Verão 2027", mostradas no menu lateral), com reordenação por
+  arrastar-e-soltar dentro da coleção (dnd-kit sortable simples, não o
+  canvas livre da home). Mesma migração de padrão: `CONFIG.home.highlights`
+  saiu de `config.ts` e virou `web/src/data/highlights.json` +
+  `GET/PUT /api/highlights`. Cada coleção tem link público compartilhável
+  (`/catalogo?destaque=<id>`, botão de WhatsApp) e exportação em PDF
+  (`/catalogo/pdf?destaque=<id>`, via impressão do navegador — "Salvar como
+  PDF", sem biblioteca nova). Inspirado no produto Colab da Teceo
+  (digitalização de showroom atacadista).
 
 ## Sobre personalização por cliente / multi-tenant
 
@@ -66,6 +85,13 @@ feito agora é a base que deixa esse caminho mais curto depois:
   (cliente comprador x conta de loja com permissão de editar layout/cadastrar
   peça) e como resolver "qual cliente é esse" por request (domínio/subdomínio
   vs. login). Vale um plano próprio quando for a hora.
+- Primeira fatia disso já começou: o editor visual da home (`admin/`, ver
+  acima) — mas ainda sem as três decisões de infra acima (login, banco,
+  "qual loja é essa"), só o `JSON` + API que já existiam. Persistência hoje é
+  um arquivo (`homeSections.json`), sem histórico — trocar por versionamento
+  (salvar cada alteração com timestamp, permitir reverter pra uma anterior)
+  é extensão natural da mesma API, sem precisar de banco novo nem de
+  WebSocket, e fica pra quando o editor tiver mais uso de verdade.
 
 ## Limitação importante do "Meus pedidos" atual
 
@@ -113,19 +139,71 @@ assim que a Fase 2 (Bippa/ERP) existir.
      do WhatsApp, como discutido — depende dos dados reais (Fase 2) estarem no
      ar antes de valer a pena investir nisso.
 
-## Sobre a ideia de WebSocket para eventos do carrinho
+## Estratégia de tempo real (WebSocket/SSE) — preparada pra Fase 2
 
-Hoje cada + / − na grade já atualiza o carrinho na hora (estado em memória +
-localStorage), e como é tudo dentro da mesma aba/navegador isso já é "tempo
-real" o suficiente — não tem um segundo dispositivo ou pessoa pra sincronizar
-com. WebSocket só compensa quando existe alguém do outro lado ouvindo em tempo
-real: por exemplo, a vendedora montando o carrinho num tablet enquanto a
-cliente acompanha pelo celular, ou o estoque do Bippa avisando "essa cor
-acabou" no meio da navegação. Isso depende de ter um backend (Fase 2) — não faz
-sentido montar um servidor de WebSocket só pra sincronizar uma aba com ela
-mesma. As mudanças de carrinho já passam todas por um único lugar
-(`CartProvider`), então quando a Fase 2 existir, plugar um broadcaster ali é
-uma mudança pequena, não um retrabalho.
+Decisão (sem implementar ainda — só o racional registrado pra quando a Fase 2
+existir e valer a pena voltar aqui):
+
+- **Editor da home (`admin/`) não usa WebSocket.** É uma ação deliberada do
+  adm (arrastar, editar, conferir, só então clicar Salvar) — não tem "outro
+  lado" esperando um evento ao vivo. Fica como está: confirmar e salvar via
+  API (`PUT /api/home-sections`), com o versionamento descrito acima como
+  próximo passo, não tempo real.
+- **Carrinho**: hoje cada + / − já atualiza na hora (estado em memória +
+  localStorage), e como é tudo na mesma aba isso já é "tempo real" o
+  suficiente — não tem um segundo dispositivo ou pessoa pra sincronizar com
+  ainda. Só passa a valer WebSocket se de fato existir um segundo ator ao
+  vivo (ex.: vendedora montando o carrinho num tablet enquanto a cliente
+  acompanha pelo celular, ou o estoque avisando "essa cor acabou" no meio da
+  navegação) — confirmar que isso é mesmo o plano antes de construir. As
+  mudanças de carrinho já passam todas por um único lugar (`CartProvider`),
+  então plugar um broadcaster ali depois é mudança pequena, não retrabalho.
+- **Status de pedido pro cliente** ("separando", "enviado", "entregue"): só
+  o servidor empurra evento, o cliente não manda nada de volta pelo mesmo
+  canal — cabe em Server-Sent Events (SSE), mais simples que WebSocket
+  (sem handshake bidirecional nem servidor de socket dedicado).
+- **Separação/estoque** (equipe do depósito batendo item por item, possivelmente
+  várias pessoas no mesmo pedido ao mesmo tempo): é o caso mais forte de
+  WebSocket de verdade — múltiplos atores precisando ver a ação um do outro
+  ao vivo. Hoje isso é escopo do Bippa (produto complementar, ver "Fora de
+  escopo" abaixo), não deste catálogo — mas a decisão de arquitetura (WebSocket
+  ali, não aqui) fica registrada.
+
+Tudo isso depende do backend real (Fase 2) existir — nenhum servidor de
+WebSocket/SSE deve ser montado antes disso.
+
+## Outras ferramentas vistas no Colab (Teceo) — preparado, não construído
+
+Analisamos o produto Colab (teceo.co) como referência de "ferramentas de
+showroom digital pra atacado". Dessas, `/colecoes` (acima) e a exportação
+em PDF/link já foram construídas. O que sobrou, com o dado já preparado em
+`web/src/lib/types.ts` (`Product.suggestedRetailPrice`, `Product.markup`,
+`Product.videoUrl`, `Product.relatedProductIds`, `Variant.availableFrom`)
+mas **sem UI** ainda:
+
+- **Preço sugerido + markup**: depende do Bippa/ERP começar a mandar esse
+  dado em `/api/catalog` — a "caixinha" já existe no tipo `Product`, só
+  falta popular e mostrar na página de produto/quick-view.
+- **Data de disponibilidade por variante**: mesma ideia, `Variant.availableFrom`
+  — mostrar isso na grade de cor×tamanho quando o Bippa/ERP mandar.
+- **Vídeo por produto**: `Product.videoUrl` já existe no tipo; falta UI no
+  quick-view/página de produto pra tocar o vídeo em vez de/além da imagem.
+- **Produtos relacionados ("complete o look")**: `Product.relatedProductIds`
+  já existe; precisa de UI de edição (provavelmente também em `admin/`,
+  parecido com o seletor de produto de `/colecoes`) e de exibição na página
+  do produto.
+- **Catálogo dinâmico por regra**: no Colab, em vez de escolher produto por
+  produto, a loja define uma regra ("tipo de entrega = pré-venda" + "coleção
+  X") e o catálogo se atualiza sozinho. É diferente do que `/colecoes` faz
+  hoje (lista manual de IDs) — muda o paradigma, não é só um campo novo.
+  Sem tipo/dado preparado ainda; vale desenhar quando for a hora, não dá
+  pra encaixar como extensão pequena do que existe.
+- **Talão de pedidos**: ferramenta de vendedor (não de admin da loja) —
+  monta um pedido em tempo real enquanto mostra o catálogo pro comprador,
+  tipicamente numa feira/showroom presencial. Reaproveita os tipos
+  `CartItem`/`Order` que já existem; a diferença é ser um perfil de usuário
+  separado (vendedor, não cliente final nem admin) e depende de login/conta
+  — fica pra quando a Fase 2 (identificação de usuário) existir.
 
 ## Fora de escopo por enquanto
 
