@@ -63,6 +63,7 @@ export interface Product {
   category: string;
   subcategory?: string;
   brand?: string;
+  sku?: string; // código/referência interna (Bippa/ERP) — mostrado no card e na página de produto
   price: number;
   image?: string;
   images?: string[];
@@ -101,6 +102,59 @@ export interface CartItem {
   // (rótulo livre, ex. "Em 30 dias" — vem de CONFIG.backorderDeliveryOptions,
   // que é por loja). Sem valor = ainda não escolhida.
   backorderDate?: string;
+}
+
+export type UserRole = 'vendedora' | 'cliente';
+
+// Usuário autenticado (login email+senha) — versão sem passwordHash, é o
+// formato que trafega pro cliente/sessão. Fonte de dado real é
+// web/src/data/users.json + web/src/lib/auth.ts.
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+}
+
+// Cadastro de cliente — separado de AuthUser de propósito: uma cliente pode
+// existir aqui (criada pela vendedora, presencial/WhatsApp) sem nunca ter
+// feito login. Quando ela um dia entrar sozinha, o login (email+senha, em
+// users.json) referencia esse registro por `clientId`. `lastSellerId` é a
+// última vendedora que a atendeu — usado na regra de "cai pra quem
+// atendeu da última vez" quando ela volta a montar carrinho sozinha (ver
+// web/src/lib/assignment.ts). "Completo" pra poder fechar um pedido
+// (fluxo de frete) = name + cpfCnpj + email + cep preenchidos — ver
+// isClientComplete em web/src/lib/clients.ts.
+export interface Client {
+  id: string;
+  name: string;
+  cpfCnpj?: string;
+  email?: string;
+  cep?: string;
+  lastSellerId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Talão: um pedido em andamento, vinculado a uma vendedora e, opcionalmente,
+// a um cadastro de cliente (`clientId`, ver Client acima) — sem cadastro
+// ainda, `clientName` é só um nome livre (ex. "Sem cliente", ou o nome que
+// a vendedora digitou pra lembrar quem é, sem formalizar). Uma vendedora
+// pode ter várias sessões abertas ao mesmo tempo (uma por cliente que está
+// atendendo); troca entre elas no talão (`TalaoDrawer.tsx`). Reaproveita
+// CartItem — é o mesmo formato de "peça no carrinho" que o site público já
+// usa.
+export interface OrderSession {
+  id: string;
+  clientName: string;
+  clientId?: string;
+  sellerId: string;
+  channel: 'presencial' | 'whatsapp';
+  items: CartItem[];
+  status: 'aberto' | 'fechado';
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Order {

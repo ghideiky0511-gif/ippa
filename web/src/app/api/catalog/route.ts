@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { catalog } from '@/lib/catalog';
+import { getCatalog } from '@/lib/catalog';
 
 // Hoje serve o catalog.json estático. Na Fase 2 este é o ponto de troca
 // para buscar os dados de verdade na API da Bippa/ERP sem mudar o front.
@@ -17,5 +17,6 @@ export async function OPTIONS() {
 }
 
 export async function GET() {
+  const catalog = await getCatalog();
   return NextResponse.json(catalog, { headers: CORS_HEADERS });
 }

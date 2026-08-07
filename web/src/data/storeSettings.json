@@ -1,0 +1,9 @@
+{
+  "defaultMarkup": 2.3,
+  "features": {
+    "suggestedPrice": true,
+    "preSale": true,
+    "readyToShip": true
+  },
+  "assignmentStrategy": "leastBusy"
+}

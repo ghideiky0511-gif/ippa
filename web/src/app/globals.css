@@ -82,6 +82,8 @@ a{color:inherit;text-decoration:none}
   .topnav-links a{display:none}
 }
 .topnav-cart{background:none;border:none;cursor:pointer;font-size:16px;display:flex;align-items:center;gap:6px}
+.topnav-login-link{font-size:13px;color:var(--brand-muted);background:none;border:none;cursor:pointer}
+.topnav-login-link:hover{color:var(--brand-primary)}
 .topnav-cart .count{background:var(--brand-primary);color:#fff;border-radius:50%;padding:1px 7px;font-size:12px}
 
 .sidemenu-trigger{display:flex;flex-direction:column;justify-content:center;gap:4px;background:none;border:none;cursor:pointer;padding:6px;width:32px;height:32px}
@@ -156,14 +158,20 @@ a{color:inherit;text-decoration:none}
 }
 .card{background:var(--brand-card);border-radius:var(--radius);overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);display:flex;flex-direction:column}
 .card-media{position:relative;aspect-ratio:9/16;overflow:hidden}
-.card-media img{width:100%;height:100%;object-fit:cover;background:#eee;display:block}
+.card-media img,.card-media video{width:100%;height:100%;object-fit:cover;background:#eee;display:block}
 .card-plus{position:absolute;right:10px;bottom:10px;width:34px;height:34px;border-radius:50%;border:none;background:var(--brand-primary);color:#fff;font-size:20px;line-height:1;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center}
 .card-plus:hover{background:var(--brand-primary-dark)}
 .card .body{padding:12px;display:flex;flex-direction:column;gap:8px;flex:1}
 .card .cat{font-size:11px;text-transform:uppercase;letter-spacing:0.04em;color:var(--brand-primary);font-weight:600}
 .card-title-link h3{margin:0;font-size:15px;line-height:1.3;min-height:2.6em}
 .card-title-link:hover h3{color:var(--brand-primary)}
+.card-sku{font-size:11px;color:var(--brand-muted);margin-top:-4px}
 .card .price{color:#1a1a1a;font-weight:700;font-size:16px}
+.price-row{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px}
+.suggested-price-block{margin-top:6px}
+.suggested-price-label{font-size:11px;color:var(--brand-muted);margin-bottom:2px}
+.price-suggested{color:var(--brand-muted);font-size:13px}
+.markup-chip{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:600;color:var(--brand-primary);background:color-mix(in srgb, var(--brand-primary) 12%, transparent);border-radius:999px;padding:2px 8px}
 .color-dots{position:absolute;left:10px;bottom:10px;right:44px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:6px 8px;border-radius:999px;background:rgba(255,255,255,0.85);backdrop-filter:blur(2px);opacity:0;transform:translateY(4px);pointer-events:none;transition:opacity 0.2s ease,transform 0.2s ease}
 .card-media:hover .color-dots{opacity:1;transform:translateY(0)}
 .color-dots .dot{width:14px;height:14px;border-radius:50%;border:1px solid rgba(0,0,0,0.15);display:inline-block;flex-shrink:0}
@@ -371,7 +379,67 @@ footer{padding:24px 16px;text-align:center;color:var(--brand-muted);font-size:13
 .pdf-item-name{font-size:12px;margin-top:6px}
 .pdf-item-price{font-size:12px;font-weight:700;color:#1a1a1a}
 
+.preview-empty-text{color:var(--brand-muted);font-size:13px}
+
+/* /login — sem AppShell (ver ConditionalShell.tsx), página isolada. */
+.login-page{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--brand-bg);padding:20px}
+.login-form{width:100%;max-width:340px;background:var(--brand-card);border-radius:var(--radius);padding:28px;box-shadow:0 1px 4px rgba(0,0,0,0.08);display:flex;flex-direction:column;gap:14px}
+.login-form h1{font-size:20px;margin-bottom:4px}
+.login-error{color:#c0392b;font-size:13px;margin:0}
+
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:12px;color:var(--brand-muted)}
+.field input,.field select{padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff}
+
+/* Talão de pedidos (vendedora) — painel por cima do catálogo normal, mesmo
+   padrão visual do CartDrawer (overlay + drawer da direita), ver
+   TalaoDrawer.tsx. Ícone fica no topnav (.topnav-talao), ao lado de onde
+   fica o carrinho do cliente final. */
+.topnav-talao .count{background:#e67e22}
+
+.talao-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);display:none;z-index:60}
+.talao-overlay.open{display:block}
+.talao-drawer{position:fixed;top:0;right:0;bottom:0;width:min(380px,100%);background:#fff;z-index:61;transform:translateX(100%);transition:transform .25s ease;display:flex;flex-direction:column}
+.talao-drawer.open{transform:translateX(0)}
+.talao-header{padding:16px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center}
+.talao-header h2{margin:0;font-size:18px}
+.talao-header button{border:none;background:none;font-size:20px;cursor:pointer}
+.talao-body{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:8px}
+
+.talao-section-label{font-size:11px;text-transform:uppercase;letter-spacing:0.04em;color:var(--brand-muted);margin-top:10px}
+.talao-section-label:first-child{margin-top:0}
+
+.talao-active-card,.talao-other-card{
+  position:relative;display:flex;align-items:center;gap:10px;border-radius:10px;padding:12px;
+  border:1px solid #eee;background:#fff;text-align:left;cursor:pointer;width:100%;
+}
+.talao-active-card{background:var(--brand-primary);border-color:var(--brand-primary);color:#fff}
+.talao-card-info{flex:1;display:flex;flex-direction:column;min-width:0}
+.talao-card-name{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.talao-card-channel{font-size:11px;opacity:0.75}
+.talao-card-meta{display:flex;flex-direction:column;align-items:flex-end;font-size:12px;flex-shrink:0}
+.talao-card-total{font-weight:700}
+.talao-card-arrow{font-size:16px;flex-shrink:0}
+
+.talao-other-list{display:flex;flex-direction:column;gap:8px}
+.talao-card-remove{position:absolute;top:6px;right:6px;border:none;background:none;font-size:16px;line-height:1;color:var(--brand-muted);cursor:pointer;padding:4px}
+.talao-card-remove:hover{color:#c0392b}
+
+.talao-add-row{display:flex;gap:8px}
+.talao-add-row input{flex:1;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:13px}
+
+.talao-search-results{display:flex;flex-direction:column;gap:4px;max-height:160px;overflow-y:auto}
+.talao-search-result{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid #eee;border-radius:8px;padding:8px 10px;background:#fff;cursor:pointer;text-align:left}
+.talao-search-result:hover{border-color:var(--brand-primary)}
+
+.talao-new-form{display:flex;flex-direction:column;gap:8px;border:1px solid #eee;border-radius:10px;padding:12px}
+.talao-new-form input,.talao-new-form select{padding:9px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px}
+
+.talao-cadastro-toggle{background:none;border:1px dashed #ddd;border-radius:8px;padding:8px 10px;font-size:12px;color:var(--brand-muted);cursor:pointer;text-align:left}
+.talao-cadastro-toggle:hover{border-color:var(--brand-primary);color:var(--brand-primary)}
+.talao-cadastro-panel{display:flex;flex-direction:column;gap:8px;border:1px solid #eee;border-radius:10px;padding:12px;background:var(--brand-bg)}
+
 @media print{
-  .no-print,.topnav,.sidemenu-overlay,.sidemenu-drawer,.cart-overlay,.cart-drawer,footer{display:none !important}
+  .no-print,.topnav,.sidemenu-overlay,.sidemenu-drawer,.cart-overlay,.cart-drawer,.talao-overlay,.talao-drawer,footer{display:none !important}
   .pdf-page{max-width:none;padding:0}
 }

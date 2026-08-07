@@ -36,8 +36,8 @@
     "type": "product",
     "id": "destaque-5",
     "productId": "e0512949-5e71-4099-be10-b5cd7bc7561b",
-    "x": 0,
-    "y": 820,
+    "x": 340,
+    "y": 260,
     "width": 280,
     "height": 460
   },
@@ -63,8 +63,8 @@
     "type": "product",
     "id": "destaque-8",
     "productId": "afa3c5e1-0094-4267-b19b-43e9ec13ca7b",
-    "x": 900,
-    "y": 820,
+    "x": 80,
+    "y": 380,
     "width": 280,
     "height": 460
   },

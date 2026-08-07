@@ -1,8 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { COLOR_MAP, CONFIG } from '@/lib/config';
-import { formatBRL } from '@/lib/format';
+import { formatBRL, formatMarkup } from '@/lib/format';
 import { buildVariantMatrix, deliveryLabel, splitStockQty } from '@/lib/variants';
 import { resolveGallery, resolveImageForColor } from '@/lib/images';
 import { useCart } from './CartProvider';
@@ -26,8 +26,34 @@ export default function ProductDetailContent({ product }: { product: Product }) 
   );
   const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>('all');
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  // Liga/desliga dos filtros de pré-venda/pronta-entrega (ver /ferramentas
+  // na plataforma admin) — cliente, não vem do getCatalog() porque não é
+  // dado de produto, é toggle de página. Mesmo padrão de CatalogApp.tsx
+  // buscando /api/highlights: fetch direto sem forçar a rota a virar
+  // dynamic. Ausente/erro = tratado como ligado (default de quando a
+  // ferramenta foi construída).
+  const [toolFlags, setToolFlags] = useState({ preSale: true, readyToShip: true });
+
+  useEffect(() => {
+    fetch('/api/store-settings')
+      .then((r) => r.json())
+      .then((s) =>
+        setToolFlags({
+          preSale: s?.features?.preSale !== false,
+          readyToShip: s?.features?.readyToShip !== false,
+        })
+      )
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (availabilityFilter === 'preorder' && !toolFlags.preSale) setAvailabilityFilter('all');
+    if (availabilityFilter === 'in_stock' && !toolFlags.readyToShip) setAvailabilityFilter('all');
+  }, [toolFlags, availabilityFilter]);
 
   const displayImage = resolveImageForColor(product, selectedColor) || gallery[activeImageIndex] || null;
+  const showSuggestedPrice = !!product.suggestedRetailPrice;
+  const markup = product.markup || (product.suggestedRetailPrice ? product.suggestedRetailPrice / product.price : undefined);
 
   // Itens deste produto no carrinho cuja qty passou do estoque (stockQty) e
   // ainda não têm previsão de entrega escolhida pra parte excedente — vira
@@ -89,7 +115,25 @@ export default function ProductDetailContent({ product }: { product: Product }) 
       <div className="product-detail-info">
         <div className="cat">{product.category}{product.subcategory ? ` · ${product.subcategory}` : ''}</div>
         <h2>{product.name}</h2>
+        {product.sku && <div className="card-sku">{product.sku}</div>}
         <div className="price">{formatBRL(product.price)}</div>
+        {showSuggestedPrice && (
+          <div className="suggested-price-block">
+            <div className="suggested-price-label">Preço varejo sugerido</div>
+            <div className="price-row">
+              <div className="price-suggested">{formatBRL(product.suggestedRetailPrice!)}</div>
+              {markup && (
+                <span className="markup-chip" title="Markup sugerido sobre o preço de atacado">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="7" y1="17" x2="17" y2="7" />
+                    <polyline points="7 7 17 7 17 17" />
+                  </svg>
+                  Markup {formatMarkup(markup)}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
         {product.description && <p className="product-detail-desc">{product.description}</p>}
 
         <div className="color-picker">
@@ -198,20 +242,24 @@ export default function ProductDetailContent({ product }: { product: Product }) 
           >
             todas as entregas
           </button>
-          <button
-            type="button"
-            className={'pill-filter pill-filter-preorder' + (availabilityFilter === 'preorder' ? ' active' : '')}
-            onClick={() => setAvailabilityFilter('preorder')}
-          >
-            pré-venda
-          </button>
-          <button
-            type="button"
-            className={'pill-filter pill-filter-instock' + (availabilityFilter === 'in_stock' ? ' active' : '')}
-            onClick={() => setAvailabilityFilter('in_stock')}
-          >
-            pronta-entrega
-          </button>
+          {toolFlags.preSale && (
+            <button
+              type="button"
+              className={'pill-filter pill-filter-preorder' + (availabilityFilter === 'preorder' ? ' active' : '')}
+              onClick={() => setAvailabilityFilter('preorder')}
+            >
+              pré-venda
+            </button>
+          )}
+          {toolFlags.readyToShip && (
+            <button
+              type="button"
+              className={'pill-filter pill-filter-instock' + (availabilityFilter === 'in_stock' ? ' active' : '')}
+              onClick={() => setAvailabilityFilter('in_stock')}
+            >
+              pronta-entrega
+            </button>
+          )}
         </div>
 
         <div className="matrix-table-wrap">

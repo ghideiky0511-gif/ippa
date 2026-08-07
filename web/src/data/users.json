@@ -1,0 +1,9 @@
+[
+  {
+    "id": "vend-teste-1",
+    "email": "vendedora@teste.com",
+    "passwordHash": "$2b$10$3qpuFGTErWIhCbTnuYKLbuGYEhsI6JNlGcsK6Q3Lx9AG4q.7Z1ogm",
+    "name": "Vendedora Teste",
+    "role": "vendedora"
+  }
+]

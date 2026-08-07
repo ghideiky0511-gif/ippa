@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
+import { useTalao } from './TalaoProvider';
 import type { CartItem, Order, Product, ShippingOption } from '@/lib/types';
 
 interface CartContextValue {
@@ -51,6 +52,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
   // (diferente do carrinho, não precisa sobreviver a dias/reload).
   const [shipping, setShipping] = useState<ShippingOption | null>(null);
 
+  // Talão de vendedora (ver TalaoProvider.tsx) — null pra qualquer cliente
+  // final comprando (não tem o provider por perto) ou pra vendedora sem
+  // sessão ativa selecionada. Com uma sessão ativa, o carrinho "de
+  // verdade" passa a ser o pedido daquela cliente, não o pessoal — mesma
+  // useCart() em ProductCard/ProductQuickView/ProductDetailContent, sem
+  // precisar saber disso.
+  const talao = useTalao();
+  const activeSession = talao?.activeSession ?? null;
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ver comentário acima do useState(cart)
     setCart(readJSON(CART_KEY, []));
@@ -63,6 +73,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   function addToCart(product: Product, color: string, size: string, qty: number, stockQty?: number) {
     const key = [product.id, color, size].join('|');
+    if (activeSession) {
+      const base = activeSession.items;
+      const existing = base.find((i) => i.key === key);
+      const next = existing
+        ? base.map((i) => (i.key === key ? { ...i, qty: i.qty + qty } : i))
+        : [...base, { key, id: product.id, name: product.name, image: product.image, color, size, price: product.price, qty, stockQty }];
+      talao!.updateActiveItems(next);
+      return;
+    }
     setCart((prev) => {
       const existing = prev.find((i) => i.key === key);
       if (existing) {
@@ -76,22 +95,40 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }
 
   function changeQty(key: string, qty: number) {
+    if (activeSession) {
+      talao!.updateActiveItems(activeSession.items.map((i) => (i.key === key ? { ...i, qty } : i)));
+      return;
+    }
     setCart((prev) => prev.map((i) => (i.key === key ? { ...i, qty } : i)));
   }
 
   function removeFromCart(key: string) {
+    if (activeSession) {
+      talao!.updateActiveItems(activeSession.items.filter((i) => i.key !== key));
+      return;
+    }
     setCart((prev) => prev.filter((i) => i.key !== key));
   }
 
   // `date: null` limpa a previsão escolhida (ex.: se a qty voltar pra
   // dentro do estoque depois de um decrement).
   function setBackorderDate(key: string, date: string | null) {
+    if (activeSession) {
+      talao!.updateActiveItems(
+        activeSession.items.map((i) => (i.key === key ? { ...i, backorderDate: date ?? undefined } : i))
+      );
+      return;
+    }
     setCart((prev) =>
       prev.map((i) => (i.key === key ? { ...i, backorderDate: date ?? undefined } : i))
     );
   }
 
   function clearCart() {
+    if (activeSession) {
+      talao!.updateActiveItems([]);
+      return;
+    }
     setCart([]);
   }
 
@@ -113,12 +150,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
     return order;
   }
 
-  const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
-  const cartTotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+  const effectiveCart = activeSession ? activeSession.items : cart;
+  const cartCount = effectiveCart.reduce((sum, item) => sum + item.qty, 0);
+  const cartTotal = effectiveCart.reduce((sum, item) => sum + item.price * item.qty, 0);
 
   const value = useMemo(
     () => ({
-      cart,
+      cart: effectiveCart,
       cartCount,
       cartTotal,
       isCartOpen,
@@ -134,7 +172,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       setShipping,
       clearShipping,
     }),
-    [cart, cartCount, cartTotal, isCartOpen, shipping]
+    [effectiveCart, cartCount, cartTotal, isCartOpen, shipping]
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

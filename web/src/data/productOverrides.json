@@ -1,0 +1,14 @@
+{
+  "bc4a970c-6194-42c1-a5b9-18b17028e71d": {
+    "sku": "SG-0104",
+    "suggestedRetailPrice": 149.9
+  },
+  "53c399af-0bda-43f1-b85d-273375fe1765": {
+    "sku": "SG-0231",
+    "suggestedRetailPrice": 182.9,
+    "markup": 2.5
+  },
+  "47275ecd-e018-4ed3-a505-e4931a137fc5": {
+    "sku": "SG-0512"
+  }
+}

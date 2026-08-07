@@ -337,6 +337,78 @@ input, textarea { font: inherit; }
 .collection-product-row img { width: 32px; height: 40px; object-fit: cover; border-radius: 4px; background: #eee; flex-shrink: 0; }
 
 .product-picker-results { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; max-height: 260px; overflow-y: auto; }
+
+/* Página /produtos — busca + edição de código/preço sugerido/markup por
+   produto (dado da loja, mesclado por cima do ERP em web/src/lib/catalog.ts). */
+.products-editor { padding: 24px; max-width: 960px; display: flex; flex-direction: column; gap: 16px; }
+.product-overrides-list { display: flex; flex-direction: column; gap: 8px; }
+.product-override-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid #eadde2;
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--brand-card);
+}
+.product-override-row img { width: 40px; height: 50px; object-fit: cover; border-radius: 4px; background: #eee; flex-shrink: 0; }
+.product-override-info { display: flex; flex-direction: column; gap: 2px; width: 180px; flex-shrink: 0; }
+.product-override-row .field { width: 150px; flex-shrink: 0; }
+.product-override-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-shrink: 0; }
+
+.default-markup-panel {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  border: 1px solid #eadde2;
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--brand-card);
+}
+
+.status { font-size: 13px; color: var(--brand-muted); }
+
+/* Página /ferramentas — liga/desliga de funcionalidades opcionais do
+   catálogo (storeSettings.json `features`, ver web/src/lib/catalog.ts). */
+.tools-list { display: flex; flex-direction: column; gap: 8px; }
+.tool-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid #eadde2;
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: var(--brand-card);
+}
+.tool-info { display: flex; flex-direction: column; gap: 4px; }
+.tool-label { font-size: 14px; font-weight: 600; }
+.tool-description { font-size: 12px; color: var(--brand-muted); max-width: 520px; }
+
+.toggle-switch {
+  flex-shrink: 0;
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  border: none;
+  background: #d8c3ce;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.toggle-switch.on { background: var(--brand-primary); }
+.toggle-switch:disabled { opacity: 0.6; cursor: default; }
+.toggle-knob {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.15s ease;
+}
+.toggle-switch.on .toggle-knob { transform: translateX(18px); }
 .product-picker-result {
   display: flex;
   align-items: center;
@@ -355,3 +427,16 @@ input, textarea { font: inherit; }
 .share-link-row { display: flex; gap: 8px; margin-top: 8px; }
 .share-link-row input { flex: 1; border: 1px solid #d8c3ce; border-radius: 6px; padding: 8px 10px; font-size: 13px; background: #fff; }
 .share-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+/* Página /catalogo — editor de posição da grade pública (todos os cards do
+   mesmo tamanho, só ordem é editável, ver CatalogOrderApp.js). */
+.catalog-order-page { padding-bottom: 40px; }
+.catalog-order-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 14px;
+  padding: 0 24px;
+}
+.catalog-order-card { cursor: grab; touch-action: none; user-select: none; }
+.catalog-order-card.dragging { cursor: grabbing; opacity: 0.5; box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25); }
+.catalog-order-page > .canvas-hint { padding: 0 24px; }

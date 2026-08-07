@@ -5,7 +5,10 @@ import { usePathname } from 'next/navigation';
 
 const LINKS = [
   { href: '/builder', label: 'Home' },
+  { href: '/catalogo', label: 'Catálogo' },
   { href: '/colecoes', label: 'Coleções' },
+  { href: '/produtos', label: 'Produtos' },
+  { href: '/ferramentas', label: 'Ferramentas' },
 ];
 
 export default function AdminNav() {

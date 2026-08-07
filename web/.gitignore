@@ -33,6 +33,11 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# tokens de sessão de login (runtime, não é configuração de loja) — ver
+# web/src/lib/auth.ts. users.json e orderSessions.json continuam versionados
+# (dado de teste), só o token de sessão em si não faz sentido commitar.
+/src/data/authSessions.json
+
 # vercel
 .vercel
 

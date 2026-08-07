@@ -21,10 +21,14 @@ export default function ProductCard({
   return (
     <article className="card">
       <div className="card-media">
-        <img
-          src={product.image || 'https://via.placeholder.com/400x500?text=Sem+imagem'}
-          alt={product.name}
-        />
+        {product.videoUrl ? (
+          <video src={product.videoUrl} autoPlay loop muted playsInline disablePictureInPicture />
+        ) : (
+          <img
+            src={product.image || 'https://via.placeholder.com/400x500?text=Sem+imagem'}
+            alt={product.name}
+          />
+        )}
         <button className="card-plus" aria-label="Ver detalhes e adicionar ao carrinho" onClick={() => onOpenDetail(product)}>
           +
         </button>
@@ -42,6 +46,7 @@ export default function ProductCard({
         <Link href={`/produto/${product.id}`} className="card-title-link">
           <h3>{product.name}</h3>
         </Link>
+        {product.sku && <div className="card-sku">{product.sku}</div>}
         <div className="price">{formatBRL(product.price)}</div>
       </div>
     </article>

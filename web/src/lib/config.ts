@@ -2,6 +2,12 @@
 // marca/cliente. Ainda é um arquivo único por deploy (sem multi-tenant real
 // ainda — isso é uma etapa à parte, precisa de banco/login), mas o conteúdo
 // da loja já fica organizado aqui num único lugar fácil de trocar.
+//
+// Liga/desliga de ferramentas opcionais do catálogo (ex. preço sugerido +
+// markup) NÃO mora mais aqui — virou web/src/data/storeSettings.json
+// (`features`), editável em tempo real pela plataforma admin em
+// /ferramentas (GET/PUT em /api/store-settings) e aplicado em
+// web/src/lib/catalog.ts (`getCatalog`, `stripDisabledFeatures`).
 export const CONFIG: {
   storeName: string;
   logoUrl: string;

@@ -62,6 +62,189 @@
   PDF", sem biblioteca nova). Inspirado no produto Colab da Teceo
   (digitalização de showroom atacadista).
 
+- **Preço sugerido + markup** (visto no Colab da Teceo, comparando com o
+  catálogo real deles): só a página de produto/quick-view
+  (`ProductDetailContent.tsx`) mostra — o card da grade (`ProductCard.tsx`)
+  ficou só com preço de atacado, sem o sugerido (decisão do cliente: no card
+  parecia desconto). Abaixo do preço de atacado, em letra pequena e apagada,
+  o rótulo "Preço varejo sugerido", o valor (sem risco, pra não parecer
+  desconto) e um chip "Markup 2,3x", calculado de `suggestedRetailPrice/price`
+  quando `markup` não vem explícito. Dado mesclado por cima do `catalog.json`
+  em tempo de request (`web/src/lib/catalog.ts`, `getCatalog()`) a partir de
+  `web/src/data/productOverrides.json` — editável na plataforma admin em
+  `/produtos` (busca por nome/código; cada linha tem seu próprio botão
+  "Alterar", que salva via `GET/PUT /api/product-overrides` — não existe
+  botão de salvar geral no topo, é por linha). Pensado pra também vir do
+  Bippa/ERP direto no `catalog.json` no futuro — quando os dois existirem,
+  o valor editado no admin tem prioridade sobre o do ERP.
+  Código/SKU (`Product.sku`) segue o mesmo caminho de override manual,
+  mostrado no card e na página de produto, mas sem liga/desliga — é só um
+  dado de identificação, não uma "funcionalidade" que faça sentido desligar.
+  Também tem **markup sugerido padrão da loja** (`web/src/data/storeSettings.json`,
+  `GET/PUT /api/store-settings`, editável no mesmo `/produtos` acima da
+  busca): a loja define um multiplicador (ex. 2.3) e ele é aplicado
+  automaticamente a toda peça que não tenha preço sugerido/markup próprio
+  (nem override, nem do ERP) — `applyDefaultMarkup` em `web/src/lib/catalog.ts`.
+  Prioridade final: override da peça > dado do ERP > markup padrão da loja >
+  desligado (ver liga/desliga abaixo). Uma peça específica sempre pode fugir
+  do padrão sendo editada direto na
+  busca.
+- **Liga/desliga de ferramentas opcionais** — nova página `/ferramentas` na
+  plataforma admin, pensada como o lugar central pra habilitar/desabilitar
+  qualquer funcionalidade opcional do catálogo (hoje só "Preço sugerido +
+  markup", mas a lista em `admin/src/components/tools/ToolsApp.js` (`TOOLS`)
+  é feita pra crescer sem redesenhar a página). Cada chave vira uma entrada
+  em `storeSettings.json` (`features`), aplicada em `getCatalog()`
+  (`stripDisabledFeatures`) — desligar aqui remove o dado do produto antes
+  dele chegar em qualquer página/quick-view, então nenhum componente
+  consumidor precisa saber que o toggle existe. Cada switch salva sozinho ao
+  clicar (sem botão de salvar separado) via `GET/PUT /api/store-settings`.
+  Isso substituiu o `CONFIG.features.suggestedPrice` fixo em código que
+  existia antes — liga/desliga de ferramenta agora é sempre dado de loja
+  editável no admin, nunca mais um arquivo de código. Duas ferramentas
+  novas na mesma lista: **filtro de pré-venda** e **filtro de pronta
+  entrega** (os pills "pré-venda"/"pronta-entrega" na grade de cor×tamanho
+  da página de produto/quick-view), agora liga/desliga separados um do
+  outro. Esses dois não passam pelo `getCatalog()` porque não são dado de
+  produto — `ProductDetailContent.tsx` busca `/api/store-settings` direto
+  (client-side, mesmo padrão do `CatalogApp.tsx` buscando
+  `/api/highlights`), o que significa que os dois pills aparecem no
+  primeiro render e somem depois que o fetch resolve, se desligados — sem
+  esperar SSR. Rápido na prática (mesma origem), mas é uma pequena troca
+  consciente por simplicidade — dava pra eliminar threadando a flag como
+  prop desde `catalogo/page.tsx`/`page.tsx`/`produto/[id]/page.tsx`, só que
+  isso tocaria uns 7 arquivos pra um filtro secundário; ver se compensa se
+  o "pisca" incomodar de verdade no uso real.
+
+- **Editor de posição do `/catalogo`** — nova página `/catalogo` na
+  plataforma admin (`admin/src/components/catalog/CatalogOrderApp.js`),
+  mesma ideia do editor da home só que travado: diferente do canvas livre
+  (`x`/`y`/`width`/`height` por bloco, ver `/builder`), aqui todo card tem o
+  mesmo tamanho — só a posição (ordem) é editável, arrastando em qualquer
+  direção (dnd-kit `rectSortingStrategy`, mesma lib do drag-and-drop de
+  `/colecoes`, só que em grade em vez de lista vertical). Persiste em
+  `web/src/data/catalogOrder.json` (lista de IDs, `GET/PUT
+  /api/catalog-order`) e é aplicado em `getCatalog()`
+  (`applyCatalogOrder`) — então todo consumidor do catálogo (a grade
+  pública em `/catalogo`, a API, o próprio editor) já pega a ordem
+  salva sem lógica repetida. Produto sem posição definida (ex. vindo novo
+  do ERP) entra no fim, na ordem natural do `catalog.json`. Vazio (`[]`) =
+  ordem natural pra todo mundo, estado inicial de hoje.
+
+## Talão de pedidos + login (vendedora/cliente) — em andamento
+
+Objetivo combinado: processo de pedido bom pra cliente e prático/didático
+pra vendedora, com as duas interagindo no mesmo pedido. Decisão de
+modelagem — não existem "dois modos" (vendedora sozinha vs. sessão
+colaborativa): **todo talão já é uma sessão** vinculada a uma vendedora e
+a uma cliente (por nome, ou depois a uma conta de cliente de verdade); a
+vendedora só tem várias abertas ao mesmo tempo e troca entre elas. Rodando
+via `web/` mesmo (sem app separado), hospedado no Render depois.
+
+**Correção de rumo**: a primeira versão criou uma página `/vendedora`
+separada, com busca de produto própria. O usuário mandou print do talão de
+pedidos da Teceo (Colab) mostrando que lá o talão é um **painel dentro do
+próprio catálogo** (a vendedora navega o catálogo normal — mesmos filtros,
+mesma grade — e o talão é um ícone no topo que abre um drawer, igual ao
+carrinho). Refeito nesse formato; `/vendedora`, `VendedoraApp.tsx` e
+`SessionCartProvider.tsx` da primeira versão foram removidos.
+
+**Construído nesta rodada** (só o lado da vendedora — cliente fica pra
+depois, combinado com o usuário):
+
+- **Login simples** (`web/src/lib/auth.ts`): email+senha, sem banco —
+  `web/src/data/users.json` guarda as contas (senha com `bcryptjs`, nunca
+  em texto puro); `web/src/data/authSessions.json` guarda só o token de
+  login → usuário (efêmero, fora do git). Cookie httpOnly
+  (`ippa_session`). Usuário de teste: `vendedora@teste.com` / `teste123`.
+  Rotas: `POST /api/auth/login`, `POST /api/auth/logout`,
+  `GET /api/auth/me`. `/login` é a única página sem o shell do catálogo
+  (`ConditionalShell.tsx`).
+- **Talão** (`OrderSession` em `types.ts`, `web/src/data/orderSessions.json`,
+  `GET/POST /api/sessions`, `PUT /api/sessions/[id]`): pedido em
+  andamento vinculado a `sellerId` + `clientName`/`channel`
+  (presencial/whatsapp), reaproveita `CartItem` (mesmo formato do
+  carrinho do site público). Cada vendedora só vê/edita as suas. Suporta
+  "pedido sem cliente" (nome vazio vira "Sem cliente", visto no texto da
+  Teceo) e reabrir um pedido fechado (`status` aceita ida e volta).
+- **`TalaoProvider.tsx`** (montado só quando logada como vendedora, ver
+  `AppShell.tsx`): dono da lista de sessões, qual está ativa, e do estado
+  aberto/fechado do painel. **`TalaoDrawer.tsx`** é o painel em si — pedido
+  ativo em destaque, outros pedidos abertos (cada um com X pra fechar),
+  busca de pedidos existentes (reabre um fechado) e criar novo — layout
+  direto da referência da Teceo. Ícone no topo (`.topnav-talao`) mostra
+  quantos pedidos abertos tem, ao lado de onde fica o carrinho do cliente
+  final (que some quando logada como vendedora). Sem a barra de progresso
+  de meta que aparece na referência — não temos esse dado ainda.
+- **`CartProvider.tsx` ficou "talão-aware"** em vez de existir um provider
+  paralelo: ele consulta `useTalao()` e, se houver uma sessão ativa,
+  `addToCart`/`changeQty`/`removeFromCart`/etc. escrevem nela (via API) em
+  vez do carrinho pessoal (localStorage). Resultado: a vendedora usa o
+  **`/catalogo` de verdade** — mesmos filtros, mesma grade de cor×tamanho,
+  mesmo `ProductCard`/`ProductQuickView`/`ProductDetailContent` — sem
+  nenhuma tela paralela; o "+" dela só aponta pra outro lugar por baixo.
+
+**Combinado com o usuário, ainda não construído:**
+
+- **Tempo real (SSE)**: cada ação já grava no talão via API, mas duas
+  abas/dispositivos olhando a mesma sessão só veem a mudança da outra num
+  refresh manual — a sincronização ao vivo (vendedora + cliente vendo a
+  mesma coisa mudar sem F5) é a próxima fatia. Decisão já tomada: **SSE
+  por sessão** (um "canal" por `sessionId`, não broadcast geral) em vez de
+  WebSocket — não precisa de servidor separado, funciona no Render (que
+  roda processo Node persistente, diferente de serverless). Ressalva
+  importante se o Render escalar horizontalmente (mais de uma instância):
+  pub/sub em memória por processo não basta, cada instância só vê as
+  conexões dela — rodar como instância única resolve isso por enquanto;
+  se crescer, precisa de um pub/sub compartilhado (Redis ou similar).
+  Usuário confirmou que precisa "rodar liso" com várias vendedoras
+  atendendo vários clientes ao mesmo tempo — importante lembrar disso
+  quando for desenhar o SSE (uma sessão por `sessionId`, não um canal
+  único pra todo mundo).
+- **Login/tela da cliente self-service**: ela loga sozinha, navega o
+  catálogo, monta carrinho. Ainda não construído — depende de: página de
+  cadastro/login da cliente, e decidir o que fica destravado só depois do
+  login (o usuário indicou que preço tende a ficar escondido pra visitante
+  não cadastrado — "a maioria das lojas mostra só foto sem preço" — mas
+  isso ainda não está implementado no catálogo público; hoje o preço
+  aparece pra qualquer visitante).
+- **Fila/roteamento pra cliente self-service** (regra combinada com o
+  usuário, ainda sem quem chame): quando uma cliente logada começa a
+  montar carrinho sozinha — primeira vez, cai pra uma vendedora logada
+  segundo a estratégia da loja (`pickSeller` em
+  `web/src/lib/assignment.ts`, configurável em `/ferramentas` →
+  "Distribuição de cliente nova": padrão é **menos pedidos abertos
+  agora**, com rodízio e "qualquer uma" como alternativas — decisão do
+  usuário foi deixar isso flexível por loja, não fixo). Segunda vez ou
+  mais, cai direto pra `client.lastSellerId` (a última que atendeu); se
+  essa vendedora não estiver logada, cai na regra de distribuição normal.
+  Se nenhuma vendedora estiver logada, a sessão fica sem dono até a
+  próxima logar — sem tela de fila separada. **O que falta**: o gatilho em
+  si (algo que rode quando a cliente loga/começa a montar carrinho e
+  chame `pickSeller` + crie/vincule a `OrderSession`) — não existe ainda
+  porque depende do login self-service da cliente acima.
+- **Cadastro de cliente** (`Client` em `types.ts`,
+  `web/src/data/clients.json`, `GET/POST /api/clients`,
+  `PUT /api/clients/[id]`) — separado de `AuthUser` de propósito: uma
+  cliente pode ter um cadastro (nome, CPF/CNPJ, e-mail, CEP) sem nunca ter
+  feito login, criado pela vendedora (presencial/WhatsApp) direto no
+  talão. Painel de vincular/criar cadastro dentro do `TalaoDrawer.tsx`
+  (busca por nome/CPF-CNPJ, ou cria novo) — vincular atualiza
+  `client.lastSellerId` pra regra da fila acima. **Combinado com o
+  usuário**: montar o carrinho não exige cadastro (a vendedora pode
+  trabalhar livre, só com nome solto como já era); cadastro só vira
+  obrigatório antes do frete — `isClientComplete()` em
+  `web/src/lib/clients.ts` já checa isso (nome+CPF/CNPJ+e-mail+CEP
+  preenchidos), mas o **gate em si não está aplicado ainda** porque não
+  existe fluxo de fechamento de pedido pro talão (frete/pagamento) — só
+  existe hoje pro checkout do cliente final (`/carrinho` → `/frete` →
+  `/pagamento`).
+- **Assinatura digital**: mantida como ferramenta, desligada por padrão —
+  mas o toggle não é por loja (`/ferramentas`), é **por cliente**, editável
+  no cadastro dela. Primeira ferramenta que precisa de liga/desliga em
+  dois níveis (loja inteira e por cliente específica), não só um — vale
+  lembrar disso ao desenhar outras ferramentas parecidas no futuro.
+
 ## Sobre personalização por cliente / multi-tenant
 
 O pedido de fundo é cada cliente ter sua própria identidade (cores, logo,
@@ -181,13 +364,13 @@ em PDF/link já foram construídas. O que sobrou, com o dado já preparado em
 `Product.videoUrl`, `Product.relatedProductIds`, `Variant.availableFrom`)
 mas **sem UI** ainda:
 
-- **Preço sugerido + markup**: depende do Bippa/ERP começar a mandar esse
-  dado em `/api/catalog` — a "caixinha" já existe no tipo `Product`, só
-  falta popular e mostrar na página de produto/quick-view.
 - **Data de disponibilidade por variante**: mesma ideia, `Variant.availableFrom`
   — mostrar isso na grade de cor×tamanho quando o Bippa/ERP mandar.
-- **Vídeo por produto**: `Product.videoUrl` já existe no tipo; falta UI no
-  quick-view/página de produto pra tocar o vídeo em vez de/além da imagem.
+- **Vídeo por produto — só parcial**: `Product.videoUrl` já tem UI no card da
+  grade (`ProductCard.tsx` toca vídeo em loop no lugar da imagem quando
+  existe), mas a página de produto/quick-view (`ProductDetailContent.tsx`,
+  galeria) ainda só mostra imagem — falta trocar `displayImage` por vídeo lá
+  quando `videoUrl` existir e nenhuma cor específica tiver imagem própria.
 - **Produtos relacionados ("complete o look")**: `Product.relatedProductIds`
   já existe; precisa de UI de edição (provavelmente também em `admin/`,
   parecido com o seletor de produto de `/colecoes`) e de exibição na página
