@@ -1,12 +1,10 @@
 'use client';
 
-import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import HomeBanner from './HomeBanner';
 import ProductCard from './ProductCard';
-import ProductQuickView from './ProductQuickView';
 import { CONFIG } from '@/lib/config';
-import type { Product, ResolvedHomeSection } from '@/lib/types';
+import type { ResolvedHomeSection } from '@/lib/types';
 
 // Mesmos padrões de admin/src/lib/blockRegistry.js — usados só quando um
 // bloco antigo/manual não trouxer x/y/width/height.
@@ -15,8 +13,6 @@ const DEFAULT_HEIGHT = 320;
 const BOTTOM_PADDING = 60;
 
 export default function HomeApp({ sections }: { sections: ResolvedHomeSection[] }) {
-  const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
-
   if (!sections || sections.length === 0) {
     return (
       <header className="banner no-media">
@@ -69,7 +65,7 @@ export default function HomeApp({ sections }: { sections: ResolvedHomeSection[] 
           if (section.type === 'product' && section.product) {
             return (
               <div key={section.id} className="home-section-item" style={posStyle}>
-                <ProductCard product={section.product} onOpenDetail={setQuickViewProduct} />
+                <ProductCard product={section.product} />
               </div>
             );
           }
@@ -77,8 +73,6 @@ export default function HomeApp({ sections }: { sections: ResolvedHomeSection[] 
           return null;
         })}
       </main>
-
-      <ProductQuickView product={quickViewProduct} onClose={() => setQuickViewProduct(null)} />
 
       <footer>MVP de catálogo — dados de teste vindos do feed público da Fashion Girl Atacado.</footer>
     </>

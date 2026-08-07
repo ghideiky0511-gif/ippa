@@ -3,34 +3,50 @@
 import Link from 'next/link';
 import { COLOR_MAP } from '@/lib/config';
 import { formatBRL } from '@/lib/format';
+import { useCart } from './CartProvider';
+import { useQuickView } from './QuickViewProvider';
 import type { Product } from '@/lib/types';
 
 const MAX_DOTS = 6;
 
-export default function ProductCard({
-  product,
-  onOpenDetail,
-}: {
-  product: Product;
-  onOpenDetail: (product: Product) => void;
-}) {
+// Clicar na imagem abre o quick-view (escolher a grade). Clicar no + só
+// adiciona o produto ao carrinho sem grade escolhida ainda (rascunho) —
+// dá pra ir clicando + em várias peças e resolver a grade de todas depois,
+// ou resolver uma de cada vez, como preferir. Vira ✓ quando já está no
+// carrinho (rascunho ou grade escolhida); clicar de novo desfaz — tira o
+// produto inteiro do carrinho e volta pro +. Ver addDraft/removeProduct em
+// CartProvider.tsx e GroupedCartItems.tsx (como isso aparece no carrinho).
+export default function ProductCard({ product }: { product: Product }) {
+  const { addDraft, removeProduct, cart } = useCart();
+  const { openQuickView } = useQuickView();
   const colors = product.colors || [];
   const shown = colors.slice(0, MAX_DOTS);
   const extra = colors.length - shown.length;
+  const inCart = cart.some((i) => i.id === product.id);
 
   return (
     <article className="card">
       <div className="card-media">
-        {product.videoUrl ? (
-          <video src={product.videoUrl} autoPlay loop muted playsInline disablePictureInPicture />
-        ) : (
-          <img
-            src={product.image || 'https://via.placeholder.com/400x500?text=Sem+imagem'}
-            alt={product.name}
-          />
-        )}
-        <button className="card-plus" aria-label="Ver detalhes e adicionar ao carrinho" onClick={() => onOpenDetail(product)}>
-          +
+        <button
+          className="card-media-open"
+          aria-label={`Ver cores e tamanhos de ${product.name}`}
+          onClick={() => openQuickView(product)}
+        >
+          {product.videoUrl ? (
+            <video src={product.videoUrl} autoPlay loop muted playsInline disablePictureInPicture />
+          ) : (
+            <img
+              src={product.image || 'https://via.placeholder.com/400x500?text=Sem+imagem'}
+              alt={product.name}
+            />
+          )}
+        </button>
+        <button
+          className={'card-plus' + (inCart ? ' added' : '')}
+          aria-label={inCart ? `Remover ${product.name} do carrinho` : `Adicionar ${product.name} ao carrinho`}
+          onClick={() => (inCart ? removeProduct(product.id) : addDraft(product))}
+        >
+          {inCart ? '✓' : '+'}
         </button>
         {shown.length > 0 && (
           <div className="color-dots">

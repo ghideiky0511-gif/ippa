@@ -4,23 +4,24 @@ import { useRouter } from 'next/navigation';
 import { formatBRL } from '@/lib/format';
 import { CONFIG } from '@/lib/config';
 import { useCart } from './CartProvider';
-import CartItemRow from './CartItemRow';
+import GroupedCartItems from './GroupedCartItems';
 
 export default function CartDrawer() {
   const router = useRouter();
-  const { cart, cartTotal, isCartOpen, closeCart, changeQty, removeFromCart, clearCart, saveOrderToHistory } = useCart();
+  const { cart, cartCount, cartTotal, isCartOpen, closeCart, clearCart, saveOrderToHistory } = useCart();
 
   function checkoutWhatsapp() {
-    if (cart.length === 0) {
-      alert('Seu carrinho está vazio.');
+    if (cartCount === 0) {
+      alert('Seu carrinho está vazio — adicione peças e escolha a grade antes de continuar.');
       return;
     }
     if (!CONFIG.whatsappNumber) {
       alert('Configure CONFIG.whatsappNumber em src/lib/config.js com o número da loja para habilitar o envio direto.');
       return;
     }
+    const resolvedItems = cart.filter((item) => item.qty > 0);
     const lines = [`Olá! Gostaria de fazer o seguinte pedido no ${CONFIG.storeName}:`, ''];
-    cart.forEach((item) => {
+    resolvedItems.forEach((item) => {
       const variantParts = [item.color, item.size].filter(Boolean);
       const variantText = variantParts.length ? ` (${variantParts.join(' / ')})` : '';
       lines.push(`• ${item.qty}x ${item.name}${variantText} — ${formatBRL(item.price * item.qty)}`);
@@ -28,7 +29,7 @@ export default function CartDrawer() {
     lines.push('', `Total: ${formatBRL(cartTotal)}`);
     const msg = encodeURIComponent(lines.join('\n'));
     window.open(`https://wa.me/${CONFIG.whatsappNumber}?text=${msg}`, '_blank');
-    saveOrderToHistory(cart, cartTotal);
+    saveOrderToHistory(resolvedItems, cartTotal);
     clearCart();
   }
 
@@ -49,9 +50,7 @@ export default function CartDrawer() {
           {cart.length === 0 ? (
             <div className="cart-empty">Seu carrinho está vazio.</div>
           ) : (
-            cart.map((item) => (
-              <CartItemRow key={item.key} item={item} onChangeQty={changeQty} onRemove={removeFromCart} />
-            ))
+            <GroupedCartItems cart={cart} />
           )}
         </div>
         <div className="cart-footer">

@@ -245,6 +245,38 @@ depois, combinado com o usuário):
   dois níveis (loja inteira e por cliente específica), não só um — vale
   lembrar disso ao desenhar outras ferramentas parecidas no futuro.
 
+- **"+" vira rascunho, imagem abre a grade** — mudança de comportamento
+  do card (`ProductCard.tsx`): clicar no **+** só adiciona o produto ao
+  carrinho sem cor/tamanho escolhidos ainda (`CartItem` com `color`/`size`
+  ausentes — "rascunho", ver `addDraft` em `CartProvider.tsx`); clicar na
+  **imagem** é que abre o quick-view pra escolher a grade (antes era o +
+  que abria). Dá pra ir clicando + em várias peças e resolver a grade de
+  todas depois, ou resolver uma de cada vez — do jeito que for mais fluido
+  pra quem está montando o pedido.
+  - **Quick-view virou global**: antes `CatalogApp.tsx`/`HomeApp.tsx` cada
+    um tinha seu próprio estado de quick-view; agora é um só
+    (`QuickViewProvider.tsx`), montado uma vez em `AppShell.tsx` — precisa
+    ser global porque o carrinho também abre o quick-view (ver abaixo), não
+    só o card.
+  - **Carrinho agora agrupa por produto** (`GroupedCartItems.tsx`, usado no
+    `CartDrawer` e em `/carrinho`): em vez de uma linha por cor×tamanho
+    solta, mostra um resumo recolhido por produto (quantas cores, quantas
+    peças, total) com um botão **"ver mais"** que expande e lista as linhas
+    de verdade; se o produto só tem o rascunho (nenhuma grade escolhida
+    ainda), mostra "Selecione a grade" e o botão vira **"selecionar"**, que
+    abre o quick-view daquele produto direto. Pra isso o carrinho precisou
+    ganhar acesso ao catálogo inteiro (`catalogById` em `CartProvider.tsx`,
+    busca `/api/catalog` uma vez) — é como acha o `Product` completo (cores,
+    tamanhos) de um item que só guarda id/nome/preço.
+  - **Talão da vendedora**: o card do "pedido ativo" no `TalaoDrawer` agora
+    abre o `CartDrawer` (que já mostra os itens da sessão ativa, já que o
+    carrinho *é* o pedido ativo — ver `CartProvider.tsx`) em vez de só
+    fechar o painel — é como ela revisa/edita item por item o que já foi
+    adicionado.
+  - Itens rascunho (`qty: 0`) são ignorados no total, na mensagem de
+    WhatsApp e no histórico de pedido — só entram no cálculo quando a
+    grade é escolhida de verdade.
+
 ## Sobre personalização por cliente / multi-tenant
 
 O pedido de fundo é cada cliente ter sua própria identidade (cores, logo,

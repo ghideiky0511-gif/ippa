@@ -84,13 +84,18 @@ export interface Product {
   packs?: Pack[];
 }
 
+// `color`/`size` ausentes = "rascunho" — produto adicionado pelo botão +
+// do card, sem grade escolhida ainda (ver addDraft em CartProvider.tsx).
+// `qty` fica 0 nesse caso. Vira um CartItem "de verdade" (color/size/qty
+// preenchidos) quando a pessoa escolhe a grade no quick-view — ver
+// GroupedCartItems.tsx pra como o carrinho mostra os dois estados.
 export interface CartItem {
   key: string;
   id: string;
   name: string;
   image?: string;
-  color: string;
-  size: string;
+  color?: string;
+  size?: string;
   price: number;
   qty: number;
   // Snapshot do estoque da variante no momento em que foi adicionada ao

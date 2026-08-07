@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Filters from './Filters';
 import ProductCard from './ProductCard';
-import ProductQuickView from './ProductQuickView';
 import { getCategories, getColors, getSizes } from '@/lib/catalogFacets';
 import { CONFIG } from '@/lib/config';
 import type { Highlight, Product } from '@/lib/types';
@@ -30,7 +29,6 @@ export default function CatalogApp({ initialProducts }: { initialProducts: Produ
     destaque: searchParams.get('destaque') || '',
     publico: searchParams.get('publico') || '',
   }));
-  const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
 
   // Cliente, não server component — mesma razão do SideMenu: manter
@@ -93,12 +91,10 @@ export default function CatalogApp({ initialProducts }: { initialProducts: Produ
         <div className="result-count">{filteredProducts.length} produto(s) encontrado(s)</div>
         <div className="grid">
           {filteredProducts.map((p) => (
-            <ProductCard key={p.id} product={p} onOpenDetail={setQuickViewProduct} />
+            <ProductCard key={p.id} product={p} />
           ))}
         </div>
       </main>
-
-      <ProductQuickView product={quickViewProduct} onClose={() => setQuickViewProduct(null)} />
 
       <footer>MVP de catálogo — dados de teste vindos do feed público da Fashion Girl Atacado.</footer>
     </>

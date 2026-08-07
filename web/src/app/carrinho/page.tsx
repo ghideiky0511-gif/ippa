@@ -5,20 +5,25 @@ import { useRouter } from 'next/navigation';
 import { formatBRL } from '@/lib/format';
 import { CONFIG } from '@/lib/config';
 import { useCart } from '@/components/CartProvider';
-import CartItemRow from '@/components/CartItemRow';
+import GroupedCartItems from '@/components/GroupedCartItems';
 import CheckoutSteps from '@/components/CheckoutSteps';
 
 export default function CarrinhoPage() {
   const router = useRouter();
-  const { cart, cartTotal, changeQty, removeFromCart, clearCart, saveOrderToHistory, shipping } = useCart();
+  const { cart, cartCount, cartTotal, clearCart, saveOrderToHistory, shipping } = useCart();
 
   function checkoutWhatsapp() {
+    if (cartCount === 0) {
+      alert('Seu carrinho está vazio — adicione peças e escolha a grade antes de continuar.');
+      return;
+    }
     if (!CONFIG.whatsappNumber) {
       alert('Configure CONFIG.whatsappNumber em src/lib/config.js com o número da loja para habilitar o envio direto.');
       return;
     }
+    const resolvedItems = cart.filter((item) => item.qty > 0);
     const lines = [`Olá! Gostaria de fazer o seguinte pedido no ${CONFIG.storeName}:`, ''];
-    cart.forEach((item) => {
+    resolvedItems.forEach((item) => {
       const variantParts = [item.color, item.size].filter(Boolean);
       const variantText = variantParts.length ? ` (${variantParts.join(' / ')})` : '';
       lines.push(`• ${item.qty}x ${item.name}${variantText} — ${formatBRL(item.price * item.qty)}`);
@@ -26,11 +31,11 @@ export default function CarrinhoPage() {
     lines.push('', `Total: ${formatBRL(cartTotal)}`);
     const msg = encodeURIComponent(lines.join('\n'));
     window.open(`https://wa.me/${CONFIG.whatsappNumber}?text=${msg}`, '_blank');
-    saveOrderToHistory(cart, cartTotal);
+    saveOrderToHistory(resolvedItems, cartTotal);
     clearCart();
   }
 
-  const reachable = shipping ? 3 : cart.length > 0 ? 2 : 1;
+  const reachable = shipping ? 3 : cartCount > 0 ? 2 : 1;
 
   return (
     <main className="container checkout-page">
@@ -44,9 +49,7 @@ export default function CarrinhoPage() {
       ) : (
         <>
           <div className="checkout-items">
-            {cart.map((item) => (
-              <CartItemRow key={item.key} item={item} onChangeQty={changeQty} onRemove={removeFromCart} />
-            ))}
+            <GroupedCartItems cart={cart} />
           </div>
 
           <div className="checkout-summary">
@@ -58,7 +61,9 @@ export default function CarrinhoPage() {
 
           <div className="checkout-actions">
             <button className="btn-whatsapp" onClick={checkoutWhatsapp}>Finalizar pedido via WhatsApp</button>
-            <button className="btn-add" onClick={() => router.push('/frete')}>Continuar para o frete</button>
+            <button className="btn-add" disabled={cartCount === 0} onClick={() => router.push('/frete')}>
+              Continuar para o frete
+            </button>
           </div>
         </>
       )}

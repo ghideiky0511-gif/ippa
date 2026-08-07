@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useTalao } from './TalaoProvider';
+import { useCart } from './CartProvider';
 import { formatBRL } from '@/lib/format';
 import type { Client, OrderSession } from '@/lib/types';
 
@@ -125,6 +126,7 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
 // dado ainda, ver PLANO-PROXIMOS-PASSOS.md.
 export default function TalaoDrawer() {
   const talao = useTalao();
+  const { openCart } = useCart();
   const [query, setQuery] = useState('');
   const [showNewForm, setShowNewForm] = useState(false);
   const [newClientName, setNewClientName] = useState('');
@@ -171,7 +173,14 @@ export default function TalaoDrawer() {
           <div className="talao-section-label">pedido ativo</div>
           {activeSession ? (
             <>
-              <button className="talao-active-card" onClick={closeTalao}>
+              <button
+                className="talao-active-card"
+                onClick={() => {
+                  closeTalao();
+                  openCart();
+                }}
+                title="Ver e editar as peças deste pedido"
+              >
                 <div className="talao-card-info">
                   <span className="talao-card-name">{activeSession.clientName}</span>
                   <span className="talao-card-channel">

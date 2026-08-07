@@ -12,6 +12,15 @@ interface CartContextValue {
   openCart: () => void;
   closeCart: () => void;
   addToCart: (product: Product, color: string, size: string, qty: number, stockQty?: number) => void;
+  // Adiciona o produto ao carrinho sem cor/tamanho definidos ainda (botão +
+  // do card) — vira um item "rascunho" (ver CartItem em types.ts), qty 0,
+  // até a pessoa escolher a grade no quick-view. Não duplica: se o produto
+  // já tem qualquer item no carrinho (rascunho ou resolvido), não faz nada.
+  addDraft: (product: Product) => void;
+  // Contrário do addDraft — tira TODAS as linhas daquele produto do
+  // carrinho (rascunho e/ou grade já escolhida), usado quando clica no ✓
+  // do card pra desfazer.
+  removeProduct: (productId: string) => void;
   changeQty: (key: string, qty: number) => void;
   removeFromCart: (key: string) => void;
   setBackorderDate: (key: string, date: string | null) => void;
@@ -20,6 +29,11 @@ interface CartContextValue {
   shipping: ShippingOption | null;
   setShipping: (shipping: ShippingOption | null) => void;
   clearShipping: () => void;
+  // Catálogo indexado por id — usado por GroupedCartItems.tsx pra achar o
+  // Product completo de um item do carrinho (reabrir o quick-view daquele
+  // produto pra editar a grade). Carrinho só guarda id/nome/imagem/preço
+  // do item, não o produto inteiro (cores, tamanhos, variantes).
+  catalogById: Record<string, Product>;
 }
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -61,10 +75,21 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const talao = useTalao();
   const activeSession = talao?.activeSession ?? null;
 
+  const [catalogById, setCatalogById] = useState<Record<string, Product>>({});
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ver comentário acima do useState(cart)
     setCart(readJSON(CART_KEY, []));
     setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/catalog')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((products: Product[]) => {
+        setCatalogById(Object.fromEntries(products.map((p) => [p.id, p])));
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -73,8 +98,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   function addToCart(product: Product, color: string, size: string, qty: number, stockQty?: number) {
     const key = [product.id, color, size].join('|');
+    // Um item resolvido (cor+tamanho escolhidos) substitui o rascunho desse
+    // produto, se existir — ver addDraft abaixo.
+    const draftKey = `${product.id}|draft`;
     if (activeSession) {
-      const base = activeSession.items;
+      const base = activeSession.items.filter((i) => i.key !== draftKey);
       const existing = base.find((i) => i.key === key);
       const next = existing
         ? base.map((i) => (i.key === key ? { ...i, qty: i.qty + qty } : i))
@@ -83,15 +111,36 @@ export function CartProvider({ children }: { children: ReactNode }) {
       return;
     }
     setCart((prev) => {
-      const existing = prev.find((i) => i.key === key);
+      const base = prev.filter((i) => i.key !== draftKey);
+      const existing = base.find((i) => i.key === key);
       if (existing) {
-        return prev.map((i) => (i.key === key ? { ...i, qty: i.qty + qty } : i));
+        return base.map((i) => (i.key === key ? { ...i, qty: i.qty + qty } : i));
       }
       return [
-        ...prev,
+        ...base,
         { key, id: product.id, name: product.name, image: product.image, color, size, price: product.price, qty, stockQty },
       ];
     });
+  }
+
+  function addDraft(product: Product) {
+    const draftKey = `${product.id}|draft`;
+    const base = activeSession ? activeSession.items : cart;
+    if (base.some((i) => i.id === product.id)) return; // já tem rascunho ou item resolvido pra esse produto
+    const draft: CartItem = { key: draftKey, id: product.id, name: product.name, image: product.image, price: product.price, qty: 0 };
+    if (activeSession) {
+      talao!.updateActiveItems([...base, draft]);
+      return;
+    }
+    setCart((prev) => [...prev, draft]);
+  }
+
+  function removeProduct(productId: string) {
+    if (activeSession) {
+      talao!.updateActiveItems(activeSession.items.filter((i) => i.id !== productId));
+      return;
+    }
+    setCart((prev) => prev.filter((i) => i.id !== productId));
   }
 
   function changeQty(key: string, qty: number) {
@@ -163,6 +212,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
       openCart: () => setCartOpen(true),
       closeCart: () => setCartOpen(false),
       addToCart,
+      addDraft,
+      removeProduct,
       changeQty,
       removeFromCart,
       setBackorderDate,
@@ -171,8 +222,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
       shipping,
       setShipping,
       clearShipping,
+      catalogById,
     }),
-    [effectiveCart, cartCount, cartTotal, isCartOpen, shipping]
+    [effectiveCart, cartCount, cartTotal, isCartOpen, shipping, catalogById]
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
