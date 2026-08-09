@@ -355,6 +355,69 @@ a.checkout-step{color:var(--brand-primary)}
 .checkout-items{display:flex;flex-direction:column;gap:4px;background:var(--brand-card);border-radius:var(--radius);box-shadow:0 1px 4px rgba(0,0,0,0.08);padding:8px 16px;margin-bottom:16px}
 .checkout-items .cart-item:last-child{border-bottom:none}
 .checkout-items .cart-item img{width:56px}
+/* Blocos do carrinho na página /carrinho (CartRows.tsx) — um bloco por
+   PRODUTO (nome/sku aparecem uma vez só) e, dentro, uma linha por COR
+   escolhida (a foto troca por cor, com seletor de entrega e a grade
+   inteira de tamanhos daquela cor ao lado) — uma peça com 2 cores no
+   carrinho vira 1 bloco com 2 linhas, não 2 blocos repetindo nome/sku.
+   Inspirado no talão de notas. Diferente do resumo recolhido do
+   CartDrawer (GroupedCartItems.tsx), que continua enxuto.
+   Sem min-width/overflow-x aqui de propósito: quando o conteúdo da linha
+   não cabe, ela quebra pra baixo (flex-wrap) e a página cresce na
+   vertical, em vez de abrir um scroll horizontal no meio da página. */
+.cart-products{display:flex;flex-direction:column}
+.cart-product{padding:14px 0;border-bottom:1px solid #f0f0f0}
+.cart-product:last-child{border-bottom:none}
+.cart-product-header{display:flex;align-items:baseline;gap:8px;margin-bottom:10px}
+.cart-product-header .name{font-size:13px;font-weight:600}
+.cart-product-sku{font-size:11px;color:var(--brand-muted)}
+.cart-product-lines{display:flex;flex-direction:column;gap:10px}
+.cart-product-addcolor{margin-top:10px;background:none;border:1px dashed #ccc;border-radius:999px;padding:6px 14px;font-size:12px;cursor:pointer;color:var(--brand-muted)}
+.cart-product-addcolor:hover{border-color:var(--brand-primary);color:var(--brand-primary)}
+
+.cart-line{display:flex;align-items:center;gap:14px;flex-wrap:wrap;row-gap:10px}
+.cart-line>img{width:40px;aspect-ratio:9/16;object-fit:cover;border-radius:5px;background:#eee;flex-shrink:0}
+.cart-line-pending{font-size:11px;color:var(--brand-primary);font-weight:600}
+.cart-line-field{display:flex;flex-direction:column;gap:3px;flex-shrink:0}
+.cart-line-field label{font-size:10px;color:var(--brand-muted);text-transform:uppercase;letter-spacing:.03em}
+.cart-line-field select{border:1px solid #ddd;border-radius:6px;padding:6px 8px;font-size:12px;background:#fff;color:var(--brand-text);min-width:112px}
+
+/* Dropdown de cor (bolinha + nome) — CartRows.tsx ColorSelect */
+.color-select{position:relative}
+.color-select-trigger{display:flex;align-items:center;gap:6px;border:1px solid #ddd;border-radius:6px;padding:6px 8px;font-size:12px;background:#fff;color:var(--brand-text);cursor:pointer;min-width:112px}
+.color-select-trigger:hover:not(:disabled){border-color:var(--brand-primary)}
+.color-select-trigger:disabled{opacity:0.5;cursor:default}
+.color-select-label{flex:1;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.color-select-caret{font-size:9px;color:var(--brand-muted)}
+.color-select-list{position:absolute;z-index:5;top:calc(100% + 4px);left:0;min-width:160px;max-height:220px;overflow-y:auto;background:#fff;border:1px solid #ddd;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.12);padding:4px;list-style:none;margin:0}
+.color-select-option{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:none;border-radius:6px;padding:7px 8px;font-size:12px;color:var(--brand-text);cursor:pointer}
+.color-select-option:hover{background:#f5f5f5}
+.color-select-option.selected{font-weight:700;color:var(--brand-primary)}
+
+.cart-line-grid{display:flex;align-items:center;gap:12px;flex-wrap:wrap;flex:1 1 220px}
+.cart-line-grid-cell{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;color:var(--brand-muted);min-width:30px}
+.cart-line-grid-cell .size{font-weight:600;color:var(--brand-text)}
+.qty-stepper-sm button{width:18px;height:18px;font-size:11px}
+.qty-stepper-sm span{min-width:12px;font-size:12px}
+.cart-line-loading{font-size:12px;color:var(--brand-muted)}
+.cart-line-price{flex-shrink:0;text-align:right;font-size:12px;color:var(--brand-muted);white-space:nowrap}
+.cart-line-price .total{font-weight:700;color:var(--brand-text);font-size:13px}
+.cart-line-more{flex-shrink:0;background:none;border:none;color:var(--brand-primary);font-size:11px;cursor:pointer;padding:0}
+.cart-line-more:hover{text-decoration:underline}
+.cart-line-more:disabled{opacity:0.4;cursor:default}
+.cart-line-trash{flex-shrink:0;background:none;border:none;font-size:15px;line-height:1;cursor:pointer;color:var(--brand-muted);padding:4px}
+.cart-line-trash:hover{color:#b00020}
+.cart-line-removed{justify-content:space-between;color:var(--brand-muted);font-size:13px}
+.cart-line-undo{background:none;border:none;color:var(--brand-primary);font-weight:600;font-size:13px;cursor:pointer;flex-shrink:0}
+.cart-line-undo:hover{text-decoration:underline}
+
+/* Aviso de peça(s) sem grade escolhida antes de seguir pro frete/pagamento
+   ou finalizar via WhatsApp — UnselectedItemsModal.tsx, disparado por
+   /carrinho/page.tsx (checkoutWhatsapp/goToFrete). */
+.confirm-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:80;display:flex;align-items:center;justify-content:center;padding:20px}
+.confirm-modal{background:#fff;border-radius:var(--radius);max-width:420px;width:100%;padding:22px;box-shadow:0 12px 40px rgba(0,0,0,0.25)}
+.confirm-modal p{font-size:14px;line-height:1.6;color:var(--brand-text);margin-bottom:18px}
+.confirm-modal-actions{display:flex;flex-direction:column;gap:10px}
 
 .checkout-summary{background:var(--brand-card);border-radius:var(--radius);box-shadow:0 1px 4px rgba(0,0,0,0.08);padding:14px 16px;margin-bottom:16px;display:flex;flex-direction:column;gap:6px}
 .order-summary-line{display:flex;justify-content:space-between;font-size:14px;color:var(--brand-muted)}

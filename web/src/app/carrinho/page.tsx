@@ -1,22 +1,37 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatBRL } from '@/lib/format';
 import { CONFIG } from '@/lib/config';
 import { useCart } from '@/components/CartProvider';
-import GroupedCartItems from '@/components/GroupedCartItems';
+import CartRows from '@/components/CartRows';
 import CheckoutSteps from '@/components/CheckoutSteps';
+import UnselectedItemsModal from '@/components/UnselectedItemsModal';
+import type { CartItem } from '@/lib/types';
+
+// Peças que estão no carrinho mas com qty 0 em todo mundo (rascunho nunca
+// resolvido, ou grade zerada — ver decrement em CartRows.tsx, que agora
+// mantém a peça no carrinho em vez de sumir sozinha) — soma por produto
+// porque uma peça pode ter várias linhas (cores/tamanhos diferentes).
+function unselectedProductNames(cart: CartItem[]): string[] {
+  const totals: Record<string, { name: string; qty: number }> = {};
+  for (const item of cart) {
+    if (!totals[item.id]) totals[item.id] = { name: item.name, qty: 0 };
+    totals[item.id].qty += item.qty;
+  }
+  return Object.values(totals)
+    .filter((t) => t.qty === 0)
+    .map((t) => t.name);
+}
 
 export default function CarrinhoPage() {
   const router = useRouter();
   const { cart, cartCount, cartTotal, clearCart, saveOrderToHistory, shipping } = useCart();
+  const [pendingAction, setPendingAction] = useState<{ names: string[]; run: () => void } | null>(null);
 
-  function checkoutWhatsapp() {
-    if (cartCount === 0) {
-      alert('Seu carrinho está vazio — adicione peças e escolha a grade antes de continuar.');
-      return;
-    }
+  function sendWhatsapp() {
     if (!CONFIG.whatsappNumber) {
       alert('Configure CONFIG.whatsappNumber em src/lib/config.js com o número da loja para habilitar o envio direto.');
       return;
@@ -35,6 +50,28 @@ export default function CarrinhoPage() {
     clearCart();
   }
 
+  function checkoutWhatsapp() {
+    if (cartCount === 0) {
+      alert('Seu carrinho está vazio — adicione peças e escolha a grade antes de continuar.');
+      return;
+    }
+    const names = unselectedProductNames(cart);
+    if (names.length > 0) {
+      setPendingAction({ names, run: sendWhatsapp });
+      return;
+    }
+    sendWhatsapp();
+  }
+
+  function goToFrete() {
+    const names = unselectedProductNames(cart);
+    if (names.length > 0) {
+      setPendingAction({ names, run: () => router.push('/frete') });
+      return;
+    }
+    router.push('/frete');
+  }
+
   const reachable = shipping ? 3 : cartCount > 0 ? 2 : 1;
 
   return (
@@ -42,16 +79,12 @@ export default function CarrinhoPage() {
       <CheckoutSteps current="/carrinho" reachable={reachable} />
       <h1>Seu carrinho</h1>
 
-      {cart.length === 0 ? (
-        <div className="cart-empty">
-          Seu carrinho está vazio. <Link href="/">Ver catálogo</Link>
-        </div>
-      ) : (
-        <>
-          <div className="checkout-items">
-            <GroupedCartItems cart={cart} />
-          </div>
+      <div className="checkout-items">
+        <CartRows cart={cart} />
+      </div>
 
+      {cart.length > 0 && (
+        <>
           <div className="checkout-summary">
             <div className="order-summary-line">
               <span>Subtotal</span>
@@ -61,7 +94,7 @@ export default function CarrinhoPage() {
 
           <div className="checkout-actions">
             <button className="btn-whatsapp" onClick={checkoutWhatsapp}>Finalizar pedido via WhatsApp</button>
-            <button className="btn-add" disabled={cartCount === 0} onClick={() => router.push('/frete')}>
+            <button className="btn-add" disabled={cartCount === 0} onClick={goToFrete}>
               Continuar para o frete
             </button>
           </div>
@@ -69,6 +102,18 @@ export default function CarrinhoPage() {
       )}
 
       <Link href="/" className="back-link">← Voltar ao catálogo</Link>
+
+      {pendingAction && (
+        <UnselectedItemsModal
+          names={pendingAction.names}
+          onContinue={() => {
+            const run = pendingAction.run;
+            setPendingAction(null);
+            run();
+          }}
+          onReview={() => setPendingAction(null)}
+        />
+      )}
     </main>
   );
 }

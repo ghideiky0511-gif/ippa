@@ -277,6 +277,49 @@ depois, combinado com o usuário):
     WhatsApp e no histórico de pedido — só entram no cálculo quando a
     grade é escolhida de verdade.
 
+- **Ajustes finos do + / ✓ e topo** — depois do item acima:
+  - O **✓ é reversível**: clicar de novo no ✓ tira o produto inteiro do
+    carrinho (rascunho e/ou grade escolhida) e volta pro **+** —
+    `removeProduct` em `CartProvider.tsx`.
+  - **Ícone do carrinho voltou** ao topo (canto superior direito), com a
+    quantidade de peças — tinha sumido numa mexida anterior.
+  - O link **"Catálogo"** no topo só some quando já se está em `/catalogo`
+    (não levaria a lugar nenhum); nas demais páginas continua aparecendo.
+
+- **Carrinho em linhas na página `/carrinho`** (`CartRows.tsx`) —
+  redesenho só da **página cheia** do carrinho (o drawer/`CartDrawer`
+  continua com o resumo enxuto do `GroupedCartItems.tsx`), inspirado no
+  talão de notas da Teceo:
+  - Uma **linha por produto+cor** (não por produto+cor+tamanho): a foto
+    troca conforme a cor (`resolveImageForColor`, quando o produto tiver
+    `imagesByColor`), do lado um seletor de **cor** (troca a cor de toda a
+    linha, remapeando tamanho/qty pra nova cor) e um seletor de
+    **entrega** (pronta-entrega ou um dos prazos de
+    `CONFIG.backorderDeliveryOptions` — reaproveita o campo
+    `CartItem.backorderDate`, só que setando em bloco pra linha inteira via
+    o novo `setBackorderDateForKeys`, em vez de só na sobra do estoque como
+    fazia o quick-view). As datas de pré-venda específicas (que mês fica
+    pronto) ainda não têm tela de configuração na loja — fica igual antes,
+    fica pra quando isso virar campo editável de verdade.
+  - Ao lado, a **grade de tamanhos** daquela cor (só os tamanhos com
+    peça escolhida, pra não poluir) e o preço (qtd × unitário + total da
+    linha). Editar a grade em si (mudar tamanho/quantidade) continua no
+    quick-view — **"ver mais"** (texto pequeno) abre ele, mesmo padrão já
+    usado no resumo do drawer.
+  - **Lixeira com desfazer**: clicar no ícone de lixeira tira a linha do
+    carrinho de verdade (`replaceItems`, novo método do `CartProvider`) mas
+    guarda os itens removidos num `ref` local (`CartRows.tsx`), mostrando
+    **"desfazer"** no lugar exato da linha (ordem das linhas fixada num
+    `ref` à parte — não reordena ao remover/desfazer, porque `replaceItems`
+    reinsere no fim do array do carrinho). "Desfazer" só dura enquanto a
+    página estiver aberta (não sobrevive a reload).
+  - `CartProvider.tsx` ganhou dois métodos novos pra isso não perder
+    updates com sessão de talão ativa (cada chamada isolada leria
+    `activeSession.items` desatualizado do closure se fossem várias
+    chamadas em sequência): `replaceItems(removeKeys, addItems)` (troca
+    várias linhas numa operação só — remover, desfazer e trocar de cor
+    usam esse mesmo caminho) e `setBackorderDateForKeys(keys, date)`.
+
 ## Sobre personalização por cliente / multi-tenant
 
 O pedido de fundo é cada cliente ter sua própria identidade (cores, logo,

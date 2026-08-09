@@ -3,12 +3,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { COLOR_MAP, CONFIG } from '@/lib/config';
 import { formatBRL, formatMarkup } from '@/lib/format';
-import { buildVariantMatrix, deliveryLabel, splitStockQty } from '@/lib/variants';
+import { ADDABLE_AVAILABILITY, buildVariantMatrix, deliveryLabel, splitStockQty } from '@/lib/variants';
 import { resolveGallery, resolveImageForColor } from '@/lib/images';
 import { useCart } from './CartProvider';
 import type { Availability, Product } from '@/lib/types';
 
-const ADDABLE = new Set<Availability>(['in_stock', 'preorder', 'backorder']);
 type AvailabilityFilter = 'all' | 'in_stock' | 'preorder';
 
 function matchesAvailabilityFilter(availability: Availability, filter: AvailabilityFilter): boolean {
@@ -281,7 +280,7 @@ export default function ProductDetailContent({ product }: { product: Product }) 
                   </td>
                   {row.cells.map((cell, i) => {
                     const size = matrix.sizes[i];
-                    const addable = cell && ADDABLE.has(cell.availability);
+                    const addable = cell && ADDABLE_AVAILABILITY.has(cell.availability);
 
                     if (!addable) {
                       return (

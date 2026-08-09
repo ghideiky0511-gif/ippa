@@ -43,6 +43,12 @@ export function buildVariantMatrix(product: Product): VariantMatrix {
   return { colors, sizes, rows, availableColors };
 }
 
+// Disponibilidades que podem ser adicionadas ao carrinho (out_of_stock e
+// combinações inexistentes ficam de fora) — usado tanto na grade do
+// quick-view/página de produto (ProductDetailContent.tsx) quanto na grade
+// inline do carrinho (CartRows.tsx), pra não duplicar a mesma lista.
+export const ADDABLE_AVAILABILITY = new Set<Availability>(['in_stock', 'preorder', 'backorder']);
+
 export function deliveryLabel(availability?: Availability): string {
   switch (availability) {
     case 'in_stock':

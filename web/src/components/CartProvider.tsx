@@ -11,7 +11,19 @@ interface CartContextValue {
   isCartOpen: boolean;
   openCart: () => void;
   closeCart: () => void;
-  addToCart: (product: Product, color: string, size: string, qty: number, stockQty?: number) => void;
+  // `backorderDate` opcional: aplica essa previsão de entrega ao item novo
+  // (ou já existente, se for um incremento) — usado pela grade inline do
+  // carrinho (CartRows.tsx), que deixa escolher a entrega da linha antes
+  // mesmo de incrementar alguma quantidade. Sem isso, o item mantém o que
+  // já tinha (ou nenhum, comportamento de sempre).
+  addToCart: (
+    product: Product,
+    color: string,
+    size: string,
+    qty: number,
+    stockQty?: number,
+    backorderDate?: string
+  ) => void;
   // Adiciona o produto ao carrinho sem cor/tamanho definidos ainda (botão +
   // do card) — vira um item "rascunho" (ver CartItem em types.ts), qty 0,
   // até a pessoa escolher a grade no quick-view. Não duplica: se o produto
@@ -24,6 +36,17 @@ interface CartContextValue {
   changeQty: (key: string, qty: number) => void;
   removeFromCart: (key: string) => void;
   setBackorderDate: (key: string, date: string | null) => void;
+  // Aplica a mesma previsão de entrega a várias linhas de uma vez (usado
+  // pelo seletor de entrega por linha do carrinho — CartRows.tsx — que
+  // mexe em todos os tamanhos de uma cor junto, não um item por vez).
+  setBackorderDateForKeys: (keys: string[], date: string | null) => void;
+  // Tira `removeKeys` e acrescenta `addItems` numa operação só (em vez de
+  // várias chamadas de removeFromCart/addToCart em sequência, que perderiam
+  // update com sessão de talão ativa — cada chamada isolada leria
+  // `activeSession.items` desatualizado do closure). Usado por CartRows.tsx
+  // pra trocar a cor de uma linha inteira, restaurar depois de um
+  // "desfazer" e apagar uma linha (removeKeys sem addItems).
+  replaceItems: (removeKeys: string[], addItems: CartItem[]) => void;
   clearCart: () => void;
   saveOrderToHistory: (items: CartItem[], total: number, extra?: Record<string, unknown>) => Order;
   shipping: ShippingOption | null;
@@ -96,31 +119,35 @@ export function CartProvider({ children }: { children: ReactNode }) {
     if (hydrated) window.localStorage.setItem(CART_KEY, JSON.stringify(cart));
   }, [cart, hydrated]);
 
-  function addToCart(product: Product, color: string, size: string, qty: number, stockQty?: number) {
+  function addToCart(
+    product: Product,
+    color: string,
+    size: string,
+    qty: number,
+    stockQty?: number,
+    backorderDate?: string
+  ) {
     const key = [product.id, color, size].join('|');
     // Um item resolvido (cor+tamanho escolhidos) substitui o rascunho desse
     // produto, se existir — ver addDraft abaixo.
     const draftKey = `${product.id}|draft`;
-    if (activeSession) {
-      const base = activeSession.items.filter((i) => i.key !== draftKey);
-      const existing = base.find((i) => i.key === key);
-      const next = existing
-        ? base.map((i) => (i.key === key ? { ...i, qty: i.qty + qty } : i))
-        : [...base, { key, id: product.id, name: product.name, image: product.image, color, size, price: product.price, qty, stockQty }];
-      talao!.updateActiveItems(next);
-      return;
-    }
-    setCart((prev) => {
-      const base = prev.filter((i) => i.key !== draftKey);
+    function apply(base: CartItem[]): CartItem[] {
       const existing = base.find((i) => i.key === key);
       if (existing) {
-        return base.map((i) => (i.key === key ? { ...i, qty: i.qty + qty } : i));
+        return base.map((i) =>
+          i.key === key ? { ...i, qty: i.qty + qty, backorderDate: backorderDate ?? i.backorderDate } : i
+        );
       }
       return [
         ...base,
-        { key, id: product.id, name: product.name, image: product.image, color, size, price: product.price, qty, stockQty },
+        { key, id: product.id, name: product.name, image: product.image, color, size, price: product.price, qty, stockQty, backorderDate },
       ];
-    });
+    }
+    if (activeSession) {
+      talao!.updateActiveItems(apply(activeSession.items.filter((i) => i.key !== draftKey)));
+      return;
+    }
+    setCart((prev) => apply(prev.filter((i) => i.key !== draftKey)));
   }
 
   function addDraft(product: Product) {
@@ -173,6 +200,47 @@ export function CartProvider({ children }: { children: ReactNode }) {
     );
   }
 
+  function setBackorderDateForKeys(keys: string[], date: string | null) {
+    const keySet = new Set(keys);
+    if (activeSession) {
+      talao!.updateActiveItems(
+        activeSession.items.map((i) => (keySet.has(i.key) ? { ...i, backorderDate: date ?? undefined } : i))
+      );
+      return;
+    }
+    setCart((prev) => prev.map((i) => (keySet.has(i.key) ? { ...i, backorderDate: date ?? undefined } : i)));
+  }
+
+  // Junta `addItems` em cima do que sobrou depois de tirar `removeKeys` —
+  // se algum item de `addItems` cair numa key que já existe no que sobrou
+  // (ex.: trocar a cor de uma linha pra uma cor que outra linha já usa),
+  // soma a quantidade em vez de duplicar a linha no carrinho.
+  function mergeItems(base: CartItem[], addItems: CartItem[]): CartItem[] {
+    let result = base;
+    for (const item of addItems) {
+      const idx = result.findIndex((i) => i.key === item.key);
+      if (idx === -1) {
+        result = [...result, item];
+      } else {
+        const existing = result[idx];
+        result = result.map((i, n) =>
+          n === idx ? { ...existing, qty: existing.qty + item.qty, backorderDate: item.backorderDate ?? existing.backorderDate } : i
+        );
+      }
+    }
+    return result;
+  }
+
+  function replaceItems(removeKeys: string[], addItems: CartItem[]) {
+    const removeSet = new Set(removeKeys);
+    if (activeSession) {
+      const base = activeSession.items.filter((i) => !removeSet.has(i.key));
+      talao!.updateActiveItems(mergeItems(base, addItems));
+      return;
+    }
+    setCart((prev) => mergeItems(prev.filter((i) => !removeSet.has(i.key)), addItems));
+  }
+
   function clearCart() {
     if (activeSession) {
       talao!.updateActiveItems([]);
@@ -217,6 +285,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
       changeQty,
       removeFromCart,
       setBackorderDate,
+      setBackorderDateForKeys,
+      replaceItems,
       clearCart,
       saveOrderToHistory,
       shipping,
