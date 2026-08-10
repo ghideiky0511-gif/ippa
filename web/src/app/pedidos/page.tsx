@@ -36,10 +36,15 @@ export default function PedidosPage() {
               </span>
               <span className="order-total">{formatBRL(order.total)}</span>
             </div>
-            {(order.shipping || order.paymentMethod) && (
+            {(order.shipping || order.paymentMethod || order.discount) && (
               <div className="order-meta">
                 {order.shipping && <span>Frete: {order.shipping.label}</span>}
                 {order.paymentMethod && <span>Pagamento: {order.paymentMethod}</span>}
+                {order.discount && (
+                  <span className="order-discount-badge">
+                    Desconto: {order.discount.label} (-{formatBRL(order.discount.amount)})
+                  </span>
+                )}
               </div>
             )}
             <div className="order-items">

@@ -17,10 +17,9 @@ function subtotal(session: OrderSession): number {
 // Cadastro de cliente vinculado ao pedido ativo — combinado com o usuário:
 // a vendedora consegue montar o carrinho livre, sem cadastro nenhum
 // (session.clientId fica vazio, só o nome livre em session.clientName);
-// vincular um cadastro (CPF/CNPJ, e-mail, CEP) é opcional aqui, mas vai
-// virar obrigatório antes do frete quando esse fluxo de fechamento
-// existir (ver PLANO-PROXIMOS-PASSOS.md — isClientComplete em
-// web/src/lib/clients.ts já está pronta pra esse gate).
+// vincular um cadastro (CPF/CNPJ, e-mail, CEP) é opcional aqui, mas fica
+// obrigatório antes do frete (isClientComplete, web/src/lib/clientComplete.ts,
+// aplicada em /frete e /pagamento via useTalaoClientGate.ts).
 function ClientCadastroSection({ session }: { session: OrderSession }) {
   const talao = useTalao()!;
   const [expanded, setExpanded] = useState(false);
@@ -31,6 +30,11 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
   const [cpfCnpj, setCpfCnpj] = useState('');
   const [email, setEmail] = useState('');
   const [cep, setCep] = useState('');
+  // Liga o "flash" do toggle recolhido logo depois de vincular um cadastro
+  // (novo ou existente) — fica claro que a ação surtiu efeito, mesmo sem
+  // sair da tela do talão. onAnimationEnd desliga sozinho quando a
+  // animação termina (ver .talao-cadastro-toggle.just-linked no CSS).
+  const [justLinked, setJustLinked] = useState(false);
 
   useEffect(() => {
     const q = query.trim();
@@ -59,6 +63,7 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
     await talao.linkClient(client.id);
     setShowNewForm(false);
     setExpanded(false);
+    setJustLinked(true);
     setName('');
     setCpfCnpj('');
     setEmail('');
@@ -70,11 +75,16 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
     setQuery('');
     setResults([]);
     setExpanded(false);
+    setJustLinked(true);
   }
 
   if (!expanded) {
     return (
-      <button className="talao-cadastro-toggle" onClick={() => setExpanded(true)}>
+      <button
+        className={'talao-cadastro-toggle' + (justLinked ? ' just-linked' : '')}
+        onClick={() => setExpanded(true)}
+        onAnimationEnd={() => setJustLinked(false)}
+      >
         {session.clientId ? `Cadastro vinculado: ${session.clientName} (editar)` : 'Vincular cadastro (CPF/CNPJ, e-mail, CEP)'}
       </button>
     );
@@ -173,7 +183,12 @@ export default function TalaoDrawer() {
           <div className="talao-section-label">pedido ativo</div>
           {activeSession ? (
             <>
+              {/* key={activeSession.id} força remontar ao trocar ou criar
+                  pedido — reinicia a animação de "troquei de cliente"
+                  (talaoActiveSwap, ver globals.css) e limpa qualquer busca/
+                  estado aberto do cadastro que era da cliente anterior. */}
               <button
+                key={`${activeSession.id}-card`}
                 className="talao-active-card"
                 onClick={() => {
                   closeTalao();
@@ -193,7 +208,7 @@ export default function TalaoDrawer() {
                 </div>
                 <span className="talao-card-arrow">→</span>
               </button>
-              <ClientCadastroSection session={activeSession} />
+              <ClientCadastroSection key={`${activeSession.id}-cadastro`} session={activeSession} />
             </>
           ) : (
             <p className="preview-empty-text">Nenhum pedido ativo — crie ou selecione um abaixo.</p>

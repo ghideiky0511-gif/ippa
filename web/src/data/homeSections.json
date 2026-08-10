@@ -1,85 +1,16 @@
 [
   {
     "type": "banner",
-    "id": "hero",
-    "x": 0,
-    "y": 0,
-    "width": 240,
-    "height": 320,
-    "banners": [
-      {
-        "id": "b1",
-        "type": "image",
-        "mediaUrl": "https://cdn-op.vesti.mobi/p/3301/47275ecd-e018-4ed3-a505-e4931a137fc5/99883-lg.jpeg",
-        "title": "Fashion Girl Atacado",
-        "subtitle": "Novidades toda semana — confira a coleção completa"
-      },
-      {
-        "id": "b2",
-        "type": "image",
-        "mediaUrl": "https://cdn-op.vesti.mobi/p/3301/e0512949-5e71-4099-be10-b5cd7bc7561b/95846-lg.png",
-        "title": "Peças em destaque",
-        "subtitle": "Selecionadas pra vender mais rápido no seu ponto"
-      }
-    ]
-  },
-  {
-    "type": "product",
-    "id": "destaque-4",
-    "productId": "6c30a116-7990-4336-bc62-35076e7be068",
-    "x": 900,
-    "y": 340,
-    "width": 280,
-    "height": 460
-  },
-  {
-    "type": "product",
-    "id": "destaque-5",
-    "productId": "e0512949-5e71-4099-be10-b5cd7bc7561b",
-    "x": 340,
-    "y": 260,
-    "width": 280,
-    "height": 460
-  },
-  {
-    "type": "product",
-    "id": "destaque-6",
-    "productId": "34235c31-4a17-4607-bd12-574750500aa9",
-    "x": 300,
-    "y": 820,
-    "width": 280,
-    "height": 460
-  },
-  {
-    "type": "product",
-    "id": "destaque-7",
-    "productId": "7f59a480-a574-4187-a9b3-6b3b53965a83",
-    "x": 560,
-    "y": 820,
-    "width": 280,
-    "height": 460
-  },
-  {
-    "type": "product",
-    "id": "destaque-8",
-    "productId": "afa3c5e1-0094-4267-b19b-43e9ec13ca7b",
-    "x": 80,
-    "y": 380,
-    "width": 280,
-    "height": 460
-  },
-  {
-    "type": "banner",
     "id": "cmtgmcq6",
-    "x": 300,
-    "y": 60,
-    "width": 540,
-    "height": 540,
+    "x": 260,
+    "y": 0,
+    "width": 660,
+    "height": 1680,
     "banners": [
       {
         "id": "pee6f500",
         "type": "video",
-        "mediaUrl": "",
+        "mediaUrl": "https://cdn-op.vesti.mobi/p/3301/ee5b2417-b6a0-48ff-b5a3-1adca05c0fb2/75977-og.mp4",
         "title": "",
         "subtitle": ""
       }

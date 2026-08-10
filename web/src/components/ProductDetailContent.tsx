@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { COLOR_MAP, CONFIG } from '@/lib/config';
-import { formatBRL, formatMarkup } from '@/lib/format';
+import { formatBRL, formatMarkup, priceWithPercentOff } from '@/lib/format';
+import { getMetQuantityTier, getQuantityDiscountTiers } from '@/lib/discounts';
 import { ADDABLE_AVAILABILITY, buildVariantMatrix, deliveryLabel, splitStockQty } from '@/lib/variants';
 import { resolveGallery, resolveImageForColor } from '@/lib/images';
 import { useCart } from './CartProvider';
@@ -17,7 +18,7 @@ function matchesAvailabilityFilter(availability: Availability, filter: Availabil
 }
 
 export default function ProductDetailContent({ product }: { product: Product }) {
-  const { cart, addToCart, changeQty, removeFromCart, setBackorderDate } = useCart();
+  const { cart, discounts, addToCart, changeQty, removeFromCart, setBackorderDate } = useCart();
   const matrix = useMemo(() => buildVariantMatrix(product), [product]);
   const gallery = useMemo(() => resolveGallery(product), [product]);
   const [selectedColor, setSelectedColor] = useState<string | null>(
@@ -53,6 +54,36 @@ export default function ProductDetailContent({ product }: { product: Product }) 
   const displayImage = resolveImageForColor(product, selectedColor) || gallery[activeImageIndex] || null;
   const showSuggestedPrice = !!product.suggestedRetailPrice;
   const markup = product.markup || (product.suggestedRetailPrice ? product.suggestedRetailPrice / product.price : undefined);
+
+  // Faixas de desconto "por quantidade" (progressivo pelas unidades DESTA
+  // peça no carrinho, não o carrinho inteiro — ver /descontos) e qual delas
+  // já foi atingida agora. Combinado com o desconto "peças específicas"
+  // (product.activeDiscount, calculado em getCatalog()), usa sempre o que
+  // dá mais desconto pro cliente pra decidir o preço riscado mostrado.
+  const productCartQty = useMemo(
+    () => cart.filter((i) => i.id === product.id).reduce((sum, i) => sum + i.qty, 0),
+    [cart, product.id]
+  );
+  const quantityTiers = useMemo(() => getQuantityDiscountTiers(discounts), [discounts]);
+  const metTier = useMemo(() => getMetQuantityTier(productCartQty, quantityTiers), [productCartQty, quantityTiers]);
+  const effectivePercent = Math.max(product.activeDiscount?.percent || 0, metTier?.percent || 0);
+  const effectiveLabel =
+    metTier && metTier.percent >= (product.activeDiscount?.percent || 0) ? metTier.label : product.activeDiscount?.label;
+
+  // Anima só no momento em que o carrinho CRUZA uma faixa nova (ex.: a
+  // peça que completa 10 no total) — não ao abrir o quick-view já com a
+  // faixa atingida de antes, nem ao perder a faixa removendo peças.
+  const metTierMinQty = metTier?.minQty ?? null;
+  const prevMetTierMinQtyRef = useRef<number | null>(metTierMinQty);
+  const [justUnlocked, setJustUnlocked] = useState(false);
+
+  useEffect(() => {
+    const prev = prevMetTierMinQtyRef.current;
+    if (metTierMinQty !== null && metTierMinQty !== prev && (prev === null || metTierMinQty > prev)) {
+      setJustUnlocked(true);
+    }
+    prevMetTierMinQtyRef.current = metTierMinQty;
+  }, [metTierMinQty]);
 
   // Itens deste produto no carrinho cuja qty passou do estoque (stockQty) e
   // ainda não têm previsão de entrega escolhida pra parte excedente — vira
@@ -115,7 +146,28 @@ export default function ProductDetailContent({ product }: { product: Product }) 
         <div className="cat">{product.category}{product.subcategory ? ` · ${product.subcategory}` : ''}</div>
         <h2>{product.name}</h2>
         {product.sku && <div className="card-sku">{product.sku}</div>}
-        <div className="price">{formatBRL(product.price)}</div>
+        {effectivePercent > 0 ? (
+          <div
+            className={'price-discount-row' + (justUnlocked ? ' just-unlocked' : '')}
+            title={effectiveLabel}
+            onAnimationEnd={() => setJustUnlocked(false)}
+          >
+            <span className="price-original">{formatBRL(product.price)}</span>
+            <span className="price price-discounted">{formatBRL(priceWithPercentOff(product.price, effectivePercent))}</span>
+            <span className="discount-badge">-{effectivePercent}%</span>
+          </div>
+        ) : (
+          <div className="price">{formatBRL(product.price)}</div>
+        )}
+        {quantityTiers.length > 0 && (
+          <div className="qty-discount-hint">
+            {quantityTiers.map((t) => (
+              <div key={t.minQty} className={'qty-tier' + (productCartQty >= t.minQty ? ' met' : '')}>
+                {productCartQty >= t.minQty ? '✓ ' : ''}A partir de {t.minQty} unidades desta peça no carrinho: {t.percent}% de desconto
+              </div>
+            ))}
+          </div>
+        )}
         {showSuggestedPrice && (
           <div className="suggested-price-block">
             <div className="suggested-price-label">Preço varejo sugerido</div>

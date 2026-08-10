@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CONFIG, COLOR_MAP } from '@/lib/config';
-import { formatBRL } from '@/lib/format';
+import { formatBRL, priceWithPercentOff } from '@/lib/format';
 import { ADDABLE_AVAILABILITY, buildVariantMatrix } from '@/lib/variants';
 import { resolveImageForColor } from '@/lib/images';
 import { useCart } from './CartProvider';
@@ -138,7 +138,7 @@ function ColorLine({
   onRemove: (group: Group) => void;
   onRemovePending?: () => void;
 }) {
-  const { addToCart, changeQty, replaceItems, setBackorderDateForKeys } = useCart();
+  const { addToCart, changeQty, replaceItems, setBackorderDateForKeys, cartDiscountByProduct } = useCart();
   const { openQuickView } = useQuickView();
 
   const matrix = useMemo(() => (product ? buildVariantMatrix(product) : null), [product]);
@@ -173,6 +173,8 @@ function ColorLine({
   const totalQty = resolvedItems.reduce((s, i) => s + i.qty, 0);
   const totalValue = resolvedItems.reduce((s, i) => s + i.price * i.qty, 0);
   const unitPrice = totalQty > 0 ? totalValue / totalQty : (first?.price ?? product?.price ?? 0);
+  const applied = cartDiscountByProduct[group.productId];
+  const discountedTotal = applied ? priceWithPercentOff(totalValue, applied.percent) : totalValue;
 
   const colorRow = matrix?.rows.find((r) => r.color === colorValue);
   const gradeCells = matrix
@@ -265,7 +267,14 @@ function ColorLine({
 
       <div className="cart-line-price">
         <div>{totalQty} x {formatBRL(unitPrice)}</div>
-        <div className="total">{formatBRL(totalValue)}</div>
+        {applied ? (
+          <div className="total cart-line-total-discount">
+            <span className="price-original">{formatBRL(totalValue)}</span>
+            <span className="price-discounted">{formatBRL(discountedTotal)}</span>
+          </div>
+        ) : (
+          <div className="total">{formatBRL(totalValue)}</div>
+        )}
       </div>
 
       <button className="cart-line-more" onClick={() => product && openQuickView(product)} disabled={!product}>

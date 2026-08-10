@@ -1,1 +1,32 @@
-[]
+[
+  {
+    "id": "sjjkigem",
+    "label": "por pelas",
+    "active": true,
+    "type": "quantity",
+    "tiers": [
+      {
+        "minQty": 10,
+        "percent": 10
+      }
+    ],
+    "productIds": [],
+    "percent": 10
+  },
+  {
+    "id": "sap9o3sf",
+    "label": "Regatra",
+    "active": true,
+    "type": "products",
+    "tiers": [
+      {
+        "minQty": 10,
+        "percent": 10
+      }
+    ],
+    "productIds": [
+      "11d6f280-0347-4d3b-9f65-fad09ecc8029"
+    ],
+    "percent": 10
+  }
+]

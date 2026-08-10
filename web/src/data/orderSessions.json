@@ -4,10 +4,31 @@
     "clientName": "Joao",
     "sellerId": "vend-teste-1",
     "channel": "presencial",
-    "items": [],
+    "items": [
+      {
+        "key": "609e1a6c-7921-4810-b6bd-d1ddf96dee39|OFF WHITE|18",
+        "id": "609e1a6c-7921-4810-b6bd-d1ddf96dee39",
+        "name": "BODY REGATA CRUZADA",
+        "image": "https://cdn-op.vesti.mobi/p/3301/609e1a6c-7921-4810-b6bd-d1ddf96dee39/22405-lg.jpeg",
+        "color": "OFF WHITE",
+        "size": "18",
+        "price": 65.9,
+        "qty": 12
+      },
+      {
+        "key": "2e1f34e1-5b5f-459a-a3d7-6adfa5f1d919|MARROM|18",
+        "id": "2e1f34e1-5b5f-459a-a3d7-6adfa5f1d919",
+        "name": "BODY TULE TRANCADO COSTA",
+        "image": "https://cdn-op.vesti.mobi/p/3301/2e1f34e1-5b5f-459a-a3d7-6adfa5f1d919/69077-lg.png",
+        "color": "MARROM",
+        "size": "18",
+        "price": 69.9,
+        "qty": 3
+      }
+    ],
     "status": "aberto",
     "createdAt": "2026-08-10T14:43:28.644Z",
-    "updatedAt": "2026-08-10T14:46:38.898Z"
+    "updatedAt": "2026-08-10T17:59:34.702Z"
   },
   {
     "id": "6671a413-1418-4693-9f5c-0d19daabdce1",
@@ -15,9 +36,9 @@
     "sellerId": "vend-teste-1",
     "channel": "presencial",
     "items": [],
-    "status": "aberto",
+    "status": "fechado",
     "createdAt": "2026-08-10T14:44:11.801Z",
-    "updatedAt": "2026-08-10T14:44:11.801Z"
+    "updatedAt": "2026-08-10T15:40:28.707Z"
   },
   {
     "id": "c7b23b62-e12c-4daf-bee7-2bc3bdce7cf3",
@@ -27,6 +48,6 @@
     "items": [],
     "status": "aberto",
     "createdAt": "2026-08-10T14:44:20.239Z",
-    "updatedAt": "2026-08-10T14:44:20.239Z"
+    "updatedAt": "2026-08-10T15:42:47.026Z"
   }
 ]

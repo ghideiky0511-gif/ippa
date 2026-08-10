@@ -22,6 +22,10 @@ a{color:inherit;text-decoration:none}
 
 .home-banner-arrow{position:absolute;top:50%;transform:translateY(-50%);background:rgba(0,0,0,0.35);color:#fff;border:none;width:36px;height:36px;border-radius:50%;font-size:22px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
 .home-banner-arrow:hover{background:rgba(0,0,0,0.55)}
+/* transform já é usado pra centralizar verticalmente (top:50%+translateY) —
+   o :active precisa compor com esse transform em vez de substituir, senão
+   o botão pula de posição ao clicar. */
+.home-banner-arrow:active{transform:translateY(-50%) scale(.9)}
 .home-banner-arrow.prev{left:14px}
 .home-banner-arrow.next{right:14px}
 .home-banner-dots{position:absolute;left:0;right:0;bottom:14px;display:flex;justify-content:center;gap:8px}
@@ -30,7 +34,7 @@ a{color:inherit;text-decoration:none}
 
 .category-menu{display:flex;flex-wrap:wrap;gap:10px;padding:14px 16px;background:#fff;border-bottom:1px solid #eee}
 .category-item{position:relative}
-.category-pill{padding:6px 14px;border-radius:999px;border:1px solid #ddd;font-size:13px;color:var(--brand-text);white-space:nowrap;background:#fff;cursor:pointer;font-family:inherit;transition:border-color .15s,color .15s}
+.category-pill{padding:6px 14px;border-radius:999px;border:1px solid #ddd;font-size:13px;color:var(--brand-text);white-space:nowrap;background:#fff;cursor:pointer;font-family:inherit;transition:border-color .15s,color .15s,transform .1s ease}
 .category-pill:hover{border-color:var(--brand-primary);color:var(--brand-primary)}
 .category-item.open .category-pill{border-color:var(--brand-primary);color:var(--brand-primary)}
 
@@ -143,6 +147,18 @@ a{color:inherit;text-decoration:none}
 
 .back-link{display:inline-block;margin:16px 0;color:var(--brand-primary);font-weight:600;font-size:14px}
 
+/* Base de animação pras ações clicáveis — a maioria dos botões do site só
+   tinha a MUDANÇA de estado (hover/seleção/desabilitado), sem transição
+   nenhuma pra ela. Um rule só cobre todo botão que não declara a própria
+   `transition` (CSS de maior especificidade continua vencendo, ver
+   `.card-plus`/`.category-pill` abaixo, que precisaram declarar de novo
+   incluindo `transform` pelo mesmo motivo); `.btn-add` também cobre o único
+   caso de link estilizado de botão (pedido-confirmado). O :active dá o
+   "toque" de verdade — nenhuma ação no site reagia ao clique em si antes
+   disso, só ao resultado dele.*/
+button,.btn-add{transition:background-color .15s ease,border-color .15s ease,color .15s ease,opacity .15s ease,box-shadow .15s ease,transform .1s ease}
+button:active:not(:disabled),.btn-add:active{transform:scale(.96)}
+
 .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:20px auto;position:sticky;top:0;background:var(--brand-bg);padding:12px 0;z-index:5}
 .controls input, .controls select{padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff}
 .controls input.search{flex:2;min-width:200px}
@@ -159,17 +175,53 @@ a{color:inherit;text-decoration:none}
 .card{background:var(--brand-card);border-radius:var(--radius);overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);display:flex;flex-direction:column}
 .card-media{position:relative;aspect-ratio:9/16;overflow:hidden}
 .card-media-open{display:block;width:100%;height:100%;padding:0;margin:0;border:none;background:none;cursor:pointer}
-.card-media img,.card-media video{width:100%;height:100%;object-fit:cover;background:#eee;display:block}
-.card-plus{position:absolute;right:10px;bottom:10px;width:34px;height:34px;border-radius:50%;border:none;background:var(--brand-primary);color:#fff;font-size:20px;line-height:1;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;transition:background 0.15s ease}
+.card-media img,.card-media video{width:100%;height:100%;object-fit:cover;background:#eee;display:block;transition:transform .25s ease}
+.card-media:hover img,.card-media:hover video{transform:scale(1.04)}
+.card-plus{position:absolute;right:10px;bottom:10px;width:34px;height:34px;border-radius:50%;border:none;background:var(--brand-primary);color:#fff;font-size:20px;line-height:1;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;transition:background 0.15s ease,transform .1s ease}
 .card-plus:hover{background:var(--brand-primary-dark)}
-.card-plus.added{background:#2e8b57;font-size:16px}
+.card-plus.added{background:#2e8b57;font-size:16px;animation:cardPlusPop .25s ease}
 .card-plus.added:hover{background:#256e46}
+@keyframes cardPlusPop{0%{transform:scale(1)}40%{transform:scale(1.3)}100%{transform:scale(1)}}
 .card .body{padding:12px;display:flex;flex-direction:column;gap:8px;flex:1}
 .card .cat{font-size:11px;text-transform:uppercase;letter-spacing:0.04em;color:var(--brand-primary);font-weight:600}
 .card-title-link h3{margin:0;font-size:15px;line-height:1.3;min-height:2.6em}
 .card-title-link:hover h3{color:var(--brand-primary)}
 .card-sku{font-size:11px;color:var(--brand-muted);margin-top:-4px}
 .card .price{color:#1a1a1a;font-weight:700;font-size:16px}
+/* Preço com desconto "peças específicas" ativo (Product.activeDiscount,
+   calculado em getCatalog() a partir de /descontos) — usado no card e na
+   página do produto/quick-view. Desconto "por quantidade" nunca aparece
+   aqui, só depois que a peça está no carrinho (depende do pedido inteiro). */
+.price-discount-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:2px 0}
+.price-original{position:relative;font-size:14px;color:var(--brand-muted)}
+.price-original::after{content:'';position:absolute;left:0;right:0;top:calc(50% - 0.5px);height:1px;background:currentColor;transform:scaleX(1);transform-origin:left}
+.price-discounted{font-size:20px;font-weight:700;color:var(--brand-primary)}
+.discount-badge{font-size:11px;font-weight:700;color:#fff;background:var(--brand-primary);border-radius:999px;padding:2px 7px;white-space:nowrap}
+
+/* Desconto "por quantidade" cruzando uma faixa nova enquanto a pessoa
+   monta o carrinho (ver justUnlocked em ProductDetailContent.tsx) — risco
+   "desenha" da esquerda pra direita e o preço/selo novos entram com um
+   pequeno pop, em vez de só trocar de golpe. */
+.price-discount-row.just-unlocked .price-original::after{animation:strikeGrow .35s ease}
+@keyframes strikeGrow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.price-discount-row.just-unlocked .price-discounted,
+.price-discount-row.just-unlocked .discount-badge{animation:qtyDiscountPop .5s ease}
+@keyframes qtyDiscountPop{0%{transform:scale(.85);opacity:.4}60%{transform:scale(1.08)}100%{transform:scale(1);opacity:1}}
+
+.qty-discount-hint{display:flex;flex-direction:column;gap:2px;margin-top:2px;font-size:12px;color:var(--brand-muted)}
+.qty-tier.met{color:#2e8b57;font-weight:600}
+
+/* Mesmo preço riscado/com desconto de cima, versão compacta pras linhas do
+   carrinho (painel "Seu pedido" em GroupedCartItems.tsx e a página cheia
+   /carrinho em CartRows.tsx) — reaproveita .price-original/.price-discounted,
+   só ajusta tamanho pro contexto mais apertado. */
+.cart-group-price-discount{display:inline-flex;align-items:center;gap:4px}
+.cart-group-price-discount .price-original{font-size:11px}
+.cart-group-price-discount .price-discounted{font-size:12px;font-weight:700;color:var(--brand-primary)}
+.cart-line-total-discount{display:flex;align-items:center;gap:6px;justify-content:flex-end}
+.cart-line-total-discount .price-original{font-size:11px}
+.cart-line-total-discount .price-discounted{font-size:13px;font-weight:700;color:var(--brand-primary)}
+
 .price-row{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px}
 .suggested-price-block{margin-top:6px}
 .suggested-price-label{font-size:11px;color:var(--brand-muted);margin-bottom:2px}
@@ -203,6 +255,7 @@ a{color:inherit;text-decoration:none}
 .cart-item .qty-row button{width:22px;height:22px;border:1px solid #ddd;background:#fff;border-radius:4px;cursor:pointer}
 .cart-item .remove{color:#b00020;font-size:12px;cursor:pointer;background:none;border:none;padding:0}
 .cart-empty{padding:30px 16px;text-align:center;color:var(--brand-muted)}
+.talao-gate{display:flex;flex-direction:column;align-items:center;gap:12px}
 .cart-footer{padding:16px;border-top:1px solid #eee}
 
 /* Carrinho agrupado por produto (GroupedCartItems.tsx) — resumo recolhido
@@ -218,11 +271,18 @@ a{color:inherit;text-decoration:none}
 .cart-group-toggle{flex-shrink:0;background:none;border:1px solid #ddd;border-radius:999px;padding:6px 12px;font-size:12px;cursor:pointer;color:var(--brand-text)}
 .cart-group-toggle:hover{border-color:var(--brand-primary);color:var(--brand-primary)}
 .cart-group-toggle:disabled{opacity:0.5;cursor:default}
-.cart-group-items{margin-top:8px;padding-left:66px;display:flex;flex-direction:column}
+.cart-group-items{margin-top:8px;padding-left:66px;display:flex;flex-direction:column;animation:cartGroupExpand .18s ease}
 .cart-group-items .cart-item{padding:8px 0}
+/* "ver mais" monta/desmonta essa lista via render condicional (sem altura
+   fixa pra fazer transition de verdade) — a entrada ganha uma animação
+   curta em vez de aparecer de golpe; sem saída animada (some junto com o
+   desmonte, mesma limitação). */
+@keyframes cartGroupExpand{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
 .cart-group-edit{align-self:flex-start;background:none;border:none;color:var(--brand-primary);font-size:12px;cursor:pointer;padding:6px 0}
 .cart-group-edit:hover{text-decoration:underline}
 .cart-total{display:flex;justify-content:space-between;font-weight:700;margin-bottom:12px}
+.cart-total.subtotal,.cart-total.discount{font-weight:400;font-size:13px;color:var(--brand-muted);margin-bottom:4px}
+.cart-total.discount{color:#2e8b57}
 .btn-whatsapp{width:100%;background:#25D366;color:#fff;border:none;border-radius:8px;padding:12px;font-size:15px;font-weight:700;cursor:pointer}
 .btn-whatsapp:hover{background:#1ebe5a}
 .btn-site-checkout{width:100%;background:none;border:1px solid var(--brand-primary);color:var(--brand-primary);border-radius:8px;padding:10px;font-size:14px;font-weight:600;cursor:pointer;margin-top:8px}
@@ -251,7 +311,7 @@ a{color:inherit;text-decoration:none}
 .product-detail-gallery{grid-column:1;grid-row:1;width:100%;max-width:220px;margin:0 auto;display:flex;flex-direction:column;gap:8px}
 .product-detail-image{width:100%;aspect-ratio:9/16;object-fit:cover;border-radius:var(--radius);background:#eee;display:block}
 .product-detail-thumbs{display:flex;gap:6px;flex-wrap:wrap}
-.product-detail-thumbs .thumb{width:40px;aspect-ratio:9/16;object-fit:cover;border-radius:6px;background:#eee;cursor:pointer;border:2px solid transparent;opacity:0.7}
+.product-detail-thumbs .thumb{width:40px;aspect-ratio:9/16;object-fit:cover;border-radius:6px;background:#eee;cursor:pointer;border:2px solid transparent;opacity:0.7;transition:border-color .15s ease,opacity .15s ease}
 .product-detail-thumbs .thumb.selected{border-color:var(--brand-primary);opacity:1}
 .product-detail-info{grid-column:1;grid-row:2;display:flex;flex-direction:column;gap:10px}
 .product-detail-info h2{font-size:20px;margin:0}
@@ -309,7 +369,7 @@ a{color:inherit;text-decoration:none}
 
 .matrix-table-wrap{overflow-x:auto;margin-top:6px}
 .matrix-table{border-collapse:collapse;width:100%;font-size:12px}
-.matrix-table th,.matrix-table td{border:1px solid #eee;padding:6px 8px;text-align:center;white-space:nowrap}
+.matrix-table th,.matrix-table td{border:1px solid #eee;padding:6px 8px;text-align:center;white-space:nowrap;transition:opacity .15s ease,background-color .15s ease}
 .matrix-color{display:flex;align-items:center;gap:6px;text-align:left !important}
 .matrix-cell-ok{background:rgba(46,139,87,0.06)}
 .matrix-cell-preorder{background:rgba(230,126,34,0.08)}
@@ -350,6 +410,7 @@ a{color:inherit;text-decoration:none}
 .order-item .variant{font-size:12px;color:var(--brand-muted)}
 .order-channel-badge{margin-left:8px;font-size:11px;background:#eee;color:var(--brand-muted);padding:2px 8px;border-radius:20px}
 .order-meta{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--brand-muted);margin-bottom:10px}
+.order-discount-badge{color:#2e8b57}
 
 .minicart-float{display:flex;align-items:center;gap:8px;border:none;background:none;color:var(--brand-text);padding:0;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;white-space:nowrap}
 
@@ -433,6 +494,7 @@ a.checkout-step{color:var(--brand-primary)}
 .checkout-summary{background:var(--brand-card);border-radius:var(--radius);box-shadow:0 1px 4px rgba(0,0,0,0.08);padding:14px 16px;margin-bottom:16px;display:flex;flex-direction:column;gap:6px}
 .order-summary-line{display:flex;justify-content:space-between;font-size:14px;color:var(--brand-muted)}
 .order-summary-line.total{color:var(--brand-text);font-weight:700;font-size:16px;border-top:1px solid #eee;padding-top:6px;margin-top:2px}
+.order-summary-line.discount{color:#2e8b57}
 
 .checkout-actions{display:flex;flex-direction:column;gap:10px;max-width:360px;margin-bottom:16px}
 .checkout-actions a.btn-add{display:block;text-align:center}
@@ -507,8 +569,19 @@ footer{padding:24px 16px;text-align:center;color:var(--brand-muted);font-size:13
 .talao-active-card,.talao-other-card{
   position:relative;display:flex;align-items:center;gap:10px;border-radius:10px;padding:12px;
   border:1px solid #eee;background:#fff;text-align:left;cursor:pointer;width:100%;
+  transition:border-color .15s ease,box-shadow .15s ease,transform .1s ease;
 }
-.talao-active-card{background:var(--brand-primary);border-color:var(--brand-primary);color:#fff}
+.talao-other-card:hover{border-color:var(--brand-primary)}
+.talao-other-card:active{transform:scale(.98)}
+/* "pedido ativo" é remontado (key={activeSession.id}, ver TalaoDrawer.tsx)
+   toda vez que a vendedora troca de cliente ou cria um pedido novo — o
+   pulso deixa claro que o cartão trocou de dono, não só de conteúdo. */
+.talao-active-card{background:var(--brand-primary);border-color:var(--brand-primary);color:#fff;animation:talaoActiveSwap .45s ease}
+@keyframes talaoActiveSwap{
+  0%{transform:scale(.96);box-shadow:0 0 0 0 rgba(194,24,91,.45)}
+  50%{transform:scale(1.015);box-shadow:0 0 0 6px rgba(194,24,91,0)}
+  100%{transform:scale(1);box-shadow:0 0 0 0 rgba(194,24,91,0)}
+}
 .talao-card-info{flex:1;display:flex;flex-direction:column;min-width:0}
 .talao-card-name{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .talao-card-channel{font-size:11px;opacity:0.75}
@@ -532,6 +605,14 @@ footer{padding:24px 16px;text-align:center;color:var(--brand-muted);font-size:13
 
 .talao-cadastro-toggle{background:none;border:1px dashed #ddd;border-radius:8px;padding:8px 10px;font-size:12px;color:var(--brand-muted);cursor:pointer;text-align:left}
 .talao-cadastro-toggle:hover{border-color:var(--brand-primary);color:var(--brand-primary)}
+/* Flash logo depois de vincular um cadastro (novo ou existente) — ver
+   justLinked em TalaoDrawer.tsx, que liga essa classe e desliga sozinho no
+   fim da animação (onAnimationEnd). */
+.talao-cadastro-toggle.just-linked{animation:talaoCadastroLinked .7s ease}
+@keyframes talaoCadastroLinked{
+  0%{background:rgba(194,24,91,.18);border-color:var(--brand-primary);border-style:solid;color:var(--brand-primary)}
+  100%{background:none;border-color:#ddd;color:var(--brand-muted)}
+}
 .talao-cadastro-panel{display:flex;flex-direction:column;gap:8px;border:1px solid #eee;border-radius:10px;padding:12px;background:var(--brand-bg)}
 
 @media print{

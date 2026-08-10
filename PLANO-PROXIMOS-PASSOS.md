@@ -233,12 +233,17 @@ depois, combinado com o usuário):
   `client.lastSellerId` pra regra da fila acima. **Combinado com o
   usuário**: montar o carrinho não exige cadastro (a vendedora pode
   trabalhar livre, só com nome solto como já era); cadastro só vira
-  obrigatório antes do frete — `isClientComplete()` em
-  `web/src/lib/clients.ts` já checa isso (nome+CPF/CNPJ+e-mail+CEP
-  preenchidos), mas o **gate em si não está aplicado ainda** porque não
-  existe fluxo de fechamento de pedido pro talão (frete/pagamento) — só
-  existe hoje pro checkout do cliente final (`/carrinho` → `/frete` →
-  `/pagamento`).
+  obrigatório antes do frete — `isClientComplete()` (movida pra
+  `web/src/lib/clientComplete.ts`, separada de `clients.ts` porque esse
+  último importa `node:fs/promises` e não pode ser empacotado num
+  componente client) checa isso (nome+CPF/CNPJ+e-mail+CEP preenchidos).
+  **Gate aplicado**: `useTalaoClientGate.ts` (hook) bloqueia `/frete` e
+  `/pagamento` com uma mensagem + botão "Abrir talão" quando a sessão ativa
+  não tem cliente vinculado ou o cadastro está incompleto — como
+  `CartProvider` já é "talão-aware", o mesmo `/frete`/`/pagamento` do
+  checkout do cliente final serve pro fechamento do talão, sem precisar de
+  telas próprias. Sem sessão de talão ativa (cliente final comprando
+  sozinha), o gate não se aplica.
 - **Assinatura digital**: mantida como ferramenta, desligada por padrão —
   mas o toggle não é por loja (`/ferramentas`), é **por cliente**, editável
   no cadastro dela. Primeira ferramenta que precisa de liga/desliga em
@@ -381,10 +386,11 @@ assim que a Fase 2 (Bippa/ERP) existir.
      (telefone/WhatsApp costuma ser o mais natural pro público desse catálogo)
      ou pelo menos um identificador persistente por cliente vindo do Bippa.
 
-3. **"Produtos similares"**
-   - Já dá pra fazer com o que existe: mesma `category`/`subcategory`, excluindo
-     o próprio produto — mostrar isso na página `/produto/[id]` abaixo da grade.
-     Não depende de mais nada, pode entrar antes da Fase 2.
+3. **"Produtos similares" — feito.** Fileira "Você também pode gostar" na
+   página do produto, quick-view e carrinho, com regra configurável em
+   /ferramentas (mesma subcategoria, mesma categoria, categoria
+   complementar — registro extensível em `web/src/lib/similarProducts.ts`)
+   e curadoria manual 1 por 1 por produto/contexto em /produtos.
 
 4. **Status de entrega variante a variante**
    - O feed atual só traz `in_stock`, então hoje toda variante aparece como
@@ -483,16 +489,23 @@ escolhido. Dado salvo em `web/src/data/discounts.json`, validado em
 `web/src/app/api/discounts/route.ts` (mesmo padrão arquivo+CORS de
 `/api/highlights`).
 
-**Importante — isso é só o cadastro.** Ainda NÃO está aplicado em lugar
-nenhum do cálculo do carrinho/checkout do app `web` (`cartTotal`, mensagem
-de WhatsApp, `/frete`, `/pagamento` continuam sem desconto nenhum). Falta
-decidir, quando for a hora de aplicar de verdade:
-- Onde entra no cálculo (`CartProvider.tsx`? um novo `web/src/lib/discounts.ts`
-  que roda em cima do `cart` final?).
-- Como combinar regras quando mais de uma se aplica ao mesmo pedido (soma?
-  só a maior? só uma por pedido?) — hoje não há essa regra de prioridade.
-- Como mostrar o desconto aplicado pro cliente (linha extra no resumo do
-  carrinho, tipo "desconto progressivo: -10%"?).
+**Aplicado de verdade** (`web/src/lib/discounts.ts`, `getBestDiscount(cart, discounts)`):
+função pura consumida por `CartProvider.tsx`, que agora expõe `cartSubtotal`
+(bruto), `cartDiscount` (`{discount, amount}` ou `null`) e `cartTotal` (já
+líquido) — todo consumidor (`CartDrawer`, `/carrinho`, `/frete`,
+`/pagamento`, mensagem de WhatsApp, `saveOrderToHistory`/`Order.discount`
+pra "Meus pedidos") lê daí, sem lógica duplicada. Decisões combinadas com o
+usuário:
+- **Combinação**: quando mais de uma regra ativa se aplica ao mesmo pedido,
+  usa só a que dá o **maior desconto em R$** pro cliente — nunca soma duas
+  regras juntas.
+- Tipo `quantity`: faixas não empilham entre si, só a maior faixa atingida
+  vale, incide sobre o subtotal inteiro do pedido.
+- Tipo `products`: incide só sobre o subtotal das peças elegíveis
+  (`productIds`), o resto do pedido não é afetado.
+- Exibição: linha "Desconto (rótulo da regra): -R$X" aparece no resumo
+  (carrinho/frete/pagamento) e na mensagem de WhatsApp só quando há desconto
+  aplicável — sem desconto, a UI fica igual a antes (sem linha "R$ 0,00").
 
 ## Fora de escopo por enquanto
 

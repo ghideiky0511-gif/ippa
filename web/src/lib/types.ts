@@ -90,6 +90,13 @@ export interface Product {
   // curadoria, usa a regra configurada em /ferramentas.
   similarProductIdsQuickview?: string[]; // usado no quick-view E na página cheia do produto (mesma âncora: o produto sendo visto)
   similarProductIdsCart?: string[]; // usado quando este produto está no carrinho (pode combinar com curadoria de outras peças do mesmo carrinho)
+  // Desconto "peças específicas" ativo pra esta peça — calculado em
+  // getCatalog() (web/src/lib/catalog.ts) a partir de discounts.json,
+  // mostrado como preço riscado no card e na página do produto. NÃO inclui
+  // desconto "por quantidade": esse depende de quantas unidades desta peça
+  // estão no carrinho (ver cartDiscountByProduct em CartProvider.tsx), que
+  // getCatalog() não sabe (não tem acesso ao carrinho, é estático).
+  activeDiscount?: { label: string; percent: number };
 }
 
 // `color`/`size` ausentes = "rascunho" — produto adicionado pelo botão +
@@ -137,7 +144,7 @@ export interface AuthUser {
 // atendeu da última vez" quando ela volta a montar carrinho sozinha (ver
 // web/src/lib/assignment.ts). "Completo" pra poder fechar um pedido
 // (fluxo de frete) = name + cpfCnpj + email + cep preenchidos — ver
-// isClientComplete em web/src/lib/clients.ts.
+// isClientComplete em web/src/lib/clientComplete.ts.
 export interface Client {
   id: string;
   name: string;
@@ -174,10 +181,11 @@ export interface Order {
   id: string;
   date: string;
   items: CartItem[];
-  total: number;
+  total: number; // já líquido de desconto (ver AppliedDiscount em web/src/lib/discounts.ts)
   channel: string;
   shipping?: ShippingOption;
   paymentMethod?: string;
+  discount?: { label: string; amount: number }; // snapshot do desconto aplicado no momento da compra, pra "Meus pedidos" mostrar mesmo se a regra mudar depois
 }
 
 export interface ShippingOption {

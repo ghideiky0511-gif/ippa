@@ -9,7 +9,7 @@ import type { Client } from '@/lib/types';
 // PLANO-PROXIMOS-PASSOS.md). GET busca por nome/CPF-CNPJ pra vincular um
 // cadastro já existente a uma sessão em vez de duplicar; POST cria um novo
 // (pode ser parcial — só nome é obrigatório, o resto completa depois, ver
-// isClientComplete em web/src/lib/clients.ts).
+// isClientComplete em web/src/lib/clientComplete.ts).
 export async function GET(request: NextRequest) {
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   const user = await getUserFromToken(token);

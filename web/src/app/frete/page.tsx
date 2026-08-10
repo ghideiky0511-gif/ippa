@@ -6,12 +6,14 @@ import { useRouter } from 'next/navigation';
 import { formatBRL } from '@/lib/format';
 import { calculateShipping } from '@/lib/shipping';
 import { useCart } from '@/components/CartProvider';
+import { useTalaoClientGate } from '@/components/useTalaoClientGate';
 import CheckoutSteps from '@/components/CheckoutSteps';
 import type { ShippingOption } from '@/lib/types';
 
 export default function FretePage() {
   const router = useRouter();
-  const { cart, cartTotal, shipping, setShipping } = useCart();
+  const { cart, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, shipping, setShipping } = useCart();
+  const gate = useTalaoClientGate();
   const [cep, setCep] = useState('');
   const [options, setOptions] = useState<ShippingOption[] | null>(null);
 
@@ -34,6 +36,21 @@ export default function FretePage() {
         <h1>Frete</h1>
         <div className="cart-empty">
           Seu carrinho está vazio. <Link href="/carrinho">Voltar ao carrinho</Link>
+        </div>
+      </main>
+    );
+  }
+
+  if (gate.blocked) {
+    return (
+      <main className="container checkout-page">
+        <CheckoutSteps current="/frete" reachable={2} />
+        <h1>Frete</h1>
+        <div className="cart-empty talao-gate">
+          {gate.reason === 'no-client'
+            ? 'Vincule um cadastro de cliente (nome, CPF/CNPJ, e-mail, CEP) no talão antes de continuar pro frete.'
+            : 'Complete o cadastro da cliente (CPF/CNPJ, e-mail, CEP) no talão antes de continuar pro frete.'}
+          <button className="btn-add" onClick={gate.openTalao}>Abrir talão</button>
         </div>
       </main>
     );
@@ -78,8 +95,14 @@ export default function FretePage() {
         <div className="checkout-summary">
           <div className="order-summary-line">
             <span>Subtotal</span>
-            <span>{formatBRL(cartTotal)}</span>
+            <span>{formatBRL(cartSubtotal)}</span>
           </div>
+          {cartDiscountTotal > 0 && (
+            <div className="order-summary-line discount">
+              <span>Desconto ({cartDiscountLabel})</span>
+              <span>-{formatBRL(cartDiscountTotal)}</span>
+            </div>
+          )}
           <div className="order-summary-line">
             <span>Frete ({shipping.label})</span>
             <span>{shipping.price === 0 ? 'Grátis' : formatBRL(shipping.price)}</span>

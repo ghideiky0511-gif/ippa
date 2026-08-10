@@ -2,12 +2,29 @@
 
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
 import { useTalao } from './TalaoProvider';
-import type { CartItem, Order, Product, ShippingOption } from '@/lib/types';
+import { getCartDiscount, type AppliedDiscount } from '@/lib/discounts';
+import type { CartItem, Discount, Order, Product, ShippingOption } from '@/lib/types';
 
 interface CartContextValue {
   cart: CartItem[];
   cartCount: number;
-  cartTotal: number;
+  cartSubtotal: number; // soma bruta, antes do desconto (ver cartDiscountTotal)
+  // Descontos aplicados ao carrinho — cada produto tem seu próprio melhor
+  // desconto (nunca soma nem herda de outro produto do carrinho, ver
+  // getCartDiscount em web/src/lib/discounts.ts). cartDiscountByProduct é
+  // usado pra mostrar risco/valor com desconto na linha da peça
+  // (GroupedCartItems.tsx, CartRows.tsx); cartDiscountLabel/cartDiscountTotal
+  // resumem pro resumo do pedido (/carrinho, /frete, /pagamento, WhatsApp).
+  cartDiscountByProduct: Record<string, AppliedDiscount>;
+  cartDiscountLabel: string | null;
+  cartDiscountTotal: number;
+  cartTotal: number; // cartSubtotal - cartDiscountTotal — é o valor de verdade cobrado (usado em WhatsApp, /frete, /pagamento, histórico de pedido)
+  // Descontos cadastrados (/descontos), crus — expostos pra quem precisa
+  // derivar algo além do melhor-desconto-do-carrinho (ex.: ProductDetailContent
+  // mostrando as faixas de "por quantidade" mesmo antes de bater, ver
+  // getQuantityDiscountTiers em web/src/lib/discounts.ts). Evita um segundo
+  // fetch de /api/discounts em cada lugar que precisa disso.
+  discounts: Discount[];
   isCartOpen: boolean;
   openCart: () => void;
   closeCart: () => void;
@@ -99,6 +116,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const activeSession = talao?.activeSession ?? null;
 
   const [catalogById, setCatalogById] = useState<Record<string, Product>>({});
+  const [discounts, setDiscounts] = useState<Discount[]>([]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ver comentário acima do useState(cart)
@@ -112,6 +130,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
       .then((products: Product[]) => {
         setCatalogById(Object.fromEntries(products.map((p) => [p.id, p])));
       })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/discounts')
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setDiscounts)
       .catch(() => {});
   }, []);
 
@@ -269,13 +294,20 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const effectiveCart = activeSession ? activeSession.items : cart;
   const cartCount = effectiveCart.reduce((sum, item) => sum + item.qty, 0);
-  const cartTotal = effectiveCart.reduce((sum, item) => sum + item.price * item.qty, 0);
+  const cartSubtotal = effectiveCart.reduce((sum, item) => sum + item.price * item.qty, 0);
+  const cartDiscount = useMemo(() => getCartDiscount(effectiveCart, discounts), [effectiveCart, discounts]);
+  const cartTotal = cartSubtotal - cartDiscount.totalAmount;
 
   const value = useMemo(
     () => ({
       cart: effectiveCart,
       cartCount,
+      cartSubtotal,
+      cartDiscountByProduct: cartDiscount.byProduct,
+      cartDiscountLabel: cartDiscount.label,
+      cartDiscountTotal: cartDiscount.totalAmount,
       cartTotal,
+      discounts,
       isCartOpen,
       openCart: () => setCartOpen(true),
       closeCart: () => setCartOpen(false),
@@ -294,7 +326,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       clearShipping,
       catalogById,
     }),
-    [effectiveCart, cartCount, cartTotal, isCartOpen, shipping, catalogById]
+    [effectiveCart, cartCount, cartSubtotal, cartDiscount, cartTotal, discounts, isCartOpen, shipping, catalogById]
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

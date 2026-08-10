@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { COLOR_MAP } from '@/lib/config';
-import { formatBRL } from '@/lib/format';
+import { formatBRL, priceWithPercentOff } from '@/lib/format';
 import { useCart } from './CartProvider';
 import { useQuickView } from './QuickViewProvider';
 import type { Product } from '@/lib/types';
@@ -63,7 +63,17 @@ export default function ProductCard({ product }: { product: Product }) {
           <h3>{product.name}</h3>
         </Link>
         {product.sku && <div className="card-sku">{product.sku}</div>}
-        <div className="price">{formatBRL(product.price)}</div>
+        {product.activeDiscount ? (
+          <div className="price-discount-row" title={product.activeDiscount.label}>
+            <span className="price-original">{formatBRL(product.price)}</span>
+            <span className="price price-discounted">
+              {formatBRL(priceWithPercentOff(product.price, product.activeDiscount.percent))}
+            </span>
+            <span className="discount-badge">-{product.activeDiscount.percent}%</span>
+          </div>
+        ) : (
+          <div className="price">{formatBRL(product.price)}</div>
+        )}
       </div>
     </article>
   );

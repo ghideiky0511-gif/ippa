@@ -29,7 +29,7 @@ function unselectedProductNames(cart: CartItem[]): string[] {
 
 export default function CarrinhoPage() {
   const router = useRouter();
-  const { cart, cartCount, cartTotal, clearCart, saveOrderToHistory, shipping } = useCart();
+  const { cart, cartCount, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, clearCart, saveOrderToHistory, shipping } = useCart();
   const [pendingAction, setPendingAction] = useState<{ names: string[]; run: () => void } | null>(null);
   const [similar, setSimilar] = useState<Product[]>([]);
 
@@ -76,10 +76,15 @@ export default function CarrinhoPage() {
       const variantText = variantParts.length ? ` (${variantParts.join(' / ')})` : '';
       lines.push(`• ${item.qty}x ${item.name}${variantText} — ${formatBRL(item.price * item.qty)}`);
     });
+    if (cartDiscountTotal > 0) {
+      lines.push('', `Desconto (${cartDiscountLabel}): -${formatBRL(cartDiscountTotal)}`);
+    }
     lines.push('', `Total: ${formatBRL(cartTotal)}`);
     const msg = encodeURIComponent(lines.join('\n'));
     window.open(`https://wa.me/${CONFIG.whatsappNumber}?text=${msg}`, '_blank');
-    saveOrderToHistory(resolvedItems, cartTotal);
+    saveOrderToHistory(resolvedItems, cartTotal, {
+      discount: cartDiscountTotal > 0 ? { label: cartDiscountLabel!, amount: cartDiscountTotal } : undefined,
+    });
     clearCart();
   }
 
@@ -121,6 +126,16 @@ export default function CarrinhoPage() {
           <div className="checkout-summary">
             <div className="order-summary-line">
               <span>Subtotal</span>
+              <span>{formatBRL(cartSubtotal)}</span>
+            </div>
+            {cartDiscountTotal > 0 && (
+              <div className="order-summary-line discount">
+                <span>Desconto ({cartDiscountLabel})</span>
+                <span>-{formatBRL(cartDiscountTotal)}</span>
+              </div>
+            )}
+            <div className="order-summary-line total">
+              <span>Total</span>
               <span>{formatBRL(cartTotal)}</span>
             </div>
           </div>

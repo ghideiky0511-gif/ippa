@@ -3,6 +3,26 @@ import { getUserFromToken, SESSION_COOKIE } from '@/lib/auth';
 import { readClients, writeClients } from '@/lib/clients';
 import type { Client } from '@/lib/types';
 
+// Busca um cadastro específico — usado pelo gate de "cadastro completo"
+// antes do frete no talão (ver useTalaoClientGate.ts): a sessão guarda só
+// o clientId, então a página de frete/pagamento precisa buscar o cadastro
+// completo pra checar isClientComplete().
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  const user = await getUserFromToken(token);
+  if (!user || user.role !== 'vendedora') {
+    return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
+  }
+
+  const clients = await readClients();
+  const client = clients.find((c) => c.id === id);
+  if (!client) {
+    return NextResponse.json({ error: 'Cadastro não encontrado.' }, { status: 404 });
+  }
+  return NextResponse.json(client);
+}
+
 // Completa/edita um cadastro (ex.: a vendedora tinha só o nome, agora
 // preenche CPF/CNPJ, email, CEP pra poder fechar o pedido).
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

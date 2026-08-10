@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { formatBRL } from '@/lib/format';
 import { useCart } from '@/components/CartProvider';
+import { useTalaoClientGate } from '@/components/useTalaoClientGate';
 import CheckoutSteps from '@/components/CheckoutSteps';
 
 const PAYMENT_METHODS = [
@@ -15,7 +16,8 @@ const PAYMENT_METHODS = [
 
 export default function PagamentoPage() {
   const router = useRouter();
-  const { cart, cartTotal, shipping, clearCart, clearShipping, saveOrderToHistory } = useCart();
+  const { cart, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, shipping, clearCart, clearShipping, saveOrderToHistory } = useCart();
+  const gate = useTalaoClientGate();
   const [paymentMethod, setPaymentMethod] = useState<string | null>(null);
 
   if (cart.length === 0) {
@@ -42,6 +44,21 @@ export default function PagamentoPage() {
     );
   }
 
+  if (gate.blocked) {
+    return (
+      <main className="container checkout-page">
+        <CheckoutSteps current="/pagamento" reachable={2} />
+        <h1>Pagamento</h1>
+        <div className="cart-empty talao-gate">
+          {gate.reason === 'no-client'
+            ? 'Vincule um cadastro de cliente (nome, CPF/CNPJ, e-mail, CEP) no talão antes de continuar.'
+            : 'Complete o cadastro da cliente (CPF/CNPJ, e-mail, CEP) no talão antes de continuar.'}
+          <button className="btn-add" onClick={gate.openTalao}>Abrir talão</button>
+        </div>
+      </main>
+    );
+  }
+
   const total = cartTotal + shipping.price;
 
   function confirmOrder() {
@@ -50,6 +67,7 @@ export default function PagamentoPage() {
       channel: 'site',
       shipping,
       paymentMethod: PAYMENT_METHODS.find((m) => m.id === paymentMethod)?.label,
+      discount: cartDiscountTotal > 0 ? { label: cartDiscountLabel!, amount: cartDiscountTotal } : undefined,
     });
     clearCart();
     clearShipping();
@@ -78,8 +96,14 @@ export default function PagamentoPage() {
       <div className="checkout-summary">
         <div className="order-summary-line">
           <span>Subtotal</span>
-          <span>{formatBRL(cartTotal)}</span>
+          <span>{formatBRL(cartSubtotal)}</span>
         </div>
+        {cartDiscountTotal > 0 && (
+          <div className="order-summary-line discount">
+            <span>Desconto ({cartDiscountLabel})</span>
+            <span>-{formatBRL(cartDiscountTotal)}</span>
+          </div>
+        )}
         <div className="order-summary-line">
           <span>Frete ({shipping.label})</span>
           <span>{shipping.price === 0 ? 'Grátis' : formatBRL(shipping.price)}</span>

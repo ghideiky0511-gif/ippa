@@ -8,7 +8,7 @@ import GroupedCartItems from './GroupedCartItems';
 
 export default function CartDrawer() {
   const router = useRouter();
-  const { cart, cartCount, cartTotal, isCartOpen, closeCart, clearCart, saveOrderToHistory } = useCart();
+  const { cart, cartCount, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, isCartOpen, closeCart, clearCart, saveOrderToHistory } = useCart();
 
   function checkoutWhatsapp() {
     if (cartCount === 0) {
@@ -26,10 +26,15 @@ export default function CartDrawer() {
       const variantText = variantParts.length ? ` (${variantParts.join(' / ')})` : '';
       lines.push(`• ${item.qty}x ${item.name}${variantText} — ${formatBRL(item.price * item.qty)}`);
     });
+    if (cartDiscountTotal > 0) {
+      lines.push('', `Desconto (${cartDiscountLabel}): -${formatBRL(cartDiscountTotal)}`);
+    }
     lines.push('', `Total: ${formatBRL(cartTotal)}`);
     const msg = encodeURIComponent(lines.join('\n'));
     window.open(`https://wa.me/${CONFIG.whatsappNumber}?text=${msg}`, '_blank');
-    saveOrderToHistory(resolvedItems, cartTotal);
+    saveOrderToHistory(resolvedItems, cartTotal, {
+      discount: cartDiscountTotal > 0 ? { label: cartDiscountLabel!, amount: cartDiscountTotal } : undefined,
+    });
     clearCart();
   }
 
@@ -54,6 +59,15 @@ export default function CartDrawer() {
           )}
         </div>
         <div className="cart-footer">
+          {cartDiscountTotal > 0 && (
+            <>
+              <div className="cart-total subtotal"><span>Subtotal</span><span>{formatBRL(cartSubtotal)}</span></div>
+              <div className="cart-total discount">
+                <span>Desconto ({cartDiscountLabel})</span>
+                <span>-{formatBRL(cartDiscountTotal)}</span>
+              </div>
+            </>
+          )}
           <div className="cart-total"><span>Total</span><span>{formatBRL(cartTotal)}</span></div>
           <button className="btn-whatsapp" onClick={checkoutWhatsapp}>Finalizar pedido via WhatsApp</button>
           <button className="btn-site-checkout" onClick={goToCheckout}>Revisar e continuar no site</button>

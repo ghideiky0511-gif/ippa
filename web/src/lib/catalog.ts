@@ -1,7 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import rawCatalog from '@/data/catalog.json';
-import type { Product } from './types';
+import { getActiveProductDiscount } from './discounts';
+import type { Discount, Product } from './types';
 
 export const catalog = rawCatalog as unknown as Product[];
 
@@ -35,6 +36,11 @@ function applyDefaultMarkup(product: Product, defaultMarkup: number | undefined)
   };
 }
 
+function applyProductDiscount(product: Product, discounts: Discount[]): Product {
+  const activeDiscount = getActiveProductDiscount(product.id, discounts);
+  return activeDiscount ? { ...product, activeDiscount } : product;
+}
+
 function stripDisabledFeatures(product: Product, features: Record<string, boolean> | undefined): Product {
   if (features?.suggestedPrice === false) {
     const { suggestedRetailPrice, markup, ...rest } = product;
@@ -61,29 +67,35 @@ function applyCatalogOrder(products: Product[], order: string[]): Product[] {
 }
 
 // Enriquecimento manual por produto (código, preço sugerido, markup),
-// markup sugerido padrão da loja, liga/desliga de ferramentas opcionais e
-// ordem customizada da grade — editáveis pela plataforma admin em
-// /produtos, /ferramentas e /catalogo (GET/PUT em /api/product-overrides,
-// /api/store-settings e /api/catalog-order) — dado da loja, não do ERP.
+// markup sugerido padrão da loja, desconto "peças específicas" ativo
+// (/descontos, ver applyProductDiscount acima — só o tipo 'products',
+// "por quantidade" só existe no contexto do carrinho inteiro), liga/desliga
+// de ferramentas opcionais e ordem customizada da grade — editáveis pela
+// plataforma admin em /produtos, /descontos, /ferramentas e /catalogo
+// (GET/PUT em /api/product-overrides, /api/discounts, /api/store-settings
+// e /api/catalog-order) — dado da loja, não do ERP.
 // Mesclado por cima do catalog.json em tempo de request, então uma edição
 // salva no admin aparece aqui sem rebuild (mesmo padrão de
 // homeSections/highlights). Prioridade por produto: override próprio >
 // dado do ERP (já no catalog.json) > markup padrão da loja — e por cima de
 // tudo isso, uma ferramenta desligada some independente da prioridade.
 export async function getCatalog(): Promise<Product[]> {
-  const [overridesRaw, settingsRaw, orderRaw] = await Promise.all([
+  const [overridesRaw, settingsRaw, orderRaw, discountsRaw] = await Promise.all([
     readFile(path.join(process.cwd(), 'src/data/productOverrides.json'), 'utf-8'),
     readFile(path.join(process.cwd(), 'src/data/storeSettings.json'), 'utf-8'),
     readFile(path.join(process.cwd(), 'src/data/catalogOrder.json'), 'utf-8'),
+    readFile(path.join(process.cwd(), 'src/data/discounts.json'), 'utf-8'),
   ]);
   const overrides: Record<string, ProductOverride> = JSON.parse(overridesRaw);
   const settings: StoreSettings = JSON.parse(settingsRaw);
   const order: string[] = JSON.parse(orderRaw);
+  const discounts: Discount[] = JSON.parse(discountsRaw);
 
   const merged = catalog.map((p) => {
     const withOverride = overrides[p.id] ? { ...p, ...overrides[p.id] } : p;
     const withDefault = applyDefaultMarkup(withOverride, settings.defaultMarkup);
-    return stripDisabledFeatures(withDefault, settings.features);
+    const withDiscount = applyProductDiscount(withDefault, discounts);
+    return stripDisabledFeatures(withDiscount, settings.features);
   });
 
   return applyCatalogOrder(merged, order);
