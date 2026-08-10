@@ -59,6 +59,22 @@
  * @property {number} [suggestedRetailPrice] Preço sugerido de revenda, vindo do Bippa/ERP.
  * @property {number} [markup] suggestedRetailPrice / price.
  * @property {string[]} [relatedProductIds] "Complete o look" — vínculo manual entre produtos.
+ * @property {string[]} [similarProductIdsQuickview] Curadoria manual de "produtos similares" pro quick-view/página do produto — editável em /produtos.
+ * @property {string[]} [similarProductIdsCart] Curadoria manual de "produtos similares" pro carrinho — editável em /produtos.
+ */
+
+/**
+ * @typedef {Object} SimilarProductsRuleConfig
+ * @property {number} limit
+ * @property {string[]} rules
+ */
+
+/**
+ * @typedef {Object} SimilarProductsSettings Configuração de "produtos similares" (web/src/data/similarProductsSettings.json,
+ * editável em admin/src/app/ferramentas).
+ * @property {SimilarProductsRuleConfig} quickview
+ * @property {SimilarProductsRuleConfig} cart
+ * @property {Object.<string, string[]>} complementaryCategories
  */
 
 /**

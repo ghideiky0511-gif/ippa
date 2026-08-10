@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatBRL } from '@/lib/format';
 import { CONFIG } from '@/lib/config';
@@ -9,7 +9,8 @@ import { useCart } from '@/components/CartProvider';
 import CartRows from '@/components/CartRows';
 import CheckoutSteps from '@/components/CheckoutSteps';
 import UnselectedItemsModal from '@/components/UnselectedItemsModal';
-import type { CartItem } from '@/lib/types';
+import SimilarProducts from '@/components/SimilarProducts';
+import type { CartItem, Product } from '@/lib/types';
 
 // Peças que estão no carrinho mas com qty 0 em todo mundo (rascunho nunca
 // resolvido, ou grade zerada — ver decrement em CartRows.tsx, que agora
@@ -30,6 +31,38 @@ export default function CarrinhoPage() {
   const router = useRouter();
   const { cart, cartCount, cartTotal, clearCart, saveOrderToHistory, shipping } = useCart();
   const [pendingAction, setPendingAction] = useState<{ names: string[]; run: () => void } | null>(null);
+  const [similar, setSimilar] = useState<Product[]>([]);
+
+  // Ids distintos dos produtos já resolvidos no carrinho (rascunho sem
+  // grade/qty 0 não conta) — âncoras da regra de "produtos similares" do
+  // carrinho (ver web/src/lib/similarProducts.ts).
+  const cartProductIds = useMemo(
+    () => Array.from(new Set(cart.filter((i) => i.qty > 0).map((i) => i.id))),
+    [cart]
+  );
+  const cartProductIdsKey = cartProductIds.join(',');
+
+  useEffect(() => {
+    if (cartProductIds.length === 0) {
+      setSimilar([]);
+      return;
+    }
+    let cancelled = false;
+    fetch('/api/similar-products', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ context: 'cart', productIds: cartProductIds }),
+    })
+      .then((r) => (r.ok ? r.json() : { products: [] }))
+      .then((data) => {
+        if (!cancelled) setSimilar(data.products || []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- cartProductIdsKey já resume cartProductIds pra evitar refetch por mudança de referência sem mudança de conteúdo
+  }, [cartProductIdsKey]);
 
   function sendWhatsapp() {
     if (!CONFIG.whatsappNumber) {
@@ -100,6 +133,8 @@ export default function CarrinhoPage() {
           </div>
         </>
       )}
+
+      <SimilarProducts products={similar} />
 
       <Link href="/" className="back-link">← Voltar ao catálogo</Link>
 

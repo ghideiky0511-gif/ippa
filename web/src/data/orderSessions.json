@@ -1,1 +1,32 @@
-[]
+[
+  {
+    "id": "9783876a-f1d3-45ba-86bd-c32f28ca08e9",
+    "clientName": "Joao",
+    "sellerId": "vend-teste-1",
+    "channel": "presencial",
+    "items": [],
+    "status": "aberto",
+    "createdAt": "2026-08-10T14:43:28.644Z",
+    "updatedAt": "2026-08-10T14:46:38.898Z"
+  },
+  {
+    "id": "6671a413-1418-4693-9f5c-0d19daabdce1",
+    "clientName": "Sem cliente",
+    "sellerId": "vend-teste-1",
+    "channel": "presencial",
+    "items": [],
+    "status": "aberto",
+    "createdAt": "2026-08-10T14:44:11.801Z",
+    "updatedAt": "2026-08-10T14:44:11.801Z"
+  },
+  {
+    "id": "c7b23b62-e12c-4daf-bee7-2bc3bdce7cf3",
+    "clientName": "Gabi",
+    "sellerId": "vend-teste-1",
+    "channel": "presencial",
+    "items": [],
+    "status": "aberto",
+    "createdAt": "2026-08-10T14:44:20.239Z",
+    "updatedAt": "2026-08-10T14:44:20.239Z"
+  }
+]

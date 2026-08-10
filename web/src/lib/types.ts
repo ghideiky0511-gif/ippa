@@ -82,6 +82,14 @@ export interface Product {
   // do pedido/mensagem de WhatsApp, é uma decisão separada pra quando o
   // ERP realmente mandar pack de verdade.
   packs?: Pack[];
+  // Curadoria manual de "produtos similares" (ver SimilarProductsSettings
+  // abaixo), 1 por 1, separada por contexto — quando presente (>=1 id),
+  // substitui a regra automática desse contexto pra este produto, sem
+  // completar até o limite (curadoria manual é intencional, mesmo que
+  // fique com menos cards que o limite configurado). undefined = sem
+  // curadoria, usa a regra configurada em /ferramentas.
+  similarProductIdsQuickview?: string[]; // usado no quick-view E na página cheia do produto (mesma âncora: o produto sendo visto)
+  similarProductIdsCart?: string[]; // usado quando este produto está no carrinho (pode combinar com curadoria de outras peças do mesmo carrinho)
 }
 
 // `color`/`size` ausentes = "rascunho" — produto adicionado pelo botão +
@@ -179,6 +187,27 @@ export interface ShippingOption {
   prazo: string;
 }
 
+// Desconto cadastrado pela loja em /descontos (plataforma admin). Dois
+// tipos: 'quantity' — progressivo pela quantidade TOTAL de peças do
+// pedido (`tiers`, ex. "acima de 10 peças, 10% off"); 'products' —
+// percentual fixo (`percent`) só nas peças escolhidas em `productIds`.
+// Cadastro apenas por enquanto — ainda não é aplicado no cálculo do
+// carrinho/checkout (ver PLANO-PROXIMOS-PASSOS.md).
+export interface DiscountTier {
+  minQty: number;
+  percent: number;
+}
+
+export interface Discount {
+  id: string;
+  label: string;
+  active: boolean;
+  type: 'quantity' | 'products';
+  tiers: DiscountTier[];
+  productIds: string[];
+  percent: number;
+}
+
 export interface Highlight {
   id: string;
   label: string;
@@ -215,4 +244,20 @@ export type ResolvedHomeSection = HomeSection & { product?: Product };
 export interface CategoryTreeEntry {
   category: string;
   subcategories: string[];
+}
+
+// Configuração da regra de "produtos similares" (ver web/src/lib/similarProducts.ts),
+// editável pela loja em /ferramentas (plataforma admin) — separada por
+// contexto porque o quick-view/página de produto (âncora única: o produto
+// sendo visto) e o carrinho (várias âncoras: os produtos já escolhidos)
+// pedem composições diferentes.
+export interface SimilarProductsRuleConfig {
+  limit: number; // quantas peças mostrar nesse contexto
+  rules: string[]; // ids de regras ativas, na ordem escolhida — ver SIMILAR_PRODUCTS_RULES em similarProducts.ts
+}
+
+export interface SimilarProductsSettings {
+  quickview: SimilarProductsRuleConfig; // usado também pela página cheia do produto (mesma âncora única)
+  cart: SimilarProductsRuleConfig;
+  complementaryCategories: Record<string, string[]>; // categoria -> categorias complementares, usado pela regra "complementaryCategory"
 }

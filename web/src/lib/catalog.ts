@@ -5,7 +5,9 @@ import type { Product } from './types';
 
 export const catalog = rawCatalog as unknown as Product[];
 
-type ProductOverride = Partial<Pick<Product, 'sku' | 'suggestedRetailPrice' | 'markup'>>;
+type ProductOverride = Partial<
+  Pick<Product, 'sku' | 'suggestedRetailPrice' | 'markup' | 'similarProductIdsQuickview' | 'similarProductIdsCart'>
+>;
 
 interface StoreSettings {
   // Markup sugerido padrão (ex. 2.3) aplicado a toda peça que não tenha

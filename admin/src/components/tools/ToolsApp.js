@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import AdminNav from '@/components/AdminNav';
 import { saveStoreSettings } from '@/lib/storeSettingsClient';
+import { saveSimilarProductsSettings } from '@/lib/similarProductsSettingsClient';
 
 // Lista de ferramentas opcionais do catálogo — cada uma tem um id (chave em
 // storeSettings.json `features`), um rótulo e uma descrição curta. Adicionar
@@ -32,11 +33,56 @@ const ASSIGNMENT_STRATEGIES = [
   { value: 'any', label: 'Qualquer uma disponível, sem regra' },
 ];
 
-export default function ToolsApp({ initialSettings }) {
+// Regras disponíveis pra "produtos similares" (ver web/src/lib/similarProducts.ts,
+// SIMILAR_PRODUCTS_RULES) — adicionar uma regra nova no backend também
+// precisa de uma entrada aqui (id + rótulo + descrição) pra loja poder
+// ligá-la; nenhum outro lugar desta tela muda.
+const AVAILABLE_RULES = [
+  {
+    id: 'sameSubcategory',
+    label: 'Peça parecida (mesma subcategoria)',
+    description: 'Ex.: um cropped mostra outros croppeds — mesma categoria e mesma subcategoria da peça vista.',
+  },
+  {
+    id: 'sameCategory',
+    label: 'Categoria parecida (mesma categoria)',
+    description: 'Ex.: uma blusa regata também mostra outras blusas, de qualquer subcategoria.',
+  },
+  {
+    id: 'complementaryCategory',
+    label: 'Categoria complementar (combina com)',
+    description: 'Ex.: peça de cima sugerindo peça de baixo — usa o mapa de categorias complementares configurado abaixo.',
+  },
+];
+
+const SIMILAR_CONTEXTS = [
+  { key: 'quickview', label: 'Quick-view (e página do produto)' },
+  { key: 'cart', label: 'Carrinho' },
+];
+
+const DEFAULT_SIMILAR_PRODUCTS_SETTINGS = {
+  quickview: { limit: 3, rules: ['sameSubcategory', 'sameCategory'] },
+  cart: { limit: 10, rules: ['sameSubcategory', 'complementaryCategory', 'sameCategory'] },
+  complementaryCategories: {},
+};
+
+export default function ToolsApp({ initialSettings, initialSimilarProductsSettings, products }) {
   const [settings, setSettings] = useState(initialSettings || {});
   const [pendingId, setPendingId] = useState(null);
   const [errorId, setErrorId] = useState(null);
   const [assignmentSaveState, setAssignmentSaveState] = useState('idle');
+
+  const [similarSettings, setSimilarSettings] = useState(
+    initialSimilarProductsSettings || DEFAULT_SIMILAR_PRODUCTS_SETTINGS
+  );
+  const [similarSaveState, setSimilarSaveState] = useState('idle');
+  const [similarDirty, setSimilarDirty] = useState(false);
+  const [newComplementaryCategory, setNewComplementaryCategory] = useState('');
+
+  const categories = useMemo(
+    () => Array.from(new Set((products || []).map((p) => p.category).filter(Boolean))).sort(),
+    [products]
+  );
 
   // Ausente em storeSettings.json = ligada (comportamento padrão de quando
   // a ferramenta foi construída) — só `false` explícito desliga.
@@ -67,6 +113,74 @@ export default function ToolsApp({ initialSettings }) {
       setAssignmentSaveState('saved');
     } catch {
       setAssignmentSaveState('error');
+    }
+  }
+
+  function updateContextLimit(context, limit) {
+    setSimilarSettings((prev) => ({ ...prev, [context]: { ...prev[context], limit } }));
+    setSimilarDirty(true);
+  }
+
+  function toggleContextRule(context, ruleId) {
+    setSimilarSettings((prev) => {
+      const rules = prev[context].rules.includes(ruleId)
+        ? prev[context].rules.filter((r) => r !== ruleId)
+        : [...prev[context].rules, ruleId];
+      return { ...prev, [context]: { ...prev[context], rules } };
+    });
+    setSimilarDirty(true);
+  }
+
+  function addComplementaryCategoryRow(category) {
+    if (!category || similarSettings.complementaryCategories[category]) return;
+    setSimilarSettings((prev) => ({
+      ...prev,
+      complementaryCategories: { ...prev.complementaryCategories, [category]: [] },
+    }));
+    setSimilarDirty(true);
+  }
+
+  function removeComplementaryCategoryRow(category) {
+    setSimilarSettings((prev) => {
+      const next = { ...prev.complementaryCategories };
+      delete next[category];
+      return { ...prev, complementaryCategories: next };
+    });
+    setSimilarDirty(true);
+  }
+
+  function addComplementaryTarget(category, target) {
+    if (!target) return;
+    setSimilarSettings((prev) => {
+      const current = prev.complementaryCategories[category] || [];
+      if (current.includes(target)) return prev;
+      return {
+        ...prev,
+        complementaryCategories: { ...prev.complementaryCategories, [category]: [...current, target] },
+      };
+    });
+    setSimilarDirty(true);
+  }
+
+  function removeComplementaryTarget(category, target) {
+    setSimilarSettings((prev) => ({
+      ...prev,
+      complementaryCategories: {
+        ...prev.complementaryCategories,
+        [category]: (prev.complementaryCategories[category] || []).filter((c) => c !== target),
+      },
+    }));
+    setSimilarDirty(true);
+  }
+
+  async function handleSaveSimilar() {
+    setSimilarSaveState('saving');
+    try {
+      await saveSimilarProductsSettings(similarSettings);
+      setSimilarSaveState('saved');
+      setSimilarDirty(false);
+    } catch {
+      setSimilarSaveState('error');
     }
   }
 
@@ -125,6 +239,116 @@ export default function ToolsApp({ initialSettings }) {
           </select>
           {assignmentSaveState === 'saved' && <span className="status">Salvo</span>}
           {assignmentSaveState === 'error' && <span className="status">Erro ao salvar</span>}
+        </div>
+
+        <h2 className="collections-subheading">Produtos similares</h2>
+        <p className="preview-empty-text">
+          Regra usada na fileira "Você também pode gostar" — página do produto, quick-view e carrinho. Curadoria
+          manual 1 por 1 (substitui a regra pra um produto específico) fica em /produtos.
+        </p>
+
+        {SIMILAR_CONTEXTS.map(({ key, label }) => (
+          <div key={key} className="similar-rules-block">
+            <div className="field-row">
+              <h3 className="similar-rules-context-title">{label}</h3>
+              <div className="field" style={{ maxWidth: 120 }}>
+                <label>Quantidade</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={similarSettings[key].limit}
+                  onChange={(e) => updateContextLimit(key, Number(e.target.value) || 1)}
+                />
+              </div>
+            </div>
+            <div className="similar-rules-checklist">
+              {AVAILABLE_RULES.map((rule) => (
+                <label key={rule.id} className="similar-rule-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={similarSettings[key].rules.includes(rule.id)}
+                    onChange={() => toggleContextRule(key, rule.id)}
+                  />
+                  <span>
+                    <span className="similar-rule-checkbox-label">{rule.label}</span>
+                    <span className="similar-rule-checkbox-description">{rule.description}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        <h3 className="similar-rules-context-title">Categorias complementares</h3>
+        <p className="preview-empty-text">
+          Usado pela regra "categoria complementar" acima — ex.: peças de cima combinando com peças de baixo.
+        </p>
+        <div className="complementary-categories-list">
+          {Object.entries(similarSettings.complementaryCategories).map(([category, targets]) => (
+            <div key={category} className="complementary-category-row">
+              <span className="complementary-category-name">{category}</span>
+              <div className="complementary-category-chips">
+                {targets.map((t) => (
+                  <span key={t} className="complementary-chip">
+                    {t}
+                    <button type="button" onClick={() => removeComplementaryTarget(category, t)} aria-label={`Remover ${t}`}>
+                      ✕
+                    </button>
+                  </span>
+                ))}
+                <select value="" onChange={(e) => addComplementaryTarget(category, e.target.value)}>
+                  <option value="">+ adicionar categoria...</option>
+                  {categories
+                    .filter((c) => c !== category && !targets.includes(c))
+                    .map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                </select>
+              </div>
+              <button
+                className="btn btn-icon btn-danger"
+                onClick={() => removeComplementaryCategoryRow(category)}
+                title="Remover linha"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+          {Object.keys(similarSettings.complementaryCategories).length === 0 && (
+            <p className="preview-empty-text">Nenhuma categoria complementar cadastrada ainda.</p>
+          )}
+        </div>
+        <div className="field-row">
+          <div className="field" style={{ maxWidth: 260 }}>
+            <label>Nova categoria</label>
+            <select value={newComplementaryCategory} onChange={(e) => setNewComplementaryCategory(e.target.value)}>
+              <option value="">Selecione...</option>
+              {categories
+                .filter((c) => !similarSettings.complementaryCategories[c])
+                .map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+            </select>
+          </div>
+          <button
+            className="btn"
+            onClick={() => {
+              addComplementaryCategoryRow(newComplementaryCategory);
+              setNewComplementaryCategory('');
+            }}
+            disabled={!newComplementaryCategory}
+          >
+            + adicionar categoria
+          </button>
+        </div>
+
+        <div className="field-row" style={{ marginTop: 12 }}>
+          <button className="btn btn-primary" onClick={handleSaveSimilar} disabled={similarSaveState === 'saving'}>
+            {similarSaveState === 'saving' ? 'Salvando…' : 'Salvar produtos similares'}
+          </button>
+          {similarSaveState === 'saved' && !similarDirty && <span className="status">Salvo</span>}
+          {similarSaveState === 'error' && <span className="status">Erro ao salvar</span>}
+          {similarDirty && similarSaveState !== 'saving' && <span className="status">Alterações não salvas</span>}
         </div>
       </main>
     </div>

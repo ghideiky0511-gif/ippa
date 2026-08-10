@@ -1,0 +1,21 @@
+{
+  "quickview": {
+    "limit": 3,
+    "rules": [
+      "sameSubcategory",
+      "sameCategory",
+      "complementaryCategory"
+    ]
+  },
+  "cart": {
+    "limit": 10,
+    "rules": [
+      "sameSubcategory",
+      "complementaryCategory",
+      "sameCategory"
+    ]
+  },
+  "complementaryCategories": {
+    "JAQUETA": []
+  }
+}

@@ -325,6 +325,17 @@ a{color:inherit;text-decoration:none}
 
 .product-page{padding-bottom:60px}
 
+.similar-products{margin-top:32px}
+.similar-products-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.similar-products-title{font-size:16px;margin:0}
+.similar-products-arrows{display:flex;gap:6px;flex:none}
+.similar-products-arrow{width:28px;height:28px;border-radius:50%;border:1px solid #ddd;background:#fff;cursor:pointer;font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center}
+.similar-products-arrow:hover:not(:disabled){border-color:var(--brand-primary);color:var(--brand-primary)}
+.similar-products-arrow:disabled{opacity:.3;cursor:not-allowed}
+.similar-products-track{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x proximity;padding-bottom:4px;scrollbar-width:none}
+.similar-products-track::-webkit-scrollbar{display:none}
+.similar-products-item{flex:0 0 140px;scroll-snap-align:start}
+
 .orders-page{padding-bottom:60px}
 .orders-page h1{margin:20px 0 6px;font-size:22px}
 .orders-hint{color:var(--brand-muted);font-size:13px;margin-bottom:20px}

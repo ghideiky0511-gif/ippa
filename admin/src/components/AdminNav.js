@@ -8,6 +8,7 @@ const LINKS = [
   { href: '/catalogo', label: 'Catálogo' },
   { href: '/colecoes', label: 'Coleções' },
   { href: '/produtos', label: 'Produtos' },
+  { href: '/descontos', label: 'Descontos' },
   { href: '/ferramentas', label: 'Ferramentas' },
 ];
 

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import AdminNav from '@/components/AdminNav';
+import SimilarProductsField from './SimilarProductsField';
 import { formatBRL, formatMarkup } from '@/lib/format';
 import { saveProductOverrides } from '@/lib/productOverridesClient';
 import { saveStoreSettings } from '@/lib/storeSettingsClient';
@@ -36,10 +37,21 @@ export default function ProductsApp({ products, initialOverrides, initialSetting
   function updateField(id, field, value) {
     setOverrides((prev) => {
       const next = { ...(prev[id] || {}), [field]: value };
-      if (value === undefined || value === '') delete next[field];
+      if (value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) delete next[field];
       return { ...prev, [id]: next };
     });
     setRowSaveState((prev) => ({ ...prev, [id]: undefined }));
+  }
+
+  function addSimilarProduct(id, field, productId) {
+    const current = overrides[id]?.[field] || [];
+    if (current.includes(productId)) return;
+    updateField(id, field, [...current, productId]);
+  }
+
+  function removeSimilarProduct(id, field, productId) {
+    const current = overrides[id]?.[field] || [];
+    updateField(id, field, current.filter((pid) => pid !== productId));
   }
 
   async function handleAlterar(id) {
@@ -126,49 +138,65 @@ export default function ProductsApp({ products, initialOverrides, initialSetting
             const o = overrides[p.id] || {};
             const state = rowSaveState[p.id];
             return (
-              <div key={p.id} className="product-override-row">
-                <img src={p.image || ''} alt={p.name} />
-                <div className="product-override-info">
-                  <span className="product-item-name">{p.name}</span>
-                  <span className="product-item-price">Atacado: {formatBRL(p.price)}</span>
+              <div key={p.id} className="product-row-card">
+                <div className="product-override-row">
+                  <img src={p.image || ''} alt={p.name} />
+                  <div className="product-override-info">
+                    <span className="product-item-name">{p.name}</span>
+                    <span className="product-item-price">Atacado: {formatBRL(p.price)}</span>
+                  </div>
+                  <div className="field">
+                    <label>Código</label>
+                    <input
+                      value={o.sku ?? ''}
+                      onChange={(e) => updateField(p.id, 'sku', e.target.value)}
+                      placeholder="Opcional"
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Preço sugerido</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={o.suggestedRetailPrice ?? ''}
+                      onChange={(e) => updateField(p.id, 'suggestedRetailPrice', toNumberOrUndefined(e.target.value))}
+                      placeholder="Opcional"
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Markup {p.markup ? `(${formatMarkup(p.markup)} hoje)` : ''}</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={o.markup ?? ''}
+                      onChange={(e) => updateField(p.id, 'markup', toNumberOrUndefined(e.target.value))}
+                      placeholder="Auto"
+                    />
+                  </div>
+                  <div className="product-override-actions">
+                    <button className="btn btn-primary" onClick={() => handleAlterar(p.id)} disabled={state === 'saving'}>
+                      {state === 'saving' ? 'Alterando…' : 'Alterar'}
+                    </button>
+                    {state === 'saved' && <span className="status">Alterado</span>}
+                    {state === 'error' && <span className="status">Erro</span>}
+                  </div>
                 </div>
-                <div className="field">
-                  <label>Código</label>
-                  <input
-                    value={o.sku ?? ''}
-                    onChange={(e) => updateField(p.id, 'sku', e.target.value)}
-                    placeholder="Opcional"
-                  />
-                </div>
-                <div className="field">
-                  <label>Preço sugerido</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={o.suggestedRetailPrice ?? ''}
-                    onChange={(e) => updateField(p.id, 'suggestedRetailPrice', toNumberOrUndefined(e.target.value))}
-                    placeholder="Opcional"
-                  />
-                </div>
-                <div className="field">
-                  <label>Markup {p.markup ? `(${formatMarkup(p.markup)} hoje)` : ''}</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    value={o.markup ?? ''}
-                    onChange={(e) => updateField(p.id, 'markup', toNumberOrUndefined(e.target.value))}
-                    placeholder="Auto"
-                  />
-                </div>
-                <div className="product-override-actions">
-                  <button className="btn btn-primary" onClick={() => handleAlterar(p.id)} disabled={state === 'saving'}>
-                    {state === 'saving' ? 'Alterando…' : 'Alterar'}
-                  </button>
-                  {state === 'saved' && <span className="status">Alterado</span>}
-                  {state === 'error' && <span className="status">Erro</span>}
-                </div>
+                <SimilarProductsField
+                  label="Produtos similares — quick-view"
+                  productIds={o.similarProductIdsQuickview || []}
+                  allProducts={products}
+                  onAdd={(id) => addSimilarProduct(p.id, 'similarProductIdsQuickview', id)}
+                  onRemove={(id) => removeSimilarProduct(p.id, 'similarProductIdsQuickview', id)}
+                />
+                <SimilarProductsField
+                  label="Produtos similares — carrinho"
+                  productIds={o.similarProductIdsCart || []}
+                  allProducts={products}
+                  onAdd={(id) => addSimilarProduct(p.id, 'similarProductIdsCart', id)}
+                  onRemove={(id) => removeSimilarProduct(p.id, 'similarProductIdsCart', id)}
+                />
               </div>
             );
           })}

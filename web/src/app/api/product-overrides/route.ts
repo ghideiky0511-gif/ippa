@@ -15,17 +15,29 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
-type Override = { sku?: string; suggestedRetailPrice?: number; markup?: number };
+type Override = {
+  sku?: string;
+  suggestedRetailPrice?: number;
+  markup?: number;
+  similarProductIdsQuickview?: string[];
+  similarProductIdsCart?: string[];
+};
+
+function isValidStringArray(value: unknown): value is string[] {
+  return value === undefined || (Array.isArray(value) && value.every((v) => typeof v === 'string'));
+}
 
 function isValidOverrides(value: unknown): value is Record<string, Override> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   return Object.values(value as Record<string, unknown>).every((o) => {
     if (!o || typeof o !== 'object') return false;
-    const { sku, suggestedRetailPrice, markup } = o as Override;
+    const { sku, suggestedRetailPrice, markup, similarProductIdsQuickview, similarProductIdsCart } = o as Override;
     return (
       (sku === undefined || typeof sku === 'string') &&
       (suggestedRetailPrice === undefined || typeof suggestedRetailPrice === 'number') &&
-      (markup === undefined || typeof markup === 'number')
+      (markup === undefined || typeof markup === 'number') &&
+      isValidStringArray(similarProductIdsQuickview) &&
+      isValidStringArray(similarProductIdsCart)
     );
   });
 }
@@ -44,7 +56,10 @@ export async function PUT(request: NextRequest) {
 
   if (!isValidOverrides(body)) {
     return NextResponse.json(
-      { error: 'Formato inválido: esperado um objeto { [productId]: { sku?, suggestedRetailPrice?, markup? } }.' },
+      {
+        error:
+          'Formato inválido: esperado um objeto { [productId]: { sku?, suggestedRetailPrice?, markup?, similarProductIdsQuickview?, similarProductIdsCart? } }.',
+      },
       { status: 400, headers: CORS_HEADERS }
     );
   }

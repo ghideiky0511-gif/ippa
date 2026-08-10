@@ -1,14 +1,22 @@
 import ToolsApp from '@/components/tools/ToolsApp';
 import { fetchStoreSettings } from '@/lib/storeSettingsClient';
+import { fetchSimilarProductsSettings } from '@/lib/similarProductsSettingsClient';
+import { fetchCatalog } from '@/lib/catalogClient';
 
 export const dynamic = 'force-dynamic';
 
 export default async function FerramentasPage() {
   let settings = {};
+  let similarProductsSettings = null;
+  let products = [];
   let loadError = null;
 
   try {
-    settings = await fetchStoreSettings();
+    [settings, similarProductsSettings, products] = await Promise.all([
+      fetchStoreSettings(),
+      fetchSimilarProductsSettings(),
+      fetchCatalog(),
+    ]);
   } catch (err) {
     loadError = err.message;
   }
@@ -22,5 +30,11 @@ export default async function FerramentasPage() {
     );
   }
 
-  return <ToolsApp initialSettings={settings} />;
+  return (
+    <ToolsApp
+      initialSettings={settings}
+      initialSimilarProductsSettings={similarProductsSettings}
+      products={products}
+    />
+  );
 }

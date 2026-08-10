@@ -463,6 +463,37 @@ mas **sem UI** ainda:
   separado (vendedor, não cliente final nem admin) e depende de login/conta
   — fica pra quando a Fase 2 (identificação de usuário) existir.
 
+## Descontos (cadastro) — /descontos na plataforma admin
+
+Inspirado na tela "políticas e promoções" do Colab (Teceo): uma aba nova
+(`admin/src/app/descontos`, `DiscountsApp.js`) pra loja cadastrar regras de
+desconto, mesmo padrão lista+editor de `/colecoes` (tudo em memória até
+"Salvar", que manda o array inteiro pro `/api/discounts`). Dois tipos de
+regra por desconto (`Discount.type` em `web/src/lib/types.ts`):
+
+- **`quantity`** — progressivo pela quantidade TOTAL de peças do pedido
+  (`tiers: [{minQty, percent}]`, ex. "acima de 10 peças, 10%"; "acima de
+  20, 20%"), editável em faixas soltas (+ adicionar/remover faixa).
+- **`products`** — percentual fixo (`percent`) só nas peças escolhidas em
+  `productIds`, usando o mesmo `ProductPicker.js` de `/colecoes` (busca por
+  nome, sem duplicar componente).
+
+Cada desconto tem nome, tipo, ativo (liga/desliga) e os campos do tipo
+escolhido. Dado salvo em `web/src/data/discounts.json`, validado em
+`web/src/app/api/discounts/route.ts` (mesmo padrão arquivo+CORS de
+`/api/highlights`).
+
+**Importante — isso é só o cadastro.** Ainda NÃO está aplicado em lugar
+nenhum do cálculo do carrinho/checkout do app `web` (`cartTotal`, mensagem
+de WhatsApp, `/frete`, `/pagamento` continuam sem desconto nenhum). Falta
+decidir, quando for a hora de aplicar de verdade:
+- Onde entra no cálculo (`CartProvider.tsx`? um novo `web/src/lib/discounts.ts`
+  que roda em cima do `cart` final?).
+- Como combinar regras quando mais de uma se aplica ao mesmo pedido (soma?
+  só a maior? só uma por pedido?) — hoje não há essa regra de prioridade.
+- Como mostrar o desconto aplicado pro cliente (linha extra no resumo do
+  carrinho, tipo "desconto progressivo: -10%"?).
+
 ## Fora de escopo por enquanto
 
 - Cobrança real (gateway de pagamento) e cotação real de frete — hoje ambos

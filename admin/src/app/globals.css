@@ -324,6 +324,30 @@ input, textarea { font: inherit; }
 .collections-editor { padding: 24px; max-width: 720px; display: flex; flex-direction: column; gap: 24px; }
 .collections-subheading { font-size: 14px; margin-bottom: 4px; }
 
+/* Faixas de desconto progressivo — /descontos, DiscountEditor.js */
+.discount-tiers { display: flex; flex-direction: column; gap: 8px; }
+.discount-tier-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #eadde2;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--brand-card);
+  font-size: 13px;
+  color: var(--brand-muted);
+}
+.discount-tier-row input {
+  width: 64px;
+  border: 1px solid #d8c3ce;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 14px;
+  background: #fff;
+  color: var(--brand-text);
+}
+.discount-tier-row .btn-icon { margin-left: auto; }
+
 .collection-product-list { display: flex; flex-direction: column; gap: 8px; }
 .collection-product-row {
   display: flex;
@@ -356,6 +380,29 @@ input, textarea { font: inherit; }
 .product-override-row .field { width: 150px; flex-shrink: 0; }
 .product-override-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-shrink: 0; }
 
+.product-row-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid #eadde2;
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--brand-card);
+}
+.product-row-card .product-override-row { border: none; padding: 0; background: none; }
+
+.similar-products-field { border-top: 1px dashed #eadde2; padding-top: 8px; }
+.similar-products-field-toggle {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--brand-muted);
+  padding: 0;
+}
+.similar-products-field-toggle:hover { color: var(--brand-primary); }
+.similar-products-field-body { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding-left: 4px; }
+
 .default-markup-panel {
   display: flex;
   align-items: flex-end;
@@ -384,6 +431,48 @@ input, textarea { font: inherit; }
 .tool-info { display: flex; flex-direction: column; gap: 4px; }
 .tool-label { font-size: 14px; font-weight: 600; }
 .tool-description { font-size: 12px; color: var(--brand-muted); max-width: 520px; }
+
+/* Seção "Produtos similares" de /ferramentas — regra por contexto
+   (quick-view/carrinho) + mapa de categorias complementares. */
+.similar-rules-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid #eadde2;
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: var(--brand-card);
+  margin-bottom: 12px;
+}
+.similar-rules-context-title { font-size: 14px; font-weight: 600; margin: 0; flex: 1; }
+.similar-rules-checklist { display: flex; flex-direction: column; gap: 8px; }
+.similar-rule-checkbox { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; cursor: pointer; }
+.similar-rule-checkbox input { margin-top: 3px; }
+.similar-rule-checkbox-label { display: block; font-weight: 600; }
+.similar-rule-checkbox-description { display: block; font-size: 12px; color: var(--brand-muted); }
+
+.complementary-categories-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.complementary-category-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #eadde2;
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--brand-card);
+}
+.complementary-category-name { font-weight: 600; font-size: 13px; width: 140px; flex-shrink: 0; }
+.complementary-category-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex: 1; }
+.complementary-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f3e9ec;
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+.complementary-chip button { border: none; background: none; cursor: pointer; font-size: 11px; padding: 0; }
 
 .toggle-switch {
   flex-shrink: 0;
