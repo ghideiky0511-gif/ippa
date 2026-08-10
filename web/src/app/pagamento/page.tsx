@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { formatBRL } from '@/lib/format';
 import { useCart } from '@/components/CartProvider';
+import { useTalao } from '@/components/TalaoProvider';
 import { useTalaoClientGate } from '@/components/useTalaoClientGate';
 import CheckoutSteps from '@/components/CheckoutSteps';
 
@@ -17,6 +18,8 @@ const PAYMENT_METHODS = [
 export default function PagamentoPage() {
   const router = useRouter();
   const { cart, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, shipping, clearCart, clearShipping, saveOrderToHistory } = useCart();
+  const talao = useTalao();
+  const activeSession = talao?.activeSession ?? null;
   const gate = useTalaoClientGate();
   const [paymentMethod, setPaymentMethod] = useState<string | null>(null);
 
@@ -39,6 +42,23 @@ export default function PagamentoPage() {
         <h1>Pagamento</h1>
         <div className="cart-empty">
           Escolha o frete primeiro. <Link href="/frete">Voltar para o frete</Link>
+        </div>
+      </main>
+    );
+  }
+
+  // Pedido de talão: a vendedora monta carrinho + frete, mas quem finaliza
+  // o pagamento é a cliente, através do link gerado em /frete (ver
+  // requestPaymentLink em TalaoProvider.tsx) — fecha esse "atalho" de
+  // digitar /pagamento direto na URL e confirmar por ela.
+  if (activeSession) {
+    return (
+      <main className="container checkout-page">
+        <CheckoutSteps current="/pagamento" reachable={2} />
+        <h1>Pagamento</h1>
+        <div className="cart-empty talao-gate">
+          Pagamento agora é feito pela cliente através do link — volte pro frete pra gerar/copiar.
+          <Link href="/frete" className="btn-add">Voltar para o frete</Link>
         </div>
       </main>
     );

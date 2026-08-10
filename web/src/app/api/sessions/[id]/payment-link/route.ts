@@ -1,0 +1,60 @@
+import { randomBytes } from 'node:crypto';
+import { NextRequest, NextResponse } from 'next/server';
+import { getUserFromToken, SESSION_COOKIE } from '@/lib/auth';
+import { readOrderSessions, writeOrderSessions } from '@/lib/orderSessions';
+import { readClients } from '@/lib/clients';
+import { isClientComplete } from '@/lib/clientComplete';
+
+// Gera o link de pagamento que a vendedora manda pra cliente (ver
+// PLANO-PROXIMOS-PASSOS.md — "vendedora consegue fazer tudo pela cliente,
+// menos finalizar o pagamento"). O token vira a própria autenticação do
+// link (web/src/app/pagar/[token]/page.tsx, GET/POST /api/pay/[token]) —
+// funciona sem a cliente estar logada, por isso as checagens abaixo (cliente
+// vinculada e completa, carrinho não vazio, frete escolhido) precisam
+// acontecer AQUI, antes de existir o link, e não podem depender de nada que
+// só o navegador da vendedora sabe.
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  const user = await getUserFromToken(token);
+  if (!user || user.role !== 'vendedora') {
+    return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
+  }
+
+  const sessions = await readOrderSessions();
+  const index = sessions.findIndex((s) => s.id === id);
+  if (index === -1) {
+    return NextResponse.json({ error: 'Sessão não encontrada.' }, { status: 404 });
+  }
+  const session = sessions[index];
+  if (session.sellerId !== user.id) {
+    return NextResponse.json({ error: 'Sem permissão pra essa sessão.' }, { status: 403 });
+  }
+
+  const resolvedItems = session.items.filter((i) => i.qty > 0);
+  if (resolvedItems.length === 0) {
+    return NextResponse.json({ error: 'Adicione peças ao pedido antes de gerar o link.' }, { status: 400 });
+  }
+  if (!session.shipping) {
+    return NextResponse.json({ error: 'Escolha o frete antes de gerar o link.' }, { status: 400 });
+  }
+  if (!session.clientId) {
+    return NextResponse.json({ error: 'Vincule um cadastro de cliente antes de gerar o link.' }, { status: 400 });
+  }
+  const clients = await readClients();
+  const client = clients.find((c) => c.id === session.clientId);
+  if (!client || !isClientComplete(client)) {
+    return NextResponse.json({ error: 'Complete o cadastro da cliente (CPF/CNPJ, e-mail, CEP) antes de gerar o link.' }, { status: 400 });
+  }
+
+  const paymentToken = randomBytes(24).toString('hex');
+  sessions[index] = {
+    ...session,
+    paymentToken,
+    status: 'aguardando_pagamento',
+    updatedAt: new Date().toISOString(),
+  };
+  await writeOrderSessions(sessions);
+
+  return NextResponse.json({ token: paymentToken });
+}

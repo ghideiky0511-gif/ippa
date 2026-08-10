@@ -5,5 +5,13 @@
     "passwordHash": "$2b$10$3qpuFGTErWIhCbTnuYKLbuGYEhsI6JNlGcsK6Q3Lx9AG4q.7Z1ogm",
     "name": "Vendedora Teste",
     "role": "vendedora"
+  },
+  {
+    "id": "39e8199d-7378-424e-828a-56dcc25092e2",
+    "email": "guilherme@bippa.com.br",
+    "name": "Guilherme",
+    "role": "cliente",
+    "clientId": "5d68d0ca-2767-4e13-93d6-43688506e5df",
+    "passwordHash": "$2b$10$xrvlMBLRTlHRHQbdVDvpx.XzK7Tcy32pT.iHdCbHF.R4QLIK/cpYa"
   }
 ]

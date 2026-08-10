@@ -52,13 +52,22 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     await writeClients(clients);
   }
 
+  const validStatus = ['aberto', 'fechado', 'aguardando_pagamento'];
+  const shipping =
+    body.shipping === null
+      ? undefined
+      : body.shipping && typeof body.shipping === 'object' && typeof body.shipping.price === 'number'
+        ? body.shipping
+        : current.shipping;
+
   const updated: OrderSession = {
     ...current,
     clientId,
     clientName,
     items: Array.isArray(body.items) ? body.items : current.items,
+    shipping,
     notes: typeof body.notes === 'string' ? body.notes : current.notes,
-    status: body.status === 'fechado' || body.status === 'aberto' ? body.status : current.status,
+    status: validStatus.includes(body.status) ? body.status : current.status,
     updatedAt: new Date().toISOString(),
   };
   sessions[index] = updated;

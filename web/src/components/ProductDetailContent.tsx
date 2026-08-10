@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { COLOR_MAP, CONFIG } from '@/lib/config';
 import { formatBRL, formatMarkup, priceWithPercentOff } from '@/lib/format';
 import { getMetQuantityTier, getQuantityDiscountTiers } from '@/lib/discounts';
 import { ADDABLE_AVAILABILITY, buildVariantMatrix, deliveryLabel, splitStockQty } from '@/lib/variants';
 import { resolveGallery, resolveImageForColor } from '@/lib/images';
 import { useCart } from './CartProvider';
+import { useAuthUser } from './AuthProvider';
 import type { Availability, Product } from '@/lib/types';
 
 type AvailabilityFilter = 'all' | 'in_stock' | 'preorder';
@@ -19,6 +21,7 @@ function matchesAvailabilityFilter(availability: Availability, filter: Availabil
 
 export default function ProductDetailContent({ product }: { product: Product }) {
   const { cart, discounts, addToCart, changeQty, removeFromCart, setBackorderDate } = useCart();
+  const { showPrices } = useAuthUser();
   const matrix = useMemo(() => buildVariantMatrix(product), [product]);
   const gallery = useMemo(() => resolveGallery(product), [product]);
   const [selectedColor, setSelectedColor] = useState<string | null>(
@@ -146,44 +149,52 @@ export default function ProductDetailContent({ product }: { product: Product }) 
         <div className="cat">{product.category}{product.subcategory ? ` · ${product.subcategory}` : ''}</div>
         <h2>{product.name}</h2>
         {product.sku && <div className="card-sku">{product.sku}</div>}
-        {effectivePercent > 0 ? (
-          <div
-            className={'price-discount-row' + (justUnlocked ? ' just-unlocked' : '')}
-            title={effectiveLabel}
-            onAnimationEnd={() => setJustUnlocked(false)}
-          >
-            <span className="price-original">{formatBRL(product.price)}</span>
-            <span className="price price-discounted">{formatBRL(priceWithPercentOff(product.price, effectivePercent))}</span>
-            <span className="discount-badge">-{effectivePercent}%</span>
+        {!showPrices ? (
+          <div className="price-locked-block">
+            <Link href="/login" className="btn-add">Entrar para ver o preço</Link>
           </div>
         ) : (
-          <div className="price">{formatBRL(product.price)}</div>
-        )}
-        {quantityTiers.length > 0 && (
-          <div className="qty-discount-hint">
-            {quantityTiers.map((t) => (
-              <div key={t.minQty} className={'qty-tier' + (productCartQty >= t.minQty ? ' met' : '')}>
-                {productCartQty >= t.minQty ? '✓ ' : ''}A partir de {t.minQty} unidades desta peça no carrinho: {t.percent}% de desconto
+          <>
+            {effectivePercent > 0 ? (
+              <div
+                className={'price-discount-row' + (justUnlocked ? ' just-unlocked' : '')}
+                title={effectiveLabel}
+                onAnimationEnd={() => setJustUnlocked(false)}
+              >
+                <span className="price-original">{formatBRL(product.price)}</span>
+                <span className="price price-discounted">{formatBRL(priceWithPercentOff(product.price, effectivePercent))}</span>
+                <span className="discount-badge">-{effectivePercent}%</span>
               </div>
-            ))}
-          </div>
-        )}
-        {showSuggestedPrice && (
-          <div className="suggested-price-block">
-            <div className="suggested-price-label">Preço varejo sugerido</div>
-            <div className="price-row">
-              <div className="price-suggested">{formatBRL(product.suggestedRetailPrice!)}</div>
-              {markup && (
-                <span className="markup-chip" title="Markup sugerido sobre o preço de atacado">
-                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="7" y1="17" x2="17" y2="7" />
-                    <polyline points="7 7 17 7 17 17" />
-                  </svg>
-                  Markup {formatMarkup(markup)}
-                </span>
-              )}
-            </div>
-          </div>
+            ) : (
+              <div className="price">{formatBRL(product.price)}</div>
+            )}
+            {quantityTiers.length > 0 && (
+              <div className="qty-discount-hint">
+                {quantityTiers.map((t) => (
+                  <div key={t.minQty} className={'qty-tier' + (productCartQty >= t.minQty ? ' met' : '')}>
+                    {productCartQty >= t.minQty ? '✓ ' : ''}A partir de {t.minQty} unidades desta peça no carrinho: {t.percent}% de desconto
+                  </div>
+                ))}
+              </div>
+            )}
+            {showSuggestedPrice && (
+              <div className="suggested-price-block">
+                <div className="suggested-price-label">Preço varejo sugerido</div>
+                <div className="price-row">
+                  <div className="price-suggested">{formatBRL(product.suggestedRetailPrice!)}</div>
+                  {markup && (
+                    <span className="markup-chip" title="Markup sugerido sobre o preço de atacado">
+                      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="7" y1="17" x2="17" y2="7" />
+                        <polyline points="7 7 17 7 17 17" />
+                      </svg>
+                      Markup {formatMarkup(markup)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
         )}
         {product.description && <p className="product-detail-desc">{product.description}</p>}
 

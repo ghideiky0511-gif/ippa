@@ -1,11 +1,11 @@
 'use client';
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { CartItem, OrderSession } from '@/lib/types';
+import type { CartItem, OrderSession, ShippingOption } from '@/lib/types';
 
 interface TalaoContextValue {
   sessions: OrderSession[]; // todas (aberta + fechada) — usado por "buscar existentes"
-  openSessions: OrderSession[]; // só status 'aberto' — o que aparece no painel do talão
+  openSessions: OrderSession[]; // status 'aberto' OU 'aguardando_pagamento' — o que aparece no painel do talão
   activeSession: OrderSession | null;
   activeSessionId: string | null;
   isTalaoOpen: boolean;
@@ -16,7 +16,12 @@ interface TalaoContextValue {
   closeSession: (id: string) => Promise<void>;
   reopenSession: (id: string) => Promise<void>;
   updateActiveItems: (items: CartItem[]) => Promise<void>;
+  updateActiveShipping: (shipping: ShippingOption | null) => Promise<void>;
   linkClient: (clientId: string) => Promise<void>;
+  // Gera (ou, se já existir, apenas devolve) o token do link de pagamento
+  // da sessão ativa — ver POST /api/sessions/[id]/payment-link/route.ts.
+  // Lança se a API recusar (carrinho vazio, sem frete, cliente incompleta).
+  requestPaymentLink: () => Promise<string>;
 }
 
 const TalaoContext = createContext<TalaoContextValue | null>(null);
@@ -31,6 +36,15 @@ export function TalaoProvider({ children }: { children: ReactNode }) {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [isTalaoOpen, setTalaoOpen] = useState(false);
 
+  function refetchSessions() {
+    return fetch('/api/sessions', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((all: OrderSession[] | null) => {
+        if (all) setSessions(all);
+      })
+      .catch(() => {});
+  }
+
   useEffect(() => {
     fetch('/api/sessions', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : []))
@@ -42,7 +56,21 @@ export function TalaoProvider({ children }: { children: ReactNode }) {
       .catch(() => {});
   }, []);
 
-  const openSessions = sessions.filter((s) => s.status === 'aberto');
+  // Tempo real: se a cliente pagar um pedido de talão pelo link (outro
+  // navegador, sem essa vendedora fazer nada) enquanto o talão está aberto
+  // aqui, a sessão vira 'fechado' sozinha sem precisar de F5 — ver
+  // web/src/lib/sseHub.ts e POST /api/pay/[token]/route.ts (quem dispara o
+  // evento). Refetch simples em vez de tentar aplicar um diff — o volume de
+  // eventos é baixo (só na confirmação de pagamento).
+  useEffect(() => {
+    const source = new EventSource('/api/sessions/stream');
+    source.addEventListener('sessions-updated', () => {
+      refetchSessions();
+    });
+    return () => source.close();
+  }, []);
+
+  const openSessions = sessions.filter((s) => s.status === 'aberto' || s.status === 'aguardando_pagamento');
   const activeSession = sessions.find((s) => s.id === activeSessionId) || null;
 
   async function createSession(clientName: string, channel: 'presencial' | 'whatsapp') {
@@ -88,6 +116,30 @@ export function TalaoProvider({ children }: { children: ReactNode }) {
     });
   }
 
+  async function updateActiveShipping(shipping: ShippingOption | null) {
+    if (!activeSession) return;
+    const id = activeSession.id;
+    setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, shipping: shipping || undefined } : s)));
+    await fetch(`/api/sessions/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shipping }),
+    });
+  }
+
+  async function requestPaymentLink(): Promise<string> {
+    if (!activeSession) throw new Error('Nenhum pedido ativo.');
+    if (activeSession.paymentToken) return activeSession.paymentToken;
+    const id = activeSession.id;
+    const res = await fetch(`/api/sessions/${id}/payment-link`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Não foi possível gerar o link.');
+    setSessions((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, paymentToken: data.token, status: 'aguardando_pagamento' } : s))
+    );
+    return data.token as string;
+  }
+
   // Vincula um cadastro de cliente (ver web/src/lib/clients.ts) à sessão
   // ativa — a API já sincroniza clientName a partir do cadastro e marca
   // essa vendedora como a última que atendeu essa cliente, então só
@@ -118,7 +170,9 @@ export function TalaoProvider({ children }: { children: ReactNode }) {
       closeSession,
       reopenSession,
       updateActiveItems,
+      updateActiveShipping,
       linkClient,
+      requestPaymentLink,
     }),
     [sessions, activeSessionId, isTalaoOpen]
   );

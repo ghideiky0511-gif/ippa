@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { CartProvider, useCart } from './CartProvider';
 import { TalaoProvider, useTalao } from './TalaoProvider';
 import { QuickViewProvider, useQuickView } from './QuickViewProvider';
+import { AuthProvider } from './AuthProvider';
 import CartDrawer from './CartDrawer';
 import TalaoDrawer from './TalaoDrawer';
 import ProductQuickView from './ProductQuickView';
@@ -56,12 +57,12 @@ function TopNav({ categoryTree, authUser }: { categoryTree: CategoryTreeEntry[];
       </Link>
       <div className="topnav-links">
         {!onCatalogPage && <Link href="/catalogo">Catálogo</Link>}
-        {!isVendedora && <Link href="/pedidos">Meus pedidos</Link>}
+        <Link href="/pedidos">{isVendedora ? 'Minhas vendas' : 'Meus pedidos'}</Link>
         <button className="topnav-cart" onClick={openCart} aria-label="Carrinho">
           🛍 <span className="count">{cartCount}</span>
         </button>
         {isVendedora && <TalaoButton />}
-        {isVendedora ? (
+        {authUser ? (
           <button className="topnav-login-link" onClick={handleLogout}>Sair</button>
         ) : (
           <Link href="/login" className="topnav-login-link">Entrar</Link>
@@ -84,17 +85,22 @@ export default function AppShell({
 
   // CartProvider precisa estar DENTRO do TalaoProvider — é assim que ele
   // consegue enxergar useTalao() e decidir se escreve no carrinho pessoal
-  // ou no pedido ativo do talão (ver CartProvider.tsx).
+  // ou no pedido ativo do talão (ver CartProvider.tsx). AuthProvider fica
+  // por fora de tudo — ProductCard/ProductDetailContent (bem lá embaixo em
+  // {children}) precisam dele pra decidir se mostram o preço, sem precisar
+  // de authUser sendo passado por prop em cada página.
   const body = (
-    <QuickViewProvider>
-      <CartProvider>
-        <TopNav categoryTree={categoryTree} authUser={authUser} />
-        {children}
-        <CartDrawer />
-        {isVendedora && <TalaoDrawer />}
-        <GlobalQuickView />
-      </CartProvider>
-    </QuickViewProvider>
+    <AuthProvider authUser={authUser}>
+      <QuickViewProvider>
+        <CartProvider>
+          <TopNav categoryTree={categoryTree} authUser={authUser} />
+          {children}
+          <CartDrawer />
+          {isVendedora && <TalaoDrawer />}
+          <GlobalQuickView />
+        </CartProvider>
+      </QuickViewProvider>
+    </AuthProvider>
   );
 
   return isVendedora ? <TalaoProvider>{body}</TalaoProvider> : body;

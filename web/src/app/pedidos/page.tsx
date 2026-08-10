@@ -3,26 +3,53 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { formatBRL } from '@/lib/format';
-import { readOrders } from '@/components/CartProvider';
+import { useAuthUser } from '@/components/AuthProvider';
 import type { Order } from '@/lib/types';
 
 export default function PedidosPage() {
+  const { authUser } = useAuthUser();
   const [orders, setOrders] = useState<Order[] | null>(null);
+  const isVendedora = authUser?.role === 'vendedora';
 
   useEffect(() => {
-    setOrders(readOrders());
-  }, []);
+    if (!authUser) return;
+    fetch('/api/orders')
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setOrders)
+      .catch(() => setOrders([]));
+  }, [authUser]);
+
+  // Sem login não existe "meus pedidos" — pedido é sempre da conta agora
+  // (ver GET /api/orders), não mais um histórico solto por navegador.
+  if (!authUser) {
+    return (
+      <main className="container orders-page">
+        <h1>Meus pedidos</h1>
+        <div className="cart-empty">
+          Entre ou crie uma conta pra ver seus pedidos.
+          <div className="checkout-actions">
+            <Link href="/login" className="btn-add">Entrar</Link>
+            <Link href="/cadastro" className="btn-add">Criar conta</Link>
+          </div>
+        </div>
+        <Link href="/" className="back-link">← Voltar ao catálogo</Link>
+      </main>
+    );
+  }
 
   return (
     <main className="container orders-page">
-      <h1>Meus pedidos</h1>
+      <h1>{isVendedora ? 'Minhas vendas' : 'Meus pedidos'}</h1>
       <p className="orders-hint">
-        Pedidos enviados por este navegador (via WhatsApp ou pelo fluxo do site). Ainda não há
-        integração com um sistema de pedidos real (isso está previsto para a Fase 2, junto com Bippa/ERP).
+        {isVendedora
+          ? 'Vendas suas fechadas pela cliente através do link de pagamento (ver talão).'
+          : 'Pedidos da sua conta — valem em qualquer navegador ou aparelho que você usar pra entrar.'}
       </p>
 
       {orders === null && <p>Carregando...</p>}
-      {orders !== null && orders.length === 0 && <p className="cart-empty">Nenhum pedido enviado ainda.</p>}
+      {orders !== null && orders.length === 0 && (
+        <p className="cart-empty">{isVendedora ? 'Nenhuma venda fechada ainda.' : 'Nenhum pedido enviado ainda.'}</p>
+      )}
 
       <div className="orders-list">
         {orders?.map((order) => (
@@ -36,6 +63,7 @@ export default function PedidosPage() {
               </span>
               <span className="order-total">{formatBRL(order.total)}</span>
             </div>
+            {isVendedora && order.clientName && <div className="order-meta"><span>Cliente: {order.clientName}</span></div>}
             {(order.shipping || order.paymentMethod || order.discount) && (
               <div className="order-meta">
                 {order.shipping && <span>Frete: {order.shipping.label}</span>}

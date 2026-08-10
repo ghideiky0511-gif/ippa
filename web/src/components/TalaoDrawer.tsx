@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useTalao } from './TalaoProvider';
 import { useCart } from './CartProvider';
 import { formatBRL } from '@/lib/format';
+import { getDocumentType } from '@/lib/document';
 import type { Client, OrderSession } from '@/lib/types';
 
 function itemCount(session: OrderSession): number {
@@ -28,6 +29,9 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
   const [showNewForm, setShowNewForm] = useState(false);
   const [name, setName] = useState('');
   const [cpfCnpj, setCpfCnpj] = useState('');
+  const docType = getDocumentType(cpfCnpj);
+  const [companyResponsible, setCompanyResponsible] = useState('');
+  const [storeName, setStoreName] = useState('');
   const [email, setEmail] = useState('');
   const [cep, setCep] = useState('');
   // Liga o "flash" do toggle recolhido logo depois de vincular um cadastro
@@ -56,7 +60,7 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
     const res = await fetch('/api/clients', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, cpfCnpj, email, cep }),
+      body: JSON.stringify({ name, cpfCnpj, companyResponsible, storeName, email, cep }),
     });
     if (!res.ok) return;
     const client: Client = await res.json();
@@ -66,6 +70,8 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
     setJustLinked(true);
     setName('');
     setCpfCnpj('');
+    setCompanyResponsible('');
+    setStoreName('');
     setEmail('');
     setCep('');
   }
@@ -116,6 +122,16 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
         <form className="talao-new-form" onSubmit={handleCreateAndLink}>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome" required />
           <input value={cpfCnpj} onChange={(e) => setCpfCnpj(e.target.value)} placeholder="CPF/CNPJ" />
+          {docType === 'cnpj' && (
+            <input
+              value={companyResponsible}
+              onChange={(e) => setCompanyResponsible(e.target.value)}
+              placeholder="Responsável pela empresa (opcional)"
+            />
+          )}
+          {docType === 'cpf' && (
+            <input value={storeName} onChange={(e) => setStoreName(e.target.value)} placeholder="Nome da loja (opcional)" />
+          )}
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail" type="email" />
           <input value={cep} onChange={(e) => setCep(e.target.value)} placeholder="CEP" />
           <button className="btn-add" type="submit">Salvar e vincular</button>
@@ -201,6 +217,9 @@ export default function TalaoDrawer() {
                   <span className="talao-card-channel">
                     {activeSession.channel === 'whatsapp' ? 'WhatsApp' : 'Presencial'}
                   </span>
+                  {activeSession.status === 'aguardando_pagamento' && (
+                    <span className="talao-status-badge">aguardando pagamento</span>
+                  )}
                 </div>
                 <div className="talao-card-meta">
                   <span>{itemCount(activeSession)} itens</span>
@@ -223,6 +242,9 @@ export default function TalaoDrawer() {
                     <div className="talao-card-info">
                       <span className="talao-card-name">{s.clientName}</span>
                       <span className="talao-card-channel">{s.channel === 'whatsapp' ? 'WhatsApp' : 'Presencial'}</span>
+                      {s.status === 'aguardando_pagamento' && (
+                        <span className="talao-status-badge">aguardando pagamento</span>
+                      )}
                     </div>
                     <div className="talao-card-meta">
                       <span>{itemCount(s)} itens</span>

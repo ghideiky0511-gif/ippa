@@ -2,6 +2,7 @@
 
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
 import { useTalao } from './TalaoProvider';
+import { useAuthUser } from './AuthProvider';
 import { getCartDiscount, type AppliedDiscount } from '@/lib/discounts';
 import type { CartItem, Discount, Order, Product, ShippingOption } from '@/lib/types';
 
@@ -78,7 +79,6 @@ interface CartContextValue {
 
 const CartContext = createContext<CartContextValue | null>(null);
 const CART_KEY = 'ippa_cart_v1';
-const ORDERS_KEY = 'ippa_orders_v1';
 
 function readJSON<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback;
@@ -102,9 +102,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setCartOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
-  // Frete escolhido no fluxo carrinho -> frete -> pagamento. É transitório
-  // (diferente do carrinho, não precisa sobreviver a dias/reload).
-  const [shipping, setShipping] = useState<ShippingOption | null>(null);
+  // Frete escolhido no fluxo carrinho -> frete -> pagamento. Pra compra
+  // pessoal continua transitório (não precisa sobreviver a dias/reload) —
+  // mas com uma sessão de talão ativa também é persistido nela (ver
+  // useEffect e setShipping/clearShipping abaixo), porque a vendedora
+  // escolhe o frete e depois entrega o resto pra cliente terminar via link
+  // de pagamento (ver requestPaymentLink em TalaoProvider.tsx) — precisa
+  // sobreviver a ela sair da tela.
+  const [shipping, setShippingState] = useState<ShippingOption | null>(null);
+  const authUserCtx = useAuthUser();
 
   // Talão de vendedora (ver TalaoProvider.tsx) — null pra qualquer cliente
   // final comprando (não tem o provider por perto) ou pra vendedora sem
@@ -114,6 +120,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
   // precisar saber disso.
   const talao = useTalao();
   const activeSession = talao?.activeSession ?? null;
+
+  // Hidrata o frete local a partir do que já estava salvo na sessão (ex.:
+  // vendedora saiu de /frete e voltou, ou trocou de sessão ativa no talão)
+  // — sem isso o campo local ficaria sempre null até ela escolher de novo.
+  useEffect(() => {
+    if (activeSession) setShippingState(activeSession.shipping || null);
+  }, [activeSession?.id, activeSession?.shipping]);
 
   const [catalogById, setCatalogById] = useState<Record<string, Product>>({});
   const [discounts, setDiscounts] = useState<Discount[]>([]);
@@ -143,6 +156,21 @@ export function CartProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (hydrated) window.localStorage.setItem(CART_KEY, JSON.stringify(cart));
   }, [cart, hydrated]);
+
+  // Espelha o carrinho pessoal no cadastro da cliente logada — só captura
+  // de dado (Client.cart em types.ts), não afeta o que aparece na tela (a
+  // exibição continua vindo do localStorage acima). Fire-and-forget, mesmo
+  // espírito dos outros syncs deste arquivo.
+  useEffect(() => {
+    if (!hydrated) return;
+    const clientId = authUserCtx.authUser?.role === 'cliente' ? authUserCtx.authUser.clientId : undefined;
+    if (!clientId) return;
+    fetch(`/api/clients/${clientId}/cart`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cart }),
+    }).catch(() => {});
+  }, [cart, hydrated, authUserCtx.authUser]);
 
   function addToCart(
     product: Product,
@@ -274,10 +302,23 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setCart([]);
   }
 
+  function setShipping(next: ShippingOption | null) {
+    setShippingState(next);
+    if (activeSession) talao!.updateActiveShipping(next);
+  }
+
   function clearShipping() {
     setShipping(null);
   }
 
+  // "Meus pedidos" é sempre da CONTA agora (ver GET/POST /api/orders,
+  // web/src/app/pedidos/page.tsx) — sem login não existe pedido pra
+  // mostrar, por isso não grava mais em localStorage aqui (fazia isso
+  // antes da conta existir; sem ninguém lendo, um pedido salvo aqui só
+  // vazava informação de compra pra "aparecer" mesmo deslogada, o que já
+  // confundiu quem testou). Cliente sem login que finaliza (WhatsApp ou
+  // /pagamento) tem o pedido enviado normalmente, só não fica salvo em
+  // lugar nenhum além da própria mensagem de WhatsApp/confirmação na tela.
   function saveOrderToHistory(items: CartItem[], total: number, extra: Record<string, unknown> = {}): Order {
     const order: Order = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -287,8 +328,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
       channel: 'whatsapp',
       ...extra,
     };
-    const orders = readJSON<Order[]>(ORDERS_KEY, []);
-    window.localStorage.setItem(ORDERS_KEY, JSON.stringify([order, ...orders]));
+    // Fire-and-forget, mesmo espírito despreocupado dos outros fetches
+    // deste arquivo — não trava o checkout se a rede falhar.
+    if (authUserCtx.authUser?.role === 'cliente') {
+      fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(order),
+      }).catch(() => {});
+    }
     return order;
   }
 
@@ -336,8 +384,4 @@ export function useCart() {
   const ctx = useContext(CartContext);
   if (!ctx) throw new Error('useCart precisa estar dentro de <CartProvider>');
   return ctx;
-}
-
-export function readOrders(): Order[] {
-  return readJSON<Order[]>(ORDERS_KEY, []);
 }

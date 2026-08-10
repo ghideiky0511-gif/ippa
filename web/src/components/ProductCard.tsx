@@ -5,6 +5,7 @@ import { COLOR_MAP } from '@/lib/config';
 import { formatBRL, priceWithPercentOff } from '@/lib/format';
 import { useCart } from './CartProvider';
 import { useQuickView } from './QuickViewProvider';
+import { useAuthUser } from './AuthProvider';
 import type { Product } from '@/lib/types';
 
 const MAX_DOTS = 6;
@@ -19,6 +20,7 @@ const MAX_DOTS = 6;
 export default function ProductCard({ product }: { product: Product }) {
   const { addDraft, removeProduct, cart } = useCart();
   const { openQuickView } = useQuickView();
+  const { showPrices } = useAuthUser();
   const colors = product.colors || [];
   const shown = colors.slice(0, MAX_DOTS);
   const extra = colors.length - shown.length;
@@ -63,7 +65,9 @@ export default function ProductCard({ product }: { product: Product }) {
           <h3>{product.name}</h3>
         </Link>
         {product.sku && <div className="card-sku">{product.sku}</div>}
-        {product.activeDiscount ? (
+        {!showPrices ? (
+          <Link href="/login" className="price price-locked">Entrar para ver o preço</Link>
+        ) : product.activeDiscount ? (
           <div className="price-discount-row" title={product.activeDiscount.label}>
             <span className="price-original">{formatBRL(product.price)}</span>
             <span className="price price-discounted">

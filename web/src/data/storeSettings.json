@@ -3,7 +3,8 @@
   "features": {
     "suggestedPrice": true,
     "preSale": true,
-    "readyToShip": true
+    "readyToShip": true,
+    "hidePriceWithoutLogin": true
   },
   "assignmentStrategy": "leastBusy"
 }

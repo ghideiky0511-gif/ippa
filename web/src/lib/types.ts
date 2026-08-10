@@ -134,6 +134,9 @@ export interface AuthUser {
   email: string;
   name: string;
   role: UserRole;
+  // Só presente quando role === 'cliente' — vincula ao cadastro em Client
+  // (ver abaixo), criado junto no autocadastro (POST /api/auth/signup).
+  clientId?: string;
 }
 
 // Cadastro de cliente — separado de AuthUser de propósito: uma cliente pode
@@ -151,6 +154,33 @@ export interface Client {
   cpfCnpj?: string;
   email?: string;
   cep?: string;
+  // Endereço completo — opcional aqui (cadastro parcial da vendedora no
+  // talão pode não ter isso), mas obrigatório no autocadastro da cliente
+  // final (POST /api/auth/signup, ver web/src/app/cadastro/page.tsx e o
+  // autofill por CEP via ViaCEP). isClientComplete (clientComplete.ts) não
+  // exige esses campos — o gate do talão continua só nome+CPF/CNPJ+email+CEP.
+  street?: string;
+  number?: string;
+  complement?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+  // Opcionais, mostrados condicionalmente no cadastro conforme o
+  // documento digitado (nunca os dois ao mesmo tempo — ver docType em
+  // web/src/app/cadastro/page.tsx e ClientCadastroSection.tsx): CNPJ
+  // (14 dígitos) pergunta quem é o responsável pela empresa; CPF (11
+  // dígitos) pergunta o nome da loja da cliente (revendedora informal).
+  // Nunca bloqueiam o cadastro — a pessoa segue sem preencher se quiser.
+  companyResponsible?: string;
+  storeName?: string;
+  // Carrinho pessoal da cliente logada (fora de sessão de talão), espelhado
+  // aqui pra sobreviver além do localStorage do navegador — não é usado pra
+  // exibir/restaurar nada na tela hoje (CartProvider.tsx continua lendo do
+  // localStorage), é só captura de dado pra análise futura (quantas
+  // clientes montam carrinho e não finalizam — "carrinho abandonado").
+  // Limpo (vira []) quando o pedido é finalizado.
+  cart?: CartItem[];
+  cartUpdatedAt?: string;
   lastSellerId?: string;
   createdAt: string;
   updatedAt: string;
@@ -171,7 +201,20 @@ export interface OrderSession {
   sellerId: string;
   channel: 'presencial' | 'whatsapp';
   items: CartItem[];
-  status: 'aberto' | 'fechado';
+  // Frete escolhido pela vendedora (ver /frete) — precisa sobreviver até a
+  // cliente abrir o link de pagamento, por isso persistido aqui em vez de
+  // ficar só no estado transitório que CartProvider usa pra compra direta.
+  shipping?: ShippingOption;
+  // 'aguardando_pagamento': vendedora já montou carrinho + frete e gerou o
+  // link (ver paymentToken abaixo) — só falta a cliente pagar. Continua
+  // contando como "aberto" no painel do talão (ver openSessions em
+  // TalaoProvider.tsx), com um badge próprio pra não confundir com pedido
+  // ainda em montagem.
+  status: 'aberto' | 'fechado' | 'aguardando_pagamento';
+  // Token do link de pagamento ativo (web/src/app/pagar/[token]/page.tsx) —
+  // é a própria autenticação desse link (sem exigir login da cliente).
+  // Limpo quando a sessão fecha (POST /api/pay/[token]).
+  paymentToken?: string;
   notes?: string;
   createdAt: string;
   updatedAt: string;
@@ -181,11 +224,24 @@ export interface Order {
   id: string;
   date: string;
   items: CartItem[];
-  total: number; // já líquido de desconto (ver AppliedDiscount em web/src/lib/discounts.ts)
+  total: number; // já líquido de desconto (ver getCartDiscount em web/src/lib/discounts.ts)
   channel: string;
   shipping?: ShippingOption;
   paymentMethod?: string;
   discount?: { label: string; amount: number }; // snapshot do desconto aplicado no momento da compra, pra "Meus pedidos" mostrar mesmo se a regra mudar depois
+  // Presentes só nos pedidos gravados no servidor (web/src/lib/orderHistory.ts),
+  // não nos antigos/locais salvos só no localStorage do navegador (ver
+  // readOrders em CartProvider.tsx). clientId: autocompra da cliente logada
+  // OU pedido de talão fechado via link de pagamento (ver
+  // POST /api/pay/[token]/route.ts) — nesse segundo caso sellerId também
+  // vem preenchido (a vendedora que montou o pedido).
+  clientId?: string;
+  sellerId?: string;
+  // Snapshot do nome da cliente no momento do pedido — só usado pra
+  // "Minhas vendas" da vendedora (web/src/app/pedidos/page.tsx), que lista
+  // vendas de clientes diferentes e precisa saber de quem é cada uma; a
+  // própria "Meus pedidos" da cliente não precisa disso (já é sempre ela).
+  clientName?: string;
 }
 
 export interface ShippingOption {

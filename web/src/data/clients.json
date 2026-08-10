@@ -1,1 +1,11 @@
-[]
+[
+  {
+    "id": "5d68d0ca-2767-4e13-93d6-43688506e5df",
+    "name": "Guilherme",
+    "cpfCnpj": "50045582807",
+    "email": "guilherme@bippa.com.br",
+    "cep": "03166001",
+    "createdAt": "2026-08-10T18:41:40.310Z",
+    "updatedAt": "2026-08-10T18:41:40.310Z"
+  }
+]

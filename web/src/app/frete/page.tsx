@@ -1,30 +1,82 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { formatBRL } from '@/lib/format';
 import { calculateShipping } from '@/lib/shipping';
 import { useCart } from '@/components/CartProvider';
+import { useTalao } from '@/components/TalaoProvider';
+import { useAuthUser } from '@/components/AuthProvider';
 import { useTalaoClientGate } from '@/components/useTalaoClientGate';
 import CheckoutSteps from '@/components/CheckoutSteps';
-import type { ShippingOption } from '@/lib/types';
+import type { Client, ShippingOption } from '@/lib/types';
 
 export default function FretePage() {
   const router = useRouter();
   const { cart, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, shipping, setShipping } = useCart();
+  const talao = useTalao();
+  const activeSession = talao?.activeSession ?? null;
+  const { authUser } = useAuthUser();
   const gate = useTalaoClientGate();
   const [cep, setCep] = useState('');
   const [options, setOptions] = useState<ShippingOption[] | null>(null);
+  const [savedCep, setSavedCep] = useState<string | null>(null);
+  const [linkState, setLinkState] = useState<{ token: string; error: string | null; loading: boolean }>({
+    token: activeSession?.paymentToken || '',
+    error: null,
+    loading: false,
+  });
+
+  // Cliente logada com CEP salvo no cadastro — atalho pra não digitar de
+  // novo (ver GET /api/clients/[id], que agora também autoriza a própria
+  // cliente a buscar o próprio cadastro).
+  useEffect(() => {
+    if (!authUser?.clientId) return;
+    let cancelled = false;
+    fetch(`/api/clients/${authUser.clientId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((client: Client | null) => {
+        if (!cancelled && client?.cep) setSavedCep(client.cep);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser?.clientId]);
+
+  useEffect(() => {
+    setLinkState((prev) => ({ ...prev, token: activeSession?.paymentToken || '' }));
+  }, [activeSession?.paymentToken]);
 
   function handleCalculate(e: FormEvent) {
     e.preventDefault();
     setOptions(calculateShipping(cep));
   }
 
+  function useSavedCep() {
+    if (!savedCep) return;
+    setCep(savedCep);
+    setOptions(calculateShipping(savedCep));
+  }
+
   function handleContinue() {
     if (!shipping) return;
     router.push('/pagamento');
+  }
+
+  async function handleGenerateLink() {
+    setLinkState((prev) => ({ ...prev, loading: true, error: null }));
+    try {
+      const token = await talao!.requestPaymentLink();
+      setLinkState({ token, error: null, loading: false });
+    } catch (err) {
+      setLinkState((prev) => ({ ...prev, loading: false, error: err instanceof Error ? err.message : 'Erro ao gerar o link.' }));
+    }
+  }
+
+  function copyLink(link: string) {
+    navigator.clipboard?.writeText(link).catch(() => {});
   }
 
   const reachable = shipping ? 3 : cart.length > 0 ? 2 : 1;
@@ -56,10 +108,18 @@ export default function FretePage() {
     );
   }
 
+  const paymentLink = linkState.token && typeof window !== 'undefined' ? `${window.location.origin}/pagar/${linkState.token}` : '';
+
   return (
     <main className="container checkout-page">
       <CheckoutSteps current="/frete" reachable={reachable} />
       <h1>Frete</h1>
+
+      {savedCep && (
+        <button type="button" className="btn-clear cep-shortcut" onClick={useSavedCep}>
+          Usar meu CEP cadastrado ({savedCep})
+        </button>
+      )}
 
       <form className="cep-form" onSubmit={handleCalculate}>
         <input
@@ -114,11 +174,31 @@ export default function FretePage() {
         </div>
       )}
 
-      <div className="checkout-actions">
-        <button className="btn-add" disabled={!shipping} onClick={handleContinue}>
-          Continuar para pagamento
-        </button>
-      </div>
+      {activeSession ? (
+        <div className="checkout-actions">
+          {!paymentLink ? (
+            <button className="btn-add" disabled={!shipping || linkState.loading} onClick={handleGenerateLink}>
+              {linkState.loading ? 'Gerando link…' : 'Gerar link de pagamento'}
+            </button>
+          ) : (
+            <div className="payment-link-panel">
+              <p>Link de pagamento gerado — envie pra cliente:</p>
+              <div className="payment-link-row">
+                <input readOnly value={paymentLink} onFocus={(e) => e.target.select()} />
+                <button type="button" className="btn-add" onClick={() => copyLink(paymentLink)}>Copiar</button>
+              </div>
+              <p className="payment-link-hint">Aguardando a cliente pagar — o pedido fecha sozinho assim que ela confirmar.</p>
+            </div>
+          )}
+          {linkState.error && <p className="login-error">{linkState.error}</p>}
+        </div>
+      ) : (
+        <div className="checkout-actions">
+          <button className="btn-add" disabled={!shipping} onClick={handleContinue}>
+            Continuar para pagamento
+          </button>
+        </div>
+      )}
 
       <Link href="/carrinho" className="back-link">← Voltar ao carrinho</Link>
     </main>

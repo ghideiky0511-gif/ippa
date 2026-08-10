@@ -6,12 +6,16 @@ import type { Client } from '@/lib/types';
 // Busca um cadastro específico — usado pelo gate de "cadastro completo"
 // antes do frete no talão (ver useTalaoClientGate.ts): a sessão guarda só
 // o clientId, então a página de frete/pagamento precisa buscar o cadastro
-// completo pra checar isClientComplete().
+// completo pra checar isClientComplete(). Também usado pela própria cliente
+// logada (ver web/src/app/frete/page.tsx) pra reaproveitar o CEP salvo no
+// cadastro — por isso a segunda condição abaixo: só o PRÓPRIO cadastro
+// (clientId da sessão precisa bater com o id pedido), nunca o de outra.
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   const user = await getUserFromToken(token);
-  if (!user || user.role !== 'vendedora') {
+  const isOwnClient = user?.role === 'cliente' && user.clientId === id;
+  if (!user || (user.role !== 'vendedora' && !isOwnClient)) {
     return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
   }
 
@@ -51,6 +55,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     cpfCnpj: typeof body.cpfCnpj === 'string' ? body.cpfCnpj.trim() || undefined : current.cpfCnpj,
     email: typeof body.email === 'string' ? body.email.trim() || undefined : current.email,
     cep: typeof body.cep === 'string' ? body.cep.trim() || undefined : current.cep,
+    companyResponsible: typeof body.companyResponsible === 'string' ? body.companyResponsible.trim() || undefined : current.companyResponsible,
+    storeName: typeof body.storeName === 'string' ? body.storeName.trim() || undefined : current.storeName,
     updatedAt: new Date().toISOString(),
   };
   clients[index] = updated;

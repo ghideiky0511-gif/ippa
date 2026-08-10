@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
@@ -48,6 +49,9 @@ export default function LoginPage() {
         <button className="btn-add" type="submit" disabled={loading}>
           {loading ? 'Entrando…' : 'Entrar'}
         </button>
+        <p className="auth-switch-link">
+          Não tem conta? <Link href="/cadastro">Cadastre-se</Link>
+        </p>
       </form>
     </div>
   );

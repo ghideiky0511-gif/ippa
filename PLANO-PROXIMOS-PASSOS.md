@@ -184,6 +184,113 @@ depois, combinado com o usuário):
   mesmo `ProductCard`/`ProductQuickView`/`ProductDetailContent` — sem
   nenhuma tela paralela; o "+" dela só aponta pra outro lugar por baixo.
 
+**Login/cadastro self-service da cliente final — feito.** Nova tela
+`/cadastro` (nome, e-mail, senha, CPF/CNPJ e CEP tudo de uma vez — decisão
+combinada: diferente do cadastro parcial que a vendedora cria no talão,
+aqui já sai completo) cria o `Client` e o `AuthUser` (role `'cliente'`)
+juntos, vinculados por `clientId` (`AuthUser.clientId`, novo campo em
+`types.ts`) — `POST /api/auth/signup` (`web/src/lib/auth.ts`,
+`createUser`). `/login` ganhou link pra `/cadastro` e vice-versa; TopNav
+mostra "Sair" pra qualquer usuário logado agora (antes só considerava
+vendedora). Checkout convidado (sem login) continua funcionando igual —
+login não virou obrigatório pra comprar, só uma opção a mais.
+
+Combinado junto: **"esconder preço de quem não está logado" virou
+ferramenta opcional** em `/ferramentas` (`hidePriceWithoutLogin`,
+desligada por padrão), não um comportamento fixo. Quando ligada,
+`ProductCard.tsx` e `ProductDetailContent.tsx` trocam o preço por um link
+"Entrar para ver o preço" pra quem não tem sessão — resto do card/página
+(imagem, cores, adicionar ao carrinho) continua funcionando normalmente.
+Novo `AuthProvider.tsx` (`web/src/components/`) expõe `useAuthUser()`
+(`authUser` + `showPrices`) pra qualquer componente do catálogo, montado
+em `AppShell.tsx` a partir do `authUser` que `layout.tsx` já resolve no
+servidor (sem fetch/flash extra pra esse dado; só o toggle da ferramenta
+depende de um fetch client-side, mesmo padrão já aceito pros pills de
+pré-venda/pronta-entrega).
+
+**Limitação conhecida**: um cadastro criado pela vendedora no talão
+(parcial, sem login) e um autocadastro feito depois pela mesma pessoa
+não se casam automaticamente — podem virar dois registros de `Client`
+separados. Aceitável por ora, resolver isso é um passo futuro.
+
+**Endereço completo + "Meus pedidos" por conta + link de pagamento do
+talão — feito.** Três extensões em cima do login:
+
+- `/cadastro` agora pede endereço completo (Rua, Número, Complemento,
+  Bairro, Cidade, Estado, além do CEP), com autofill por CEP via ViaCEP
+  (serviço público). `web/src/app/frete/page.tsx` reaproveita o CEP salvo
+  da cliente logada como atalho ("Usar meu CEP cadastrado"), sem digitar
+  de novo. `GET /api/clients/[id]` passa a autorizar também a própria
+  cliente buscar o próprio cadastro (antes só a vendedora).
+- **"Meus pedidos" passou a vir da conta**, não só do navegador — novo
+  histórico no servidor (`web/src/lib/orderHistory.ts`,
+  `web/src/data/orderHistory.json`, `GET/POST /api/orders`), tagueado por
+  `Order.clientId`. `CartProvider.tsx` continua gravando no `localStorage`
+  também (sem regressão pra quem não está logada), e `/pedidos` escolhe a
+  fonte (conta vs. navegador) conforme o login.
+- **Pedido de talão fechado por link de pagamento sem login**: a
+  vendedora monta carrinho + escolhe frete (persistidos na sessão,
+  `OrderSession.shipping`) e gera um link
+  (`POST /api/sessions/[id]/payment-link`, token aleatório) em `/frete` —
+  a sessão vira `status: 'aguardando_pagamento'` (badge próprio no
+  talão). A cliente abre `web/src/app/pagar/[token]/page.tsx` (rota
+  pública, sem `AppShell`, sem exigir login — o token é a própria
+  autenticação), escolhe a forma de pagamento e confirma
+  (`POST /api/pay/[token]`), o que grava o pedido em `orderHistory.json`
+  com **`clientId` E `sellerId`** (aparece em "Meus pedidos" da cliente E
+  fica rastreável pelo lado da vendedora, mesmo sem tela própria de
+  histórico de vendas ainda) e fecha a sessão. Acessar `/pagamento`
+  direto com uma sessão de talão ativa agora mostra um aviso — só a
+  cliente finaliza, pelo link.
+- **"Minhas vendas" da vendedora — feito.** `web/src/app/pedidos/page.tsx`
+  agora atende os dois perfis: cliente vê "Meus pedidos" (compras dela,
+  por `clientId`), vendedora vê "Minhas vendas" (pedidos de talão que ela
+  fechou via link de pagamento, por `sellerId`, com o nome de cada
+  cliente mostrado no card — `Order.clientName`, snapshot salvo no
+  momento do pedido). Mesmo endpoint `GET /api/orders`, que agora decide
+  o filtro pelo role de quem está logado. Link no topo (`AppShell.tsx`)
+  também passou a aparecer pra vendedora ("Minhas vendas"), antes ficava
+  escondido.
+- **Talão em tempo real quando a cliente paga — feito.** SSE simples
+  (`web/src/lib/sseHub.ts`, um canal por `sellerId` — decisão já registrada
+  acima em "Estratégia de tempo real"): `GET /api/sessions/stream`
+  (vendedora autenticada assina) recebe um evento assim que
+  `POST /api/pay/[token]` fecha uma sessão dela; `TalaoProvider.tsx`
+  escuta e refaz o `GET /api/sessions` sozinho, sem precisar de F5.
+  Pegadinha de dev que valeu registrar: o `Map` de assinantes precisou
+  virar `globalThis` em vez de uma constante de módulo — rotas diferentes
+  do Next.js podem cair em instâncias de módulo separadas mesmo no mesmo
+  processo, e um `Map` comum nunca seria compartilhado entre a rota que
+  assina e a que notifica.
+- **Fora de escopo por ora**: reenvio/expiração de link de pagamento
+  (hoje um token só vale até a sessão fechar).
+
+**Cadastro mais completo + captura de dado pra análise futura — feito.**
+Pedido do usuário: "salvar todos os dados possíveis por cliente/vendedora
+pra usarmos depois". Dividido em dois:
+
+- **Campo extra condicional no cadastro** (`web/src/lib/document.ts`,
+  `getDocumentType` — decide CPF (11 dígitos) vs CNPJ (14 dígitos) pelo que
+  foi digitado, sem validar dígito verificador): CNPJ pergunta
+  "Responsável pela empresa", CPF pergunta "Nome da loja" — os dois
+  opcionais, nunca travam o cadastro. Vale tanto no autocadastro
+  (`/cadastro`) quanto no cadastro rápido que a vendedora cria no talão
+  (`ClientCadastroSection` em `TalaoDrawer.tsx`) — mesmo campo novo em
+  `Client` (`companyResponsible`/`storeName`, `types.ts`).
+- **Carrinho pessoal espelhado no cadastro** (`Client.cart`/`cartUpdatedAt`,
+  novo `PUT /api/clients/[id]/cart`, só a própria cliente pode gravar o
+  próprio) — pra dar pra medir depois "carrinho abandonado" (monta e não
+  finaliza), que hoje não tinha registro nenhum (só existia no
+  `localStorage`, invisível pra loja). Não muda nada na tela — o carrinho
+  exibido continua vindo do `localStorage` normalmente, isso é só um
+  espelho pra análise.
+- **Já estava capturado, só não tinha onde consultar ainda**: venda por
+  período (`Order.date`), peça mais vendida (`Order.items`, agregável),
+  autocompra vs. venda assistida (presença de `Order.sellerId`). Nenhum
+  dado novo precisou ser criado pra isso — falta só uma tela/relatório que
+  leia `orderHistory.json` e agregue, que é um passo separado (dashboard),
+  não fica pronto sozinho por só "salvar o dado".
+
 **Combinado com o usuário, ainda não construído:**
 
 - **Tempo real (SSE)**: cada ação já grava no talão via API, mas duas
@@ -201,13 +308,6 @@ depois, combinado com o usuário):
   atendendo vários clientes ao mesmo tempo — importante lembrar disso
   quando for desenhar o SSE (uma sessão por `sessionId`, não um canal
   único pra todo mundo).
-- **Login/tela da cliente self-service**: ela loga sozinha, navega o
-  catálogo, monta carrinho. Ainda não construído — depende de: página de
-  cadastro/login da cliente, e decidir o que fica destravado só depois do
-  login (o usuário indicou que preço tende a ficar escondido pra visitante
-  não cadastrado — "a maioria das lojas mostra só foto sem preço" — mas
-  isso ainda não está implementado no catálogo público; hoje o preço
-  aparece pra qualquer visitante).
 - **Fila/roteamento pra cliente self-service** (regra combinada com o
   usuário, ainda sem quem chame): quando uma cliente logada começa a
   montar carrinho sozinha — primeira vez, cai pra uma vendedora logada
@@ -489,23 +589,34 @@ escolhido. Dado salvo em `web/src/data/discounts.json`, validado em
 `web/src/app/api/discounts/route.ts` (mesmo padrão arquivo+CORS de
 `/api/highlights`).
 
-**Aplicado de verdade** (`web/src/lib/discounts.ts`, `getBestDiscount(cart, discounts)`):
-função pura consumida por `CartProvider.tsx`, que agora expõe `cartSubtotal`
-(bruto), `cartDiscount` (`{discount, amount}` ou `null`) e `cartTotal` (já
-líquido) — todo consumidor (`CartDrawer`, `/carrinho`, `/frete`,
-`/pagamento`, mensagem de WhatsApp, `saveOrderToHistory`/`Order.discount`
-pra "Meus pedidos") lê daí, sem lógica duplicada. Decisões combinadas com o
-usuário:
-- **Combinação**: quando mais de uma regra ativa se aplica ao mesmo pedido,
-  usa só a que dá o **maior desconto em R$** pro cliente — nunca soma duas
-  regras juntas.
-- Tipo `quantity`: faixas não empilham entre si, só a maior faixa atingida
-  vale, incide sobre o subtotal inteiro do pedido.
+**Aplicado de verdade** (`web/src/lib/discounts.ts`, `getCartDiscount(cart, discounts)`):
+função pura consumida por `CartProvider.tsx`, que expõe `cartSubtotal`
+(bruto), `cartDiscountByProduct` (melhor desconto de CADA produto),
+`cartDiscountLabel`/`cartDiscountTotal` (resumo pro pedido inteiro) e
+`cartTotal` (já líquido) — todo consumidor (`CartDrawer`, `GroupedCartItems`,
+`CartRows`, `/carrinho`, `/frete`, `/pagamento`, mensagem de WhatsApp,
+`saveOrderToHistory`/`Order.discount` pra "Meus pedidos") lê daí, sem lógica
+duplicada. Decisões combinadas com o usuário:
+- **Por produto, não pelo carrinho todo**: cada desconto incide só sobre o
+  produto a que se refere — corrigido depois que `quantity` somava peças de
+  produtos diferentes pra decidir o desconto e aplicava no pedido inteiro
+  (uma peça nova de 1 unidade entrava com 10% off só porque outro produto
+  do carrinho já tinha 10+ unidades). Agora a quantidade mínima de
+  `quantity` é contada só com as peças DAQUELE produto no carrinho, e o
+  desconto incide só sobre o subtotal daquele produto — cada produto tem
+  seu próprio desconto, mostrado na própria linha (drawer e `/carrinho`); o
+  resumo do pedido soma os descontos de todos os produtos.
+- **Combinação**: quando mais de uma regra ativa se aplica ao MESMO produto,
+  usa só a que dá o **maior desconto em R$** pra aquele produto — nunca soma
+  duas regras juntas.
 - Tipo `products`: incide só sobre o subtotal das peças elegíveis
-  (`productIds`), o resto do pedido não é afetado.
+  (`productIds`).
 - Exibição: linha "Desconto (rótulo da regra): -R$X" aparece no resumo
   (carrinho/frete/pagamento) e na mensagem de WhatsApp só quando há desconto
   aplicável — sem desconto, a UI fica igual a antes (sem linha "R$ 0,00").
+  Se produtos diferentes do carrinho usaram regras diferentes, o resumo
+  mostra o rótulo genérico "Descontos aplicados" (o valor somado continua
+  exato, só o nome da regra fica genérico quando não é uma única regra).
 
 ## Fora de escopo por enquanto
 

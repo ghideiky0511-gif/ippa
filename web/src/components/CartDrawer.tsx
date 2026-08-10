@@ -71,7 +71,7 @@ export default function CartDrawer() {
           <div className="cart-total"><span>Total</span><span>{formatBRL(cartTotal)}</span></div>
           <button className="btn-whatsapp" onClick={checkoutWhatsapp}>Finalizar pedido via WhatsApp</button>
           <button className="btn-site-checkout" onClick={goToCheckout}>Revisar e continuar no site</button>
-          <div className="whatsapp-hint">Ao enviar pelo WhatsApp, o pedido fica salvo em "Meus pedidos" neste navegador. Nada é cobrado automaticamente.</div>
+          <div className="whatsapp-hint">Ao enviar pelo WhatsApp, nada é cobrado automaticamente. Entre ou crie uma conta pra ver esse pedido depois em "Meus pedidos".</div>
         </div>
       </aside>
     </>

@@ -47,6 +47,8 @@ export async function POST(request: NextRequest) {
     cpfCnpj: typeof body.cpfCnpj === 'string' ? body.cpfCnpj.trim() || undefined : undefined,
     email: typeof body.email === 'string' ? body.email.trim() || undefined : undefined,
     cep: typeof body.cep === 'string' ? body.cep.trim() || undefined : undefined,
+    companyResponsible: typeof body.companyResponsible === 'string' ? body.companyResponsible.trim() || undefined : undefined,
+    storeName: typeof body.storeName === 'string' ? body.storeName.trim() || undefined : undefined,
     lastSellerId: user.id,
     createdAt: now,
     updatedAt: now,

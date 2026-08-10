@@ -1,8 +1,8 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { readFile, writeFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 import bcrypt from 'bcryptjs';
-import type { AuthUser } from './types';
+import type { AuthUser, UserRole } from './types';
 
 // Login simples (email+senha) pra usuário de teste — vendedora hoje,
 // cliente quando essa fase existir. Sem banco: users.json guarda as
@@ -30,6 +30,12 @@ async function readUsers(): Promise<StoredUser[]> {
   return JSON.parse(raw);
 }
 
+async function writeUsers(users: StoredUser[]): Promise<void> {
+  const tmpPath = `${USERS_PATH}.tmp`;
+  await writeFile(tmpPath, JSON.stringify(users, null, 2), 'utf-8');
+  await rename(tmpPath, USERS_PATH);
+}
+
 async function readAuthSessions(): Promise<Record<string, StoredAuthSession>> {
   const raw = await readFile(SESSIONS_PATH, 'utf-8');
   return JSON.parse(raw);
@@ -52,6 +58,37 @@ export async function verifyLogin(email: string, password: string): Promise<Auth
   if (!user) return null;
   const ok = await bcrypt.compare(password, user.passwordHash);
   return ok ? withoutPasswordHash(user) : null;
+}
+
+// Autocadastro (hoje só role 'cliente', via POST /api/auth/signup) —
+// e-mail precisa ser único em TODO users.json, não só dentro da mesma
+// role (é o mesmo sistema de login pra vendedora e cliente). Lança
+// 'EMAIL_TAKEN' em vez de retornar null pra quem chama distinguir esse
+// caso específico de qualquer outro erro.
+export async function createUser(params: {
+  email: string;
+  password: string;
+  name: string;
+  role: UserRole;
+  clientId?: string;
+}): Promise<AuthUser> {
+  const users = await readUsers();
+  const email = params.email.trim();
+  if (users.some((u) => u.email.toLowerCase() === email.toLowerCase())) {
+    throw new Error('EMAIL_TAKEN');
+  }
+  const passwordHash = await bcrypt.hash(params.password, 10);
+  const user: StoredUser = {
+    id: randomUUID(),
+    email,
+    name: params.name.trim(),
+    role: params.role,
+    clientId: params.clientId,
+    passwordHash,
+  };
+  users.push(user);
+  await writeUsers(users);
+  return withoutPasswordHash(user);
 }
 
 export async function createSessionToken(userId: string): Promise<string> {

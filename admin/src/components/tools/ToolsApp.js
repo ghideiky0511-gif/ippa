@@ -25,6 +25,12 @@ const TOOLS = [
     label: 'Filtro de pronta entrega',
     description: 'Botão "pronta-entrega" no filtro de entrega da página de produto/quick-view (grade de cor×tamanho).',
   },
+  {
+    id: 'hidePriceWithoutLogin',
+    label: 'Esconder preço de quem não está logado',
+    description:
+      'Visitante sem cadastro/login vê só foto, nome e cores — o preço vira um link pra entrar/criar conta. Desligada por padrão (diferente das outras ferramentas acima, aqui a peça começa sempre com preço à mostra em storeSettings.json até a loja ligar).',
+  },
 ];
 
 const ASSIGNMENT_STRATEGIES = [
