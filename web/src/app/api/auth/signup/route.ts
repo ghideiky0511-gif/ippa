@@ -6,6 +6,7 @@ import { readOrderSessions, writeOrderSessions, countOpenSessionsBySeller } from
 import { pickSeller } from '@/lib/assignment';
 import { readStoreSettings } from '@/lib/storeSettings';
 import { notifySession } from '@/lib/sseHub';
+import { sendSignupConfirmationEmail } from '@/lib/email';
 import type { CartItem, Client, OrderSession } from '@/lib/types';
 
 // Autocadastro da cliente final (combinado com o usuário: cadastro completo
@@ -82,6 +83,10 @@ export async function POST(request: NextRequest) {
   const clients = await readClients();
   clients.push(client);
   await writeClients(clients);
+
+  // Fire-and-forget — não atrasa nem quebra o cadastro se o e-mail falhar
+  // (ver sendEmail em web/src/lib/email.ts, já captura erro sozinho).
+  sendSignupConfirmationEmail({ to: user.email, name: user.name });
 
   // Gatilho de fila: primeiro cadastro já cai numa vendedora, segundo a
   // estratégia da loja (storeSettings.json `assignmentStrategy`, ver

@@ -72,6 +72,19 @@ export async function hasLoginForClient(clientId: string): Promise<boolean> {
   return users.some((u) => u.clientId === clientId);
 }
 
+// AuthUser vinculado a um Client, se existir — usado pra resolver o
+// "e-mail cadastrado" de verdade (o da conta/login, ver
+// web/src/lib/email.ts) a partir de um clientId, em vez do Client.email
+// (que é só um campo de cadastro e pode nunca ter sido preenchido, ou
+// divergir do e-mail usado no login criado depois — ver POST
+// /api/clients/[id]/create-login, o e-mail do login é escolhido na hora,
+// só vem pré-preenchido com o do cadastro).
+export async function getAuthUserByClientId(clientId: string): Promise<AuthUser | null> {
+  const users = await readUsers();
+  const user = users.find((u) => u.clientId === clientId);
+  return user ? withoutPasswordHash(user) : null;
+}
+
 export async function verifyLogin(email: string, password: string): Promise<AuthUser | null> {
   const users = await readUsers();
   const user = users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());

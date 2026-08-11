@@ -4,6 +4,7 @@ import { readOrderHistory, writeOrderHistory } from '@/lib/orderHistory';
 import { readOrderSessions, writeOrderSessions } from '@/lib/orderSessions';
 import { notifySession } from '@/lib/sseHub';
 import { readStoreSettings } from '@/lib/storeSettings';
+import { sendOrderConfirmedEmail } from '@/lib/email';
 import type { Order } from '@/lib/types';
 
 // Pedidos da CONTA logada (ver web/src/app/pedidos/page.tsx, "Meus
@@ -92,6 +93,8 @@ export async function POST(request: NextRequest) {
 
   const orders = await readOrderHistory();
   await writeOrderHistory([order, ...orders]);
+
+  sendOrderConfirmedEmail({ to: user.email, name: user.name, total: order.total, orderId: order.id });
 
   return NextResponse.json(order);
 }

@@ -1,10 +1,11 @@
 import { randomBytes } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserFromToken, SESSION_COOKIE, hasLoginForClient } from '@/lib/auth';
+import { getUserFromToken, SESSION_COOKIE, hasLoginForClient, getAuthUserByClientId } from '@/lib/auth';
 import { readOrderSessions, writeOrderSessions } from '@/lib/orderSessions';
 import { readClients } from '@/lib/clients';
 import { isClientComplete } from '@/lib/clientComplete';
 import { readStoreSettings, PAYMENT_LINK_EXPIRATION_DEFAULT_MINUTES } from '@/lib/storeSettings';
+import { sendPaymentLinkEmail } from '@/lib/email';
 import type { OrderSession } from '@/lib/types';
 
 async function isLinkValid(session: OrderSession): Promise<boolean> {
@@ -80,6 +81,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     updatedAt: new Date().toISOString(),
   };
   await writeOrderSessions(sessions);
+
+  // Manda pro e-mail da CONTA (não Client.email — pode divergir, ver
+  // getAuthUserByClientId em web/src/lib/auth.ts), já que chegou até aqui
+  // só existe token porque hasLoginForClient confirmou que ela tem login.
+  // Só nesse branch (token novo) — reaproveitar um token ainda válido não
+  // reenvia e-mail, seria repetir o mesmo link.
+  const authUserForClient = await getAuthUserByClientId(session.clientId!);
+  if (authUserForClient) {
+    const link = `${request.nextUrl.origin}/pagar/${paymentToken}`;
+    sendPaymentLinkEmail({ to: authUserForClient.email, name: authUserForClient.name, link });
+  }
 
   return NextResponse.json({ token: paymentToken });
 }

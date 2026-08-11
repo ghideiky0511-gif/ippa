@@ -6,6 +6,8 @@ import { readOrderHistory, writeOrderHistory } from '@/lib/orderHistory';
 import { getCartDiscount } from '@/lib/discounts';
 import { notifySession } from '@/lib/sseHub';
 import { readStoreSettings, PAYMENT_LINK_EXPIRATION_DEFAULT_MINUTES } from '@/lib/storeSettings';
+import { getAuthUserByClientId } from '@/lib/auth';
+import { sendOrderConfirmedEmail } from '@/lib/email';
 import type { Discount, Order, OrderSession } from '@/lib/types';
 
 // Página pública de pagamento (web/src/app/pagar/[token]/page.tsx) — o
@@ -115,6 +117,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // outra aba) — ver web/src/lib/sseHub.ts e TalaoProvider.tsx/
   // ClientSessionProvider.tsx (assinam e refetcham ao vivo, sem F5).
   notifySession(session);
+
+  // Quem abriu o link pagou como convidada nesta aba (sem cookie/login
+  // aqui, ver comentário do arquivo) — mas por causa do gate de login no
+  // talão (POST /api/sessions/[id]/payment-link exige hasLoginForClient),
+  // essa cliente sempre tem conta a essa altura. Manda a confirmação pro
+  // e-mail da conta.
+  if (session.clientId) {
+    const authUserForClient = await getAuthUserByClientId(session.clientId);
+    if (authUserForClient) {
+      sendOrderConfirmedEmail({ to: authUserForClient.email, name: authUserForClient.name, total: cartTotal, orderId: order.id });
+    }
+  }
 
   return NextResponse.json({ ok: true, order });
 }

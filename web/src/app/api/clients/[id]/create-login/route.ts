@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromToken, SESSION_COOKIE, createUser, hasLoginForClient } from '@/lib/auth';
 import { readClients } from '@/lib/clients';
+import { sendSignupConfirmationEmail } from '@/lib/email';
 
 // Cria login (e-mail+senha) pra um cadastro de cliente que já existe (feito
 // pela vendedora dentro do talão) — transforma um "cadastro rápido" (só
@@ -42,6 +43,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   try {
     const newUser = await createUser({ email, password, name: client.name, role: 'cliente', clientId: id });
+    sendSignupConfirmationEmail({ to: newUser.email, name: newUser.name });
     return NextResponse.json({ user: newUser });
   } catch (err) {
     if (err instanceof Error && err.message === 'EMAIL_TAKEN') {
