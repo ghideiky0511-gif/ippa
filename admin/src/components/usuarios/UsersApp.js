@@ -2,20 +2,28 @@
 
 import { useMemo, useState } from 'react';
 import AdminNav from '@/components/AdminNav';
+import { createVendedora } from '@/lib/usersClient';
 
 const ROLE_LABELS = { vendedora: 'Vendedora', cliente: 'Cliente' };
 
+const EMPTY_FORM = { name: '', email: '', password: '' };
+
 // Aba "Usuários" — todo cadastro (vendedora + cliente) numa lista só,
 // pensada como o lugar central pra achar quem se cadastrou (ver
-// GET /api/admin/users, que já junta users.json com clients.json). Só
-// leitura nesta rodada — editar dado de conta pelo admin é um passo
-// futuro (mexeria em senha/hash, fora de escopo por ora).
+// GET /api/admin/users, que já junta users.json com clients.json). A
+// listagem de clientes é só leitura (o cadastro delas acontece pelo
+// catálogo/talão), mas aqui também dá pra CRIAR um acesso de vendedora —
+// é o único jeito de virar vendedora hoje, não existe autocadastro público
+// pra esse papel (ver POST /api/admin/users, de propósito).
 export default function UsersApp({ initialUsers }) {
+  const [users, setUsers] = useState(initialUsers || []);
   const [query, setQuery] = useState('');
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [saveState, setSaveState] = useState('idle'); // idle | saving | error
+  const [errorMsg, setErrorMsg] = useState('');
 
   const q = query.trim().toLowerCase();
   const results = useMemo(() => {
-    const users = initialUsers || [];
     if (!q) return users;
     return users.filter(
       (u) =>
@@ -23,7 +31,32 @@ export default function UsersApp({ initialUsers }) {
         (u.email || '').toLowerCase().includes(q) ||
         (u.cpfCnpj || '').toLowerCase().includes(q)
     );
-  }, [initialUsers, q]);
+  }, [users, q]);
+
+  async function handleCreateVendedora(e) {
+    e.preventDefault();
+    if (!form.name.trim() || !form.email.trim() || !form.password) {
+      setSaveState('error');
+      setErrorMsg('Preencha nome, e-mail e senha.');
+      return;
+    }
+    if (form.password.length < 6) {
+      setSaveState('error');
+      setErrorMsg('A senha precisa ter pelo menos 6 caracteres.');
+      return;
+    }
+    setSaveState('saving');
+    setErrorMsg('');
+    try {
+      const newUser = await createVendedora(form);
+      setUsers((prev) => [newUser, ...prev]);
+      setForm(EMPTY_FORM);
+      setSaveState('idle');
+    } catch (err) {
+      setSaveState('error');
+      setErrorMsg(err.message);
+    }
+  }
 
   return (
     <div className="products-page">
@@ -35,6 +68,42 @@ export default function UsersApp({ initialUsers }) {
       </div>
 
       <main className="products-editor">
+        <form onSubmit={handleCreateVendedora}>
+          <h2>Novo acesso de vendedora</h2>
+          <div className="field-row" style={{ alignItems: 'flex-end' }}>
+            <div className="field" style={{ maxWidth: 220 }}>
+              <label>Nome</label>
+              <input
+                value={form.name}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="Nome da vendedora"
+              />
+            </div>
+            <div className="field" style={{ maxWidth: 260 }}>
+              <label>E-mail</label>
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                placeholder="email@loja.com"
+              />
+            </div>
+            <div className="field" style={{ maxWidth: 200 }}>
+              <label>Senha</label>
+              <input
+                type="password"
+                value={form.password}
+                onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                placeholder="Mínimo 6 caracteres"
+              />
+            </div>
+            <button className="btn btn-primary" type="submit" disabled={saveState === 'saving'}>
+              {saveState === 'saving' ? 'Criando…' : 'Criar acesso'}
+            </button>
+            {saveState === 'error' && <span className="status">{errorMsg}</span>}
+          </div>
+        </form>
+
         <div className="field" style={{ maxWidth: 360 }}>
           <label>Buscar</label>
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Nome, e-mail ou CPF/CNPJ..." />

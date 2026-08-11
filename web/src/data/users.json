@@ -13,5 +13,13 @@
     "role": "cliente",
     "clientId": "5d68d0ca-2767-4e13-93d6-43688506e5df",
     "passwordHash": "$2b$10$xrvlMBLRTlHRHQbdVDvpx.XzK7Tcy32pT.iHdCbHF.R4QLIK/cpYa"
+  },
+  {
+    "id": "e71fc248-1e14-4fa7-b5c6-0bab1b7d745d",
+    "email": "larissa@bippa.com",
+    "name": "Larissa",
+    "role": "cliente",
+    "clientId": "89615788-af8b-4da0-b133-5bbc01f89e0e",
+    "passwordHash": "$2b$10$OCLtGr4vp/ytVj2.tSZHvuUAlbcAQwh/GcDfxdH9ltC7fvme8zDIS"
   }
 ]

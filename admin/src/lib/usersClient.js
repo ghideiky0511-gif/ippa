@@ -5,3 +5,14 @@ export async function fetchUsers() {
   if (!res.ok) throw new Error('Não foi possível carregar os usuários.');
   return res.json();
 }
+
+export async function createVendedora({ name, email, password }) {
+  const res = await fetch(`${API_BASE}/api/admin/users`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, email, password }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Não foi possível criar o acesso.');
+  return data;
+}

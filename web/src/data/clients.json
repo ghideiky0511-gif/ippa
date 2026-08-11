@@ -7,5 +7,153 @@
     "cep": "03166001",
     "createdAt": "2026-08-10T18:41:40.310Z",
     "updatedAt": "2026-08-10T18:41:40.310Z"
+  },
+  {
+    "id": "89615788-af8b-4da0-b133-5bbc01f89e0e",
+    "name": "Larissa",
+    "cpfCnpj": "45400989809",
+    "email": "larissa@bippa.com",
+    "cep": "03166001",
+    "street": "Rua Taquari",
+    "number": "881",
+    "neighborhood": "Mooca",
+    "city": "São Paulo",
+    "state": "SP",
+    "createdAt": "2026-08-11T18:40:42.015Z",
+    "updatedAt": "2026-08-11T18:40:42.140Z",
+    "lastSellerId": "vend-teste-1",
+    "cart": [
+      {
+        "key": "47275ecd-e018-4ed3-a505-e4931a137fc5|PRETO|14",
+        "id": "47275ecd-e018-4ed3-a505-e4931a137fc5",
+        "name": "VESTIDO MAXI LACO",
+        "image": "https://cdn-op.vesti.mobi/p/3301/47275ecd-e018-4ed3-a505-e4931a137fc5/99883-lg.jpeg",
+        "color": "PRETO",
+        "size": "14",
+        "price": 159.9,
+        "qty": 3
+      },
+      {
+        "key": "47275ecd-e018-4ed3-a505-e4931a137fc5|VINHO|18",
+        "id": "47275ecd-e018-4ed3-a505-e4931a137fc5",
+        "name": "VESTIDO MAXI LACO",
+        "image": "https://cdn-op.vesti.mobi/p/3301/47275ecd-e018-4ed3-a505-e4931a137fc5/99883-lg.jpeg",
+        "color": "VINHO",
+        "size": "18",
+        "price": 159.9,
+        "qty": 1
+      },
+      {
+        "key": "47275ecd-e018-4ed3-a505-e4931a137fc5|VINHO|20",
+        "id": "47275ecd-e018-4ed3-a505-e4931a137fc5",
+        "name": "VESTIDO MAXI LACO",
+        "image": "https://cdn-op.vesti.mobi/p/3301/47275ecd-e018-4ed3-a505-e4931a137fc5/99883-lg.jpeg",
+        "color": "VINHO",
+        "size": "20",
+        "price": 159.9,
+        "qty": 1
+      },
+      {
+        "key": "47275ecd-e018-4ed3-a505-e4931a137fc5|PRETO|20",
+        "id": "47275ecd-e018-4ed3-a505-e4931a137fc5",
+        "name": "VESTIDO MAXI LACO",
+        "image": "https://cdn-op.vesti.mobi/p/3301/47275ecd-e018-4ed3-a505-e4931a137fc5/99883-lg.jpeg",
+        "color": "PRETO",
+        "size": "20",
+        "price": 159.9,
+        "qty": 2
+      },
+      {
+        "key": "e0512949-5e71-4099-be10-b5cd7bc7561b|CORAL|12",
+        "id": "e0512949-5e71-4099-be10-b5cd7bc7561b",
+        "name": "BLUSA PEPLUM CAIRO",
+        "image": "https://cdn-op.vesti.mobi/p/3301/e0512949-5e71-4099-be10-b5cd7bc7561b/95846-lg.png",
+        "color": "CORAL",
+        "size": "12",
+        "price": 55.9,
+        "qty": 2
+      },
+      {
+        "key": "e0512949-5e71-4099-be10-b5cd7bc7561b|CORAL|18",
+        "id": "e0512949-5e71-4099-be10-b5cd7bc7561b",
+        "name": "BLUSA PEPLUM CAIRO",
+        "image": "https://cdn-op.vesti.mobi/p/3301/e0512949-5e71-4099-be10-b5cd7bc7561b/95846-lg.png",
+        "color": "CORAL",
+        "size": "18",
+        "price": 55.9,
+        "qty": 9
+      },
+      {
+        "key": "53c399af-0bda-43f1-b85d-273375fe1765|AMARELO|14",
+        "id": "53c399af-0bda-43f1-b85d-273375fe1765",
+        "name": "TOP RENDA LASTEX",
+        "image": "https://cdn-op.vesti.mobi/p/3301/53c399af-0bda-43f1-b85d-273375fe1765/85793-lg.png",
+        "color": "AMARELO",
+        "size": "14",
+        "price": 72.9,
+        "qty": 5
+      },
+      {
+        "key": "53c399af-0bda-43f1-b85d-273375fe1765|AMARELO|18",
+        "id": "53c399af-0bda-43f1-b85d-273375fe1765",
+        "name": "TOP RENDA LASTEX",
+        "image": "https://cdn-op.vesti.mobi/p/3301/53c399af-0bda-43f1-b85d-273375fe1765/85793-lg.png",
+        "color": "AMARELO",
+        "size": "18",
+        "price": 72.9,
+        "qty": 3
+      },
+      {
+        "key": "53c399af-0bda-43f1-b85d-273375fe1765|AMARELO|20",
+        "id": "53c399af-0bda-43f1-b85d-273375fe1765",
+        "name": "TOP RENDA LASTEX",
+        "image": "https://cdn-op.vesti.mobi/p/3301/53c399af-0bda-43f1-b85d-273375fe1765/85793-lg.png",
+        "color": "AMARELO",
+        "size": "20",
+        "price": 72.9,
+        "qty": 1
+      },
+      {
+        "key": "bc4a970c-6194-42c1-a5b9-18b17028e71d|AMARELO|14",
+        "id": "bc4a970c-6194-42c1-a5b9-18b17028e71d",
+        "name": "SHORTS SAIA UMA FENDA",
+        "image": "https://cdn-op.vesti.mobi/p/3301/bc4a970c-6194-42c1-a5b9-18b17028e71d/59009-lg.png",
+        "color": "AMARELO",
+        "size": "14",
+        "price": 64.9,
+        "qty": 1
+      },
+      {
+        "key": "bc4a970c-6194-42c1-a5b9-18b17028e71d|AMARELO|16",
+        "id": "bc4a970c-6194-42c1-a5b9-18b17028e71d",
+        "name": "SHORTS SAIA UMA FENDA",
+        "image": "https://cdn-op.vesti.mobi/p/3301/bc4a970c-6194-42c1-a5b9-18b17028e71d/59009-lg.png",
+        "color": "AMARELO",
+        "size": "16",
+        "price": 64.9,
+        "qty": 2
+      },
+      {
+        "key": "9418223d-75b9-46f6-bd83-f067612af464|LARANJA|20",
+        "id": "9418223d-75b9-46f6-bd83-f067612af464",
+        "name": "VESTIDO LINHO CONFORT",
+        "image": "https://cdn-op.vesti.mobi/p/3301/9418223d-75b9-46f6-bd83-f067612af464/72500-lg.png",
+        "color": "LARANJA",
+        "size": "20",
+        "price": 49.99,
+        "qty": 1
+      },
+      {
+        "key": "7feded00-3a3a-4c17-81c5-aca74d07a6bc|PRETO|20",
+        "id": "7feded00-3a3a-4c17-81c5-aca74d07a6bc",
+        "name": "VESTIDO LONGO DETALHE V",
+        "image": "https://cdn-op.vesti.mobi/p/3301/7feded00-3a3a-4c17-81c5-aca74d07a6bc/05006-lg.png",
+        "color": "PRETO",
+        "size": "20",
+        "price": 99.99,
+        "qty": 1
+      }
+    ],
+    "cartUpdatedAt": "2026-08-11T18:40:44.611Z"
   }
 ]
