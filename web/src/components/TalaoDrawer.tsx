@@ -15,6 +15,12 @@ function subtotal(session: OrderSession): number {
   return session.items.reduce((sum, i) => sum + i.price * i.qty, 0);
 }
 
+const CHANNEL_LABELS: Record<OrderSession['channel'], string> = {
+  presencial: 'Presencial',
+  whatsapp: 'WhatsApp',
+  online: 'Online',
+};
+
 // Cadastro de cliente vinculado ao pedido ativo — combinado com o usuário:
 // a vendedora consegue montar o carrinho livre, sem cadastro nenhum
 // (session.clientId fica vazio, só o nome livre em session.clientName);
@@ -39,6 +45,7 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
   // sair da tela do talão. onAnimationEnd desliga sozinho quando a
   // animação termina (ver .talao-cadastro-toggle.just-linked no CSS).
   const [justLinked, setJustLinked] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   useEffect(() => {
     const q = query.trim();
@@ -57,12 +64,21 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
 
   async function handleCreateAndLink(e: FormEvent) {
     e.preventDefault();
+    setCreateError(null);
     const res = await fetch('/api/clients', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, cpfCnpj, companyResponsible, storeName, email, cep }),
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setCreateError(
+        res.status === 409
+          ? data?.error || 'Já existe cadastro com esse CPF/CNPJ — busque pelo nome ou documento acima pra vincular.'
+          : data?.error || 'Não foi possível salvar o cadastro.'
+      );
+      return;
+    }
     const client: Client = await res.json();
     await talao.linkClient(client.id);
     setShowNewForm(false);
@@ -134,6 +150,7 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
           )}
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail" type="email" />
           <input value={cep} onChange={(e) => setCep(e.target.value)} placeholder="CEP" />
+          {createError && <p className="login-error">{createError}</p>}
           <button className="btn-add" type="submit">Salvar e vincular</button>
         </form>
       )}
@@ -214,9 +231,7 @@ export default function TalaoDrawer() {
               >
                 <div className="talao-card-info">
                   <span className="talao-card-name">{activeSession.clientName}</span>
-                  <span className="talao-card-channel">
-                    {activeSession.channel === 'whatsapp' ? 'WhatsApp' : 'Presencial'}
-                  </span>
+                  <span className="talao-card-channel">{CHANNEL_LABELS[activeSession.channel]}</span>
                   {activeSession.status === 'aguardando_pagamento' && (
                     <span className="talao-status-badge">aguardando pagamento</span>
                   )}
@@ -241,7 +256,7 @@ export default function TalaoDrawer() {
                   <div key={s.id} className="talao-other-card" onClick={() => selectSession(s.id)}>
                     <div className="talao-card-info">
                       <span className="talao-card-name">{s.clientName}</span>
-                      <span className="talao-card-channel">{s.channel === 'whatsapp' ? 'WhatsApp' : 'Presencial'}</span>
+                      <span className="talao-card-channel">{CHANNEL_LABELS[s.channel]}</span>
                       {s.status === 'aguardando_pagamento' && (
                         <span className="talao-status-badge">aguardando pagamento</span>
                       )}

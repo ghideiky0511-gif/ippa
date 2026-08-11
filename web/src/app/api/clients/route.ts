@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromToken, SESSION_COOKIE } from '@/lib/auth';
-import { readClients, writeClients } from '@/lib/clients';
+import { readClients, writeClients, findClientByDocument } from '@/lib/clients';
 import type { Client } from '@/lib/types';
 
 // Cadastro de cliente — hoje só a vendedora cria/busca (presencial ou
@@ -39,12 +39,18 @@ export async function POST(request: NextRequest) {
   if (!name) {
     return NextResponse.json({ error: 'Informe o nome da cliente.' }, { status: 400 });
   }
+  const cpfCnpj = typeof body.cpfCnpj === 'string' ? body.cpfCnpj.trim() || undefined : undefined;
+
+  const clients = await readClients();
+  if (cpfCnpj && findClientByDocument(clients, cpfCnpj)) {
+    return NextResponse.json({ error: 'Já existe cadastro com esse CPF/CNPJ — busque acima pra vincular em vez de criar outro.' }, { status: 409 });
+  }
 
   const now = new Date().toISOString();
   const client: Client = {
     id: randomUUID(),
     name,
-    cpfCnpj: typeof body.cpfCnpj === 'string' ? body.cpfCnpj.trim() || undefined : undefined,
+    cpfCnpj,
     email: typeof body.email === 'string' ? body.email.trim() || undefined : undefined,
     cep: typeof body.cep === 'string' ? body.cep.trim() || undefined : undefined,
     companyResponsible: typeof body.companyResponsible === 'string' ? body.companyResponsible.trim() || undefined : undefined,
@@ -54,7 +60,6 @@ export async function POST(request: NextRequest) {
     updatedAt: now,
   };
 
-  const clients = await readClients();
   clients.push(client);
   await writeClients(clients);
 

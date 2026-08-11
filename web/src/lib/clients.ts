@@ -19,3 +19,13 @@ export async function writeClients(clients: Client[]): Promise<void> {
   await writeFile(tmpPath, JSON.stringify(clients, null, 2), 'utf-8');
   await rename(tmpPath, DATA_PATH);
 }
+
+// Acha um cadastro já existente com o mesmo CPF/CNPJ (compara só dígitos,
+// ignora formatação — mesmo padrão frouxo de getDocumentType em
+// web/src/lib/document.ts). Usado pra bloquear duplicata em POST /api/clients
+// e POST /api/auth/signup: um mesmo documento não deve virar dois Client.
+export function findClientByDocument(clients: Client[], cpfCnpj: string): Client | undefined {
+  const digits = cpfCnpj.replace(/\D/g, '');
+  if (!digits) return undefined;
+  return clients.find((c) => c.cpfCnpj && c.cpfCnpj.replace(/\D/g, '') === digits);
+}

@@ -1,8 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { createUser, createSessionToken, SESSION_COOKIE } from '@/lib/auth';
-import { readClients, writeClients } from '@/lib/clients';
-import type { Client } from '@/lib/types';
+import { createUser, createSessionToken, SESSION_COOKIE, getOnlineVendedoraIds } from '@/lib/auth';
+import { readClients, writeClients, findClientByDocument } from '@/lib/clients';
+import { readOrderSessions, writeOrderSessions, countOpenSessionsBySeller } from '@/lib/orderSessions';
+import { pickSeller } from '@/lib/assignment';
+import { readStoreSettings } from '@/lib/storeSettings';
+import { notifySession } from '@/lib/sseHub';
+import type { Client, OrderSession } from '@/lib/types';
 
 // Autocadastro da cliente final (combinado com o usuário: cadastro completo
 // de uma vez — nome, e-mail, senha, CPF/CNPJ e endereço inteiro — diferente
@@ -34,6 +38,11 @@ export async function POST(request: NextRequest) {
   }
   if (password.length < 6) {
     return NextResponse.json({ error: 'A senha precisa ter pelo menos 6 caracteres.' }, { status: 400 });
+  }
+
+  const existingClients = await readClients();
+  if (findClientByDocument(existingClients, cpfCnpj)) {
+    return NextResponse.json({ error: 'Já existe um cadastro com esse CPF/CNPJ.' }, { status: 409 });
   }
 
   const now = new Date().toISOString();
@@ -68,6 +77,45 @@ export async function POST(request: NextRequest) {
   const clients = await readClients();
   clients.push(client);
   await writeClients(clients);
+
+  // Gatilho de fila: primeiro cadastro já cai numa vendedora, segundo a
+  // estratégia da loja (storeSettings.json `assignmentStrategy`, ver
+  // pickSeller em web/src/lib/assignment.ts). Sem vendedora online agora,
+  // não cria sessão nenhuma — OrderSession.sellerId é obrigatório, não dá
+  // pra criar "sem dono"; a cliente segue com o carrinho pessoal de hoje, e
+  // uma vendedora pode achá-la depois pela busca por nome/CPF no talão
+  // (mesmo caminho já usado pra cadastro criado manualmente).
+  const [onlineSellerIds, openCountBySeller, settings] = await Promise.all([
+    getOnlineVendedoraIds(),
+    countOpenSessionsBySeller(),
+    readStoreSettings(),
+  ]);
+  const sellerId = pickSeller(onlineSellerIds, openCountBySeller, settings.assignmentStrategy);
+  if (sellerId) {
+    const now2 = new Date().toISOString();
+    const session: OrderSession = {
+      id: randomUUID(),
+      clientName: client.name,
+      clientId: client.id,
+      sellerId,
+      channel: 'online',
+      items: [],
+      status: 'aberto',
+      createdAt: now2,
+      updatedAt: now2,
+    };
+    const sessions = await readOrderSessions();
+    sessions.push(session);
+    await writeOrderSessions(sessions);
+
+    const clientIndex = clients.findIndex((c) => c.id === client.id);
+    if (clientIndex !== -1) {
+      clients[clientIndex] = { ...clients[clientIndex], lastSellerId: sellerId, updatedAt: now2 };
+      await writeClients(clients);
+    }
+
+    notifySession(session);
+  }
 
   const token = await createSessionToken(user.id);
   const res = NextResponse.json({ user });

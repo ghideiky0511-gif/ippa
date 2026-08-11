@@ -40,7 +40,7 @@ export default function PagarPage({ params }: { params: Promise<{ token: string 
       .then(async (r) => {
         if (!r.ok) {
           const data = await r.json().catch(() => ({}));
-          throw new Error(data.error || 'Link inválido ou pedido já concluído.');
+          throw new Error(data.message || data.error || 'Link inválido ou pedido já concluído.');
         }
         return r.json();
       })
@@ -60,7 +60,7 @@ export default function PagarPage({ params }: { params: Promise<{ token: string 
         body: JSON.stringify({ paymentMethod: PAYMENT_METHODS.find((m) => m.id === paymentMethod)?.label }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Não foi possível confirmar o pagamento.');
+      if (!res.ok) throw new Error(data.message || data.error || 'Não foi possível confirmar o pagamento.');
       setDone(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível confirmar o pagamento.');

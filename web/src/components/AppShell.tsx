@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { CartProvider, useCart } from './CartProvider';
 import { TalaoProvider, useTalao } from './TalaoProvider';
+import { ClientSessionProvider } from './ClientSessionProvider';
 import { QuickViewProvider, useQuickView } from './QuickViewProvider';
 import { AuthProvider } from './AuthProvider';
 import CartDrawer from './CartDrawer';
@@ -82,13 +83,15 @@ export default function AppShell({
   authUser: AuthUser | null;
 }) {
   const isVendedora = authUser?.role === 'vendedora';
+  const isCliente = authUser?.role === 'cliente';
 
-  // CartProvider precisa estar DENTRO do TalaoProvider — é assim que ele
-  // consegue enxergar useTalao() e decidir se escreve no carrinho pessoal
-  // ou no pedido ativo do talão (ver CartProvider.tsx). AuthProvider fica
-  // por fora de tudo — ProductCard/ProductDetailContent (bem lá embaixo em
-  // {children}) precisam dele pra decidir se mostram o preço, sem precisar
-  // de authUser sendo passado por prop em cada página.
+  // CartProvider precisa estar DENTRO do TalaoProvider/ClientSessionProvider
+  // — é assim que ele consegue enxergar useTalao()/useClientSession() e
+  // decidir se escreve no carrinho pessoal ou num pedido compartilhado (ver
+  // CartProvider.tsx). AuthProvider fica por fora de tudo —
+  // ProductCard/ProductDetailContent (bem lá embaixo em {children}) precisam
+  // dele pra decidir se mostram o preço, sem precisar de authUser sendo
+  // passado por prop em cada página.
   const body = (
     <AuthProvider authUser={authUser}>
       <QuickViewProvider>
@@ -103,5 +106,7 @@ export default function AppShell({
     </AuthProvider>
   );
 
-  return isVendedora ? <TalaoProvider>{body}</TalaoProvider> : body;
+  if (isVendedora) return <TalaoProvider>{body}</TalaoProvider>;
+  if (isCliente) return <ClientSessionProvider>{body}</ClientSessionProvider>;
+  return body;
 }

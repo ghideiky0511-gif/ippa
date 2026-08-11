@@ -127,9 +127,11 @@ export function TalaoProvider({ children }: { children: ReactNode }) {
     });
   }
 
+  // Sempre chama a API — o servidor decide se reaproveita o token existente
+  // (ainda válido) ou gera um novo (sem token ainda, ou o anterior expirou,
+  // ver POST /api/sessions/[id]/payment-link).
   async function requestPaymentLink(): Promise<string> {
     if (!activeSession) throw new Error('Nenhum pedido ativo.');
-    if (activeSession.paymentToken) return activeSession.paymentToken;
     const id = activeSession.id;
     const res = await fetch(`/api/sessions/${id}/payment-link`, { method: 'POST' });
     const data = await res.json();

@@ -188,6 +188,9 @@ export default function FretePage() {
                 <button type="button" className="btn-add" onClick={() => copyLink(paymentLink)}>Copiar</button>
               </div>
               <p className="payment-link-hint">Aguardando a cliente pagar — o pedido fecha sozinho assim que ela confirmar.</p>
+              <button type="button" className="btn-clear" disabled={linkState.loading} onClick={handleGenerateLink}>
+                {linkState.loading ? 'Gerando…' : 'Link expirou? Gerar novo'}
+              </button>
             </div>
           )}
           {linkState.error && <p className="login-error">{linkState.error}</p>}

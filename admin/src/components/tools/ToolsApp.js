@@ -77,6 +77,10 @@ export default function ToolsApp({ initialSettings, initialSimilarProductsSettin
   const [pendingId, setPendingId] = useState(null);
   const [errorId, setErrorId] = useState(null);
   const [assignmentSaveState, setAssignmentSaveState] = useState('idle');
+  const [expirationInput, setExpirationInput] = useState(
+    initialSettings?.paymentLinkExpirationMinutes != null ? String(initialSettings.paymentLinkExpirationMinutes) : '15'
+  );
+  const [expirationSaveState, setExpirationSaveState] = useState('idle');
 
   const [similarSettings, setSimilarSettings] = useState(
     initialSimilarProductsSettings || DEFAULT_SIMILAR_PRODUCTS_SETTINGS
@@ -119,6 +123,23 @@ export default function ToolsApp({ initialSettings, initialSimilarProductsSettin
       setAssignmentSaveState('saved');
     } catch {
       setAssignmentSaveState('error');
+    }
+  }
+
+  async function handleSaveExpiration() {
+    const minutes = Number(expirationInput);
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      setExpirationSaveState('error');
+      return;
+    }
+    const nextSettings = { ...settings, paymentLinkExpirationMinutes: minutes };
+    setExpirationSaveState('saving');
+    try {
+      await saveStoreSettings(nextSettings);
+      setSettings(nextSettings);
+      setExpirationSaveState('saved');
+    } catch {
+      setExpirationSaveState('error');
     }
   }
 
@@ -245,6 +266,31 @@ export default function ToolsApp({ initialSettings, initialSimilarProductsSettin
           </select>
           {assignmentSaveState === 'saved' && <span className="status">Salvo</span>}
           {assignmentSaveState === 'error' && <span className="status">Erro ao salvar</span>}
+        </div>
+
+        <p className="preview-empty-text">
+          Prazo até o link de pagamento gerado pela vendedora (em /frete) expirar — depois disso a cliente vê
+          "link expirado" e a vendedora precisa gerar um novo (mesmo botão, reaproveita se ainda estiver válido).
+        </p>
+        <div className="field-row" style={{ alignItems: 'flex-end' }}>
+          <div className="field" style={{ maxWidth: 140 }}>
+            <label>Expira em (minutos)</label>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={expirationInput}
+              onChange={(e) => {
+                setExpirationInput(e.target.value);
+                setExpirationSaveState('idle');
+              }}
+            />
+          </div>
+          <button className="btn btn-primary" onClick={handleSaveExpiration} disabled={expirationSaveState === 'saving'}>
+            {expirationSaveState === 'saving' ? 'Salvando…' : 'Salvar'}
+          </button>
+          {expirationSaveState === 'saved' && <span className="status">Salvo</span>}
+          {expirationSaveState === 'error' && <span className="status">Valor inválido ou erro ao salvar</span>}
         </div>
 
         <h2 className="collections-subheading">Produtos similares</h2>

@@ -391,6 +391,12 @@ input, textarea { font: inherit; }
 }
 .product-row-card .product-override-row { border: none; padding: 0; background: none; }
 
+/* Página /usuarios — tabela simples, só leitura (ver UsersApp.js). */
+.admin-table { width: 100%; border-collapse: collapse; background: var(--brand-card); border-radius: 8px; overflow: hidden; }
+.admin-table th, .admin-table td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #eadde2; font-size: 13px; }
+.admin-table th { color: var(--brand-muted); font-weight: 600; font-size: 12px; }
+.admin-table tr:last-child td { border-bottom: none; }
+
 .similar-products-field { border-top: 1px dashed #eadde2; padding-top: 8px; }
 .similar-products-field-toggle {
   border: none;

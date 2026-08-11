@@ -4,8 +4,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { readOrderSessions, writeOrderSessions } from '@/lib/orderSessions';
 import { readOrderHistory, writeOrderHistory } from '@/lib/orderHistory';
 import { getCartDiscount } from '@/lib/discounts';
-import { notifySessionsUpdated } from '@/lib/sseHub';
-import type { Discount, Order } from '@/lib/types';
+import { notifySession } from '@/lib/sseHub';
+import { readStoreSettings, PAYMENT_LINK_EXPIRATION_DEFAULT_MINUTES } from '@/lib/storeSettings';
+import type { Discount, Order, OrderSession } from '@/lib/types';
 
 // Página pública de pagamento (web/src/app/pagar/[token]/page.tsx) — o
 // token É a autenticação, sem exigir login da cliente (combinado com o
@@ -24,11 +25,27 @@ async function findSessionByToken(token: string) {
   return { sessions, index, session: index === -1 ? null : sessions[index] };
 }
 
+// Expirado = passou de `paymentLinkExpirationMinutes` (storeSettings.json,
+// editável em /ferramentas, default 15) desde que o link foi gerado — ver
+// paymentTokenCreatedAt em types.ts, gravado por
+// POST /api/sessions/[id]/payment-link. Sessão sem esse campo (dado antigo,
+// de antes desta checagem existir) nunca expira, pra não invalidar link já
+// em uso por engano.
+async function isLinkExpired(session: OrderSession): Promise<boolean> {
+  if (!session.paymentTokenCreatedAt) return false;
+  const settings = await readStoreSettings();
+  const minutes = settings.paymentLinkExpirationMinutes ?? PAYMENT_LINK_EXPIRATION_DEFAULT_MINUTES;
+  return Date.now() - new Date(session.paymentTokenCreatedAt).getTime() > minutes * 60_000;
+}
+
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const { session } = await findSessionByToken(token);
   if (!session || session.status !== 'aguardando_pagamento') {
     return NextResponse.json({ error: 'Link inválido ou pedido já concluído.' }, { status: 404 });
+  }
+  if (await isLinkExpired(session)) {
+    return NextResponse.json({ error: 'expired', message: 'Esse link de pagamento expirou. Peça um novo pra vendedora.' }, { status: 410 });
   }
 
   const items = session.items.filter((i) => i.qty > 0);
@@ -54,6 +71,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { sessions, index, session } = await findSessionByToken(token);
   if (!session || session.status !== 'aguardando_pagamento') {
     return NextResponse.json({ error: 'Link inválido ou pedido já concluído.' }, { status: 404 });
+  }
+  if (await isLinkExpired(session)) {
+    return NextResponse.json({ error: 'expired', message: 'Esse link de pagamento expirou. Peça um novo pra vendedora.' }, { status: 410 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -86,14 +106,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     ...session,
     status: 'fechado',
     paymentToken: undefined,
+    paymentTokenCreatedAt: undefined,
     updatedAt: new Date().toISOString(),
   };
   await writeOrderSessions(sessions);
 
-  // Avisa a vendedora dona da sessão, se ela estiver com o talão aberto
-  // agora — ver web/src/lib/sseHub.ts e TalaoProvider.tsx (assina e
-  // refetcha ao vivo, sem precisar de F5).
-  notifySessionsUpdated(session.sellerId);
+  // Avisa a vendedora dona da sessão (e a cliente, se estiver logada em
+  // outra aba) — ver web/src/lib/sseHub.ts e TalaoProvider.tsx/
+  // ClientSessionProvider.tsx (assinam e refetcham ao vivo, sem F5).
+  notifySession(session);
 
   return NextResponse.json({ ok: true, order });
 }

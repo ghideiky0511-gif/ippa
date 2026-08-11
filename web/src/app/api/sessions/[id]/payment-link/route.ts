@@ -4,6 +4,15 @@ import { getUserFromToken, SESSION_COOKIE } from '@/lib/auth';
 import { readOrderSessions, writeOrderSessions } from '@/lib/orderSessions';
 import { readClients } from '@/lib/clients';
 import { isClientComplete } from '@/lib/clientComplete';
+import { readStoreSettings, PAYMENT_LINK_EXPIRATION_DEFAULT_MINUTES } from '@/lib/storeSettings';
+import type { OrderSession } from '@/lib/types';
+
+async function isLinkValid(session: OrderSession): Promise<boolean> {
+  if (!session.paymentToken || !session.paymentTokenCreatedAt) return false;
+  const settings = await readStoreSettings();
+  const minutes = settings.paymentLinkExpirationMinutes ?? PAYMENT_LINK_EXPIRATION_DEFAULT_MINUTES;
+  return Date.now() - new Date(session.paymentTokenCreatedAt).getTime() <= minutes * 60_000;
+}
 
 // Gera o link de pagamento que a vendedora manda pra cliente (ver
 // PLANO-PROXIMOS-PASSOS.md — "vendedora consegue fazer tudo pela cliente,
@@ -47,10 +56,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: 'Complete o cadastro da cliente (CPF/CNPJ, e-mail, CEP) antes de gerar o link.' }, { status: 400 });
   }
 
+  // Reaproveita o token existente se ainda for válido (evita invalidar um
+  // link que a cliente já pode ter aberto numa aba, só porque a vendedora
+  // clicou em "gerar" de novo pra copiar) — só gera um novo quando não há
+  // token ainda ou o anterior expirou (permite reenvio).
+  if (await isLinkValid(session)) {
+    return NextResponse.json({ token: session.paymentToken });
+  }
+
   const paymentToken = randomBytes(24).toString('hex');
   sessions[index] = {
     ...session,
     paymentToken,
+    paymentTokenCreatedAt: new Date().toISOString(),
     status: 'aguardando_pagamento',
     updatedAt: new Date().toISOString(),
   };

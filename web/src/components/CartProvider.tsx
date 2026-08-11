@@ -2,6 +2,7 @@
 
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
 import { useTalao } from './TalaoProvider';
+import { useClientSession } from './ClientSessionProvider';
 import { useAuthUser } from './AuthProvider';
 import { getCartDiscount, type AppliedDiscount } from '@/lib/discounts';
 import type { CartItem, Discount, Order, Product, ShippingOption } from '@/lib/types';
@@ -112,14 +113,22 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [shipping, setShippingState] = useState<ShippingOption | null>(null);
   const authUserCtx = useAuthUser();
 
-  // Talão de vendedora (ver TalaoProvider.tsx) — null pra qualquer cliente
-  // final comprando (não tem o provider por perto) ou pra vendedora sem
-  // sessão ativa selecionada. Com uma sessão ativa, o carrinho "de
-  // verdade" passa a ser o pedido daquela cliente, não o pessoal — mesma
-  // useCart() em ProductCard/ProductQuickView/ProductDetailContent, sem
-  // precisar saber disso.
+  // Duas fontes possíveis de "pedido compartilhado", nunca as duas ao mesmo
+  // tempo (um só provider é montado por role, ver AppShell.tsx): talão da
+  // vendedora (TalaoProvider.tsx) ou a sessão atribuída da própria cliente
+  // logada (ClientSessionProvider.tsx — o que faz o carrinho dela virar de
+  // fato o mesmo pedido que a vendedora está montando, em vez de dois
+  // carrinhos desconectados). `sessionActions` é o objeto certo pra chamar
+  // updateActiveItems/updateActiveShipping; `activeSession` é só o dado.
+  // null pra cliente final sem sessão atribuída, ou vendedora sem sessão
+  // ativa selecionada — nesses casos o carrinho "de verdade" continua o
+  // pessoal (localStorage), mesma useCart() em
+  // ProductCard/ProductQuickView/ProductDetailContent, sem precisar saber
+  // de nada disso.
   const talao = useTalao();
-  const activeSession = talao?.activeSession ?? null;
+  const clientSession = useClientSession();
+  const sessionActions = talao?.activeSession ? talao : clientSession?.activeSession ? clientSession : null;
+  const activeSession = sessionActions?.activeSession ?? null;
 
   // Hidrata o frete local a partir do que já estava salvo na sessão (ex.:
   // vendedora saiu de /frete e voltou, ou trocou de sessão ativa no talão)
@@ -197,7 +206,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       ];
     }
     if (activeSession) {
-      talao!.updateActiveItems(apply(activeSession.items.filter((i) => i.key !== draftKey)));
+      sessionActions!.updateActiveItems(apply(activeSession.items.filter((i) => i.key !== draftKey)));
       return;
     }
     setCart((prev) => apply(prev.filter((i) => i.key !== draftKey)));
@@ -209,7 +218,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     if (base.some((i) => i.id === product.id)) return; // já tem rascunho ou item resolvido pra esse produto
     const draft: CartItem = { key: draftKey, id: product.id, name: product.name, image: product.image, price: product.price, qty: 0 };
     if (activeSession) {
-      talao!.updateActiveItems([...base, draft]);
+      sessionActions!.updateActiveItems([...base, draft]);
       return;
     }
     setCart((prev) => [...prev, draft]);
@@ -217,7 +226,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   function removeProduct(productId: string) {
     if (activeSession) {
-      talao!.updateActiveItems(activeSession.items.filter((i) => i.id !== productId));
+      sessionActions!.updateActiveItems(activeSession.items.filter((i) => i.id !== productId));
       return;
     }
     setCart((prev) => prev.filter((i) => i.id !== productId));
@@ -225,7 +234,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   function changeQty(key: string, qty: number) {
     if (activeSession) {
-      talao!.updateActiveItems(activeSession.items.map((i) => (i.key === key ? { ...i, qty } : i)));
+      sessionActions!.updateActiveItems(activeSession.items.map((i) => (i.key === key ? { ...i, qty } : i)));
       return;
     }
     setCart((prev) => prev.map((i) => (i.key === key ? { ...i, qty } : i)));
@@ -233,7 +242,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   function removeFromCart(key: string) {
     if (activeSession) {
-      talao!.updateActiveItems(activeSession.items.filter((i) => i.key !== key));
+      sessionActions!.updateActiveItems(activeSession.items.filter((i) => i.key !== key));
       return;
     }
     setCart((prev) => prev.filter((i) => i.key !== key));
@@ -243,7 +252,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   // dentro do estoque depois de um decrement).
   function setBackorderDate(key: string, date: string | null) {
     if (activeSession) {
-      talao!.updateActiveItems(
+      sessionActions!.updateActiveItems(
         activeSession.items.map((i) => (i.key === key ? { ...i, backorderDate: date ?? undefined } : i))
       );
       return;
@@ -256,7 +265,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   function setBackorderDateForKeys(keys: string[], date: string | null) {
     const keySet = new Set(keys);
     if (activeSession) {
-      talao!.updateActiveItems(
+      sessionActions!.updateActiveItems(
         activeSession.items.map((i) => (keySet.has(i.key) ? { ...i, backorderDate: date ?? undefined } : i))
       );
       return;
@@ -288,7 +297,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const removeSet = new Set(removeKeys);
     if (activeSession) {
       const base = activeSession.items.filter((i) => !removeSet.has(i.key));
-      talao!.updateActiveItems(mergeItems(base, addItems));
+      sessionActions!.updateActiveItems(mergeItems(base, addItems));
       return;
     }
     setCart((prev) => mergeItems(prev.filter((i) => !removeSet.has(i.key)), addItems));
@@ -296,7 +305,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   function clearCart() {
     if (activeSession) {
-      talao!.updateActiveItems([]);
+      sessionActions!.updateActiveItems([]);
       return;
     }
     setCart([]);
@@ -304,7 +313,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   function setShipping(next: ShippingOption | null) {
     setShippingState(next);
-    if (activeSession) talao!.updateActiveShipping(next);
+    if (activeSession) sessionActions!.updateActiveShipping(next);
   }
 
   function clearShipping() {
@@ -329,12 +338,18 @@ export function CartProvider({ children }: { children: ReactNode }) {
       ...extra,
     };
     // Fire-and-forget, mesmo espírito despreocupado dos outros fetches
-    // deste arquivo — não trava o checkout se a rede falhar.
+    // deste arquivo — não trava o checkout se a rede falhar. `sessionId`
+    // (só quando o carrinho vem de uma sessão de talão atribuída à própria
+    // cliente, não da vendedora) deixa POST /api/orders resolver o
+    // sellerId de quem atendeu e fechar aquela sessão — ver
+    // ClientSessionProvider.tsx/AppShell.tsx pra por que só a cliente cai
+    // nesse caminho (vendedora finaliza pelo link de pagamento, não por
+    // aqui).
     if (authUserCtx.authUser?.role === 'cliente') {
       fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(order),
+        body: JSON.stringify({ ...order, sessionId: clientSession?.activeSession?.id }),
       }).catch(() => {});
     }
     return order;

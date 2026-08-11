@@ -199,7 +199,10 @@ export interface OrderSession {
   clientName: string;
   clientId?: string;
   sellerId: string;
-  channel: 'presencial' | 'whatsapp';
+  // 'online': sessão criada sozinha pelo gatilho de fila quando a cliente se
+  // autocadastra (ver POST /api/auth/signup) — não é presencial nem
+  // WhatsApp, ninguém digitou nada pra escolher o canal.
+  channel: 'presencial' | 'whatsapp' | 'online';
   items: CartItem[];
   // Frete escolhido pela vendedora (ver /frete) — precisa sobreviver até a
   // cliente abrir o link de pagamento, por isso persistido aqui em vez de
@@ -213,8 +216,13 @@ export interface OrderSession {
   status: 'aberto' | 'fechado' | 'aguardando_pagamento';
   // Token do link de pagamento ativo (web/src/app/pagar/[token]/page.tsx) —
   // é a própria autenticação desse link (sem exigir login da cliente).
-  // Limpo quando a sessão fecha (POST /api/pay/[token]).
+  // Limpo quando a sessão fecha (POST /api/pay/[token]) ou reabre
+  // (PUT /api/sessions/[id], status volta pra 'aberto').
   paymentToken?: string;
+  // Quando o token acima foi gerado — usado pra checar expiração
+  // (storeSettings.json `paymentLinkExpirationMinutes`, ver
+  // GET/POST /api/pay/[token]). Limpo junto com paymentToken.
+  paymentTokenCreatedAt?: string;
   notes?: string;
   createdAt: string;
   updatedAt: string;

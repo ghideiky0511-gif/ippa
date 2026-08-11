@@ -52,6 +52,14 @@ function withoutPasswordHash(user: StoredUser): AuthUser {
   return rest;
 }
 
+// Todos os usuários (vendedora + cliente), sem passwordHash — usado pela
+// aba "Usuários" do admin (GET /api/admin/users), que só lista, nunca edita
+// senha por ali.
+export async function listUsersWithoutPasswords(): Promise<AuthUser[]> {
+  const users = await readUsers();
+  return users.map(withoutPasswordHash);
+}
+
 export async function verifyLogin(email: string, password: string): Promise<AuthUser | null> {
   const users = await readUsers();
   const user = users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());

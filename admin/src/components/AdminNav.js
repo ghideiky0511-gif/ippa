@@ -10,6 +10,7 @@ const LINKS = [
   { href: '/produtos', label: 'Produtos' },
   { href: '/descontos', label: 'Descontos' },
   { href: '/ferramentas', label: 'Ferramentas' },
+  { href: '/usuarios', label: 'Usuários' },
 ];
 
 export default function AdminNav() {

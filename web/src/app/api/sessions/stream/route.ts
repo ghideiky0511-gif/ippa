@@ -1,17 +1,21 @@
 import { NextRequest } from 'next/server';
 import { getUserFromToken, SESSION_COOKIE } from '@/lib/auth';
-import { subscribe, unsubscribe } from '@/lib/sseHub';
+import { subscribe, unsubscribe, sellerSubject, clientSubject } from '@/lib/sseHub';
 
-// Canal de tempo real da vendedora logada — ver web/src/lib/sseHub.ts pro
-// porquê (canal por sellerId, não broadcast). Assinado por
-// TalaoProvider.tsx no mount; evento 'sessions-updated' dispara um refetch
-// de GET /api/sessions ali, é só isso — o hub não manda o dado em si.
+// Canal de tempo real da vendedora OU da cliente logada — ver
+// web/src/lib/sseHub.ts pro porquê (canal por assunto seller:<id> ou
+// client:<id>, não broadcast). Assinado por TalaoProvider.tsx (vendedora) ou
+// ClientSessionProvider.tsx (cliente) no mount; evento 'sessions-updated'
+// dispara um refetch de GET /api/sessions ou /api/sessions/mine ali, é só
+// isso — o hub não manda o dado em si.
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   const user = await getUserFromToken(token);
-  if (!user || user.role !== 'vendedora') {
+  const subject =
+    user?.role === 'vendedora' ? sellerSubject(user.id) : user?.role === 'cliente' && user.clientId ? clientSubject(user.clientId) : null;
+  if (!subject) {
     return new Response('Não autenticado.', { status: 401 });
   }
 
@@ -21,7 +25,7 @@ export async function GET(request: NextRequest) {
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       controllerRef = controller;
-      subscribe(user.id, controller);
+      subscribe(subject, controller);
       controller.enqueue(new TextEncoder().encode(': conectado\n\n'));
       // Comentário SSE periódico só pra manter a conexão viva através de
       // proxies que fecham conexões ociosas — não carrega dado nenhum.
@@ -35,13 +39,13 @@ export async function GET(request: NextRequest) {
     },
     cancel() {
       clearInterval(heartbeat);
-      if (controllerRef) unsubscribe(user.id, controllerRef);
+      if (controllerRef) unsubscribe(subject, controllerRef);
     },
   });
 
   request.signal.addEventListener('abort', () => {
     clearInterval(heartbeat);
-    if (controllerRef) unsubscribe(user.id, controllerRef);
+    if (controllerRef) unsubscribe(subject, controllerRef);
   });
 
   return new Response(stream, {
