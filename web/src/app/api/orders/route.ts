@@ -3,6 +3,7 @@ import { getUserFromToken, SESSION_COOKIE } from '@/lib/auth';
 import { readOrderHistory, writeOrderHistory } from '@/lib/orderHistory';
 import { readOrderSessions, writeOrderSessions } from '@/lib/orderSessions';
 import { notifySession } from '@/lib/sseHub';
+import { readStoreSettings } from '@/lib/storeSettings';
 import type { Order } from '@/lib/types';
 
 // Pedidos da CONTA logada (ver web/src/app/pedidos/page.tsx, "Meus
@@ -55,6 +56,18 @@ export async function POST(request: NextRequest) {
     const sessions = await readOrderSessions();
     const index = sessions.findIndex((s) => s.id === body.sessionId);
     if (index !== -1 && sessions[index].clientId === user.clientId) {
+      // Ferramenta "cliente finaliza sozinha" (/ferramentas) — desligada,
+      // um pedido vinculado a talão só pode fechar pela vendedora (link de
+      // pagamento ou fechamento manual). Checagem no servidor porque o
+      // gate do lado do cliente (useClientSelfCheckoutGate.ts) é só UI —
+      // sem isso, dava pra confirmar direto pela API ignorando o toggle.
+      const settings = await readStoreSettings();
+      if (settings.features?.clientSelfCheckout === false) {
+        return NextResponse.json(
+          { error: 'Esse pedido só pode ser finalizado pela vendedora — peça o link de pagamento ou aguarde ela fechar.' },
+          { status: 403 }
+        );
+      }
       const session = sessions[index];
       sellerId = session.sellerId;
       sessions[index] = { ...session, status: 'fechado', updatedAt: new Date().toISOString() };

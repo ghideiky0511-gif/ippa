@@ -2,10 +2,16 @@
 
 import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Volta pra onde a pessoa estava (ex.: /frete, /pagamento — ver os gates
+  // de login em cada um) em vez do destino padrão por role, quando veio de
+  // lá. Sem redirect= (entrar direto pela página de login), comportamento
+  // de sempre.
+  const redirect = searchParams.get('redirect');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -26,7 +32,7 @@ export default function LoginPage() {
         setError(data.error || 'Não foi possível entrar.');
         return;
       }
-      router.push(data.user.role === 'vendedora' ? '/catalogo' : '/');
+      router.push(redirect || (data.user.role === 'vendedora' ? '/catalogo' : '/'));
       router.refresh();
     } finally {
       setLoading(false);
@@ -50,7 +56,8 @@ export default function LoginPage() {
           {loading ? 'Entrando…' : 'Entrar'}
         </button>
         <p className="auth-switch-link">
-          Não tem conta? <Link href="/cadastro">Cadastre-se</Link>
+          Não tem conta?{' '}
+          <Link href={redirect ? `/cadastro?redirect=${encodeURIComponent(redirect)}` : '/cadastro'}>Cadastre-se</Link>
         </p>
       </form>
     </div>

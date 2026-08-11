@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserFromToken, SESSION_COOKIE } from '@/lib/auth';
+import { getUserFromToken, SESSION_COOKIE, hasLoginForClient } from '@/lib/auth';
 import { readClients, writeClients } from '@/lib/clients';
 import type { Client } from '@/lib/types';
 
@@ -24,7 +24,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!client) {
     return NextResponse.json({ error: 'Cadastro não encontrado.' }, { status: 404 });
   }
-  return NextResponse.json(client);
+  // hasLogin: computado (não é campo do Client) — se existe um AuthUser com
+  // esse clientId, ver hasLoginForClient em web/src/lib/auth.ts. Usado por
+  // useTalaoClientGate.ts (bloqueia frete/pagamento sem login) e por
+  // TalaoDrawer.tsx (mostra "criar login" só quando ainda não tem).
+  const hasLogin = await hasLoginForClient(id);
+  return NextResponse.json({ ...client, hasLogin });
 }
 
 // Completa/edita um cadastro (ex.: a vendedora tinha só o nome, agora

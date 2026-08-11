@@ -21,12 +21,74 @@ const CHANNEL_LABELS: Record<OrderSession['channel'], string> = {
   online: 'Online',
 };
 
+// GET /api/clients/[id] inclui hasLogin (computado, não é campo de Client)
+// — ver hasLoginForClient em web/src/lib/auth.ts.
+type ClientWithLogin = Client & { hasLogin?: boolean };
+
+// Cadastro rápido (só Client) sem AuthUser ainda — a vendedora cria o login
+// ali mesmo, sem deslogar a própria sessão (ver POST
+// /api/clients/[id]/create-login, é uma ação administrativa, não um
+// login de verdade neste navegador). Necessário porque useTalaoClientGate.ts
+// agora também exige login da cliente antes do frete/pagamento — combinado
+// com o usuário: em vez de travar o atendimento, a vendedora resolve na
+// hora. E-mail pré-preenchido se o cadastro já tinha um (editável).
+function CreateLoginSection({ client, onCreated }: { client: ClientWithLogin; onCreated: () => void }) {
+  const [email, setEmail] = useState(client.email || '');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/clients/${client.id}/create-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Não foi possível criar o login.');
+        return;
+      }
+      onCreated();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <form className="talao-new-form talao-create-login" onSubmit={handleSubmit}>
+      <p className="preview-empty-text">
+        {client.name} ainda não tem login — sem ele não dá pra avançar pro frete. Crie aqui (ela pode entrar com
+        esse mesmo e-mail/senha depois, pelo próprio celular).
+      </p>
+      <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail" type="email" required />
+      <input
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        placeholder="Senha (mín. 6 caracteres)"
+        type="password"
+        minLength={6}
+        required
+      />
+      {error && <p className="login-error">{error}</p>}
+      <button className="btn-add" type="submit" disabled={loading}>
+        {loading ? 'Criando…' : 'Criar login pra cliente'}
+      </button>
+    </form>
+  );
+}
+
 // Cadastro de cliente vinculado ao pedido ativo — combinado com o usuário:
 // a vendedora consegue montar o carrinho livre, sem cadastro nenhum
 // (session.clientId fica vazio, só o nome livre em session.clientName);
 // vincular um cadastro (CPF/CNPJ, e-mail, CEP) é opcional aqui, mas fica
 // obrigatório antes do frete (isClientComplete, web/src/lib/clientComplete.ts,
-// aplicada em /frete e /pagamento via useTalaoClientGate.ts).
+// aplicada em /frete e /pagamento via useTalaoClientGate.ts) — assim como
+// ter login (ver CreateLoginSection acima).
 function ClientCadastroSection({ session }: { session: OrderSession }) {
   const talao = useTalao()!;
   const [expanded, setExpanded] = useState(false);
@@ -46,6 +108,23 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
   // animação termina (ver .talao-cadastro-toggle.just-linked no CSS).
   const [justLinked, setJustLinked] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [linkedClient, setLinkedClient] = useState<ClientWithLogin | null>(null);
+
+  function refetchLinkedClient() {
+    if (!session.clientId) {
+      setLinkedClient(null);
+      return;
+    }
+    fetch(`/api/clients/${session.clientId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setLinkedClient)
+      .catch(() => {});
+  }
+
+  useEffect(() => {
+    refetchLinkedClient();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- só quando o cadastro vinculado muda, não a cada render
+  }, [session.clientId]);
 
   useEffect(() => {
     const q = query.trim();
@@ -100,15 +179,26 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
     setJustLinked(true);
   }
 
+  // Aparece independente do painel estar aberto/fechado — é um pendência
+  // que bloqueia o frete (ver useTalaoClientGate.ts), não faz sentido
+  // esconder atrás do "editar".
+  const createLoginSection =
+    session.clientId && linkedClient && !linkedClient.hasLogin ? (
+      <CreateLoginSection client={linkedClient} onCreated={refetchLinkedClient} />
+    ) : null;
+
   if (!expanded) {
     return (
-      <button
-        className={'talao-cadastro-toggle' + (justLinked ? ' just-linked' : '')}
-        onClick={() => setExpanded(true)}
-        onAnimationEnd={() => setJustLinked(false)}
-      >
-        {session.clientId ? `Cadastro vinculado: ${session.clientName} (editar)` : 'Vincular cadastro (CPF/CNPJ, e-mail, CEP)'}
-      </button>
+      <>
+        <button
+          className={'talao-cadastro-toggle' + (justLinked ? ' just-linked' : '')}
+          onClick={() => setExpanded(true)}
+          onAnimationEnd={() => setJustLinked(false)}
+        >
+          {session.clientId ? `Cadastro vinculado: ${session.clientName} (editar)` : 'Vincular cadastro (CPF/CNPJ, e-mail, CEP)'}
+        </button>
+        {createLoginSection}
+      </>
     );
   }
 
@@ -156,6 +246,7 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
       )}
 
       <button className="talao-cadastro-toggle" onClick={() => setExpanded(false)}>Fechar</button>
+      {createLoginSection}
     </div>
   );
 }

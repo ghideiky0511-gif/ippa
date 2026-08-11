@@ -60,6 +60,18 @@ export async function listUsersWithoutPasswords(): Promise<AuthUser[]> {
   return users.map(withoutPasswordHash);
 }
 
+// Já existe AuthUser vinculado a esse Client? Usado pelo talão (GET
+// /api/clients/[id], POST /api/clients/[id]/create-login) — um "cadastro
+// rápido" (só nome, criado pela vendedora) pode existir sem login por um
+// tempo, até a vendedora criar um ali mesmo ou a cliente se autocadastrar
+// depois (ver PLANO-PROXIMOS-PASSOS.md, "limitação conhecida" sobre os dois
+// não se casarem automaticamente — continua valendo, isso só checa se JÁ
+// existe, não tenta juntar dois cadastros).
+export async function hasLoginForClient(clientId: string): Promise<boolean> {
+  const users = await readUsers();
+  return users.some((u) => u.clientId === clientId);
+}
+
 export async function verifyLogin(email: string, password: string): Promise<AuthUser | null> {
   const users = await readUsers();
   const user = users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());

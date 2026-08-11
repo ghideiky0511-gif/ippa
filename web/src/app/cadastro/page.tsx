@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { getDocumentType } from '@/lib/document';
+import { CART_KEY } from '@/components/CartProvider';
+import type { CartItem } from '@/lib/types';
 
 interface ViaCepResponse {
   erro?: boolean;
@@ -15,6 +17,19 @@ interface ViaCepResponse {
 
 export default function CadastroPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirect = searchParams.get('redirect');
+  // Lido direto do localStorage (não via useCart()) porque /cadastro fica
+  // fora do AppShell — ver CART_KEY em CartProvider.tsx.
+  const [anonymousCart, setAnonymousCart] = useState<CartItem[]>([]);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(CART_KEY);
+      if (raw) setAnonymousCart(JSON.parse(raw));
+    } catch {
+      /* localStorage indisponível/corrompido — segue sem carrinho anônimo */
+    }
+  }, []);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -79,6 +94,13 @@ export default function CadastroPage() {
           neighborhood,
           city,
           state,
+          // Carrinho anônimo (localStorage) montado antes de criar conta —
+          // se o gatilho de fila atribuir uma vendedora e criar um talão
+          // novo (ver POST /api/auth/signup), ele nasce com esses itens em
+          // vez de vazio, pra não "sumir" o carrinho bem na hora em que a
+          // pessoa é obrigada a logar pra continuar (ver gate de login em
+          // /frete e /pagamento).
+          cart: anonymousCart,
         }),
       });
       const data = await res.json();
@@ -86,7 +108,7 @@ export default function CadastroPage() {
         setError(data.error || 'Não foi possível criar sua conta.');
         return;
       }
-      router.push('/');
+      router.push(redirect || '/');
       router.refresh();
     } finally {
       setLoading(false);
@@ -162,7 +184,8 @@ export default function CadastroPage() {
           {loading ? 'Criando conta…' : 'Criar conta'}
         </button>
         <p className="auth-switch-link">
-          Já tem conta? <Link href="/login">Entrar</Link>
+          Já tem conta?{' '}
+          <Link href={redirect ? `/login?redirect=${encodeURIComponent(redirect)}` : '/login'}>Entrar</Link>
         </p>
       </form>
     </div>

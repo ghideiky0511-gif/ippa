@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserFromToken, SESSION_COOKIE } from '@/lib/auth';
+import { getUserFromToken, SESSION_COOKIE, hasLoginForClient } from '@/lib/auth';
 import { readOrderSessions, writeOrderSessions } from '@/lib/orderSessions';
 import { readClients } from '@/lib/clients';
 import { isClientComplete } from '@/lib/clientComplete';
@@ -54,6 +54,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const client = clients.find((c) => c.id === session.clientId);
   if (!client || !isClientComplete(client)) {
     return NextResponse.json({ error: 'Complete o cadastro da cliente (CPF/CNPJ, e-mail, CEP) antes de gerar o link.' }, { status: 400 });
+  }
+  // Combinado com o usuário: mesmo pra gerar o link, a cliente precisa ter
+  // login de verdade (não só o cadastro rápido) — ver
+  // useTalaoClientGate.ts (checagem espelhada do lado da tela) e
+  // POST /api/clients/[id]/create-login (onde a vendedora resolve isso).
+  if (!(await hasLoginForClient(session.clientId))) {
+    return NextResponse.json({ error: 'A cliente ainda não tem login — crie um pra ela antes de gerar o link.' }, { status: 400 });
   }
 
   // Reaproveita o token existente se ainda for válido (evita invalidar um

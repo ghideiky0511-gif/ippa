@@ -93,6 +93,26 @@ export default function FretePage() {
     );
   }
 
+  // Montar/revisar o carrinho não exige login — combinado com o usuário:
+  // a partir daqui (seguir pro frete) sim, porque sem login não dá nem pra
+  // ver preço (ver hidePriceWithoutLogin em /ferramentas). O carrinho
+  // continua salvo (localStorage) enquanto ela entra/cria conta.
+  if (!authUser) {
+    return (
+      <main className="container checkout-page">
+        <CheckoutSteps current="/frete" reachable={1} />
+        <h1>Frete</h1>
+        <div className="cart-empty talao-gate">
+          Pra continuar pro frete você precisa entrar ou criar uma conta — seu carrinho continua salvo.
+          <div className="checkout-actions">
+            <Link href={`/login?redirect=${encodeURIComponent('/frete')}`} className="btn-add">Entrar</Link>
+            <Link href={`/cadastro?redirect=${encodeURIComponent('/frete')}`} className="btn-clear">Criar conta</Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   if (gate.blocked) {
     return (
       <main className="container checkout-page">
@@ -101,7 +121,9 @@ export default function FretePage() {
         <div className="cart-empty talao-gate">
           {gate.reason === 'no-client'
             ? 'Vincule um cadastro de cliente (nome, CPF/CNPJ, e-mail, CEP) no talão antes de continuar pro frete.'
-            : 'Complete o cadastro da cliente (CPF/CNPJ, e-mail, CEP) no talão antes de continuar pro frete.'}
+            : gate.reason === 'no-login'
+              ? 'A cliente ainda não tem login — crie um pra ela no talão antes de continuar pro frete.'
+              : 'Complete o cadastro da cliente (CPF/CNPJ, e-mail, CEP) no talão antes de continuar pro frete.'}
           <button className="btn-add" onClick={gate.openTalao}>Abrir talão</button>
         </div>
       </main>

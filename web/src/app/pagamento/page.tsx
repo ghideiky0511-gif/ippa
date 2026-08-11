@@ -7,6 +7,8 @@ import { formatBRL } from '@/lib/format';
 import { useCart } from '@/components/CartProvider';
 import { useTalao } from '@/components/TalaoProvider';
 import { useTalaoClientGate } from '@/components/useTalaoClientGate';
+import { useClientSelfCheckoutGate } from '@/components/useClientSelfCheckoutGate';
+import { useAuthUser } from '@/components/AuthProvider';
 import CheckoutSteps from '@/components/CheckoutSteps';
 
 const PAYMENT_METHODS = [
@@ -21,6 +23,8 @@ export default function PagamentoPage() {
   const talao = useTalao();
   const activeSession = talao?.activeSession ?? null;
   const gate = useTalaoClientGate();
+  const { authUser } = useAuthUser();
+  const selfCheckoutBlocked = useClientSelfCheckoutGate();
   const [paymentMethod, setPaymentMethod] = useState<string | null>(null);
 
   if (cart.length === 0) {
@@ -72,8 +76,46 @@ export default function PagamentoPage() {
         <div className="cart-empty talao-gate">
           {gate.reason === 'no-client'
             ? 'Vincule um cadastro de cliente (nome, CPF/CNPJ, e-mail, CEP) no talão antes de continuar.'
-            : 'Complete o cadastro da cliente (CPF/CNPJ, e-mail, CEP) no talão antes de continuar.'}
+            : gate.reason === 'no-login'
+              ? 'A cliente ainda não tem login — crie um pra ela no talão antes de continuar.'
+              : 'Complete o cadastro da cliente (CPF/CNPJ, e-mail, CEP) no talão antes de continuar.'}
           <button className="btn-add" onClick={gate.openTalao}>Abrir talão</button>
+        </div>
+      </main>
+    );
+  }
+
+  // Compra sem talão nenhum (guest ou cliente comprando sozinha) pode ser
+  // montada sem login, mas finalizar exige conta — combinado com o usuário:
+  // sem login não dá pra sequer ver preço (ver hidePriceWithoutLogin em
+  // /ferramentas), então também não faz sentido fechar pedido sem login.
+  if (!authUser) {
+    return (
+      <main className="container checkout-page">
+        <CheckoutSteps current="/pagamento" reachable={2} />
+        <h1>Pagamento</h1>
+        <div className="cart-empty talao-gate">
+          Pra finalizar o pedido você precisa entrar ou criar uma conta — seu carrinho continua salvo.
+          <div className="checkout-actions">
+            <Link href={`/login?redirect=${encodeURIComponent('/pagamento')}`} className="btn-add">Entrar</Link>
+            <Link href={`/cadastro?redirect=${encodeURIComponent('/pagamento')}`} className="btn-clear">Criar conta</Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // Ferramenta "cliente finaliza sozinha" desligada (/ferramentas) — a
+  // cliente está com uma vendedora atendendo (sessão de talão
+  // compartilhada, ver ClientSessionProvider.tsx) e a loja exige que só a
+  // vendedora feche o pedido (link de pagamento ou fechamento manual).
+  if (selfCheckoutBlocked) {
+    return (
+      <main className="container checkout-page">
+        <CheckoutSteps current="/pagamento" reachable={2} />
+        <h1>Pagamento</h1>
+        <div className="cart-empty talao-gate">
+          Esta loja finaliza pedidos de talão só pela vendedora — peça pra ela gerar o link de pagamento ou fechar o pedido.
         </div>
       </main>
     );

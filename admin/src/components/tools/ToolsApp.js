@@ -31,6 +31,12 @@ const TOOLS = [
     description:
       'Visitante sem cadastro/login vê só foto, nome e cores — o preço vira um link pra entrar/criar conta. Desligada por padrão (diferente das outras ferramentas acima, aqui a peça começa sempre com preço à mostra em storeSettings.json até a loja ligar).',
   },
+  {
+    id: 'clientSelfCheckout',
+    label: 'Cliente finaliza sozinha (talão)',
+    description:
+      'Quando uma vendedora monta o pedido no talão e vincula o cadastro da cliente, essa ferramenta decide se a cliente pode confirmar o pedido sozinha pela plataforma (ligada) ou só a vendedora pode fechar — pelo link de pagamento (desligada). Não afeta compra sem talão nenhum (cliente comprando sozinha, sem vendedora envolvida).',
+  },
 ];
 
 const ASSIGNMENT_STRATEGIES = [

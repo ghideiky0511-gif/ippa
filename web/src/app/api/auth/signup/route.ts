@@ -6,7 +6,7 @@ import { readOrderSessions, writeOrderSessions, countOpenSessionsBySeller } from
 import { pickSeller } from '@/lib/assignment';
 import { readStoreSettings } from '@/lib/storeSettings';
 import { notifySession } from '@/lib/sseHub';
-import type { Client, OrderSession } from '@/lib/types';
+import type { CartItem, Client, OrderSession } from '@/lib/types';
 
 // Autocadastro da cliente final (combinado com o usuário: cadastro completo
 // de uma vez — nome, e-mail, senha, CPF/CNPJ e endereço inteiro — diferente
@@ -29,6 +29,11 @@ export async function POST(request: NextRequest) {
   // Sempre opcionais — nunca entram na validação de obrigatórios abaixo.
   const companyResponsible = typeof body?.companyResponsible === 'string' ? body.companyResponsible.trim() : '';
   const storeName = typeof body?.storeName === 'string' ? body.storeName.trim() : '';
+  // Carrinho anônimo (localStorage) que a pessoa já tinha montado antes de
+  // ser obrigada a criar conta (ver gate de login em /frete e /pagamento,
+  // web/src/app/cadastro/page.tsx manda o cart atual junto) — só usado
+  // abaixo se o gatilho de fila criar uma sessão nova pra ela.
+  const anonymousCart: CartItem[] = Array.isArray(body?.cart) ? body.cart : [];
 
   if (!name || !email || !password || !cpfCnpj || !cep || !street || !number || !neighborhood || !city || !state) {
     return NextResponse.json(
@@ -99,7 +104,11 @@ export async function POST(request: NextRequest) {
       clientId: client.id,
       sellerId,
       channel: 'online',
-      items: [],
+      // Sessão nasce com o carrinho que ela já tinha montado sem login, em
+      // vez de vazia — sem isso o carrinho "sumiria" bem na hora em que ela
+      // é obrigada a logar pra continuar (effectiveCart passa a vir da
+      // sessão, ver CartProvider.tsx).
+      items: anonymousCart,
       status: 'aberto',
       createdAt: now2,
       updatedAt: now2,

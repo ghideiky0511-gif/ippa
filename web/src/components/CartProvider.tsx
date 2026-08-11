@@ -79,7 +79,11 @@ interface CartContextValue {
 }
 
 const CartContext = createContext<CartContextValue | null>(null);
-const CART_KEY = 'ippa_cart_v1';
+// Exportado porque /cadastro/page.tsx precisa ler o carrinho anônimo direto
+// do localStorage — essa página fica FORA do AppShell (ver
+// ConditionalShell.tsx, NO_SHELL_PREFIXES), então CartProvider nem está
+// montado ali, useCart() não é uma opção.
+export const CART_KEY = 'ippa_cart_v1';
 
 function readJSON<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback;
