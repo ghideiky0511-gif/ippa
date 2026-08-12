@@ -477,6 +477,13 @@ input, textarea { font: inherit; }
 .admin-modal-section .field { min-width: 160px; }
 .admin-modal-footer { display: flex; align-items: center; gap: 10px; justify-content: flex-end; padding: 16px 20px; border-top: 1px solid #eadde2; }
 
+/* Barra "Gerar com IA" no topo do editor da home (BuilderApp.js) — chama
+   POST /api/admin/home-ai e joga o resultado no canvas (mesmo caminho de
+   useTemplate) pra revisão antes de salvar. */
+.builder-ai-bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; padding: 10px 20px; border-bottom: 1px solid #eadde2; background: var(--brand-card); }
+.builder-ai-bar input { flex: 1; border: 1px solid #d8c3ce; border-radius: 6px; padding: 8px 10px; font-size: 13px; }
+.builder-ai-error { font-size: 12px; color: #c0392b; }
+
 /* Checkbox "quadrado + ferramenta escrita ao lado" pra liberar/bloquear
    áreas do catálogo por conta (ver CATALOG_AREAS em UserFormModal.js) */
 .admin-checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 6px 0; cursor: pointer; }

@@ -6,7 +6,7 @@ import Canvas from './Canvas';
 import RightPanel from './RightPanel';
 import AdminNav from '@/components/AdminNav';
 import { BLOCK_REGISTRY, CANVAS_WIDTH } from '@/lib/blockRegistry';
-import { saveHomeSections } from '@/lib/homeSectionsClient';
+import { saveHomeSections, generateHomeSections } from '@/lib/homeSectionsClient';
 
 /** @param {{ initialSections: import('@/lib/homeSectionTypes').HomeSection[], products: import('@/lib/homeSectionTypes').Product[] }} props */
 export default function BuilderApp({ initialSections, products }) {
@@ -14,6 +14,9 @@ export default function BuilderApp({ initialSections, products }) {
   const [selectedId, setSelectedId] = useState(null);
   const [saveState, setSaveState] = useState('idle'); // idle | saving | saved | error
   const [dirty, setDirty] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiState, setAiState] = useState('idle'); // idle | generating | error
+  const [aiError, setAiError] = useState('');
 
   // Só usado pra soltar uma ferramenta nova da toolbox no canvas — mover ou
   // redimensionar um bloco já existente é um drag próprio (pointer events
@@ -72,10 +75,33 @@ export default function BuilderApp({ initialSections, products }) {
     setDirty(true);
   }
 
-  function useTemplate(template) {
+  function applyTemplate(template) {
     setSections(template);
     setSelectedId(null);
     setDirty(true);
+  }
+
+  async function handleGenerateAI(e) {
+    e.preventDefault();
+    if (!aiPrompt.trim()) return;
+    if (sections.length > 0 && !window.confirm('Isso substitui os blocos atuais do canvas. Continuar?')) {
+      return;
+    }
+    setAiState('generating');
+    setAiError('');
+    try {
+      const generated = await generateHomeSections(aiPrompt.trim());
+      if (!generated || generated.length === 0) {
+        setAiState('error');
+        setAiError('Não reconheci nenhum bloco válido nessa descrição — tenta detalhar melhor.');
+        return;
+      }
+      applyTemplate(generated);
+      setAiState('idle');
+    } catch (err) {
+      setAiState('error');
+      setAiError(err.message);
+    }
   }
 
   async function handleSave() {
@@ -107,6 +133,18 @@ export default function BuilderApp({ initialSections, products }) {
           </div>
         </div>
 
+        <form className="builder-ai-bar" onSubmit={handleGenerateAI}>
+          <input
+            value={aiPrompt}
+            onChange={(e) => setAiPrompt(e.target.value)}
+            placeholder='Descreva a estrutura, ex.: "banner de vídeo 660x880 no início, com mais 3 cards abaixo"'
+          />
+          <button type="submit" className="btn btn-primary" disabled={aiState === 'generating' || !aiPrompt.trim()}>
+            {aiState === 'generating' ? 'Gerando…' : 'Gerar com IA'}
+          </button>
+          {aiState === 'error' && <span className="builder-ai-error">{aiError}</span>}
+        </form>
+
         <Canvas
           sections={sections}
           products={products}
@@ -115,7 +153,7 @@ export default function BuilderApp({ initialSections, products }) {
           onRemoveSection={removeSection}
           onMoveSection={moveSection}
           onResizeSection={resizeSection}
-          onUseTemplate={useTemplate}
+          onUseTemplate={applyTemplate}
         />
 
         <RightPanel

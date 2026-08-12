@@ -18,3 +18,19 @@ export async function saveHomeSections(sections) {
   if (!res.ok) throw new Error('Não foi possível salvar — confira os dados e tente de novo.');
   return res.json();
 }
+
+// Gera só a ESTRUTURA da home a partir de um prompt (ver POST
+// /api/admin/home-ai em web/) — banners voltam sem mídia (mediaUrl vazio),
+// a loja arrasta/edita normalmente pra colocar imagem/vídeo depois. Não
+// salva sozinho: quem chama decide se joga no canvas (useTemplate) e
+// depois clica em Salvar.
+export async function generateHomeSections(prompt) {
+  const res = await fetch(`${API_BASE}/api/admin/home-ai`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Não foi possível gerar a estrutura.');
+  return data.sections;
+}
