@@ -424,6 +424,64 @@ input, textarea { font: inherit; }
 /* Página /usuarios — sub-abas vendedora × cliente (UsersApp.js) */
 .usuarios-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
 
+/* Login do admin (/login) + botão de sair no AdminNav (AdminAuthProvider.js) */
+.admin-login-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.admin-login-form { background: var(--brand-card); border-radius: var(--radius); box-shadow: 0 1px 4px rgba(0,0,0,0.08); padding: 32px; width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 14px; }
+.admin-login-form h1 { font-size: 20px; }
+.admin-login-error { color: #c0392b; font-size: 13px; }
+.admin-nav-user { display: flex; align-items: center; gap: 10px; margin-left: auto; font-size: 13px; color: var(--brand-muted); }
+.admin-nav-logout { background: none; border: none; color: var(--brand-primary); cursor: pointer; font-size: 13px; }
+.admin-nav-logout:hover { text-decoration: underline; }
+
+/* Aba /usuarios — topo (busca + criar acesso) e ações por linha (ver mais /
+   editar / excluir), ver UsersApp.js */
+.usuarios-toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.user-row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.user-detail-row td { background: var(--brand-bg); }
+.user-detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px 20px; padding: 6px 4px; }
+.user-detail-item dt { font-size: 11px; color: var(--brand-muted); margin-bottom: 2px; }
+.user-detail-item dd { font-size: 13px; }
+
+/* Painel lateral (criar/editar acesso) — mesma ideia do quick-view do
+   catálogo (ProductQuickView.tsx), reimplementado aqui porque admin/ e
+   web/ são apps separados sem componente compartilhado. */
+.admin-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 12, 16, 0.4);
+  display: flex;
+  justify-content: flex-end;
+  z-index: 100;
+}
+.admin-modal-panel {
+  background: var(--brand-card);
+  width: 100%;
+  max-width: 440px;
+  height: 100%;
+  overflow-y: auto;
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.15);
+  animation: adminModalSlideIn 0.2s ease-out;
+  display: flex;
+  flex-direction: column;
+}
+@keyframes adminModalSlideIn {
+  from { transform: translateX(24px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.admin-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px; border-bottom: 1px solid #eadde2; }
+.admin-modal-header h2 { font-size: 17px; }
+.admin-modal-close { background: none; border: none; font-size: 20px; line-height: 1; cursor: pointer; color: var(--brand-muted); }
+.admin-modal-body { padding: 20px; display: flex; flex-direction: column; gap: 16px; flex: 1; }
+.admin-modal-section h3 { font-size: 13px; color: var(--brand-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 10px; }
+.admin-modal-section .field-row { flex-wrap: wrap; }
+.admin-modal-section .field { min-width: 160px; }
+.admin-modal-footer { display: flex; align-items: center; gap: 10px; justify-content: flex-end; padding: 16px 20px; border-top: 1px solid #eadde2; }
+
+/* Checkbox "quadrado + ferramenta escrita ao lado" pra liberar/bloquear
+   áreas do catálogo por conta (ver CATALOG_AREAS em UserFormModal.js) */
+.admin-checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 6px 0; cursor: pointer; }
+.admin-checkbox-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--brand-primary); cursor: pointer; }
+
 /* Página /ferramentas — liga/desliga de funcionalidades opcionais do
    catálogo (storeSettings.json `features`, ver web/src/lib/catalog.ts). */
 .tools-list { display: flex; flex-direction: column; gap: 8px; }

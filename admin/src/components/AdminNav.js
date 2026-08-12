@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useAdminAuth } from './AdminAuthProvider';
 
 const LINKS = [
   { href: '/builder', label: 'Home' },
@@ -15,6 +16,7 @@ const LINKS = [
 
 export default function AdminNav() {
   const pathname = usePathname();
+  const { adminUser, logout } = useAdminAuth();
   return (
     <nav className="admin-nav">
       {LINKS.map((link) => (
@@ -22,6 +24,12 @@ export default function AdminNav() {
           {link.label}
         </Link>
       ))}
+      {adminUser && (
+        <span className="admin-nav-user">
+          {adminUser.name}
+          <button type="button" className="admin-nav-logout" onClick={logout}>Sair</button>
+        </span>
+      )}
     </nav>
   );
 }

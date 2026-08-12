@@ -1,4 +1,5 @@
 import "./globals.css";
+import { AdminAuthProvider } from "@/components/AdminAuthProvider";
 
 export const metadata = {
   title: "Bippa Admin — Editor da home",
@@ -8,7 +9,9 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="pt-BR">
-      <body>{children}</body>
+      <body>
+        <AdminAuthProvider>{children}</AdminAuthProvider>
+      </body>
     </html>
   );
 }

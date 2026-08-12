@@ -102,6 +102,35 @@ export async function verifyLogin(email: string, password: string): Promise<Auth
   return ok ? withoutPasswordHash(user) : null;
 }
 
+// Áreas do catálogo que existem hoje (ver areaForPath em web/src/proxy.ts,
+// fonte de verdade de quais rotas cada chave cobre) — usado pra validar o
+// que a plataforma admin manda em permissions.catalogAreas (POST/PUT
+// /api/admin/users), pra não deixar salvar uma chave inventada que não
+// bate com nenhuma área real.
+export const KNOWN_CATALOG_AREAS = ['talao', 'pedidos'] as const;
+
+// Permissão de partida pra cada perfil (ver AuthUser.permissions em
+// types.ts) — só o ponto de partida ao criar uma conta pelo admin
+// (POST /api/admin/users), sempre editável depois (PUT do mesmo id). Não
+// é uma regra fixa por role: o admin pode dar acesso ao admin pra uma
+// vendedora, ou nenhuma área de catálogo pra ela, se quiser.
+export function defaultPermissionsFor(role: UserRole): NonNullable<AuthUser['permissions']> {
+  switch (role) {
+    case 'administrador':
+      return { adminAccess: true, catalogAreas: [] };
+    case 'vendedora':
+      return { adminAccess: false, catalogAreas: ['talao', 'pedidos'] };
+    case 'expedicao':
+    case 'entregador':
+      // Sem tela própria ainda (separação/rota de entrega) — cai em
+      // /em-construcao até o admin liberar alguma área (ver
+      // web/src/middleware.ts).
+      return { adminAccess: false, catalogAreas: [] };
+    default:
+      return { adminAccess: false, catalogAreas: [] };
+  }
+}
+
 // Autocadastro (hoje só role 'cliente', via POST /api/auth/signup) —
 // e-mail precisa ser único em TODO users.json, não só dentro da mesma
 // role (é o mesmo sistema de login pra vendedora e cliente). Lança
@@ -113,6 +142,7 @@ export async function createUser(params: {
   name: string;
   role: UserRole;
   clientId?: string;
+  permissions?: AuthUser['permissions'];
 }): Promise<AuthUser> {
   const users = await readUsers();
   const email = params.email.trim();
@@ -126,11 +156,46 @@ export async function createUser(params: {
     name: params.name.trim(),
     role: params.role,
     clientId: params.clientId,
+    permissions: params.permissions ?? defaultPermissionsFor(params.role),
     passwordHash,
   };
   users.push(user);
   await writeUsers(users);
   return withoutPasswordHash(user);
+}
+
+// Edita nome/e-mail/senha de uma conta já existente — usado pelo botão de
+// editar (lápis) da aba "Usuários" do admin (PUT /api/admin/users/[id]).
+// `password` vazio/ausente mantém o hash atual (não força troca de senha
+// toda edição, só quando preenchido). `permissions` não é mexido aqui: essa
+// edição é só cadastro básico (nome/e-mail/senha), a granularidade de
+// acesso continua fixada no momento da criação (ver defaultPermissionsFor).
+export async function updateUser(
+  id: string,
+  params: { name?: string; email?: string; password?: string; catalogAreas?: string[] }
+): Promise<AuthUser | null> {
+  const users = await readUsers();
+  const index = users.findIndex((u) => u.id === id);
+  if (index === -1) return null;
+
+  const current = users[index];
+  const email = params.email?.trim();
+  if (email && users.some((u, i) => i !== index && u.email.toLowerCase() === email.toLowerCase())) {
+    throw new Error('EMAIL_TAKEN');
+  }
+
+  const updated: StoredUser = {
+    ...current,
+    name: params.name?.trim() || current.name,
+    email: email || current.email,
+    passwordHash: params.password ? await bcrypt.hash(params.password, 10) : current.passwordHash,
+    permissions: params.catalogAreas
+      ? { ...current.permissions, catalogAreas: params.catalogAreas }
+      : current.permissions,
+  };
+  users[index] = updated;
+  await writeUsers(users);
+  return withoutPasswordHash(updated);
 }
 
 // Exclui a conta (login) — usado pelo botão "excluir" da aba "Usuários" do

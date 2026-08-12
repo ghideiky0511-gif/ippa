@@ -124,7 +124,14 @@ export interface CartItem {
   backorderDate?: string;
 }
 
-export type UserRole = 'vendedora' | 'cliente';
+// 'administrador'/'expedicao'/'entregador' são perfis internos da loja,
+// criados só pelo admin (ver POST /api/admin/users) — ninguém se
+// autocadastra com eles. 'vendedora'/'cliente' continuam com todo o
+// comportamento de sempre (talão, checkout) — os três perfis novos ainda
+// não têm tela própria no catálogo (expedição/entregador caem em
+// /em-construcao até ganharem uma, ver AuthUser.permissions abaixo e
+// web/src/middleware.ts).
+export type UserRole = 'administrador' | 'vendedora' | 'expedicao' | 'entregador' | 'cliente';
 
 // Usuário autenticado (login email+senha) — versão sem passwordHash, é o
 // formato que trafega pro cliente/sessão. Fonte de dado real é
@@ -137,6 +144,22 @@ export interface AuthUser {
   // Só presente quando role === 'cliente' — vincula ao cadastro em Client
   // (ver abaixo), criado junto no autocadastro (POST /api/auth/signup).
   clientId?: string;
+  // Permissão por CONTA, não fixa pelo role — o admin decide na hora de
+  // criar (ou depois, editando) quem entra na plataforma admin e quais
+  // áreas do catálogo aquela conta pode navegar. Ver defaultPermissionsFor
+  // em web/src/lib/auth.ts (o que cada role ganha ao ser criado, só como
+  // ponto de partida editável).
+  permissions?: {
+    // Acesso à plataforma admin (porta 3001) — checado em
+    // POST /api/admin/auth/login, nada a ver com o role em si.
+    adminAccess?: boolean;
+    // Áreas do catálogo (porta 3000) liberadas pra essa conta — chaves
+    // hoje: 'talao', 'pedidos'. Lista pensada pra crescer (separação,
+    // rota de entrega) sem precisar redesenhar nada — ver
+    // web/src/middleware.ts (só intercepta quem não é vendedora/cliente,
+    // esses dois continuam com acesso total de sempre).
+    catalogAreas?: string[];
+  };
 }
 
 // Cadastro de cliente — separado de AuthUser de propósito: uma cliente pode

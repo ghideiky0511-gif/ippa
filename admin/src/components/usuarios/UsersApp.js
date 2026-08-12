@@ -1,34 +1,79 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import AdminNav from '@/components/AdminNav';
-import { createVendedora, deleteUser } from '@/lib/usersClient';
-
-const EMPTY_FORM = { name: '', email: '', password: '' };
+import { fetchUsers, deleteUser } from '@/lib/usersClient';
+import UserFormModal from './UserFormModal';
 
 const TABS = [
   { id: 'vendedoras', label: 'Vendedoras' },
   { id: 'clientes', label: 'Clientes' },
 ];
 
+const AREA_LABELS = {
+  talao: 'Talão de pedidos',
+  pedidos: 'Meus pedidos / Minhas vendas',
+};
+
+const CLIENT_DETAILS = [
+  ['cpfCnpj', 'CPF/CNPJ'],
+  ['clientEmail', 'E-mail de contato'],
+  ['companyResponsible', 'Responsável (CNPJ)'],
+  ['storeName', 'Nome da loja (CPF)'],
+  ['cep', 'CEP'],
+  ['street', 'Rua'],
+  ['number', 'Número'],
+  ['complement', 'Complemento'],
+  ['neighborhood', 'Bairro'],
+  ['city', 'Cidade'],
+  ['state', 'Estado'],
+  ['createdAt', 'Cadastrada em'],
+  ['password', 'Senha'],
+];
+
+const VENDEDORA_DETAILS = [
+  ['id', 'ID da conta'],
+  ['adminAccess', 'Acesso à plataforma admin'],
+  ['catalogAreas', 'Ferramentas liberadas no catálogo'],
+  ['password', 'Senha'],
+];
+
+function detailsFor(activeTab) {
+  return activeTab === 'clientes' ? CLIENT_DETAILS : VENDEDORA_DETAILS;
+}
+
+function valueFor(u, key) {
+  if (key === 'adminAccess') return u.permissions?.adminAccess ? 'Sim' : 'Não';
+  if (key === 'catalogAreas') {
+    const areas = u.permissions?.catalogAreas || [];
+    return areas.length ? areas.map((a) => AREA_LABELS[a] || a).join(', ') : null;
+  }
+  // Senha só existe como hash (bcrypt) — nunca trafega pro admin, nem
+  // existe em texto puro em lugar nenhum. Mostrar aqui é só indicar que
+  // tem uma senha definida; pra trocar é só usar o lápis de editar.
+  if (key === 'password') return '••••••••';
+  return u[key];
+}
+
+function formatValue(key, value) {
+  if (!value) return '—';
+  if (key === 'createdAt') return new Date(value).toLocaleDateString('pt-BR');
+  return value;
+}
+
 // Aba "Usuários" — dividida em duas sub-abas (vendedora × cliente) porque o
-// dado e a ação de cada uma são bem diferentes: vendedora só existe pelo
-// que se cria aqui (POST /api/admin/users, de propósito — não existe
-// autocadastro público pra esse papel) e não tem CPF/CNPJ nem cadastro
-// associado; cliente vem sempre de fora (autocadastro em /cadastro ou
-// cadastro rápido da vendedora no talão) e carrega o Client inteiro
-// (CPF/CNPJ, última vendedora que atendeu). Antes as duas viviam numa
-// tabela só com uma coluna "Perfil" pra distinguir — combinado com o
-// usuário: separar de vez, cada sub-aba já sabe o que é sem precisar de
-// coluna extra. GET /api/admin/users continua trazendo as duas juntas (list
-// combinada), a divisão é só de exibição aqui.
+// dado e a ação de cada uma são bem diferentes (ver histórico deste
+// arquivo). O campo de busca filtra só os já cadastrados; criar um acesso
+// novo abre o painel lateral (UserFormModal), com os campos de cada perfil
+// — vendedora só login, cliente login + cadastro completo. Cada linha tem
+// "Ver mais" (expande o cadastro inteiro) e um lápis (abre o mesmo painel
+// em modo edição).
 export default function UsersApp({ initialUsers }) {
   const [users, setUsers] = useState(initialUsers || []);
   const [activeTab, setActiveTab] = useState('vendedoras');
   const [query, setQuery] = useState('');
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [saveState, setSaveState] = useState('idle'); // idle | saving | error
-  const [errorMsg, setErrorMsg] = useState('');
+  const [expandedId, setExpandedId] = useState(null);
+  const [modal, setModal] = useState(null); // { mode: 'create'|'edit', user? }
   const [deletingId, setDeletingId] = useState(null);
 
   const byTab = useMemo(
@@ -51,28 +96,11 @@ export default function UsersApp({ initialUsers }) {
     );
   }, [byTab, activeTab, q]);
 
-  async function handleCreateVendedora(e) {
-    e.preventDefault();
-    if (!form.name.trim() || !form.email.trim() || !form.password) {
-      setSaveState('error');
-      setErrorMsg('Preencha nome, e-mail e senha.');
-      return;
-    }
-    if (form.password.length < 6) {
-      setSaveState('error');
-      setErrorMsg('A senha precisa ter pelo menos 6 caracteres.');
-      return;
-    }
-    setSaveState('saving');
-    setErrorMsg('');
+  async function refresh() {
     try {
-      const newUser = await createVendedora(form);
-      setUsers((prev) => [newUser, ...prev]);
-      setForm(EMPTY_FORM);
-      setSaveState('idle');
-    } catch (err) {
-      setSaveState('error');
-      setErrorMsg(err.message);
+      setUsers(await fetchUsers());
+    } catch {
+      // mantém a lista atual (só otimista) se o refresh falhar
     }
   }
 
@@ -88,6 +116,11 @@ export default function UsersApp({ initialUsers }) {
     } finally {
       setDeletingId(null);
     }
+  }
+
+  function handleSaved() {
+    setModal(null);
+    refresh();
   }
 
   return (
@@ -109,6 +142,7 @@ export default function UsersApp({ initialUsers }) {
               onClick={() => {
                 setActiveTab(tab.id);
                 setQuery('');
+                setExpandedId(null);
               }}
             >
               {tab.label} ({byTab[tab.id].length})
@@ -116,58 +150,18 @@ export default function UsersApp({ initialUsers }) {
           ))}
         </div>
 
-        {activeTab === 'vendedoras' && (
-          <form onSubmit={handleCreateVendedora}>
-            <h2>Novo acesso de vendedora</h2>
-            <div className="field-row" style={{ alignItems: 'flex-end' }}>
-              <div className="field" style={{ maxWidth: 220 }}>
-                <label>Nome</label>
-                <input
-                  value={form.name}
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="Nome da vendedora"
-                />
-              </div>
-              <div className="field" style={{ maxWidth: 260 }}>
-                <label>E-mail</label>
-                <input
-                  type="email"
-                  value={form.email}
-                  onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                  placeholder="email@loja.com"
-                />
-              </div>
-              <div className="field" style={{ maxWidth: 200 }}>
-                <label>Senha</label>
-                <input
-                  type="password"
-                  value={form.password}
-                  onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                  placeholder="Mínimo 6 caracteres"
-                />
-              </div>
-              <button className="btn btn-primary" type="submit" disabled={saveState === 'saving'}>
-                {saveState === 'saving' ? 'Criando…' : 'Criar acesso'}
-              </button>
-              {saveState === 'error' && <span className="status">{errorMsg}</span>}
-            </div>
-          </form>
-        )}
-
-        {activeTab === 'clientes' && (
-          <p className="preview-empty-text">
-            Cadastro de cliente vem sempre de fora (autocadastro no catálogo ou cadastro rápido da vendedora no
-            talão) — aqui só dá pra consultar e excluir.
-          </p>
-        )}
-
-        <div className="field" style={{ maxWidth: 360 }}>
-          <label>Buscar</label>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={activeTab === 'clientes' ? 'Nome, e-mail ou CPF/CNPJ...' : 'Nome ou e-mail...'}
-          />
+        <div className="usuarios-toolbar">
+          <div className="field" style={{ maxWidth: 360 }}>
+            <label>Buscar</label>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={activeTab === 'clientes' ? 'Nome, e-mail ou CPF/CNPJ...' : 'Nome ou e-mail...'}
+            />
+          </div>
+          <button type="button" className="btn btn-primary" onClick={() => setModal({ mode: 'create' })}>
+            + Criar {activeTab === 'clientes' ? 'cliente' : 'vendedora'}
+          </button>
         </div>
 
         <table className="admin-table">
@@ -181,27 +175,65 @@ export default function UsersApp({ initialUsers }) {
           </thead>
           <tbody>
             {results.map((u) => (
-              <tr key={u.id}>
-                <td>{u.name}</td>
-                <td>{u.email}</td>
-                {activeTab === 'clientes' && <td>{u.cpfCnpj || '—'}</td>}
-                <td>
-                  <button
-                    type="button"
-                    className="btn btn-icon btn-danger"
-                    title="Excluir usuário"
-                    disabled={deletingId === u.id}
-                    onClick={() => handleDelete(u)}
-                  >
-                    &times;
-                  </button>
-                </td>
-              </tr>
+              <Fragment key={u.id}>
+                <tr>
+                  <td>{u.name}</td>
+                  <td>{u.email}</td>
+                  {activeTab === 'clientes' && <td>{u.cpfCnpj || '—'}</td>}
+                  <td>
+                    <div className="user-row-actions">
+                      <button
+                        type="button"
+                        className="btn btn-icon"
+                        onClick={() => setExpandedId(expandedId === u.id ? null : u.id)}
+                      >
+                        {expandedId === u.id ? 'Ver menos' : 'Ver mais'}
+                      </button>
+                      <button type="button" className="btn btn-icon" title="Editar" onClick={() => setModal({ mode: 'edit', user: u })}>
+                        ✎
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-icon btn-danger"
+                        title="Excluir usuário"
+                        disabled={deletingId === u.id}
+                        onClick={() => handleDelete(u)}
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                {expandedId === u.id && (
+                  <tr className="user-detail-row">
+                    <td colSpan={activeTab === 'clientes' ? 4 : 3}>
+                      <dl className="user-detail-grid">
+                        {detailsFor(activeTab).map(([key, label]) => (
+                          <div className="user-detail-item" key={key}>
+                            <dt>{label}</dt>
+                            <dd>{formatValue(key, valueFor(u, key))}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
           </tbody>
         </table>
         {results.length === 0 && <p className="preview-empty-text">Nenhum usuário encontrado.</p>}
       </main>
+
+      {modal && (
+        <UserFormModal
+          role={activeTab}
+          mode={modal.mode}
+          user={modal.user}
+          onClose={() => setModal(null)}
+          onSaved={handleSaved}
+        />
+      )}
     </div>
   );
 }

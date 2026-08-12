@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { listUsersWithoutPasswords, createUser } from '@/lib/auth';
+import { listUsersWithoutPasswords, createUser, defaultPermissionsFor, KNOWN_CATALOG_AREAS } from '@/lib/auth';
 import { readClients } from '@/lib/clients';
 import { sendSignupConfirmationEmail } from '@/lib/email';
 
@@ -34,7 +34,23 @@ export async function GET() {
       name: u.name,
       email: u.email,
       role: u.role,
+      permissions: u.permissions,
+      // Campos abaixo só existem quando role === 'cliente' (client vem do
+      // Client vinculado, ver clientId) — usados pelo "ver mais"/edição da
+      // aba Usuários no admin (UsersApp.js), pra mostrar/editar o cadastro
+      // inteiro sem round-trip extra.
+      clientId: u.clientId,
       cpfCnpj: client?.cpfCnpj,
+      cep: client?.cep,
+      street: client?.street,
+      number: client?.number,
+      complement: client?.complement,
+      neighborhood: client?.neighborhood,
+      city: client?.city,
+      state: client?.state,
+      companyResponsible: client?.companyResponsible,
+      storeName: client?.storeName,
+      clientEmail: client?.email,
       lastSellerId: client?.lastSellerId,
       createdAt: client?.createdAt,
     };
@@ -48,6 +64,13 @@ export async function POST(request: NextRequest) {
   const name = typeof body?.name === 'string' ? body.name.trim() : '';
   const email = typeof body?.email === 'string' ? body.email.trim() : '';
   const password = typeof body?.password === 'string' ? body.password : '';
+  // Quais "ferramentas" do catálogo essa vendedora pode ver (ver checkboxes
+  // em admin/src/components/usuarios/UserFormModal.js) — filtra pra só
+  // aceitar chaves conhecidas (KNOWN_CATALOG_AREAS), sem valor = usa o
+  // default do perfil (defaultPermissionsFor).
+  const catalogAreas = Array.isArray(body?.catalogAreas)
+    ? body.catalogAreas.filter((a: unknown): a is string => KNOWN_CATALOG_AREAS.includes(a as never))
+    : undefined;
 
   if (!name || !email || !password) {
     return NextResponse.json({ error: 'Informe nome, e-mail e senha.' }, { status: 400, headers: CORS_HEADERS });
@@ -57,7 +80,8 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const user = await createUser({ email, password, name, role: 'vendedora' });
+    const permissions = { ...defaultPermissionsFor('vendedora'), catalogAreas: catalogAreas ?? defaultPermissionsFor('vendedora').catalogAreas };
+    const user = await createUser({ email, password, name, role: 'vendedora', permissions });
     sendSignupConfirmationEmail({ to: user.email, name: user.name });
     return NextResponse.json(user, { status: 201, headers: CORS_HEADERS });
   } catch (err) {

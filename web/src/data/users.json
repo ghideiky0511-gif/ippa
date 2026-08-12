@@ -28,5 +28,16 @@
     "role": "cliente",
     "clientId": "2686d8f4-4b66-4585-bbff-1f8aaefe227d",
     "passwordHash": "$2b$10$2ZrBQi7iO9SddD7hdhLEwuyjw3.Ym3lFSd6S5..wwGWQwbPtQi1Hu"
+  },
+  {
+    "id": "admin-seed-1",
+    "email": "admin@ippa.com",
+    "name": "Administradora",
+    "role": "administrador",
+    "permissions": {
+      "adminAccess": true,
+      "catalogAreas": []
+    },
+    "passwordHash": "$2b$10$DUbwA0u/kroZ0sXkYvLgd.tUAijCrHCo2SN68lep47kt5DxzhzCom"
   }
 ]
