@@ -226,6 +226,12 @@ export interface OrderSession {
   notes?: string;
   createdAt: string;
   updatedAt: string;
+  // Nome da vendedora — NÃO persistido, computado só na resposta de
+  // GET /api/sessions/mine (a partir de sellerId, ver getAuthUserById em
+  // web/src/lib/auth.ts) pro indicador de presença na tela da cliente
+  // (PresenceBadge.tsx). Ausente em qualquer outro lugar que devolve
+  // OrderSession (talão da vendedora não precisa disso, ela já sabe quem é).
+  sellerName?: string;
 }
 
 export interface Order {

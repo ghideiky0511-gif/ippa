@@ -20,6 +20,15 @@ export async function writeClients(clients: Client[]): Promise<void> {
   await rename(tmpPath, DATA_PATH);
 }
 
+// Exclui um cadastro — usado quando a conta de login vinculada é apagada
+// pelo admin (ver deleteUser em web/src/lib/auth.ts e DELETE
+// /api/admin/users/[id]), pra não sobrar um Client órfão sem login nenhum
+// apontando pra ele.
+export async function deleteClient(id: string): Promise<void> {
+  const clients = await readClients();
+  await writeClients(clients.filter((c) => c.id !== id));
+}
+
 // Acha um cadastro já existente com o mesmo CPF/CNPJ (compara só dígitos,
 // ignora formatação — mesmo padrão frouxo de getDocumentType em
 // web/src/lib/document.ts). Usado pra bloquear duplicata em POST /api/clients

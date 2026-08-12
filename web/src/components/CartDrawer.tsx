@@ -1,14 +1,17 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { formatBRL } from '@/lib/format';
 import { CONFIG } from '@/lib/config';
 import { useCart } from './CartProvider';
+import { useAuthUser } from './AuthProvider';
 import GroupedCartItems from './GroupedCartItems';
 
 export default function CartDrawer() {
   const router = useRouter();
   const { cart, cartCount, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, isCartOpen, closeCart, clearCart, saveOrderToHistory } = useCart();
+  const { showPrices } = useAuthUser();
 
   function checkoutWhatsapp() {
     if (cartCount === 0) {
@@ -59,16 +62,22 @@ export default function CartDrawer() {
           )}
         </div>
         <div className="cart-footer">
-          {cartDiscountTotal > 0 && (
+          {!showPrices ? (
+            <Link href="/login" className="price price-locked price-locked-block">Entrar para ver o preço</Link>
+          ) : (
             <>
-              <div className="cart-total subtotal"><span>Subtotal</span><span>{formatBRL(cartSubtotal)}</span></div>
-              <div className="cart-total discount">
-                <span>Desconto ({cartDiscountLabel})</span>
-                <span>-{formatBRL(cartDiscountTotal)}</span>
-              </div>
+              {cartDiscountTotal > 0 && (
+                <>
+                  <div className="cart-total subtotal"><span>Subtotal</span><span>{formatBRL(cartSubtotal)}</span></div>
+                  <div className="cart-total discount">
+                    <span>Desconto ({cartDiscountLabel})</span>
+                    <span>-{formatBRL(cartDiscountTotal)}</span>
+                  </div>
+                </>
+              )}
+              <div className="cart-total"><span>Total</span><span>{formatBRL(cartTotal)}</span></div>
             </>
           )}
-          <div className="cart-total"><span>Total</span><span>{formatBRL(cartTotal)}</span></div>
           <button className="btn-whatsapp" onClick={checkoutWhatsapp}>Finalizar pedido via WhatsApp</button>
           <button className="btn-site-checkout" onClick={goToCheckout}>Revisar e continuar no site</button>
           <div className="whatsapp-hint">Ao enviar pelo WhatsApp, nada é cobrado automaticamente. Entre ou crie uma conta pra ver esse pedido depois em "Meus pedidos".</div>

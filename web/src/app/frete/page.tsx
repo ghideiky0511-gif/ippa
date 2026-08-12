@@ -28,13 +28,16 @@ export default function FretePage() {
     loading: false,
   });
 
-  // Cliente logada com CEP salvo no cadastro — atalho pra não digitar de
-  // novo (ver GET /api/clients/[id], que agora também autoriza a própria
-  // cliente a buscar o próprio cadastro).
+  // CEP salvo no cadastro — atalho pra não digitar de novo (ver
+  // GET /api/clients/[id]). Duas origens possíveis: a própria cliente
+  // logada vendo o frete dela (authUser.clientId), OU a vendedora dentro do
+  // talão de uma cliente com cadastro (activeSession.clientId) — a API já
+  // autoriza vendedora a buscar qualquer cadastro, só faltava a tela pedir.
   useEffect(() => {
-    if (!authUser?.clientId) return;
+    const clientId = activeSession?.clientId || authUser?.clientId;
+    if (!clientId) return;
     let cancelled = false;
-    fetch(`/api/clients/${authUser.clientId}`)
+    fetch(`/api/clients/${clientId}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((client: Client | null) => {
         if (!cancelled && client?.cep) setSavedCep(client.cep);
@@ -43,7 +46,7 @@ export default function FretePage() {
     return () => {
       cancelled = true;
     };
-  }, [authUser?.clientId]);
+  }, [activeSession?.clientId, authUser?.clientId]);
 
   useEffect(() => {
     setLinkState((prev) => ({ ...prev, token: activeSession?.paymentToken || '' }));
@@ -126,6 +129,25 @@ export default function FretePage() {
               : 'Complete o cadastro da cliente (CPF/CNPJ, e-mail, CEP) no talão antes de continuar pro frete.'}
           <button className="btn-add" onClick={gate.openTalao}>Abrir talão</button>
         </div>
+      </main>
+    );
+  }
+
+  // A cliente pagou pelo link (outra aba/dispositivo, sem a vendedora fazer
+  // nada aqui) — SSE já atualizou activeSession.status sozinho (ver
+  // TalaoProvider.tsx), só faltava esta tela reagir em vez de continuar
+  // mostrando "gerar link" como se nada tivesse acontecido (achado
+  // reportado pelo usuário).
+  if (activeSession?.status === 'fechado') {
+    return (
+      <main className="container checkout-page">
+        <CheckoutSteps current="/frete" reachable={3} />
+        <h1>Frete</h1>
+        <div className="payment-confirmed-panel">
+          <span className="payment-confirmed-check" aria-hidden="true">✓</span>
+          <p>Pagamento confirmado! O pedido de {activeSession.clientName} foi fechado.</p>
+        </div>
+        <Link href="/catalogo" className="back-link">← Voltar ao catálogo</Link>
       </main>
     );
   }

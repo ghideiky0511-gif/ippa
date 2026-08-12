@@ -421,6 +421,9 @@ input, textarea { font: inherit; }
 
 .status { font-size: 13px; color: var(--brand-muted); }
 
+/* Página /usuarios — sub-abas vendedora × cliente (UsersApp.js) */
+.usuarios-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+
 /* Página /ferramentas — liga/desliga de funcionalidades opcionais do
    catálogo (storeSettings.json `features`, ver web/src/lib/catalog.ts). */
 .tools-list { display: flex; flex-direction: column; gap: 8px; }

@@ -10,6 +10,7 @@ import { QuickViewProvider, useQuickView } from './QuickViewProvider';
 import { AuthProvider } from './AuthProvider';
 import CartDrawer from './CartDrawer';
 import TalaoDrawer from './TalaoDrawer';
+import PresenceBadge from './PresenceBadge';
 import ProductQuickView from './ProductQuickView';
 import SideMenu from './SideMenu';
 import { CONFIG } from '@/lib/config';
@@ -100,6 +101,7 @@ export default function AppShell({
           {children}
           <CartDrawer />
           {isVendedora && <TalaoDrawer />}
+          {isCliente && <PresenceBadge />}
           <GlobalQuickView />
         </CartProvider>
       </QuickViewProvider>

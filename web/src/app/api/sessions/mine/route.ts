@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserFromToken, SESSION_COOKIE } from '@/lib/auth';
+import { getUserFromToken, SESSION_COOKIE, getAuthUserById } from '@/lib/auth';
 import { readOrderSessions } from '@/lib/orderSessions';
 
 // Sessão de talão ativa da CLIENTE logada — contraparte de GET /api/sessions
@@ -21,5 +21,11 @@ export async function GET(request: NextRequest) {
     .filter((s) => s.clientId === user.clientId && s.status === 'aberto')
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
-  return NextResponse.json(mine[0] || null);
+  const active = mine[0] || null;
+  if (!active) return NextResponse.json(null);
+
+  // sellerName: pro indicador "a vendedora X está no pedido com você" na
+  // tela da cliente (PresenceBadge.tsx) — ver sellerName em types.ts.
+  const seller = await getAuthUserById(active.sellerId);
+  return NextResponse.json({ ...active, sellerName: seller?.name });
 }

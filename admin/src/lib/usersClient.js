@@ -16,3 +16,10 @@ export async function createVendedora({ name, email, password }) {
   if (!res.ok) throw new Error(data.error || 'Não foi possível criar o acesso.');
   return data;
 }
+
+export async function deleteUser(id) {
+  const res = await fetch(`${API_BASE}/api/admin/users/${id}`, { method: 'DELETE' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Não foi possível excluir o usuário.');
+  return data;
+}

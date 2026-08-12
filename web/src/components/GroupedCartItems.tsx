@@ -4,6 +4,7 @@ import { useState } from 'react';
 import CartItemRow from './CartItemRow';
 import { useCart } from './CartProvider';
 import { useQuickView } from './QuickViewProvider';
+import { useAuthUser } from './AuthProvider';
 import { formatBRL, priceWithPercentOff } from '@/lib/format';
 import type { CartItem } from '@/lib/types';
 
@@ -21,6 +22,7 @@ function isDraft(item: CartItem): boolean {
 function CartProductGroup({ productId, items }: { productId: string; items: CartItem[] }) {
   const { changeQty, removeFromCart, catalogById, cartDiscountByProduct } = useCart();
   const { openQuickView } = useQuickView();
+  const { showPrices } = useAuthUser();
   const [expanded, setExpanded] = useState(false);
 
   const resolved = items.filter((i) => !isDraft(i) && i.qty > 0);
@@ -48,14 +50,19 @@ function CartProductGroup({ productId, items }: { productId: string; items: Cart
             <div className="variant cart-group-pending">Selecione a grade</div>
           ) : (
             <div className="variant">
-              {colorCount} {colorCount === 1 ? 'cor' : 'cores'} · {totalQty} peça{totalQty === 1 ? '' : 's'} ·{' '}
-              {applied ? (
-                <span className="cart-group-price-discount">
-                  <span className="price-original">{formatBRL(totalValue)}</span>{' '}
-                  <span className="price-discounted">{formatBRL(discountedTotal)}</span>
-                </span>
-              ) : (
-                formatBRL(totalValue)
+              {colorCount} {colorCount === 1 ? 'cor' : 'cores'} · {totalQty} peça{totalQty === 1 ? '' : 's'}
+              {showPrices && (
+                <>
+                  {' · '}
+                  {applied ? (
+                    <span className="cart-group-price-discount">
+                      <span className="price-original">{formatBRL(totalValue)}</span>{' '}
+                      <span className="price-discounted">{formatBRL(discountedTotal)}</span>
+                    </span>
+                  ) : (
+                    formatBRL(totalValue)
+                  )}
+                </>
               )}
             </div>
           )}

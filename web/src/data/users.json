@@ -1,25 +1,32 @@
 [
   {
-    "id": "vend-teste-1",
-    "email": "vendedora@teste.com",
-    "passwordHash": "$2b$10$3qpuFGTErWIhCbTnuYKLbuGYEhsI6JNlGcsK6Q3Lx9AG4q.7Z1ogm",
-    "name": "Vendedora Teste",
-    "role": "vendedora"
+    "id": "0a4083f2-508b-4f1a-8688-a50709f1ae7c",
+    "email": "joao@fashion.com",
+    "name": "Joao",
+    "role": "vendedora",
+    "passwordHash": "$2b$10$fBpLUV/79i/W1N2GyBAsOOkjB960o2c52zO/eoe/kESpbo3vrXdtq"
   },
   {
-    "id": "39e8199d-7378-424e-828a-56dcc25092e2",
-    "email": "guilherme@bippa.com.br",
+    "id": "6531d1c5-04d8-47c9-ae60-6cc9d294fc3b",
+    "email": "gui.bippa@comprador",
     "name": "Guilherme",
     "role": "cliente",
-    "clientId": "5d68d0ca-2767-4e13-93d6-43688506e5df",
-    "passwordHash": "$2b$10$xrvlMBLRTlHRHQbdVDvpx.XzK7Tcy32pT.iHdCbHF.R4QLIK/cpYa"
+    "clientId": "b0915d4e-f491-4c8b-946d-c10da8271504",
+    "passwordHash": "$2b$10$wzvstUOM9Klq/y32jC3O0./DDQcZ/wnEpzGK3H6VdlfzUhoB.f8mW"
   },
   {
-    "id": "e71fc248-1e14-4fa7-b5c6-0bab1b7d745d",
-    "email": "larissa@bippa.com",
-    "name": "Larissa",
+    "id": "acafbeb9-1fb7-4a03-914e-a98f1a575031",
+    "email": "joao@fashion",
+    "name": "joao",
+    "role": "vendedora",
+    "passwordHash": "$2b$10$J6NDoNvdIKtXtluP3UyuY.DDwuCvj31f8RvXXBIc/28uVS/rg5NDi"
+  },
+  {
+    "id": "e62ac440-86ed-429a-a55d-5e79c1646255",
+    "email": "gui@bippa",
+    "name": "Guilherme",
     "role": "cliente",
-    "clientId": "89615788-af8b-4da0-b133-5bbc01f89e0e",
-    "passwordHash": "$2b$10$OCLtGr4vp/ytVj2.tSZHvuUAlbcAQwh/GcDfxdH9ltC7fvme8zDIS"
+    "clientId": "2686d8f4-4b66-4585-bbff-1f8aaefe227d",
+    "passwordHash": "$2b$10$2ZrBQi7iO9SddD7hdhLEwuyjw3.Ym3lFSd6S5..wwGWQwbPtQi1Hu"
   }
 ]

@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useTalao } from './TalaoProvider';
 import { useClientSession } from './ClientSessionProvider';
 import { useAuthUser } from './AuthProvider';
@@ -82,8 +82,20 @@ const CartContext = createContext<CartContextValue | null>(null);
 // Exportado porque /cadastro/page.tsx precisa ler o carrinho anônimo direto
 // do localStorage — essa página fica FORA do AppShell (ver
 // ConditionalShell.tsx, NO_SHELL_PREFIXES), então CartProvider nem está
-// montado ali, useCart() não é uma opção.
+// montado ali, useCart() não é uma opção. É sempre o carrinho de CONVIDADA
+// (sem conta) — ver cartKeyFor abaixo, que é a mesma chave quando não há
+// authUser.
 export const CART_KEY = 'ippa_cart_v1';
+
+// Carrinho pessoal (localStorage) precisa ser por CONTA, não uma chave única
+// pro navegador inteiro — sem isso, logar com outra cliente no mesmo
+// navegador mostrava o carrinho de quem tinha logado antes ali (achado
+// reportado pelo usuário: "entrei em outro login e apareceu o carrinho de
+// outro cliente"). Convidada (sem login) continua na chave base, igual
+// sempre — é o que /cadastro/page.tsx já lê direto.
+function cartKeyFor(authUser: { id: string } | null): string {
+  return authUser ? `${CART_KEY}:${authUser.id}` : CART_KEY;
+}
 
 function readJSON<T>(key: string, fallback: T): T {
   if (typeof window === 'undefined') return fallback;
@@ -131,7 +143,19 @@ export function CartProvider({ children }: { children: ReactNode }) {
   // de nada disso.
   const talao = useTalao();
   const clientSession = useClientSession();
-  const sessionActions = talao?.activeSession ? talao : clientSession?.activeSession ? clientSession : null;
+  // Sessão 'fechado' não conta mais como "carrinho compartilhado ativo"
+  // aqui — sem isso, depois que a cliente paga pelo link (ou a vendedora
+  // fecha manualmente), o carrinho/drawer continuava mostrando os itens de
+  // um pedido que já acabou, porque a vendedora não desmarca a sessão
+  // sozinha (achado reportado pelo usuário: "depois da compra finalizada,
+  // na tela da vendedora o carrinho ainda está aparecendo como estava
+  // antes"). 'aguardando_pagamento' continua contando (ainda dá pra ver o
+  // que tem no pedido enquanto espera a cliente pagar). /frete continua
+  // lendo useTalao() direto (sem esse filtro) pra mostrar a confirmação de
+  // pagamento mesmo depois de fechar — só o carrinho exposto aqui muda.
+  const talaoOpen = talao?.activeSession && talao.activeSession.status !== 'fechado' ? talao : null;
+  const clientOpen = clientSession?.activeSession && clientSession.activeSession.status !== 'fechado' ? clientSession : null;
+  const sessionActions = talaoOpen || clientOpen;
   const activeSession = sessionActions?.activeSession ?? null;
 
   // Hidrata o frete local a partir do que já estava salvo na sessão (ex.:
@@ -141,14 +165,49 @@ export function CartProvider({ children }: { children: ReactNode }) {
     if (activeSession) setShippingState(activeSession.shipping || null);
   }, [activeSession?.id, activeSession?.shipping]);
 
+  // Quando a sessão compartilhada deixa de existir (pedido fechado, ou link
+  // de pagamento gerado — GET /api/sessions/mine só devolve status
+  // 'aberto'), effectiveCart cai pro carrinho pessoal (localStorage). Sem
+  // isso, esse carrinho pessoal — que pode ter sobrado de ANTES da sessão
+  // começar (ex.: carrinho anônimo herdado no cadastro, ver
+  // POST /api/auth/signup) — "reaparecia" na tela como se o pedido recém
+  // fechado ainda estivesse ali (achado reportado pelo usuário: "após a
+  // conclusão do pedido, o carrinho da cliente continua visível"). Só limpa
+  // na TRANSIÇÃO de "tinha sessão" pra "não tem mais", não sempre que
+  // activeSession for null (senão limparia o carrinho pessoal de quem nunca
+  // teve sessão nenhuma).
+  const hadSessionRef = useRef(false);
+  useEffect(() => {
+    if (activeSession) {
+      hadSessionRef.current = true;
+    } else if (hadSessionRef.current) {
+      hadSessionRef.current = false;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reação a evento (sessão fechou), não estado derivado de props
+      setCart([]);
+    }
+  }, [activeSession]);
+
   const [catalogById, setCatalogById] = useState<Record<string, Product>>({});
   const [discounts, setDiscounts] = useState<Discount[]>([]);
 
+  // Ref (não state) porque o efeito de gravação abaixo precisa saber a
+  // chave ATUAL sem disparar em cima da própria troca de conta — ver
+  // cartKeyFor. Se essa chave fosse uma dependência do efeito de gravação,
+  // ao trocar de conta os dois efeitos rodariam no mesmo commit e o de
+  // gravação gravaria o carrinho ANTIGO (ainda não trocado, por causa do
+  // setState assíncrono) na chave NOVA, sobrescrevendo o que essa conta já
+  // tinha salvo.
+  const cartKeyRef = useRef(cartKeyFor(authUserCtx.authUser));
+
   useEffect(() => {
+    const key = cartKeyFor(authUserCtx.authUser);
+    cartKeyRef.current = key;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ver comentário acima do useState(cart)
-    setCart(readJSON(CART_KEY, []));
+    setCart(readJSON(key, []));
     setHydrated(true);
-  }, []);
+    // Recarrega também quando troca de conta (login/logout sem remount do
+    // provider, ver router.refresh() em /login e /cadastro).
+  }, [authUserCtx.authUser?.id]);
 
   useEffect(() => {
     fetch('/api/catalog')
@@ -167,7 +226,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (hydrated) window.localStorage.setItem(CART_KEY, JSON.stringify(cart));
+    if (hydrated) window.localStorage.setItem(cartKeyRef.current, JSON.stringify(cart));
   }, [cart, hydrated]);
 
   // Espelha o carrinho pessoal no cadastro da cliente logada — só captura

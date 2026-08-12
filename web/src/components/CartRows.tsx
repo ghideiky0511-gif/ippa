@@ -8,6 +8,7 @@ import { ADDABLE_AVAILABILITY, buildVariantMatrix } from '@/lib/variants';
 import { resolveImageForColor } from '@/lib/images';
 import { useCart } from './CartProvider';
 import { useQuickView } from './QuickViewProvider';
+import { useAuthUser } from './AuthProvider';
 import type { CartItem, Product } from '@/lib/types';
 
 // Visão de linhas do carrinho na página cheia (não é a de card do drawer —
@@ -140,6 +141,7 @@ function ColorLine({
 }) {
   const { addToCart, changeQty, replaceItems, setBackorderDateForKeys, cartDiscountByProduct } = useCart();
   const { openQuickView } = useQuickView();
+  const { showPrices } = useAuthUser();
 
   const matrix = useMemo(() => (product ? buildVariantMatrix(product) : null), [product]);
   const colorLocked = !!group.color;
@@ -266,14 +268,20 @@ function ColorLine({
       </div>
 
       <div className="cart-line-price">
-        <div>{totalQty} x {formatBRL(unitPrice)}</div>
-        {applied ? (
-          <div className="total cart-line-total-discount">
-            <span className="price-original">{formatBRL(totalValue)}</span>
-            <span className="price-discounted">{formatBRL(discountedTotal)}</span>
-          </div>
+        {showPrices ? (
+          <>
+            <div>{totalQty} x {formatBRL(unitPrice)}</div>
+            {applied ? (
+              <div className="total cart-line-total-discount">
+                <span className="price-original">{formatBRL(totalValue)}</span>
+                <span className="price-discounted">{formatBRL(discountedTotal)}</span>
+              </div>
+            ) : (
+              <div className="total">{formatBRL(totalValue)}</div>
+            )}
+          </>
         ) : (
-          <div className="total">{formatBRL(totalValue)}</div>
+          <Link href="/login" className="price price-locked">ver preço</Link>
         )}
       </div>
 

@@ -85,6 +85,15 @@ export async function getAuthUserByClientId(clientId: string): Promise<AuthUser 
   return user ? withoutPasswordHash(user) : null;
 }
 
+// AuthUser pelo próprio id — usado por GET /api/sessions/mine pra resolver
+// o nome da vendedora atendendo a sessão (ver sellerName em types.ts), a
+// partir de OrderSession.sellerId.
+export async function getAuthUserById(id: string): Promise<AuthUser | null> {
+  const users = await readUsers();
+  const user = users.find((u) => u.id === id);
+  return user ? withoutPasswordHash(user) : null;
+}
+
 export async function verifyLogin(email: string, password: string): Promise<AuthUser | null> {
   const users = await readUsers();
   const user = users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
@@ -122,6 +131,32 @@ export async function createUser(params: {
   users.push(user);
   await writeUsers(users);
   return withoutPasswordHash(user);
+}
+
+// Exclui a conta (login) — usado pelo botão "excluir" da aba "Usuários" do
+// admin (DELETE /api/admin/users/[id]). Derruba também qualquer sessão
+// ativa dessa conta (senão o token continuaria "logado" até expirar sozinho
+// — 7 dias, ver SESSION_TTL_MS). Devolve o usuário apagado (pra quem chama
+// saber o role/clientId e decidir se apaga o Client junto), ou null se o id
+// não existia.
+export async function deleteUser(id: string): Promise<AuthUser | null> {
+  const users = await readUsers();
+  const index = users.findIndex((u) => u.id === id);
+  if (index === -1) return null;
+  const [removed] = users.splice(index, 1);
+  await writeUsers(users);
+
+  const sessions = await readAuthSessions();
+  let changed = false;
+  for (const [token, session] of Object.entries(sessions)) {
+    if (session.userId === id) {
+      delete sessions[token];
+      changed = true;
+    }
+  }
+  if (changed) await writeAuthSessions(sessions);
+
+  return withoutPasswordHash(removed);
 }
 
 export async function createSessionToken(userId: string): Promise<string> {

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { formatBRL } from '@/lib/format';
 import { CONFIG } from '@/lib/config';
 import { useCart } from '@/components/CartProvider';
+import { useAuthUser } from '@/components/AuthProvider';
 import CartRows from '@/components/CartRows';
 import CheckoutSteps from '@/components/CheckoutSteps';
 import UnselectedItemsModal from '@/components/UnselectedItemsModal';
@@ -30,6 +31,7 @@ function unselectedProductNames(cart: CartItem[]): string[] {
 export default function CarrinhoPage() {
   const router = useRouter();
   const { cart, cartCount, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, clearCart, saveOrderToHistory, shipping } = useCart();
+  const { showPrices } = useAuthUser();
   const [pendingAction, setPendingAction] = useState<{ names: string[]; run: () => void } | null>(null);
   const [similar, setSimilar] = useState<Product[]>([]);
 
@@ -124,20 +126,26 @@ export default function CarrinhoPage() {
       {cart.length > 0 && (
         <>
           <div className="checkout-summary">
-            <div className="order-summary-line">
-              <span>Subtotal</span>
-              <span>{formatBRL(cartSubtotal)}</span>
-            </div>
-            {cartDiscountTotal > 0 && (
-              <div className="order-summary-line discount">
-                <span>Desconto ({cartDiscountLabel})</span>
-                <span>-{formatBRL(cartDiscountTotal)}</span>
-              </div>
+            {!showPrices ? (
+              <Link href="/login" className="price price-locked price-locked-block">Entrar para ver o preço</Link>
+            ) : (
+              <>
+                <div className="order-summary-line">
+                  <span>Subtotal</span>
+                  <span>{formatBRL(cartSubtotal)}</span>
+                </div>
+                {cartDiscountTotal > 0 && (
+                  <div className="order-summary-line discount">
+                    <span>Desconto ({cartDiscountLabel})</span>
+                    <span>-{formatBRL(cartDiscountTotal)}</span>
+                  </div>
+                )}
+                <div className="order-summary-line total">
+                  <span>Total</span>
+                  <span>{formatBRL(cartTotal)}</span>
+                </div>
+              </>
             )}
-            <div className="order-summary-line total">
-              <span>Total</span>
-              <span>{formatBRL(cartTotal)}</span>
-            </div>
           </div>
 
           <div className="checkout-actions">
