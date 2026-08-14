@@ -3,7 +3,10 @@ import { readFile, writeFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 
 // Enriquecimento manual por produto (código, preço sugerido de revenda,
-// markup) — dado da loja, não do ERP. Editável pela plataforma admin em
+// markup, categoria/subcategoria/coleção) — dado da loja, não do ERP.
+// Categoria/subcategoria sobrescrevem o que o ERP mandou quando editadas;
+// coleção não tem origem no ERP hoje, só existe se preenchida aqui.
+// Editável pela plataforma admin em
 // /produtos (GET/PUT aqui). Mesmo padrão do /api/highlights: arquivo hoje,
 // GET/PUT aqui, banco de verdade depois só troca o que tem dentro de cada
 // handler. Mesclado por cima do catalog.json em web/src/lib/catalog.ts.
@@ -21,6 +24,9 @@ type Override = {
   markup?: number;
   similarProductIdsQuickview?: string[];
   similarProductIdsCart?: string[];
+  category?: string;
+  subcategory?: string;
+  collection?: string;
 };
 
 function isValidStringArray(value: unknown): value is string[] {
@@ -31,13 +37,25 @@ function isValidOverrides(value: unknown): value is Record<string, Override> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   return Object.values(value as Record<string, unknown>).every((o) => {
     if (!o || typeof o !== 'object') return false;
-    const { sku, suggestedRetailPrice, markup, similarProductIdsQuickview, similarProductIdsCart } = o as Override;
+    const {
+      sku,
+      suggestedRetailPrice,
+      markup,
+      similarProductIdsQuickview,
+      similarProductIdsCart,
+      category,
+      subcategory,
+      collection,
+    } = o as Override;
     return (
       (sku === undefined || typeof sku === 'string') &&
       (suggestedRetailPrice === undefined || typeof suggestedRetailPrice === 'number') &&
       (markup === undefined || typeof markup === 'number') &&
       isValidStringArray(similarProductIdsQuickview) &&
-      isValidStringArray(similarProductIdsCart)
+      isValidStringArray(similarProductIdsCart) &&
+      (category === undefined || typeof category === 'string') &&
+      (subcategory === undefined || typeof subcategory === 'string') &&
+      (collection === undefined || typeof collection === 'string')
     );
   });
 }
@@ -58,7 +76,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          'Formato inválido: esperado um objeto { [productId]: { sku?, suggestedRetailPrice?, markup?, similarProductIdsQuickview?, similarProductIdsCart? } }.',
+          'Formato inválido: esperado um objeto { [productId]: { sku?, suggestedRetailPrice?, markup?, similarProductIdsQuickview?, similarProductIdsCart?, category?, subcategory?, collection? } }.',
       },
       { status: 400, headers: CORS_HEADERS }
     );

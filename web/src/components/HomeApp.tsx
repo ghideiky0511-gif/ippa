@@ -57,6 +57,7 @@ export default function HomeApp({ sections }: { sections: ResolvedHomeSection[] 
                   fallbackTitle={CONFIG.storeName}
                   headingLevel={section.id === firstBannerId ? 'h1' : 'h2'}
                   height={section.height}
+                  width={section.width}
                 />
               </div>
             );

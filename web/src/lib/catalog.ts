@@ -7,7 +7,17 @@ import type { Discount, Product } from './types';
 export const catalog = rawCatalog as unknown as Product[];
 
 type ProductOverride = Partial<
-  Pick<Product, 'sku' | 'suggestedRetailPrice' | 'markup' | 'similarProductIdsQuickview' | 'similarProductIdsCart'>
+  Pick<
+    Product,
+    | 'sku'
+    | 'suggestedRetailPrice'
+    | 'markup'
+    | 'similarProductIdsQuickview'
+    | 'similarProductIdsCart'
+    | 'category'
+    | 'subcategory'
+    | 'collection'
+  >
 >;
 
 interface StoreSettings {
@@ -66,7 +76,9 @@ function applyCatalogOrder(products: Product[], order: string[]): Product[] {
   return [...ordered, ...rest];
 }
 
-// Enriquecimento manual por produto (código, preço sugerido, markup),
+// Enriquecimento manual por produto (código, preço sugerido, markup,
+// categoria/subcategoria — sobrescreve o dado do ERP quando editado —,
+// coleção — sem origem no ERP hoje, só existe se editada aqui),
 // markup sugerido padrão da loja, desconto "peças específicas" ativo
 // (/descontos, ver applyProductDiscount acima — só o tipo 'products',
 // "por quantidade" só existe no contexto do carrinho inteiro), liga/desliga

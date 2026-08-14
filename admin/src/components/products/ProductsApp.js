@@ -34,6 +34,31 @@ export default function ProductsApp({ products, initialOverrides, initialSetting
       .slice(0, 20);
   }, [products, overrides, q]);
 
+  // Sugestões pros datalists de categoria/subcategoria/coleção — juntando o
+  // que já existe no catálogo (ERP + overrides salvos) com o que foi digitado
+  // nesta sessão mas ainda não salvo, pra já sugerir de volta sem precisar
+  // recarregar a página.
+  const classificationOptions = useMemo(() => {
+    const categories = new Set();
+    const subcategories = new Set();
+    const collections = new Set();
+    for (const p of products || []) {
+      if (p.category) categories.add(p.category);
+      if (p.subcategory) subcategories.add(p.subcategory);
+      if (p.collection) collections.add(p.collection);
+    }
+    for (const o of Object.values(overrides)) {
+      if (o?.category) categories.add(o.category);
+      if (o?.subcategory) subcategories.add(o.subcategory);
+      if (o?.collection) collections.add(o.collection);
+    }
+    return {
+      categories: Array.from(categories).sort(),
+      subcategories: Array.from(subcategories).sort(),
+      collections: Array.from(collections).sort(),
+    };
+  }, [products, overrides]);
+
   function updateField(id, field, value) {
     setOverrides((prev) => {
       const next = { ...(prev[id] || {}), [field]: value };
@@ -96,6 +121,11 @@ export default function ProductsApp({ products, initialOverrides, initialSetting
           pelo markup padrão abaixo, ou pelo ERP), e só se a loja tiver essa funcionalidade ligada em{' '}
           <code>CONFIG.features.suggestedPrice</code>.
         </p>
+        <p className="preview-empty-text">
+          Categoria e subcategoria já vêm do ERP, mas podem ser corrigidas aqui — a edição tem prioridade sobre
+          o que foi importado. Coleção não tem origem no ERP: fica em branco pra peças atemporais (vendem o ano
+          todo) e só é preenchida pra marcar uma peça própria de uma época, ex. &quot;Verão 2027&quot;.
+        </p>
 
         <div className="default-markup-panel">
           <div className="field" style={{ maxWidth: 200 }}>
@@ -132,6 +162,22 @@ export default function ProductsApp({ products, initialOverrides, initialSetting
           <label>Buscar produto</label>
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Nome ou código..." />
         </div>
+
+        <datalist id="classification-categories">
+          {classificationOptions.categories.map((c) => (
+            <option key={c} value={c} />
+          ))}
+        </datalist>
+        <datalist id="classification-subcategories">
+          {classificationOptions.subcategories.map((c) => (
+            <option key={c} value={c} />
+          ))}
+        </datalist>
+        <datalist id="classification-collections">
+          {classificationOptions.collections.map((c) => (
+            <option key={c} value={c} />
+          ))}
+        </datalist>
 
         <div className="product-overrides-list">
           {results.map((p) => {
@@ -181,6 +227,35 @@ export default function ProductsApp({ products, initialOverrides, initialSetting
                     </button>
                     {state === 'saved' && <span className="status">Alterado</span>}
                     {state === 'error' && <span className="status">Erro</span>}
+                  </div>
+                </div>
+                <div className="product-override-row product-classification-row">
+                  <div className="field">
+                    <label>Categoria</label>
+                    <input
+                      list="classification-categories"
+                      value={o.category ?? p.category ?? ''}
+                      onChange={(e) => updateField(p.id, 'category', e.target.value)}
+                      placeholder="Categoria do ERP"
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Subcategoria</label>
+                    <input
+                      list="classification-subcategories"
+                      value={o.subcategory ?? p.subcategory ?? ''}
+                      onChange={(e) => updateField(p.id, 'subcategory', e.target.value)}
+                      placeholder="Opcional"
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Coleção</label>
+                    <input
+                      list="classification-collections"
+                      value={o.collection ?? p.collection ?? ''}
+                      onChange={(e) => updateField(p.id, 'collection', e.target.value)}
+                      placeholder="Vazio = atemporal"
+                    />
                   </div>
                 </div>
                 <SimilarProductsField

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import type { Banner } from '@/lib/types';
 
 // `headingLevel` existe porque HomeApp pode renderizar vários banners na
@@ -11,11 +11,13 @@ export default function HomeBanner({
   fallbackTitle,
   headingLevel = 'h2',
   height,
+  width,
 }: {
   banners: Banner[];
   fallbackTitle: string;
   headingLevel?: 'h1' | 'h2';
   height?: number;
+  width?: number;
 }) {
   const [index, setIndex] = useState(0);
 
@@ -23,7 +25,18 @@ export default function HomeBanner({
 
   const current = banners[index];
   const Heading = headingLevel;
-  const style = height ? { height } : undefined;
+  // CSS vars em vez de height direto: no desktop o canvas do admin manda
+  // (--banner-h), mas essa altura em px foi pensada pra largura do canvas
+  // (1200px) — no celular, onde o bloco vira largura 100%, aplicar o mesmo
+  // px faz a imagem (object-fit:cover) esticar/cortar fora de proporção.
+  // --banner-ratio guarda a proporção original (width/height do bloco) pra
+  // o media query em globals.css usar aspect-ratio no lugar da altura fixa.
+  const style = height
+    ? ({
+        '--banner-h': `${height}px`,
+        ...(width ? { '--banner-ratio': `${width} / ${height}` } : {}),
+      } as CSSProperties)
+    : undefined;
 
   function prev() {
     setIndex((i) => (i - 1 + banners.length) % banners.length);

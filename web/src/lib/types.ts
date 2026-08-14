@@ -62,6 +62,12 @@ export interface Product {
   description: string;
   category: string;
   subcategory?: string;
+  // Coleção/temporada da peça (ex. "Verão 2027") — dado da loja, sem
+  // origem no ERP hoje (se um dia o Bippa/ERP passar a mandar, some daqui
+  // e vira igual category: já vem pronto do catalog.json). Ausente = peça
+  // atemporal (vende o ano todo, fora de qualquer coleção). Editável em
+  // /produtos (ver ProductOverride em web/src/lib/catalog.ts).
+  collection?: string;
   brand?: string;
   sku?: string; // código/referência interna (Bippa/ERP) — mostrado no card e na página de produto
   price: number;

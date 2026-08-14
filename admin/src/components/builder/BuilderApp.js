@@ -6,7 +6,7 @@ import Canvas from './Canvas';
 import RightPanel from './RightPanel';
 import AdminNav from '@/components/AdminNav';
 import { BLOCK_REGISTRY, CANVAS_WIDTH } from '@/lib/blockRegistry';
-import { saveHomeSections, generateHomeSections } from '@/lib/homeSectionsClient';
+import { saveHomeSections, generateHomeSections, fetchHomeAiHistory } from '@/lib/homeSectionsClient';
 
 /** @param {{ initialSections: import('@/lib/homeSectionTypes').HomeSection[], products: import('@/lib/homeSectionTypes').Product[] }} props */
 export default function BuilderApp({ initialSections, products }) {
@@ -17,6 +17,10 @@ export default function BuilderApp({ initialSections, products }) {
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiState, setAiState] = useState('idle'); // idle | generating | error
   const [aiError, setAiError] = useState('');
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [historyState, setHistoryState] = useState('idle'); // idle | loading | error
+  const [historyError, setHistoryError] = useState('');
 
   // Só usado pra soltar uma ferramenta nova da toolbox no canvas — mover ou
   // redimensionar um bloco já existente é um drag próprio (pointer events
@@ -90,7 +94,7 @@ export default function BuilderApp({ initialSections, products }) {
     setAiState('generating');
     setAiError('');
     try {
-      const generated = await generateHomeSections(aiPrompt.trim());
+      const generated = await generateHomeSections(aiPrompt.trim(), sections);
       if (!generated || generated.length === 0) {
         setAiState('error');
         setAiError('Não reconheci nenhum bloco válido nessa descrição — tenta detalhar melhor.');
@@ -102,6 +106,31 @@ export default function BuilderApp({ initialSections, products }) {
       setAiState('error');
       setAiError(err.message);
     }
+  }
+
+  async function toggleHistory() {
+    const opening = !historyOpen;
+    setHistoryOpen(opening);
+    if (!opening) return;
+    setHistoryState('loading');
+    setHistoryError('');
+    try {
+      const items = await fetchHomeAiHistory();
+      setHistory(items);
+      setHistoryState('idle');
+    } catch (err) {
+      setHistoryState('error');
+      setHistoryError(err.message);
+    }
+  }
+
+  function handleReapplyHistory(entry) {
+    if (sections.length > 0 && !window.confirm('Isso substitui os blocos atuais do canvas. Continuar?')) {
+      return;
+    }
+    applyTemplate(entry.sections);
+    setAiPrompt(entry.prompt);
+    setHistoryOpen(false);
   }
 
   async function handleSave() {
@@ -142,7 +171,32 @@ export default function BuilderApp({ initialSections, products }) {
           <button type="submit" className="btn btn-primary" disabled={aiState === 'generating' || !aiPrompt.trim()}>
             {aiState === 'generating' ? 'Gerando…' : 'Gerar com IA'}
           </button>
+          <button type="button" className="btn" onClick={toggleHistory}>
+            Histórico
+          </button>
           {aiState === 'error' && <span className="builder-ai-error">{aiError}</span>}
+
+          {historyOpen && (
+            <div className="builder-ai-history">
+              {historyState === 'loading' && <p className="builder-ai-history-empty">Carregando…</p>}
+              {historyState === 'error' && <p className="builder-ai-history-empty">{historyError}</p>}
+              {historyState === 'idle' && history.length === 0 && (
+                <p className="builder-ai-history-empty">Nenhuma geração ainda.</p>
+              )}
+              {historyState === 'idle' &&
+                history.map((entry) => (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    className="builder-ai-history-item"
+                    onClick={() => handleReapplyHistory(entry)}
+                  >
+                    <span className="builder-ai-history-prompt">{entry.prompt}</span>
+                    <span className="builder-ai-history-date">{new Date(entry.at).toLocaleString('pt-BR')}</span>
+                  </button>
+                ))}
+            </div>
+          )}
         </form>
 
         <Canvas

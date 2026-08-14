@@ -390,6 +390,7 @@ input, textarea { font: inherit; }
   background: var(--brand-card);
 }
 .product-row-card .product-override-row { border: none; padding: 0; background: none; }
+.product-classification-row { border-top: 1px solid #eadde2; padding-top: 8px !important; }
 
 /* Página /usuarios — tabela simples, só leitura (ver UsersApp.js). */
 .admin-table { width: 100%; border-collapse: collapse; background: var(--brand-card); border-radius: 8px; overflow: hidden; }
@@ -480,9 +481,44 @@ input, textarea { font: inherit; }
 /* Barra "Gerar com IA" no topo do editor da home (BuilderApp.js) — chama
    POST /api/admin/home-ai e joga o resultado no canvas (mesmo caminho de
    useTemplate) pra revisão antes de salvar. */
-.builder-ai-bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; padding: 10px 20px; border-bottom: 1px solid #eadde2; background: var(--brand-card); }
+.builder-ai-bar { grid-column: 1 / -1; position: relative; display: flex; align-items: center; gap: 10px; padding: 10px 20px; border-bottom: 1px solid #eadde2; background: var(--brand-card); }
 .builder-ai-bar input { flex: 1; border: 1px solid #d8c3ce; border-radius: 6px; padding: 8px 10px; font-size: 13px; }
 .builder-ai-error { font-size: 12px; color: #c0392b; }
+
+.builder-ai-history {
+  position: absolute;
+  top: 100%;
+  right: 20px;
+  margin-top: 6px;
+  width: 380px;
+  max-height: 340px;
+  overflow-y: auto;
+  background: var(--brand-card);
+  border: 1px solid #eadde2;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+}
+.builder-ai-history-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+  font-family: inherit;
+}
+.builder-ai-history-item:hover { background: var(--brand-bg); }
+.builder-ai-history-prompt { font-size: 13px; color: var(--brand-text); }
+.builder-ai-history-date { font-size: 11px; color: var(--brand-muted); }
+.builder-ai-history-empty { padding: 12px; font-size: 13px; color: var(--brand-muted); }
 
 /* Checkbox "quadrado + ferramenta escrita ao lado" pra liberar/bloquear
    áreas do catálogo por conta (ver CATALOG_AREAS em UserFormModal.js) */

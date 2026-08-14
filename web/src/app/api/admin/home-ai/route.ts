@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { NextRequest, NextResponse } from 'next/server';
 import { getCatalog } from '@/lib/catalog';
+import { appendHomeAiHistory } from '@/lib/homeAiHistory';
 import type { HomeSection, Banner } from '@/lib/types';
 
 // Protótipo (combinado com o usuário): a IA monta só a ESTRUTURA da home a
@@ -8,9 +11,10 @@ import type { HomeSection, Banner } from '@/lib/types';
 // validado contra o catálogo, nunca inventado) e posição/tamanho no
 // canvas. Banners saem sem mídia (mediaUrl vazio) — a loja insere
 // manualmente imagem/vídeo depois, no editor normal (admin/BuilderApp).
-// Não grava nada sozinho: devolve o array de HomeSection pra revisão; quem
-// persiste é o PUT /api/home-sections já existente. Sem UI ainda — é só o
-// endpoint, pra validar a ideia antes de desenhar a tela.
+// Não grava a home sozinho: devolve o array de HomeSection pra revisão; quem
+// persiste é o PUT /api/home-sections já existente. Só grava, à parte, um
+// log do prompt+resultado em homeAiHistory.json (ver lib/homeAiHistory.ts),
+// pro botão "Histórico" do admin — isso não afeta a home publicada.
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': process.env.ADMIN_ORIGIN || 'http://localhost:3001',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -35,7 +39,28 @@ interface DraftSection {
   height?: number;
 }
 
-function buildSystemPrompt(products: { id: string; name: string; category: string; subcategory?: string }[]): string {
+function buildCurrentHomeContext(
+  sections: HomeSection[],
+  productsById: Map<string, { name: string }>
+): string {
+  if (!sections || sections.length === 0) return '(a home está vazia, nenhum bloco ainda)';
+  return sections
+    .map((s, i) => {
+      if (s.type === 'banner') {
+        const b = s.banners?.[0];
+        const kind = b?.type === 'video' ? 'banner (vídeo)' : 'banner (imagem)';
+        return `${i + 1}. ${kind} "${b?.title || '(sem título)'}" — x:${s.x ?? 0} y:${s.y ?? 0} w:${s.width ?? 0} h:${s.height ?? 0}`;
+      }
+      const name = productsById.get(s.productId)?.name || s.productId;
+      return `${i + 1}. produto "${name}" (id ${s.productId}) — x:${s.x ?? 0} y:${s.y ?? 0} w:${s.width ?? 0} h:${s.height ?? 0}`;
+    })
+    .join('\n');
+}
+
+function buildSystemPrompt(
+  products: { id: string; name: string; category: string; subcategory?: string; price: number; hasImage: boolean }[],
+  currentHomeContext: string
+): string {
   return `Você monta o layout da home de um catálogo de moda atacado. Responda SOMENTE com um objeto JSON válido (sem markdown, sem texto antes/depois), no formato:
 { "sections": [
   { "type": "banner", "mediaType": "video", "title": "...", "subtitle": "...", "x": 0, "y": 0, "width": 660, "height": 880 },
@@ -45,11 +70,22 @@ function buildSystemPrompt(products: { id: string; name: string; category: strin
 Regras:
 - Canvas de referência tem ${CANVAS_WIDTH}px de largura. x/y/width/height em pixels, sem sobrepor blocos, respeitando a ordem de leitura (topo pra baixo). Se o pedido especificar um tamanho (ex. "660x880"), use exatamente esse width/height no bloco.
 - "banner": só estrutura (título/subtítulo opcionais, pode deixar sem título) — "mediaType" é "video" se o pedido falar em vídeo, senão "image" (padrão). NUNCA invente mediaUrl nem descreva a imagem/vídeo em si, quem insere isso é a loja depois, manualmente.
-- "product": productId TEM que ser um dos ids da lista de produtos reais abaixo, copiado exatamente. Nunca invente um id novo.
+- "product": productId TEM que ser um dos ids da lista de produtos reais abaixo, copiado exatamente. Nunca invente um id novo. Preço e "com/sem foto" na lista servem pra você escolher melhor (ex. "produtos mais baratos", "só com foto") — nunca invente esses dados, use só o que está listado.
 - Monte quantos blocos fizerem sentido pro pedido (pode misturar banner e produto, repetir tipos).
+- A resposta é SEMPRE a lista COMPLETA final de blocos, nunca só os que mudaram.
+  - Se o pedido pede uma mudança pontual sobre o que já existe (trocar/adicionar/remover/mover algo específico), preserve os blocos da home ATUAL que não têm a ver com o pedido, e devolva eles junto dos novos/alterados, na ordem de leitura.
+  - Se o pedido descreve uma estrutura nova inteira (ex.: "monta a home com..."), ignore a home atual e comece do zero.
 
-Produtos disponíveis (id | nome | categoria):
-${products.map((p) => `${p.id} | ${p.name} | ${p.category}${p.subcategory ? ' / ' + p.subcategory : ''}`).join('\n')}`;
+Home ATUAL (o que já está no canvas agora):
+${currentHomeContext}
+
+Produtos disponíveis (id | nome | categoria | preço | foto):
+${products
+    .map(
+      (p) =>
+        `${p.id} | ${p.name} | ${p.category}${p.subcategory ? ' / ' + p.subcategory : ''} | R$${p.price.toFixed(2)} | ${p.hasImage ? 'com foto' : 'sem foto'}`
+    )
+    .join('\n')}`;
 }
 
 export async function POST(request: NextRequest) {
@@ -72,7 +108,30 @@ export async function POST(request: NextRequest) {
   // precisar de mais qualidade de raciocínio no layout.
   const model = process.env.OPENAI_MODEL || 'gpt-5.6-luna';
 
-  const products = (await getCatalog()).map((p) => ({ id: p.id, name: p.name, category: p.category, subcategory: p.subcategory }));
+  const products = (await getCatalog()).map((p) => ({
+    id: p.id,
+    name: p.name,
+    category: p.category,
+    subcategory: p.subcategory,
+    price: p.price,
+    hasImage: Boolean(p.image || (p.images && p.images.length > 0)),
+  }));
+  const productsById = new Map(products.map((p) => [p.id, { name: p.name }]));
+
+  // O admin manda o estado ATUAL do canvas (inclui mudanças ainda não
+  // salvas) — só cai pro arquivo persistido se por algum motivo o corpo não
+  // trouxer nada, nunca o contrário (o canvas em tela é sempre a fonte mais
+  // atual do que a vendedora está vendo).
+  let currentSections: HomeSection[] = Array.isArray(body?.currentSections) ? body.currentSections : [];
+  if (!Array.isArray(body?.currentSections)) {
+    try {
+      const raw = await readFile(path.join(process.cwd(), 'src/data/homeSections.json'), 'utf-8');
+      currentSections = JSON.parse(raw);
+    } catch {
+      currentSections = [];
+    }
+  }
+  const currentHomeContext = buildCurrentHomeContext(currentSections, productsById);
 
   let draft: DraftSection[];
   try {
@@ -86,7 +145,7 @@ export async function POST(request: NextRequest) {
         model,
         response_format: { type: 'json_object' },
         messages: [
-          { role: 'system', content: buildSystemPrompt(products) },
+          { role: 'system', content: buildSystemPrompt(products, currentHomeContext) },
           { role: 'user', content: prompt },
         ],
       }),
@@ -140,6 +199,14 @@ export async function POST(request: NextRequest) {
         height: d.height,
       });
     }
+  }
+
+  // Best-effort: se o histórico falhar em gravar (disco, permissão), a
+  // geração em si já aconteceu e não deve ser jogada fora por causa disso.
+  try {
+    await appendHomeAiHistory({ id: randomUUID(), prompt, at: new Date().toISOString(), sections });
+  } catch (err) {
+    console.error('Falha ao gravar histórico do home-ai:', err);
   }
 
   return NextResponse.json({ sections }, { headers: CORS_HEADERS });
