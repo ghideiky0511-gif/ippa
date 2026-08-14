@@ -39,5 +39,17 @@
       "catalogAreas": []
     },
     "passwordHash": "$2b$10$DUbwA0u/kroZ0sXkYvLgd.tUAijCrHCo2SN68lep47kt5DxzhzCom"
+  },
+  {
+    "id": "1365062d-6563-468f-836e-fffb365a21f5",
+    "email": "mari@fashion",
+    "name": "Mariana",
+    "role": "cliente",
+    "clientId": "5d3d118b-1f4e-4e1e-a8bb-ff9a310fefaa",
+    "permissions": {
+      "adminAccess": false,
+      "catalogAreas": []
+    },
+    "passwordHash": "$2b$10$4mHn5rH2hYXpkE.Osx.42.ZGspZftfWFIt0CY2qQWCvrXGRrEZrgC"
   }
 ]

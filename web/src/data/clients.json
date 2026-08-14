@@ -33,5 +33,23 @@
     "lastSellerId": "acafbeb9-1fb7-4a03-914e-a98f1a575031",
     "cart": [],
     "cartUpdatedAt": "2026-08-12T16:20:06.751Z"
+  },
+  {
+    "id": "5d3d118b-1f4e-4e1e-a8bb-ff9a310fefaa",
+    "name": "Mariana",
+    "cpfCnpj": "12345698799",
+    "email": "mari@fashion",
+    "cep": "03166001",
+    "street": "Rua Taquari",
+    "number": "881",
+    "neighborhood": "Mooca",
+    "city": "São Paulo",
+    "state": "SP",
+    "storeName": "Fashoin girl",
+    "createdAt": "2026-08-14T15:11:59.209Z",
+    "updatedAt": "2026-08-14T15:11:59.348Z",
+    "lastSellerId": "acafbeb9-1fb7-4a03-914e-a98f1a575031",
+    "cart": [],
+    "cartUpdatedAt": "2026-08-14T15:19:27.159Z"
   }
 ]

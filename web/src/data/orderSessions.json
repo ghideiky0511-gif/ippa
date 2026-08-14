@@ -274,5 +274,156 @@
       "price": 19.9,
       "prazo": "5 a 8 dias úteis"
     }
+  },
+  {
+    "id": "c57933ea-b3a5-468e-9541-f4790b9ed669",
+    "clientName": "Mariana",
+    "sellerId": "acafbeb9-1fb7-4a03-914e-a98f1a575031",
+    "channel": "presencial",
+    "items": [
+      {
+        "key": "e0512949-5e71-4099-be10-b5cd7bc7561b|CORAL|14",
+        "id": "e0512949-5e71-4099-be10-b5cd7bc7561b",
+        "name": "BLUSA PEPLUM CAIRO",
+        "image": "https://cdn-op.vesti.mobi/p/3301/e0512949-5e71-4099-be10-b5cd7bc7561b/95846-lg.png",
+        "color": "CORAL",
+        "size": "14",
+        "price": 55.9,
+        "qty": 1
+      },
+      {
+        "key": "e0512949-5e71-4099-be10-b5cd7bc7561b|CORAL|12",
+        "id": "e0512949-5e71-4099-be10-b5cd7bc7561b",
+        "name": "BLUSA PEPLUM CAIRO",
+        "image": "https://cdn-op.vesti.mobi/p/3301/e0512949-5e71-4099-be10-b5cd7bc7561b/95846-lg.png",
+        "color": "CORAL",
+        "size": "12",
+        "price": 55.9,
+        "qty": 1
+      }
+    ],
+    "status": "aberto",
+    "createdAt": "2026-08-14T15:05:37.214Z",
+    "updatedAt": "2026-08-14T15:10:05.894Z"
+  },
+  {
+    "id": "b98fa2b2-160e-40e4-a7a8-7c038b116905",
+    "clientName": "Joao",
+    "sellerId": "acafbeb9-1fb7-4a03-914e-a98f1a575031",
+    "channel": "presencial",
+    "items": [],
+    "status": "fechado",
+    "createdAt": "2026-08-14T15:06:01.697Z",
+    "updatedAt": "2026-08-14T15:11:08.073Z"
+  },
+  {
+    "id": "163c616e-f460-416a-b127-14700257bb89",
+    "clientName": "Mariana",
+    "clientId": "5d3d118b-1f4e-4e1e-a8bb-ff9a310fefaa",
+    "sellerId": "acafbeb9-1fb7-4a03-914e-a98f1a575031",
+    "channel": "online",
+    "items": [
+      {
+        "key": "53c399af-0bda-43f1-b85d-273375fe1765|AMARELO|14",
+        "id": "53c399af-0bda-43f1-b85d-273375fe1765",
+        "name": "TOP RENDA LASTEX",
+        "image": "https://cdn-op.vesti.mobi/p/3301/53c399af-0bda-43f1-b85d-273375fe1765/85793-lg.png",
+        "color": "AMARELO",
+        "size": "14",
+        "price": 72.9,
+        "qty": 6
+      },
+      {
+        "key": "a4e9ff66-cbb6-462a-9c02-d1a33131ca27|OFF WHITE|20",
+        "id": "a4e9ff66-cbb6-462a-9c02-d1a33131ca27",
+        "name": "TOP PELUCIA",
+        "image": "https://cdn-op.vesti.mobi/3301/a4e9ff66-cbb6-462a-9c02-d1a33131ca27/97228-lg.png",
+        "color": "OFF WHITE",
+        "size": "20",
+        "price": 9.99,
+        "qty": 18
+      },
+      {
+        "key": "2bdb5a3a-aac1-4668-a103-84bba1e78ac0|MARROM|12",
+        "id": "2bdb5a3a-aac1-4668-a103-84bba1e78ac0",
+        "name": "TOP SUEDE",
+        "image": "https://cdn-op.vesti.mobi/p/3301/2bdb5a3a-aac1-4668-a103-84bba1e78ac0/36027-lg.jpeg",
+        "color": "MARROM",
+        "size": "12",
+        "price": 65.9,
+        "qty": 0
+      },
+      {
+        "key": "42b8a42d-383d-4de8-8249-48609a5348f1|AZUL|18",
+        "id": "42b8a42d-383d-4de8-8249-48609a5348f1",
+        "name": "TOP BIQUINI BELA",
+        "image": "https://cdn-op.vesti.mobi/3301/42b8a42d-383d-4de8-8249-48609a5348f1/39682-lg.png",
+        "color": "AZUL",
+        "size": "18",
+        "price": 29.99,
+        "qty": 6,
+        "backorderDate": "Em 90 dias"
+      },
+      {
+        "key": "e0512949-5e71-4099-be10-b5cd7bc7561b|CORAL|12",
+        "id": "e0512949-5e71-4099-be10-b5cd7bc7561b",
+        "name": "BLUSA PEPLUM CAIRO",
+        "image": "https://cdn-op.vesti.mobi/p/3301/e0512949-5e71-4099-be10-b5cd7bc7561b/95846-lg.png",
+        "color": "CORAL",
+        "size": "12",
+        "price": 55.9,
+        "qty": 5
+      },
+      {
+        "key": "e0512949-5e71-4099-be10-b5cd7bc7561b|CORAL|14",
+        "id": "e0512949-5e71-4099-be10-b5cd7bc7561b",
+        "name": "BLUSA PEPLUM CAIRO",
+        "image": "https://cdn-op.vesti.mobi/p/3301/e0512949-5e71-4099-be10-b5cd7bc7561b/95846-lg.png",
+        "color": "CORAL",
+        "size": "14",
+        "price": 55.9,
+        "qty": 4
+      },
+      {
+        "key": "e0512949-5e71-4099-be10-b5cd7bc7561b|PRETO|16",
+        "id": "e0512949-5e71-4099-be10-b5cd7bc7561b",
+        "name": "BLUSA PEPLUM CAIRO",
+        "image": "https://cdn-op.vesti.mobi/p/3301/e0512949-5e71-4099-be10-b5cd7bc7561b/95846-lg.png",
+        "color": "PRETO",
+        "size": "16",
+        "price": 55.9,
+        "qty": 5
+      },
+      {
+        "key": "e0512949-5e71-4099-be10-b5cd7bc7561b|VERMELHO|14",
+        "id": "e0512949-5e71-4099-be10-b5cd7bc7561b",
+        "name": "BLUSA PEPLUM CAIRO",
+        "image": "https://cdn-op.vesti.mobi/p/3301/e0512949-5e71-4099-be10-b5cd7bc7561b/95846-lg.png",
+        "color": "VERMELHO",
+        "size": "14",
+        "price": 55.9,
+        "qty": 6
+      },
+      {
+        "key": "42b8a42d-383d-4de8-8249-48609a5348f1|AZUL|14",
+        "id": "42b8a42d-383d-4de8-8249-48609a5348f1",
+        "name": "TOP BIQUINI BELA",
+        "image": "https://cdn-op.vesti.mobi/3301/42b8a42d-383d-4de8-8249-48609a5348f1/39682-lg.png",
+        "color": "AZUL",
+        "size": "14",
+        "price": 29.99,
+        "qty": 6,
+        "backorderDate": "Em 90 dias"
+      }
+    ],
+    "status": "fechado",
+    "createdAt": "2026-08-14T15:11:59.348Z",
+    "updatedAt": "2026-08-14T15:18:19.405Z",
+    "shipping": {
+      "id": "padrao",
+      "label": "Entrega padrão",
+      "price": 19.9,
+      "prazo": "5 a 8 dias úteis"
+    }
   }
 ]

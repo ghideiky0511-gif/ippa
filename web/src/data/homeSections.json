@@ -1,19 +1,59 @@
 [
   {
     "type": "banner",
-    "id": "cmtgmcq6",
-    "x": 260,
-    "y": 0,
-    "width": 660,
-    "height": 1680,
+    "id": "e4f85c53-52a1-48c2-a858-47435c1b625f",
     "banners": [
       {
-        "id": "pee6f500",
-        "type": "video",
-        "mediaUrl": "https://cdn-op.vesti.mobi/p/3301/ee5b2417-b6a0-48ff-b5a3-1adca05c0fb2/75977-og.mp4",
-        "title": "",
-        "subtitle": ""
+        "id": "207b0828-614d-41ac-af49-9945e9bd6eb1",
+        "type": "image",
+        "mediaUrl": ""
       }
-    ]
+    ],
+    "x": 0,
+    "y": 0,
+    "width": 1200,
+    "height": 500
+  },
+  {
+    "type": "product",
+    "id": "70d14f91-e80e-44c8-b668-78d9dfac9329",
+    "productId": "e0512949-5e71-4099-be10-b5cd7bc7561b",
+    "x": 0,
+    "y": 540,
+    "width": 360,
+    "height": 440
+  },
+  {
+    "type": "product",
+    "id": "0bbc6848-41b7-4d2a-9054-17ae33604081",
+    "productId": "53c399af-0bda-43f1-b85d-273375fe1765",
+    "x": 420,
+    "y": 540,
+    "width": 360,
+    "height": 420
+  },
+  {
+    "type": "product",
+    "id": "bf62e177-d4f8-48cc-a8d5-fd7c0349ffb1",
+    "productId": "bc4a970c-6194-42c1-a5b9-18b17028e71d",
+    "x": 840,
+    "y": 540,
+    "width": 360,
+    "height": 420
+  },
+  {
+    "type": "banner",
+    "id": "d9d9df8b-4401-4fb3-9102-e0b9de6f9f8e",
+    "banners": [
+      {
+        "id": "6618feec-f4c6-46a2-b608-fb9a3073e317",
+        "type": "image",
+        "mediaUrl": ""
+      }
+    ],
+    "x": 0,
+    "y": 1000,
+    "width": 1200,
+    "height": 300
   }
 ]
