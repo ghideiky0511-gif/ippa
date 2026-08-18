@@ -1,4 +1,5 @@
 'use client';
+import { publicUi } from '@/lib/ui';
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -70,24 +71,24 @@ export default function PedidosPage() {
   // (ver GET /api/orders), não mais um histórico solto por navegador.
   if (!authUser) {
     return (
-      <main className="container orders-page">
+      <main className="contents">
         <h1>Meus pedidos</h1>
-        <div className="cart-empty">
+        <div className={publicUi.empty}>
           Entre ou crie uma conta pra ver seus pedidos.
-          <div className="checkout-actions">
-            <Link href="/login" className="btn-add">Entrar</Link>
-            <Link href="/cadastro" className="btn-add">Criar conta</Link>
+          <div className={publicUi.checkoutActions}>
+            <Link href="/login" className={publicUi.primaryButton}>Entrar</Link>
+            <Link href="/cadastro" className={publicUi.primaryButton}>Criar conta</Link>
           </div>
         </div>
-        <Link href="/" className="back-link">← Voltar ao catálogo</Link>
+        <Link href="/" className={publicUi.backLink}>← Voltar ao catálogo</Link>
       </main>
     );
   }
 
   return (
-    <main className="container orders-page">
+    <main className="contents">
       <h1>{isVendedora ? 'Minhas vendas' : 'Meus pedidos'}</h1>
-      <p className="orders-hint">
+      <p className="contents">
         {isVendedora
           ? 'Vendas suas fechadas pela cliente através do link de pagamento (ver talão).'
           : 'Pedidos da sua conta — valem em qualquer navegador ou aparelho que você usar pra entrar.'}
@@ -95,62 +96,62 @@ export default function PedidosPage() {
 
       {orders === null && <p>Carregando...</p>}
       {orders !== null && orders.length === 0 && (
-        <p className="cart-empty">{isVendedora ? 'Nenhuma venda fechada ainda.' : 'Nenhum pedido enviado ainda.'}</p>
+        <p className={publicUi.empty}>{isVendedora ? 'Nenhuma venda fechada ainda.' : 'Nenhum pedido enviado ainda.'}</p>
       )}
 
-      <div className="orders-list">
+      <div className={publicUi.ordersList}>
         {orders?.map((order) => {
           const totalQty = order.items.reduce((sum, item) => sum + item.qty, 0);
           const categories = summarizeByCategory(order.items, catalogById);
           const isExpanded = expandedIds.has(order.id);
           return (
-            <div className="order-card" key={order.id}>
-              <div className="order-card-header">
+            <div className={publicUi.orderCard} key={order.id}>
+              <div className={publicUi.orderCardHeader}>
                 <span>
                   {new Date(order.date).toLocaleString('pt-BR')}
-                  <span className="order-channel-badge">
+                  <span className="contents">
                     {order.channel === 'site' ? 'via site' : 'via WhatsApp'}
                   </span>
                 </span>
-                <span className="order-total">{formatBRL(order.total)}</span>
+                <span className="contents">{formatBRL(order.total)}</span>
               </div>
-              {isVendedora && order.clientName && <div className="order-meta"><span>Cliente: {order.clientName}</span></div>}
+              {isVendedora && order.clientName && <div className="contents"><span>Cliente: {order.clientName}</span></div>}
               {(order.shipping || order.paymentMethod || order.discount) && (
-                <div className="order-meta">
+                <div className="contents">
                   {order.shipping && <span>Frete: {order.shipping.label}</span>}
                   {order.paymentMethod && <span>Pagamento: {order.paymentMethod}</span>}
                   {order.discount && (
-                    <span className="order-discount-badge">
+                    <span className="contents">
                       Desconto: {order.discount.label} (-{formatBRL(order.discount.amount)})
                     </span>
                   )}
                 </div>
               )}
 
-              <div className="order-category-summary">
+              <div className="contents">
                 {categories.map((c) => (
-                  <div className="order-category-row" key={c.category}>
-                    <span className="order-category-name">{c.category}</span>
-                    <span className="order-category-qty">{c.qty} peça{c.qty === 1 ? '' : 's'}</span>
-                    <span className="order-category-total">{formatBRL(c.total)}</span>
+                  <div className="contents" key={c.category}>
+                    <span className="contents">{c.category}</span>
+                    <span className="contents">{c.qty} peça{c.qty === 1 ? '' : 's'}</span>
+                    <span className="contents">{formatBRL(c.total)}</span>
                   </div>
                 ))}
               </div>
 
-              <button type="button" className="order-expand-toggle" onClick={() => toggleExpanded(order.id)}>
+              <button type="button" className="contents" onClick={() => toggleExpanded(order.id)}>
                 {isExpanded
                   ? 'Ocultar itens ▲'
                   : `Ver ${totalQty} peça${totalQty === 1 ? '' : 's'} · ${order.items.length} item${order.items.length === 1 ? '' : 'ns'} ▼`}
               </button>
 
               {isExpanded && (
-                <div className="order-items">
+                <div className={publicUi.orderItems}>
                   {order.items.map((item) => (
-                    <div className="order-item" key={item.key}>
+                    <div className={publicUi.orderItem} key={item.key}>
                       <img src={item.image || 'https://via.placeholder.com/80x100?text=Sem+imagem'} alt={item.name} />
                       <div>
-                        <div className="name">{item.name}</div>
-                        <div className="variant">
+                        <div className="contents">{item.name}</div>
+                        <div className="contents">
                           {[item.color, item.size].filter(Boolean).join(' · ')} — {item.qty}x {formatBRL(item.price)}
                         </div>
                       </div>
@@ -163,7 +164,7 @@ export default function PedidosPage() {
         })}
       </div>
 
-      <Link href="/" className="back-link">← Voltar ao catálogo</Link>
+      <Link href="/" className={publicUi.backLink}>← Voltar ao catálogo</Link>
     </main>
   );
 }

@@ -23,9 +23,31 @@ Os registros são isolados por tenant via RLS e a conta da aplicação não tem 
 | Cliente | `client.created`, `client.updated` |
 | Carrinho do cliente | `client_cart.saved` |
 | Sessão de pedido | `order_session.created` |
-| Usuário | `authentication.logged_in`, `authentication.logged_out` |
+| Usuário | `user.created`, `authentication.logged_in`, `authentication.logged_out` |
 
 O catálogo TypeScript está em `src/services/audit/actions/`, separado por entidade. O mapa em `src/services/audit/actions/index.ts` associa cada ação ao seu tipo de entidade. Assim, `client.updated` sempre gera uma auditoria de `client`.
+
+## Cobertura obrigatória
+
+Toda mutação dos services abaixo deve registrar exatamente um evento de auditoria na mesma transação:
+
+| Service | Mutação | Evento |
+| --- | --- | --- |
+| `authService` | Iniciar sessão | `authentication.logged_in` |
+| `authService` | Encerrar sessão | `authentication.logged_out` |
+| `adminService` | Criar usuário | `user.created` |
+| `commerceService` | Criar cliente | `client.created` |
+| `commerceService` | Atualizar cliente | `client.updated` |
+| `commerceService` | Salvar carrinho | `client_cart.saved` |
+| `commerceService` | Criar sessão de pedido | `order_session.created` |
+
+Uma nova mutação não deve ser adicionada sem sua ação correspondente no catálogo, migration e chamada a `recordAuditEvent`.
+
+## Contexto da requisição
+
+Além do ator, cada evento possui `request_id`, `session_id`, `ip_address` e `user_agent` quando disponíveis. O `request_id` é um UUID gerado pelo servidor para cada requisição mutável; `session_id` identifica a sessão autenticada e, no login, a sessão recém-criada.
+
+O IP é aceito apenas quando o valor de `x-forwarded-for` ou `x-real-ip` é um endereço IP válido. Em produção, o proxy reverso deve remover esses cabeçalhos enviados pelo cliente e inserir os seus próprios valores confiáveis.
 
 ## Como registrar em um service
 

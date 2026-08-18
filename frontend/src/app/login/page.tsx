@@ -1,4 +1,5 @@
 'use client';
+import { publicUi } from '@/lib/ui';
 
 import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
@@ -40,22 +41,22 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="login-page">
-      <form className="login-form" onSubmit={handleSubmit}>
+    <div className={publicUi.loginPage}>
+      <form className={publicUi.loginForm} onSubmit={handleSubmit}>
         <h1>Entrar</h1>
-        <div className="field">
+        <div className={publicUi.field}>
           <label>Email</label>
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus required />
         </div>
-        <div className="field">
+        <div className={publicUi.field}>
           <label>Senha</label>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
         </div>
-        {error && <p className="login-error">{error}</p>}
-        <button className="btn-add" type="submit" disabled={loading}>
+        {error && <p className={publicUi.error}>{error}</p>}
+        <button className={publicUi.primaryButton} type="submit" disabled={loading}>
           {loading ? 'Entrando…' : 'Entrar'}
         </button>
-        <p className="auth-switch-link">
+        <p className={publicUi.authSwitch}>
           Não tem conta?{' '}
           <Link href={redirect ? `/cadastro?redirect=${encodeURIComponent(redirect)}` : '/cadastro'}>Cadastre-se</Link>
         </p>

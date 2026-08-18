@@ -1,6 +1,9 @@
+import { randomUUID } from 'node:crypto';
+import { isIP } from 'node:net';
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveTenantRoute, isTenantRouteError } from '@/lib/http/tenantRoute';
 import { isAdministrator, sessionCookieName } from '@/services/authService';
+import type { AuditRequestContext } from '@/services/auditService';
 import * as tenantApi from '@/services/tenantApiService';
 import * as commerce from '@/services/commerceService';
 import * as admin from '@/services/adminService';
@@ -15,6 +18,14 @@ function requestToken(request: NextRequest, tenantSlug: string): string | undefi
   return request.cookies.get(sessionCookieName(tenantSlug))?.value
     ?? request.cookies.get('ippa_admin_session')?.value
     ?? request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
+}
+
+function requestAuditContext(request: NextRequest): AuditRequestContext {
+  const forwardedFor = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+  const realIp = request.headers.get('x-real-ip')?.trim();
+  const ipAddress = [forwardedFor, realIp].find((value): value is string => typeof value === 'string' && isIP(value) !== 0);
+  const userAgent = request.headers.get('user-agent')?.slice(0, 512);
+  return { requestId: randomUUID(), ipAddress, userAgent };
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
@@ -94,12 +105,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const route = await resolveTenantRoute(request, context.params);
   if (isTenantRouteError(route)) return route;
   const endpoint = route.params.path.join('/');
+  const auditContext = requestAuditContext(request);
   if (endpoint === 'auth/login') {
     const body = await request.json().catch(() => null);
     if (!body || typeof body.email !== 'string' || typeof body.password !== 'string') {
       return NextResponse.json({ error: 'Informe email e senha.' }, { status: 400 });
     }
-    const result = await tenantApi.login(route.tenant, body.email, body.password);
+    const result = await tenantApi.login(route.tenant, body.email, body.password, auditContext);
     if (!result) return NextResponse.json({ error: 'Email ou senha inválidos.' }, { status: 401 });
     const response = NextResponse.json({ user: result.user });
     response.cookies.set(sessionCookieName(route.tenant.slug), result.token, cookieOptions());
@@ -108,27 +120,30 @@ export async function POST(request: NextRequest, context: RouteContext) {
   if (endpoint === 'admin/auth/login') {
     const body = await request.json().catch(() => null);
     if (!body || typeof body.email !== 'string' || typeof body.password !== 'string') return NextResponse.json({ error: 'Informe e-mail e senha.' }, { status: 400 });
-    const result = await tenantApi.login(route.tenant, body.email, body.password);
+    const result = await tenantApi.login(route.tenant, body.email, body.password, auditContext);
     if (!result || !isAdministrator(result.user)) return NextResponse.json({ error: 'E-mail, senha ou permissão de acesso inválidos.' }, { status: 401 });
     return NextResponse.json({ token: result.token, user: result.user });
   }
   if (endpoint === 'auth/logout') {
-    await tenantApi.logoutUser(route.tenant, requestToken(request, route.tenant.slug));
+    await tenantApi.logoutUser(route.tenant, requestToken(request, route.tenant.slug), auditContext);
     const response = NextResponse.json({ ok: true });
     response.cookies.set(sessionCookieName(route.tenant.slug), '', { ...cookieOptions(), maxAge: 0 });
     return response;
   }
   if (endpoint === 'admin/auth/logout') {
-    await tenantApi.logoutUser(route.tenant, request.headers.get('authorization')?.replace(/^Bearer\s+/i, ''));
+    await tenantApi.logoutUser(route.tenant, request.headers.get('authorization')?.replace(/^Bearer\s+/i, ''), auditContext);
     return NextResponse.json({ ok: true });
   }
   const user = await tenantApi.currentUser(route.tenant, requestToken(request, route.tenant.slug));
   if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
+  const authenticated = await tenantApi.currentSession(route.tenant, requestToken(request, route.tenant.slug));
+  if (!authenticated) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
+  const mutationContext = { ...auditContext, sessionId: authenticated.sessionId };
   const body = await request.json().catch(() => ({}));
   try {
-    if (endpoint === 'admin/users') return NextResponse.json(await admin.createTenantUser(route.tenant, user, body), { status: 201 });
-    if (endpoint === 'clients') return NextResponse.json(await commerce.createTenantClient(route.tenant, user, body), { status: 201 });
-    if (endpoint === 'sessions') return NextResponse.json(await commerce.createSellerSession(route.tenant, user, body), { status: 201 });
+    if (endpoint === 'admin/users') return NextResponse.json(await admin.createTenantUser(route.tenant, user, body, mutationContext), { status: 201 });
+    if (endpoint === 'clients') return NextResponse.json(await commerce.createTenantClient(route.tenant, user, body, mutationContext), { status: 201 });
+    if (endpoint === 'sessions') return NextResponse.json(await commerce.createSellerSession(route.tenant, user, body, mutationContext), { status: 201 });
   } catch (error) {
     if (error instanceof commerce.ForbiddenError) return NextResponse.json({ error: 'Sem permissão.' }, { status: 403 });
     if (error instanceof commerce.ConflictError) return NextResponse.json({ error: 'Já existe cadastro com esse CPF/CNPJ.' }, { status: 409 });
@@ -143,16 +158,19 @@ export async function PUT(request: NextRequest, context: RouteContext) {
   const [resource, id, action] = route.params.path;
   const user = await tenantApi.currentUser(route.tenant, requestToken(request, route.tenant.slug));
   if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
+  const authenticated = await tenantApi.currentSession(route.tenant, requestToken(request, route.tenant.slug));
+  if (!authenticated) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 });
+  const mutationContext = { ...requestAuditContext(request), sessionId: authenticated.sessionId };
   const body = await request.json().catch(() => null);
   if (!body) return NextResponse.json({ error: 'Corpo inválido.' }, { status: 400 });
   try {
     if (resource === 'clients' && id && action === 'cart') {
       if (!Array.isArray(body.items)) return NextResponse.json({ error: 'Corpo inválido.' }, { status: 400 });
-      await commerce.saveClientCart(route.tenant, user, id, body.items);
+      await commerce.saveClientCart(route.tenant, user, id, body.items, mutationContext);
       return NextResponse.json({ ok: true });
     }
     if (resource === 'clients' && id) {
-      const client = await commerce.updateTenantClient(route.tenant, user, id, body);
+      const client = await commerce.updateTenantClient(route.tenant, user, id, body, mutationContext);
       return client ? NextResponse.json(client) : NextResponse.json({ error: 'Cadastro não encontrado.' }, { status: 404 });
     }
   } catch (error) {

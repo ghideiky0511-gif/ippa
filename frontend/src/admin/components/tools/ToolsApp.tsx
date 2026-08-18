@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client';
-
+import { adminUi } from '@/admin/lib/ui';
 import { useMemo, useState } from 'react';
 import AdminNav from '@/admin/components/AdminNav';
 import { saveStoreSettings } from '@/admin/lib/storeSettingsClient';
@@ -220,67 +220,67 @@ export default function ToolsApp({ initialSettings, initialSimilarProductsSettin
 
   return (
     <div className="products-page">
-      <div className="builder-topbar">
-        <div className="builder-topbar-left">
+      <div className={adminUi.topbar}>
+        <div className={adminUi.topbarLeft}>
           <h1>Ferramentas</h1>
           <AdminNav />
         </div>
       </div>
 
-      <main className="products-editor">
-        <p className="preview-empty-text">
+      <main className={adminUi.productsEditor}>
+        <p className={adminUi.previewEmpty}>
           Liga/desliga de funcionalidades opcionais do catálogo — desligada aqui, some pro cliente mesmo que a
           peça tenha o dado preenchido. Cada mudança já salva na hora, sem precisar de um botão Salvar à parte.
         </p>
 
-        <div className="tools-list">
+        <div className={adminUi.toolsList}>
           {TOOLS.map((tool) => {
             const enabled = isEnabled(tool.id);
             return (
-              <div key={tool.id} className="tool-row">
-                <div className="tool-info">
-                  <span className="tool-label">{tool.label}</span>
-                  <span className="tool-description">{tool.description}</span>
-                  {errorId === tool.id && <span className="status">Erro ao salvar — tente de novo.</span>}
+              <div key={tool.id} className={adminUi.toolRow}>
+                <div className="contents">
+                  <span className="contents">{tool.label}</span>
+                  <span className="contents">{tool.description}</span>
+                  {errorId === tool.id && <span className={adminUi.status}>Erro ao salvar — tente de novo.</span>}
                 </div>
                 <button
                   type="button"
-                  className={'toggle-switch' + (enabled ? ' on' : '')}
+                  className={[adminUi.toggle, enabled ? 'bg-brand-primary' : ''].join(' ')}
                   onClick={() => handleToggle(tool.id)}
                   disabled={pendingId === tool.id}
                   aria-pressed={enabled}
                   aria-label={`${enabled ? 'Desligar' : 'Ligar'} ${tool.label}`}
                 >
-                  <span className="toggle-knob" />
+                  <span className="contents" />
                 </button>
               </div>
             );
           })}
         </div>
 
-        <h2 className="collections-subheading">Talão de pedidos</h2>
-        <p className="preview-empty-text">
+        <h2 className={adminUi.subheading}>Talão de pedidos</h2>
+        <p className={adminUi.previewEmpty}>
           Quando uma cliente cadastrada começa a montar um pedido sozinha (sem estar com nenhuma vendedora ainda),
           essa regra decide qual vendedora logada recebe — só vale pra cliente nova ou cuja última vendedora não
           está logada agora; se ela já tiver sido atendida antes, cai direto pra quem atendeu da última vez.
         </p>
-        <div className="field" style={{ maxWidth: 340 }}>
+        <div className={adminUi.field} style={{ maxWidth: 340 }}>
           <label>Distribuição de cliente nova</label>
           <select value={settings.assignmentStrategy || 'leastBusy'} onChange={handleAssignmentStrategyChange}>
             {ASSIGNMENT_STRATEGIES.map((s) => (
               <option key={s.value} value={s.value}>{s.label}</option>
             ))}
           </select>
-          {assignmentSaveState === 'saved' && <span className="status">Salvo</span>}
-          {assignmentSaveState === 'error' && <span className="status">Erro ao salvar</span>}
+          {assignmentSaveState === 'saved' && <span className={adminUi.status}>Salvo</span>}
+          {assignmentSaveState === 'error' && <span className={adminUi.status}>Erro ao salvar</span>}
         </div>
 
-        <p className="preview-empty-text">
+        <p className={adminUi.previewEmpty}>
           Prazo até o link de pagamento gerado pela vendedora (em /frete) expirar — depois disso a cliente vê
           "link expirado" e a vendedora precisa gerar um novo (mesmo botão, reaproveita se ainda estiver válido).
         </p>
-        <div className="field-row" style={{ alignItems: 'flex-end' }}>
-          <div className="field" style={{ maxWidth: 140 }}>
+        <div className={adminUi.fieldRow} style={{ alignItems: 'flex-end' }}>
+          <div className={adminUi.field} style={{ maxWidth: 140 }}>
             <label>Expira em (minutos)</label>
             <input
               type="number"
@@ -293,24 +293,24 @@ export default function ToolsApp({ initialSettings, initialSimilarProductsSettin
               }}
             />
           </div>
-          <button className="btn btn-primary" onClick={handleSaveExpiration} disabled={expirationSaveState === 'saving'}>
+          <button className={adminUi.primaryButton} onClick={handleSaveExpiration} disabled={expirationSaveState === 'saving'}>
             {expirationSaveState === 'saving' ? 'Salvando…' : 'Salvar'}
           </button>
-          {expirationSaveState === 'saved' && <span className="status">Salvo</span>}
-          {expirationSaveState === 'error' && <span className="status">Valor inválido ou erro ao salvar</span>}
+          {expirationSaveState === 'saved' && <span className={adminUi.status}>Salvo</span>}
+          {expirationSaveState === 'error' && <span className={adminUi.status}>Valor inválido ou erro ao salvar</span>}
         </div>
 
-        <h2 className="collections-subheading">Produtos similares</h2>
-        <p className="preview-empty-text">
+        <h2 className={adminUi.subheading}>Produtos similares</h2>
+        <p className={adminUi.previewEmpty}>
           Regra usada na fileira "Você também pode gostar" — página do produto, quick-view e carrinho. Curadoria
           manual 1 por 1 (substitui a regra pra um produto específico) fica em /produtos.
         </p>
 
         {SIMILAR_CONTEXTS.map(({ key, label }) => (
-          <div key={key} className="similar-rules-block">
-            <div className="field-row">
-              <h3 className="similar-rules-context-title">{label}</h3>
-              <div className="field" style={{ maxWidth: 120 }}>
+          <div key={key} className="contents">
+            <div className={adminUi.fieldRow}>
+              <h3 className="contents">{label}</h3>
+              <div className={adminUi.field} style={{ maxWidth: 120 }}>
                 <label>Quantidade</label>
                 <input
                   type="number"
@@ -320,17 +320,17 @@ export default function ToolsApp({ initialSettings, initialSimilarProductsSettin
                 />
               </div>
             </div>
-            <div className="similar-rules-checklist">
+            <div className="contents">
               {AVAILABLE_RULES.map((rule) => (
-                <label key={rule.id} className="similar-rule-checkbox">
+                <label key={rule.id} className="contents">
                   <input
                     type="checkbox"
                     checked={similarSettings[key].rules.includes(rule.id)}
                     onChange={() => toggleContextRule(key, rule.id)}
                   />
                   <span>
-                    <span className="similar-rule-checkbox-label">{rule.label}</span>
-                    <span className="similar-rule-checkbox-description">{rule.description}</span>
+                    <span className="contents">{rule.label}</span>
+                    <span className="contents">{rule.description}</span>
                   </span>
                 </label>
               ))}
@@ -338,17 +338,17 @@ export default function ToolsApp({ initialSettings, initialSimilarProductsSettin
           </div>
         ))}
 
-        <h3 className="similar-rules-context-title">Categorias complementares</h3>
-        <p className="preview-empty-text">
+        <h3 className="contents">Categorias complementares</h3>
+        <p className={adminUi.previewEmpty}>
           Usado pela regra "categoria complementar" acima — ex.: peças de cima combinando com peças de baixo.
         </p>
-        <div className="complementary-categories-list">
+        <div className="contents">
           {Object.entries(similarSettings.complementaryCategories).map(([category, targets]) => (
-            <div key={category} className="complementary-category-row">
-              <span className="complementary-category-name">{category}</span>
-              <div className="complementary-category-chips">
+            <div key={category} className="contents">
+              <span className="contents">{category}</span>
+              <div className="contents">
                 {targets.map((t) => (
-                  <span key={t} className="complementary-chip">
+                  <span key={t} className="contents">
                     {t}
                     <button type="button" onClick={() => removeComplementaryTarget(category, t)} aria-label={`Remover ${t}`}>
                       ✕
@@ -365,7 +365,7 @@ export default function ToolsApp({ initialSettings, initialSimilarProductsSettin
                 </select>
               </div>
               <button
-                className="btn btn-icon btn-danger"
+                className={adminUi.iconButton}
                 onClick={() => removeComplementaryCategoryRow(category)}
                 title="Remover linha"
               >
@@ -374,11 +374,11 @@ export default function ToolsApp({ initialSettings, initialSimilarProductsSettin
             </div>
           ))}
           {Object.keys(similarSettings.complementaryCategories).length === 0 && (
-            <p className="preview-empty-text">Nenhuma categoria complementar cadastrada ainda.</p>
+            <p className={adminUi.previewEmpty}>Nenhuma categoria complementar cadastrada ainda.</p>
           )}
         </div>
-        <div className="field-row">
-          <div className="field" style={{ maxWidth: 260 }}>
+        <div className={adminUi.fieldRow}>
+          <div className={adminUi.field} style={{ maxWidth: 260 }}>
             <label>Nova categoria</label>
             <select value={newComplementaryCategory} onChange={(e) => setNewComplementaryCategory(e.target.value)}>
               <option value="">Selecione...</option>
@@ -390,7 +390,7 @@ export default function ToolsApp({ initialSettings, initialSimilarProductsSettin
             </select>
           </div>
           <button
-            className="btn"
+            className={adminUi.button}
             onClick={() => {
               addComplementaryCategoryRow(newComplementaryCategory);
               setNewComplementaryCategory('');
@@ -401,13 +401,13 @@ export default function ToolsApp({ initialSettings, initialSimilarProductsSettin
           </button>
         </div>
 
-        <div className="field-row" style={{ marginTop: 12 }}>
-          <button className="btn btn-primary" onClick={handleSaveSimilar} disabled={similarSaveState === 'saving'}>
+        <div className={adminUi.fieldRow} style={{ marginTop: 12 }}>
+          <button className={adminUi.primaryButton} onClick={handleSaveSimilar} disabled={similarSaveState === 'saving'}>
             {similarSaveState === 'saving' ? 'Salvando…' : 'Salvar produtos similares'}
           </button>
-          {similarSaveState === 'saved' && !similarDirty && <span className="status">Salvo</span>}
-          {similarSaveState === 'error' && <span className="status">Erro ao salvar</span>}
-          {similarDirty && similarSaveState !== 'saving' && <span className="status">Alterações não salvas</span>}
+          {similarSaveState === 'saved' && !similarDirty && <span className={adminUi.status}>Salvo</span>}
+          {similarSaveState === 'error' && <span className={adminUi.status}>Erro ao salvar</span>}
+          {similarDirty && similarSaveState !== 'saving' && <span className={adminUi.status}>Alterações não salvas</span>}
         </div>
       </main>
     </div>

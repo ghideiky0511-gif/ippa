@@ -1,4 +1,5 @@
 'use client';
+import { publicUi } from '@/lib/ui';
 
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useTalao } from './TalaoProvider';
@@ -61,8 +62,8 @@ function CreateLoginSection({ client, onCreated }: { client: ClientWithLogin; on
   }
 
   return (
-    <form className="talao-new-form talao-create-login" onSubmit={handleSubmit}>
-      <p className="preview-empty-text">
+    <form className="contents" onSubmit={handleSubmit}>
+      <p className={publicUi.muted}>
         {client.name} ainda não tem login — sem ele não dá pra avançar pro frete. Crie aqui (ela pode entrar com
         esse mesmo e-mail/senha depois, pelo próprio celular).
       </p>
@@ -75,8 +76,8 @@ function CreateLoginSection({ client, onCreated }: { client: ClientWithLogin; on
         minLength={6}
         required
       />
-      {error && <p className="login-error">{error}</p>}
-      <button className="btn-add" type="submit" disabled={loading}>
+      {error && <p className={publicUi.error}>{error}</p>}
+      <button className={publicUi.primaryButton} type="submit" disabled={loading}>
         {loading ? 'Criando…' : 'Criar login pra cliente'}
       </button>
     </form>
@@ -192,7 +193,7 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
     return (
       <>
         <button
-          className={'talao-cadastro-toggle' + (justLinked ? ' just-linked' : '')}
+          className={`cursor-pointer rounded-lg border border-dashed border-[#ddd] bg-transparent px-2.5 py-2 text-left text-xs text-brand-muted hover:border-brand-primary hover:text-brand-primary ${justLinked ? 'animate-[talao-cadastro-linked_.7s_ease]' : ''}`}
           onClick={() => setExpanded(true)}
           onAnimationEnd={() => setJustLinked(false)}
         >
@@ -204,29 +205,29 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
   }
 
   return (
-    <div className="talao-cadastro-panel">
-      <div className="field">
+    <div className="contents">
+      <div className={publicUi.field}>
         <label>Buscar cadastro existente</label>
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Nome ou CPF/CNPJ" autoFocus />
       </div>
 
       {results.length > 0 && (
-        <div className="talao-search-results">
+        <div className="contents">
           {results.map((c) => (
-            <button key={c.id} className="talao-search-result" onClick={() => handleLinkExisting(c)}>
+            <button key={c.id} className="contents" onClick={() => handleLinkExisting(c)}>
               <span>{c.name}</span>
-              <span className="talao-card-channel">{c.cpfCnpj || 'sem CPF/CNPJ'}</span>
+              <span className={publicUi.talaoChannel}>{c.cpfCnpj || 'sem CPF/CNPJ'}</span>
             </button>
           ))}
         </div>
       )}
 
-      <button className="btn-clear" type="button" onClick={() => setShowNewForm((v) => !v)}>
+      <button className={publicUi.subtleButton} type="button" onClick={() => setShowNewForm((v) => !v)}>
         + novo cadastro
       </button>
 
       {showNewForm && (
-        <form className="talao-new-form" onSubmit={handleCreateAndLink}>
+        <form className="contents" onSubmit={handleCreateAndLink}>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome" required />
           <input value={cpfCnpj} onChange={(e) => setCpfCnpj(e.target.value)} placeholder="CPF/CNPJ" />
           {docType === 'cnpj' && (
@@ -241,12 +242,12 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
           )}
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail" type="email" />
           <input value={cep} onChange={(e) => setCep(e.target.value)} placeholder="CEP" />
-          {createError && <p className="login-error">{createError}</p>}
-          <button className="btn-add" type="submit">Salvar e vincular</button>
+          {createError && <p className={publicUi.error}>{createError}</p>}
+          <button className={publicUi.primaryButton} type="submit">Salvar e vincular</button>
         </form>
       )}
 
-      <button className="talao-cadastro-toggle" onClick={() => setExpanded(false)}>Fechar</button>
+      <button className="contents" onClick={() => setExpanded(false)}>Fechar</button>
       {createLoginSection}
     </div>
   );
@@ -297,15 +298,15 @@ export default function TalaoDrawer() {
 
   return (
     <>
-      <div className={'talao-overlay' + (isTalaoOpen ? ' open' : '')} onClick={closeTalao} />
-      <aside className={'talao-drawer' + (isTalaoOpen ? ' open' : '')}>
-        <div className="talao-header">
+      <div className={[publicUi.overlay, isTalaoOpen ? 'block' : 'hidden'].join(' ')} onClick={closeTalao} />
+      <aside className={[publicUi.drawerRight, isTalaoOpen ? 'translate-x-0' : ''].join(' ')}>
+        <div className={publicUi.drawerHeader}>
           <h2>talão de pedidos</h2>
           <button aria-label="Fechar" onClick={closeTalao}>&times;</button>
         </div>
 
-        <div className="talao-body">
-          <div className="talao-section-label">pedido ativo</div>
+        <div className={publicUi.drawerBody}>
+          <div className={publicUi.talaoLabel}>pedido ativo</div>
           {activeSession ? (
             <>
               {/* key={activeSession.id} força remontar ao trocar ou criar
@@ -314,51 +315,51 @@ export default function TalaoDrawer() {
                   estado aberto do cadastro que era da cliente anterior. */}
               <button
                 key={`${activeSession.id}-card`}
-                className="talao-active-card"
+                className="contents"
                 onClick={() => {
                   closeTalao();
                   openCart();
                 }}
                 title="Ver e editar as peças deste pedido"
               >
-                <div className="talao-card-info">
-                  <span className="talao-card-name">{activeSession.clientName}</span>
-                  <span className="talao-card-channel">{CHANNEL_LABELS[activeSession.channel]}</span>
+                <div className={publicUi.talaoInfo}>
+                  <span className={publicUi.talaoName}>{activeSession.clientName}</span>
+                  <span className={publicUi.talaoChannel}>{CHANNEL_LABELS[activeSession.channel]}</span>
                   {activeSession.status === 'aguardando_pagamento' && (
-                    <span className="talao-status-badge">aguardando pagamento</span>
+                    <span className={publicUi.talaoStatus}>aguardando pagamento</span>
                   )}
                 </div>
-                <div className="talao-card-meta">
+                <div className={publicUi.talaoMeta}>
                   <span>{itemCount(activeSession)} itens</span>
-                  <span className="talao-card-total">{formatBRL(subtotal(activeSession))}</span>
+                  <span className="contents">{formatBRL(subtotal(activeSession))}</span>
                 </div>
-                <span className="talao-card-arrow">→</span>
+                <span className="contents">→</span>
               </button>
               <ClientCadastroSection key={`${activeSession.id}-cadastro`} session={activeSession} />
             </>
           ) : (
-            <p className="preview-empty-text">Nenhum pedido ativo — crie ou selecione um abaixo.</p>
+            <p className={publicUi.muted}>Nenhum pedido ativo — crie ou selecione um abaixo.</p>
           )}
 
           {others.length > 0 && (
             <>
-              <div className="talao-section-label">outros pedidos no talão</div>
-              <div className="talao-other-list">
+              <div className={publicUi.talaoLabel}>outros pedidos no talão</div>
+              <div className="contents">
                 {others.map((s) => (
-                  <div key={s.id} className="talao-other-card" onClick={() => selectSession(s.id)}>
-                    <div className="talao-card-info">
-                      <span className="talao-card-name">{s.clientName}</span>
-                      <span className="talao-card-channel">{CHANNEL_LABELS[s.channel]}</span>
+                  <div key={s.id} className={publicUi.talaoCard} onClick={() => selectSession(s.id)}>
+                    <div className={publicUi.talaoInfo}>
+                      <span className={publicUi.talaoName}>{s.clientName}</span>
+                      <span className={publicUi.talaoChannel}>{CHANNEL_LABELS[s.channel]}</span>
                       {s.status === 'aguardando_pagamento' && (
-                        <span className="talao-status-badge">aguardando pagamento</span>
+                        <span className={publicUi.talaoStatus}>aguardando pagamento</span>
                       )}
                     </div>
-                    <div className="talao-card-meta">
+                    <div className={publicUi.talaoMeta}>
                       <span>{itemCount(s)} itens</span>
-                      <span className="talao-card-total">{formatBRL(subtotal(s))}</span>
+                      <span className="contents">{formatBRL(subtotal(s))}</span>
                     </div>
                     <button
-                      className="talao-card-remove"
+                      className="contents"
                       aria-label="Fechar pedido"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -373,27 +374,27 @@ export default function TalaoDrawer() {
             </>
           )}
 
-          <div className="talao-section-label">adicionar mais pedidos ao talão</div>
-          <div className="talao-add-row">
+          <div className={publicUi.talaoLabel}>adicionar mais pedidos ao talão</div>
+          <div className="contents">
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="buscar existentes" />
-            <button className="btn-add" type="button" onClick={() => setShowNewForm((v) => !v)}>
+            <button className={publicUi.primaryButton} type="button" onClick={() => setShowNewForm((v) => !v)}>
               + criar novo
             </button>
           </div>
 
           {searchResults.length > 0 && (
-            <div className="talao-search-results">
+            <div className="contents">
               {searchResults.map((s) => (
-                <button key={s.id} className="talao-search-result" onClick={() => handlePickExisting(s)}>
+                <button key={s.id} className="contents" onClick={() => handlePickExisting(s)}>
                   <span>{s.clientName}</span>
-                  <span className="talao-card-channel">{s.status === 'fechado' ? 'fechado — reabrir' : 'aberto'}</span>
+                  <span className={publicUi.talaoChannel}>{s.status === 'fechado' ? 'fechado — reabrir' : 'aberto'}</span>
                 </button>
               ))}
             </div>
           )}
 
           {showNewForm && (
-            <form className="talao-new-form" onSubmit={handleCreate}>
+            <form className="contents" onSubmit={handleCreate}>
               <input
                 value={newClientName}
                 onChange={(e) => setNewClientName(e.target.value)}
@@ -404,7 +405,7 @@ export default function TalaoDrawer() {
                 <option value="presencial">Presencial</option>
                 <option value="whatsapp">WhatsApp</option>
               </select>
-              <button className="btn-add" type="submit">Criar pedido</button>
+              <button className={publicUi.primaryButton} type="submit">Criar pedido</button>
             </form>
           )}
         </div>

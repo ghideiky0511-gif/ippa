@@ -1,6 +1,5 @@
 // @ts-nocheck
 'use client';
-
 export default function BannerPreview({ section }) {
   const banners = section.banners || [];
   const first = banners[0];
@@ -8,25 +7,25 @@ export default function BannerPreview({ section }) {
 
   if (!first || !first.mediaUrl) {
     return (
-      <div className="banner preview-banner preview-empty" style={style}>
+      <div className="contents" style={style}>
         <p>Sem mídia ainda — adicione uma imagem ou vídeo no painel ao lado.</p>
       </div>
     );
   }
 
   return (
-    <div className="banner preview-banner" style={style}>
+    <div className="contents" style={style}>
       {first.type === 'video' ? (
-        <video src={first.mediaUrl} muted loop playsInline className="banner-media" />
+        <video src={first.mediaUrl} muted loop playsInline className="contents" />
       ) : (
-        <img src={first.mediaUrl} alt={first.title || ''} className="banner-media" />
+        <img src={first.mediaUrl} alt={first.title || ''} className="contents" />
       )}
-      <div className="banner-content">
+      <div className="contents">
         {first.title && <h2>{first.title}</h2>}
         {first.subtitle && <p>{first.subtitle}</p>}
       </div>
       {banners.length > 1 && (
-        <span className="preview-badge">+{banners.length - 1} no carrossel</span>
+        <span className="contents">+{banners.length - 1} no carrossel</span>
       )}
     </div>
   );

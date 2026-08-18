@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client';
-
+import { adminUi } from '@/admin/lib/ui';
 import { useState } from 'react';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -65,17 +65,17 @@ export default function CollectionsApp({ initialHighlights, products }) {
   }
 
   return (
-    <div className="collections-page">
-      <div className="builder-topbar">
-        <div className="builder-topbar-left">
+    <div className={adminUi.collectionsPage}>
+      <div className={adminUi.topbar}>
+        <div className={adminUi.topbarLeft}>
           <h1>Coleções</h1>
           <AdminNav />
         </div>
         <div>
-          {saveState === 'saved' && !dirty && <span className="status">Salvo</span>}
-          {saveState === 'error' && <span className="status">Erro ao salvar</span>}
-          {dirty && saveState !== 'saving' && <span className="status">Alterações não salvas</span>}
-          <button className="btn btn-primary" onClick={handleSave} disabled={saveState === 'saving'}>
+          {saveState === 'saved' && !dirty && <span className={adminUi.status}>Salvo</span>}
+          {saveState === 'error' && <span className={adminUi.status}>Erro ao salvar</span>}
+          {dirty && saveState !== 'saving' && <span className={adminUi.status}>Alterações não salvas</span>}
+          <button className={adminUi.primaryButton} onClick={handleSave} disabled={saveState === 'saving'}>
             {saveState === 'saving' ? 'Salvando…' : 'Salvar'}
           </button>
         </div>
@@ -99,8 +99,8 @@ export default function CollectionsApp({ initialHighlights, products }) {
             />
           </SortableContext>
         ) : (
-          <main className="collections-editor">
-            <p className="preview-empty-text">Selecione uma coleção à esquerda ou crie uma nova.</p>
+          <main className={adminUi.collectionsEditor}>
+            <p className={adminUi.previewEmpty}>Selecione uma coleção à esquerda ou crie uma nova.</p>
           </main>
         )}
       </DndContext>

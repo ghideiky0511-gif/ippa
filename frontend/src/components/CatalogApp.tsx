@@ -1,4 +1,5 @@
 'use client';
+import { publicUi } from '@/lib/ui';
 
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -82,15 +83,15 @@ export default function CatalogApp({ initialProducts }: { initialProducts: Produ
 
   return (
     <>
-      <main className="container">
+      <main className={publicUi.container}>
         <Filters
           options={options}
           filters={filters}
           onChange={setFilters}
           onClear={() => setFilters({ term: '', category: '', subcategory: '', color: '', size: '', destaque: '', publico: '' })}
         />
-        <div className="result-count">{filteredProducts.length} produto(s) encontrado(s)</div>
-        <div className="grid">
+        <div className={publicUi.resultCount}>{filteredProducts.length} produto(s) encontrado(s)</div>
+        <div className={publicUi.grid}>
           {filteredProducts.map((p) => (
             <ProductCard key={p.id} product={p} />
           ))}

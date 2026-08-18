@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client';
-
+import { adminUi } from '@/admin/lib/ui';
 import { useState, memo } from 'react';
 import { getBlockDefinition, CANVAS_WIDTH, MIN_SIZE } from '@/admin/lib/blockRegistry';
 
@@ -107,16 +107,16 @@ function CanvasBlock({ section, products, selected, onSelect, onRemove, onMove, 
   return (
     <div
       style={{ position: 'absolute', left: x, top: y, width, height, zIndex: selected || live ? 5 : 1 }}
-      className={`block-card${selected ? ' selected' : ''}${live ? ' interacting' : ''}`}
+      className={[adminUi.blockCard, selected ? 'border-brand-primary shadow-[0_4px_16px_rgba(194,24,91,.18)]' : '', live ? 'opacity-90 shadow-[0_8px_24px_rgba(0,0,0,.18)]' : ''].join(' ')}
       onClick={() => onSelect(section.id)}
     >
-      <div className="block-card-header">
-        <span className="block-card-handle" onPointerDown={handleMoveStart} title="Arraste pra mover">
+      <div className={adminUi.blockHeader}>
+        <span className={adminUi.blockHandle} onPointerDown={handleMoveStart} title="Arraste pra mover">
           ⠿
         </span>
-        <span className="block-card-label">{summarize(section, products)}</span>
+        <span className={adminUi.blockLabel}>{summarize(section, products)}</span>
         <button
-          className="btn btn-icon btn-danger"
+          className={adminUi.iconButton}
           onClick={(e) => {
             e.stopPropagation();
             onRemove(section.id);
@@ -125,13 +125,13 @@ function CanvasBlock({ section, products, selected, onSelect, onRemove, onMove, 
           Excluir
         </button>
       </div>
-      <div className="block-card-preview">{Preview && <Preview section={section} products={products} />}</div>
+      <div className={adminUi.blockPreview}>{Preview && <Preview section={section} products={products} />}</div>
 
-      <div className="block-resize-handle-h" onPointerDown={(e) => handleResizeStart(e, 'h')} title="Redimensionar altura">
+      <div className={adminUi.resizeH} onPointerDown={(e) => handleResizeStart(e, 'h')} title="Redimensionar altura">
         <span />
       </div>
-      <div className="block-resize-handle-w" onPointerDown={(e) => handleResizeStart(e, 'w')} title="Redimensionar largura" />
-      <div className="block-resize-handle-corner" onPointerDown={(e) => handleResizeStart(e, 'both')} title="Redimensionar" />
+      <div className={adminUi.resizeW} onPointerDown={(e) => handleResizeStart(e, 'w')} title="Redimensionar largura" />
+      <div className={adminUi.resizeCorner} onPointerDown={(e) => handleResizeStart(e, 'both')} title="Redimensionar" />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 'use client';
+import { publicUi } from '@/lib/ui';
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
@@ -116,74 +117,74 @@ export default function CadastroPage() {
   }
 
   return (
-    <div className="login-page">
-      <form className="login-form" onSubmit={handleSubmit}>
+    <div className={publicUi.loginPage}>
+      <form className={publicUi.loginForm} onSubmit={handleSubmit}>
         <h1>Criar conta</h1>
-        <div className="field">
+        <div className={publicUi.field}>
           <label>Nome</label>
           <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus required />
         </div>
-        <div className="field">
+        <div className={publicUi.field}>
           <label>Email</label>
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </div>
-        <div className="field">
+        <div className={publicUi.field}>
           <label>Senha</label>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
         </div>
-        <div className="field">
+        <div className={publicUi.field}>
           <label>CPF/CNPJ</label>
           <input type="text" value={cpfCnpj} onChange={(e) => setCpfCnpj(e.target.value)} required />
         </div>
         {docType === 'cnpj' && (
-          <div className="field">
+          <div className={publicUi.field}>
             <label>Responsável pela empresa (opcional)</label>
             <input type="text" value={companyResponsible} onChange={(e) => setCompanyResponsible(e.target.value)} />
           </div>
         )}
         {docType === 'cpf' && (
-          <div className="field">
+          <div className={publicUi.field}>
             <label>Nome da loja (opcional)</label>
             <input type="text" value={storeName} onChange={(e) => setStoreName(e.target.value)} />
           </div>
         )}
-        <div className="field">
+        <div className={publicUi.field}>
           <label>CEP</label>
           <input type="text" value={cep} onChange={(e) => setCep(e.target.value)} required />
         </div>
-        <div className="field">
+        <div className={publicUi.field}>
           <label>Rua</label>
           <input type="text" value={street} onChange={(e) => setStreet(e.target.value)} required />
         </div>
-        <div className="field-row">
-          <div className="field">
+        <div className={publicUi.fieldRow}>
+          <div className={publicUi.field}>
             <label>Número</label>
             <input type="text" value={number} onChange={(e) => setNumber(e.target.value)} required />
           </div>
-          <div className="field">
+          <div className={publicUi.field}>
             <label>Complemento (opcional)</label>
             <input type="text" value={complement} onChange={(e) => setComplement(e.target.value)} />
           </div>
         </div>
-        <div className="field">
+        <div className={publicUi.field}>
           <label>Bairro</label>
           <input type="text" value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} required />
         </div>
-        <div className="field-row">
-          <div className="field">
+        <div className={publicUi.fieldRow}>
+          <div className={publicUi.field}>
             <label>Cidade</label>
             <input type="text" value={city} onChange={(e) => setCity(e.target.value)} required />
           </div>
-          <div className="field">
+          <div className={publicUi.field}>
             <label>Estado</label>
             <input type="text" value={state} onChange={(e) => setState(e.target.value)} maxLength={2} required />
           </div>
         </div>
-        {error && <p className="login-error">{error}</p>}
-        <button className="btn-add" type="submit" disabled={loading}>
+        {error && <p className={publicUi.error}>{error}</p>}
+        <button className={publicUi.primaryButton} type="submit" disabled={loading}>
           {loading ? 'Criando conta…' : 'Criar conta'}
         </button>
-        <p className="auth-switch-link">
+        <p className={publicUi.authSwitch}>
           Já tem conta?{' '}
           <Link href={redirect ? `/login?redirect=${encodeURIComponent(redirect)}` : '/login'}>Entrar</Link>
         </p>

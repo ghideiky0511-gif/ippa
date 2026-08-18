@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client';
-
+import { adminUi } from '@/admin/lib/ui';
 import { formatBRL } from '@/admin/lib/format';
 
 export default function ProductBlockEditor({ section, onUpdate, products }) {
@@ -12,21 +12,21 @@ export default function ProductBlockEditor({ section, onUpdate, products }) {
   }
 
   return (
-    <div className="field">
+    <div className={adminUi.field}>
       <label>ID do produto</label>
       <input value={section.productId || ''} onChange={handleChange} placeholder="cole o ID aqui" />
 
       {product ? (
-        <div className="product-item-preview" style={{ marginTop: 8 }}>
+        <div className="contents" style={{ marginTop: 8 }}>
           <img src={product.image || ''} alt={product.name} />
           <div>
-            <div className="product-item-name">{product.name}</div>
-            <div className="product-item-price">{formatBRL(product.price)}</div>
+            <div className={adminUi.productName}>{product.name}</div>
+            <div className={adminUi.productPrice}>{formatBRL(product.price)}</div>
           </div>
         </div>
       ) : (
         section.productId && (
-          <span className="product-item-status" style={{ marginTop: 8, display: 'block' }}>
+          <span className="contents" style={{ marginTop: 8, display: 'block' }}>
             ID não encontrado no catálogo
           </span>
         )

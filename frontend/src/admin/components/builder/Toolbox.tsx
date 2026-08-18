@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client';
-
+import { adminUi } from '@/admin/lib/ui';
 import { useDraggable } from '@dnd-kit/core';
 import { BLOCK_REGISTRY } from '@/admin/lib/blockRegistry';
 
@@ -15,18 +15,18 @@ function ToolItem({ block }) {
     : undefined;
 
   return (
-    <div ref={setNodeRef} style={style} className="tool-item" {...listeners} {...attributes}>
-      <span className="tool-icon">{block.icon}</span>
-      <span className="tool-label">{block.label}</span>
+    <div ref={setNodeRef} style={style} className={adminUi.toolItem} {...listeners} {...attributes}>
+      <span className="contents">{block.icon}</span>
+      <span className="contents">{block.label}</span>
     </div>
   );
 }
 
 export default function Toolbox() {
   return (
-    <aside className="builder-toolbox">
+    <aside className={adminUi.toolbox}>
       <h2>Ferramentas</h2>
-      <div className="toolbox-list">
+      <div className={adminUi.toolboxList}>
         {BLOCK_REGISTRY.map((block) => (
           <ToolItem key={block.type} block={block} />
         ))}

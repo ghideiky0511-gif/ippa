@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client';
-
+import { adminUi } from '@/admin/lib/ui';
 import { useMemo, useState } from 'react';
 import AdminNav from '@/admin/components/AdminNav';
 import SimilarProductsField from './SimilarProductsField';
@@ -107,29 +107,29 @@ export default function ProductsApp({ products, initialOverrides, initialSetting
 
   return (
     <div className="products-page">
-      <div className="builder-topbar">
-        <div className="builder-topbar-left">
+      <div className={adminUi.topbar}>
+        <div className={adminUi.topbarLeft}>
           <h1>Produtos</h1>
           <AdminNav />
         </div>
       </div>
 
-      <main className="products-editor">
-        <p className="preview-empty-text">
+      <main className={adminUi.productsEditor}>
+        <p className={adminUi.previewEmpty}>
           Código, preço sugerido de revenda e markup são dados opcionais da loja — quando o Bippa/ERP mandar
           esses campos direto no catálogo, eles aparecem sozinhos; o que for editado aqui tem prioridade sobre
           o dado do ERP. O chip de markup no catálogo só aparece com o preço sugerido preenchido (por aqui,
           pelo markup padrão abaixo, ou pelo ERP), e só se a loja tiver essa funcionalidade ligada em{' '}
           <code>CONFIG.features.suggestedPrice</code>.
         </p>
-        <p className="preview-empty-text">
+        <p className={adminUi.previewEmpty}>
           Categoria e subcategoria já vêm do ERP, mas podem ser corrigidas aqui — a edição tem prioridade sobre
           o que foi importado. Coleção não tem origem no ERP: fica em branco pra peças atemporais (vendem o ano
           todo) e só é preenchida pra marcar uma peça própria de uma época, ex. &quot;Verão 2027&quot;.
         </p>
 
-        <div className="default-markup-panel">
-          <div className="field" style={{ maxWidth: 200 }}>
+        <div className={adminUi.defaultMarkup}>
+          <div className={adminUi.field} style={{ maxWidth: 200 }}>
             <label>Markup sugerido padrão (todas as peças)</label>
             <input
               type="number"
@@ -144,22 +144,22 @@ export default function ProductsApp({ products, initialOverrides, initialSetting
             />
           </div>
           <button
-            className="btn btn-primary"
+            className={adminUi.primaryButton}
             onClick={handleApplyDefaultMarkup}
             disabled={defaultMarkupSaveState === 'saving'}
           >
             {defaultMarkupSaveState === 'saving' ? 'Aplicando…' : 'Aplicar a todas as peças'}
           </button>
-          {defaultMarkupSaveState === 'saved' && <span className="status">Aplicado</span>}
-          {defaultMarkupSaveState === 'error' && <span className="status">Erro ao salvar</span>}
+          {defaultMarkupSaveState === 'saved' && <span className={adminUi.status}>Aplicado</span>}
+          {defaultMarkupSaveState === 'error' && <span className={adminUi.status}>Erro ao salvar</span>}
         </div>
-        <p className="preview-empty-text">
+        <p className={adminUi.previewEmpty}>
           Vale só pra peça sem preço sugerido/markup próprio (nem do ERP, nem editado abaixo). Pra uma peça
           específica ficar diferente do padrão, busque ela abaixo e altere direto — a edição da peça sempre
           tem prioridade sobre o padrão.
         </p>
 
-        <div className="field" style={{ maxWidth: 360 }}>
+        <div className={adminUi.field} style={{ maxWidth: 360 }}>
           <label>Buscar produto</label>
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Nome ou código..." />
         </div>
@@ -180,19 +180,19 @@ export default function ProductsApp({ products, initialOverrides, initialSetting
           ))}
         </datalist>
 
-        <div className="product-overrides-list">
+        <div className={adminUi.overridesList}>
           {results.map((p) => {
             const o = overrides[p.id] || {};
             const state = rowSaveState[p.id];
             return (
-              <div key={p.id} className="product-row-card">
-                <div className="product-override-row">
+              <div key={p.id} className={adminUi.overrideCard}>
+                <div className={adminUi.overrideRow}>
                   <img src={p.image || ''} alt={p.name} />
-                  <div className="product-override-info">
-                    <span className="product-item-name">{p.name}</span>
-                    <span className="product-item-price">Atacado: {formatBRL(p.price)}</span>
+                  <div className={adminUi.productInfo}>
+                    <span className={adminUi.productName}>{p.name}</span>
+                    <span className={adminUi.productPrice}>Atacado: {formatBRL(p.price)}</span>
                   </div>
-                  <div className="field">
+                  <div className={adminUi.field}>
                     <label>Código</label>
                     <input
                       value={o.sku ?? ''}
@@ -200,7 +200,7 @@ export default function ProductsApp({ products, initialOverrides, initialSetting
                       placeholder="Opcional"
                     />
                   </div>
-                  <div className="field">
+                  <div className={adminUi.field}>
                     <label>Preço sugerido</label>
                     <input
                       type="number"
@@ -211,7 +211,7 @@ export default function ProductsApp({ products, initialOverrides, initialSetting
                       placeholder="Opcional"
                     />
                   </div>
-                  <div className="field">
+                  <div className={adminUi.field}>
                     <label>Markup {p.markup ? `(${formatMarkup(p.markup)} hoje)` : ''}</label>
                     <input
                       type="number"
@@ -222,16 +222,16 @@ export default function ProductsApp({ products, initialOverrides, initialSetting
                       placeholder="Auto"
                     />
                   </div>
-                  <div className="product-override-actions">
-                    <button className="btn btn-primary" onClick={() => handleAlterar(p.id)} disabled={state === 'saving'}>
+                  <div className={adminUi.overrideActions}>
+                    <button className={adminUi.primaryButton} onClick={() => handleAlterar(p.id)} disabled={state === 'saving'}>
                       {state === 'saving' ? 'Alterando…' : 'Alterar'}
                     </button>
-                    {state === 'saved' && <span className="status">Alterado</span>}
-                    {state === 'error' && <span className="status">Erro</span>}
+                    {state === 'saved' && <span className={adminUi.status}>Alterado</span>}
+                    {state === 'error' && <span className={adminUi.status}>Erro</span>}
                   </div>
                 </div>
-                <div className="product-override-row product-classification-row">
-                  <div className="field">
+                <div className="contents">
+                  <div className={adminUi.field}>
                     <label>Categoria</label>
                     <input
                       list="classification-categories"
@@ -240,7 +240,7 @@ export default function ProductsApp({ products, initialOverrides, initialSetting
                       placeholder="Categoria do ERP"
                     />
                   </div>
-                  <div className="field">
+                  <div className={adminUi.field}>
                     <label>Subcategoria</label>
                     <input
                       list="classification-subcategories"
@@ -249,7 +249,7 @@ export default function ProductsApp({ products, initialOverrides, initialSetting
                       placeholder="Opcional"
                     />
                   </div>
-                  <div className="field">
+                  <div className={adminUi.field}>
                     <label>Coleção</label>
                     <input
                       list="classification-collections"
@@ -276,8 +276,8 @@ export default function ProductsApp({ products, initialOverrides, initialSetting
               </div>
             );
           })}
-          {q && results.length === 0 && <p className="preview-empty-text">Nenhum produto encontrado.</p>}
-          {!q && <p className="preview-empty-text">Busque um produto pra editar código, preço sugerido ou markup.</p>}
+          {q && results.length === 0 && <p className={adminUi.previewEmpty}>Nenhum produto encontrado.</p>}
+          {!q && <p className={adminUi.previewEmpty}>Busque um produto pra editar código, preço sugerido ou markup.</p>}
         </div>
       </main>
     </div>

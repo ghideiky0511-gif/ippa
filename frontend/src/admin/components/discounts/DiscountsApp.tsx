@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client';
-
+import { adminUi } from '@/admin/lib/ui';
 import { useState } from 'react';
 import DiscountsList from './DiscountsList';
 import DiscountEditor from './DiscountEditor';
@@ -66,17 +66,17 @@ export default function DiscountsApp({ initialDiscounts, products }) {
   }
 
   return (
-    <div className="collections-page">
-      <div className="builder-topbar">
-        <div className="builder-topbar-left">
+    <div className={adminUi.collectionsPage}>
+      <div className={adminUi.topbar}>
+        <div className={adminUi.topbarLeft}>
           <h1>Descontos</h1>
           <AdminNav />
         </div>
         <div>
-          {saveState === 'saved' && !dirty && <span className="status">Salvo</span>}
-          {saveState === 'error' && <span className="status">Erro ao salvar</span>}
-          {dirty && saveState !== 'saving' && <span className="status">Alterações não salvas</span>}
-          <button className="btn btn-primary" onClick={handleSave} disabled={saveState === 'saving'}>
+          {saveState === 'saved' && !dirty && <span className={adminUi.status}>Salvo</span>}
+          {saveState === 'error' && <span className={adminUi.status}>Erro ao salvar</span>}
+          {dirty && saveState !== 'saving' && <span className={adminUi.status}>Alterações não salvas</span>}
+          <button className={adminUi.primaryButton} onClick={handleSave} disabled={saveState === 'saving'}>
             {saveState === 'saving' ? 'Salvando…' : 'Salvar'}
           </button>
         </div>
@@ -97,8 +97,8 @@ export default function DiscountsApp({ initialDiscounts, products }) {
           onUpdate={(updater) => updateDiscount(selected.id, updater)}
         />
       ) : (
-        <main className="collections-editor">
-          <p className="preview-empty-text">Selecione um desconto à esquerda ou crie um novo.</p>
+        <main className={adminUi.collectionsEditor}>
+          <p className={adminUi.previewEmpty}>Selecione um desconto à esquerda ou crie um novo.</p>
         </main>
       )}
     </div>

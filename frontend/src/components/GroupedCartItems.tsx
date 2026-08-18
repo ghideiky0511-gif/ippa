@@ -1,4 +1,5 @@
 'use client';
+import { publicUi } from '@/lib/ui';
 
 import { useState } from 'react';
 import CartItemRow from './CartItemRow';
@@ -41,23 +42,23 @@ function CartProductGroup({ productId, items }: { productId: string; items: Cart
   }
 
   return (
-    <div className="cart-group">
-      <div className="cart-group-summary">
+    <div className={publicUi.cartGroup}>
+      <div className={publicUi.cartGroupSummary}>
         <img src={first.image || 'https://via.placeholder.com/100x120?text=Sem+imagem'} alt={first.name} />
-        <div className="cart-group-info">
-          <div className="name">{first.name}</div>
+        <div className={publicUi.cartGroupInfo}>
+          <div className="contents">{first.name}</div>
           {isDraftOnly ? (
-            <div className="variant cart-group-pending">Selecione a grade</div>
+            <div className="contents">Selecione a grade</div>
           ) : (
-            <div className="variant">
+            <div className="contents">
               {colorCount} {colorCount === 1 ? 'cor' : 'cores'} · {totalQty} peça{totalQty === 1 ? '' : 's'}
               {showPrices && (
                 <>
                   {' · '}
                   {applied ? (
-                    <span className="cart-group-price-discount">
-                      <span className="price-original">{formatBRL(totalValue)}</span>{' '}
-                      <span className="price-discounted">{formatBRL(discountedTotal)}</span>
+                    <span className="contents">
+                      <span className={publicUi.originalPrice}>{formatBRL(totalValue)}</span>{' '}
+                      <span className={publicUi.discountedPrice}>{formatBRL(discountedTotal)}</span>
                     </span>
                   ) : (
                     formatBRL(totalValue)
@@ -68,7 +69,7 @@ function CartProductGroup({ productId, items }: { productId: string; items: Cart
           )}
         </div>
         <button
-          className="cart-group-toggle"
+          className={publicUi.cartGroupToggle}
           onClick={isDraftOnly ? handleEditGrade : () => setExpanded((v) => !v)}
           disabled={isDraftOnly && !product}
         >
@@ -77,11 +78,11 @@ function CartProductGroup({ productId, items }: { productId: string; items: Cart
       </div>
 
       {expanded && !isDraftOnly && (
-        <div className="cart-group-items">
+        <div className={publicUi.cartGroupItems}>
           {resolved.map((item) => (
             <CartItemRow key={item.key} item={item} onChangeQty={changeQty} onRemove={removeFromCart} />
           ))}
-          <button className="cart-group-edit" onClick={handleEditGrade} disabled={!product}>
+          <button className={publicUi.cartGroupEdit} onClick={handleEditGrade} disabled={!product}>
             + editar grade
           </button>
         </div>

@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client';
-
+import { adminUi } from '@/admin/lib/ui';
 function newId() {
   return Math.random().toString(36).slice(2, 10);
 }
@@ -29,15 +29,15 @@ export default function BannerBlockEditor({ section, onUpdate }) {
   return (
     <>
       {banners.map((b) => (
-        <div key={b.id} className="item-card">
-          <div className="field">
+        <div key={b.id} className={adminUi.itemCard}>
+          <div className={adminUi.field}>
             <label>Tipo</label>
             <select value={b.type} onChange={(e) => updateBanner(b.id, { type: e.target.value })}>
               <option value="image">Imagem</option>
               <option value="video">Vídeo</option>
             </select>
           </div>
-          <div className="field">
+          <div className={adminUi.field}>
             <label>URL da mídia</label>
             <input
               value={b.mediaUrl}
@@ -45,18 +45,18 @@ export default function BannerBlockEditor({ section, onUpdate }) {
               placeholder="https://..."
             />
           </div>
-          <div className="field-row">
-            <div className="field">
+          <div className={adminUi.fieldRow}>
+            <div className={adminUi.field}>
               <label>Título</label>
               <input value={b.title || ''} onChange={(e) => updateBanner(b.id, { title: e.target.value })} />
             </div>
-            <div className="field">
+            <div className={adminUi.field}>
               <label>Subtítulo</label>
               <input value={b.subtitle || ''} onChange={(e) => updateBanner(b.id, { subtitle: e.target.value })} />
             </div>
           </div>
           <button
-            className="btn btn-danger"
+            className={adminUi.dangerButton}
             onClick={() => removeBanner(b.id)}
             disabled={banners.length <= 1}
           >
@@ -64,7 +64,7 @@ export default function BannerBlockEditor({ section, onUpdate }) {
           </button>
         </div>
       ))}
-      <button className="btn" onClick={addBanner}>+ Adicionar item ao carrossel</button>
+      <button className={adminUi.button} onClick={addBanner}>+ Adicionar item ao carrossel</button>
     </>
   );
 }

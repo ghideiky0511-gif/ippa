@@ -1,5 +1,4 @@
 'use client';
-
 import { useEffect, useState } from 'react';
 import { useTalao } from './TalaoProvider';
 import { isClientComplete } from '@/lib/clientComplete';

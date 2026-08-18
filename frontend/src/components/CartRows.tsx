@@ -1,4 +1,5 @@
 'use client';
+import { publicUi } from '@/lib/ui';
 
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -78,23 +79,23 @@ function ColorSelect({
   const [open, setOpen] = useState(false);
   return (
     <div
-      className="color-select"
+      className={publicUi.colorSelect}
       onBlur={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node)) setOpen(false);
       }}
     >
       <button
         type="button"
-        className="color-select-trigger"
+        className={publicUi.colorSelectTrigger}
         disabled={disabled || colors.length === 0}
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="swatch" style={{ background: COLOR_MAP[value] || '#ccc' }} />
-        <span className="color-select-label">{value || 'cor'}</span>
-        <span className="color-select-caret">▾</span>
+        <span className={publicUi.swatch} style={{ background: COLOR_MAP[value] || '#ccc' }} />
+        <span className="contents">{value || 'cor'}</span>
+        <span className="contents">▾</span>
       </button>
       {open && (
-        <ul className="color-select-list">
+        <ul className={publicUi.colorSelectList}>
           {colors.map((c) => (
             <li key={c}>
               <button
@@ -105,7 +106,7 @@ function ColorSelect({
                   setOpen(false);
                 }}
               >
-                <span className="swatch" style={{ background: COLOR_MAP[c] || '#ccc' }} />
+                <span className={publicUi.swatch} style={{ background: COLOR_MAP[c] || '#ccc' }} />
                 {c}
               </button>
             </li>
@@ -228,10 +229,10 @@ function ColorLine({
   }
 
   return (
-    <div className="cart-line">
+    <div className={publicUi.cartLine}>
       <img src={image || 'https://via.placeholder.com/64x80?text=Sem+imagem'} alt={itemName} />
 
-      <div className="cart-line-field">
+      <div className={publicUi.cartLineField}>
         <label>Cor</label>
         <ColorSelect
           colors={matrix?.colors.length ? matrix.colors : colorValue ? [colorValue] : []}
@@ -241,7 +242,7 @@ function ColorLine({
         />
       </div>
 
-      <div className="cart-line-field">
+      <div className={publicUi.cartLineField}>
         <label>Entrega</label>
         <select value={deliveryValue} onChange={(e) => handleDeliveryChange(e.target.value)}>
           {DELIVERY_OPTIONS.map((opt) => (
@@ -250,13 +251,13 @@ function ColorLine({
         </select>
       </div>
 
-      <div className="cart-line-grid">
+      <div className={publicUi.cartLineGrid}>
         {gradeCells.map(({ size, cell }) => {
           const qty = qtyForSize(size);
           return (
-            <div key={size} className="cart-line-grid-cell">
-              <span className="size">{size}</span>
-              <div className="qty-stepper qty-stepper-sm">
+            <div key={size} className={publicUi.cartLineCell}>
+              <span className="contents">{size}</span>
+              <div className="contents">
                 <button type="button" disabled={qty === 0} onClick={() => decrement(size)}>−</button>
                 <span>{qty}</span>
                 <button type="button" onClick={() => increment(size, cell?.stockQty)}>+</button>
@@ -264,33 +265,33 @@ function ColorLine({
             </div>
           );
         })}
-        {!product && <span className="cart-line-loading">carregando grade…</span>}
-        {product && totalQty === 0 && <span className="cart-line-pending">Selecione a grade</span>}
+        {!product && <span className="contents">carregando grade…</span>}
+        {product && totalQty === 0 && <span className="contents">Selecione a grade</span>}
       </div>
 
-      <div className="cart-line-price">
+      <div className={publicUi.cartLinePrice}>
         {showPrices ? (
           <>
             <div>{totalQty} x {formatBRL(unitPrice)}</div>
             {applied ? (
-              <div className="total cart-line-total-discount">
-                <span className="price-original">{formatBRL(totalValue)}</span>
-                <span className="price-discounted">{formatBRL(discountedTotal)}</span>
+              <div className="contents">
+                <span className={publicUi.originalPrice}>{formatBRL(totalValue)}</span>
+                <span className={publicUi.discountedPrice}>{formatBRL(discountedTotal)}</span>
               </div>
             ) : (
-              <div className="total">{formatBRL(totalValue)}</div>
+              <div className="contents">{formatBRL(totalValue)}</div>
             )}
           </>
         ) : (
-          <Link href="/login" className="price price-locked">ver preço</Link>
+          <Link href="/login" className="contents">ver preço</Link>
         )}
       </div>
 
-      <button className="cart-line-more" onClick={() => product && openQuickView(product)} disabled={!product}>
+      <button className={publicUi.cartLineAction} onClick={() => product && openQuickView(product)} disabled={!product}>
         ver mais
       </button>
 
-      <button className="cart-line-trash" aria-label="Remover cor do carrinho" onClick={handleTrash}>🗑</button>
+      <button className={publicUi.cartLineTrash} aria-label="Remover cor do carrinho" onClick={handleTrash}>🗑</button>
     </div>
   );
 }
@@ -333,12 +334,12 @@ function CartProductBlock({
   }
 
   return (
-    <div className="cart-product">
-      <div className="cart-product-header">
-        <div className="name">{sample.name}</div>
-        {product?.sku && <div className="cart-product-sku">{product.sku}</div>}
+    <div className={publicUi.cartProduct}>
+      <div className={publicUi.cartProductHeader}>
+        <div className="contents">{sample.name}</div>
+        {product?.sku && <div className="contents">{product.sku}</div>}
       </div>
-      <div className="cart-product-lines">
+      <div className={publicUi.cartProductLines}>
         {colorGroups.map((g) => (
           <ColorLine key={g.key} group={g} product={product} onRemove={onRemove} />
         ))}
@@ -354,14 +355,14 @@ function CartProductBlock({
           />
         ))}
         {removedEntries.map(({ key, group }) => (
-          <div key={key} className="cart-line cart-line-removed">
+          <div key={key} className="contents">
             <span>{group.color ? `Cor ${group.color} removida.` : 'Removida do carrinho.'}</span>
-            <button className="cart-line-undo" onClick={() => onUndo(key)}>desfazer</button>
+            <button className="contents" onClick={() => onUndo(key)}>desfazer</button>
           </div>
         ))}
       </div>
       {availableToAdd.length > 0 && (
-        <button className="cart-product-addcolor" onClick={handleAddColor}>+ cor</button>
+        <button className={publicUi.cartAddColor} onClick={handleAddColor}>+ cor</button>
       )}
     </div>
   );
@@ -406,14 +407,14 @@ export default function CartRows({ cart }: { cart: CartItem[] }) {
 
   if (productIds.length === 0) {
     return (
-      <div className="cart-empty">
+      <div className={publicUi.empty}>
         Seu carrinho está vazio. <Link href="/">Ver catálogo</Link>
       </div>
     );
   }
 
   return (
-    <div className="cart-products">
+    <div className="contents">
       {productIds.map((productId) => (
         <CartProductBlock
           key={productId}

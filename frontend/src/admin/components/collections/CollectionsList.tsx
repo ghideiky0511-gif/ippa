@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client';
-
+import { adminUi } from '@/admin/lib/ui';
 import { useState } from 'react';
 
 export default function CollectionsList({ collections, selectedId, onSelect, onAdd, onRemove }) {
@@ -14,16 +14,16 @@ export default function CollectionsList({ collections, selectedId, onSelect, onA
   }
 
   return (
-    <aside className="collections-sidebar">
-      <div className="collections-list">
+    <aside className={adminUi.collectionsSidebar}>
+      <div className={adminUi.collectionsList}>
         {collections.map((c) => (
-          <div key={c.id} className={`collection-item${selectedId === c.id ? ' active' : ''}`}>
-            <button className="collection-item-btn" onClick={() => onSelect(c.id)}>
+          <div key={c.id} className={[adminUi.collectionItem, selectedId === c.id ? 'bg-brand-background text-brand-primary' : ''].join(' ')}>
+            <button className={adminUi.collectionItemButton} onClick={() => onSelect(c.id)}>
               {c.label}
-              <span className="collection-item-count">{c.productIds.length}</span>
+              <span className={adminUi.collectionCount}>{c.productIds.length}</span>
             </button>
             <button
-              className="btn btn-icon btn-danger"
+              className={adminUi.iconButton}
               onClick={() => onRemove(c.id)}
               title="Excluir coleção"
             >
@@ -31,17 +31,17 @@ export default function CollectionsList({ collections, selectedId, onSelect, onA
             </button>
           </div>
         ))}
-        {collections.length === 0 && <p className="preview-empty-text">Nenhuma coleção ainda.</p>}
+        {collections.length === 0 && <p className={adminUi.previewEmpty}>Nenhuma coleção ainda.</p>}
       </div>
 
-      <div className="collections-new">
+      <div className={adminUi.collectionsNew}>
         <input
           value={newLabel}
           onChange={(e) => setNewLabel(e.target.value)}
           placeholder="Nome da nova coleção"
           onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
         />
-        <button className="btn" onClick={handleAdd}>+ Nova coleção</button>
+        <button className={adminUi.button} onClick={handleAdd}>+ Nova coleção</button>
       </div>
     </aside>
   );

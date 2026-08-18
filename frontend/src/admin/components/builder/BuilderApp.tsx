@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client';
-
+import { adminUi } from '@/admin/lib/ui';
 import { useState, useCallback } from 'react';
 import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import Canvas from './Canvas';
@@ -147,53 +147,53 @@ export default function BuilderApp({ initialSections, products }) {
 
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-      <div className="builder">
-        <div className="builder-topbar">
-          <div className="builder-topbar-left">
+      <div className={adminUi.page}>
+        <div className={adminUi.topbar}>
+          <div className={adminUi.topbarLeft}>
             <h1>Editor da home</h1>
             <AdminNav />
           </div>
           <div>
-            {saveState === 'saved' && !dirty && <span className="status">Salvo</span>}
-            {saveState === 'error' && <span className="status">Erro ao salvar</span>}
-            {dirty && saveState !== 'saving' && <span className="status">Alterações não salvas</span>}
-            <button className="btn btn-primary" onClick={handleSave} disabled={saveState === 'saving'}>
+            {saveState === 'saved' && !dirty && <span className={adminUi.status}>Salvo</span>}
+            {saveState === 'error' && <span className={adminUi.status}>Erro ao salvar</span>}
+            {dirty && saveState !== 'saving' && <span className={adminUi.status}>Alterações não salvas</span>}
+            <button className={adminUi.primaryButton} onClick={handleSave} disabled={saveState === 'saving'}>
               {saveState === 'saving' ? 'Salvando…' : 'Salvar'}
             </button>
           </div>
         </div>
 
-        <form className="builder-ai-bar" onSubmit={handleGenerateAI}>
+        <form className="contents" onSubmit={handleGenerateAI}>
           <input
             value={aiPrompt}
             onChange={(e) => setAiPrompt(e.target.value)}
             placeholder='Descreva a estrutura, ex.: "banner de vídeo 660x880 no início, com mais 3 cards abaixo"'
           />
-          <button type="submit" className="btn btn-primary" disabled={aiState === 'generating' || !aiPrompt.trim()}>
+          <button type="submit" className={adminUi.primaryButton} disabled={aiState === 'generating' || !aiPrompt.trim()}>
             {aiState === 'generating' ? 'Gerando…' : 'Gerar com IA'}
           </button>
-          <button type="button" className="btn" onClick={toggleHistory}>
+          <button type="button" className={adminUi.button} onClick={toggleHistory}>
             Histórico
           </button>
-          {aiState === 'error' && <span className="builder-ai-error">{aiError}</span>}
+          {aiState === 'error' && <span className="contents">{aiError}</span>}
 
           {historyOpen && (
-            <div className="builder-ai-history">
-              {historyState === 'loading' && <p className="builder-ai-history-empty">Carregando…</p>}
-              {historyState === 'error' && <p className="builder-ai-history-empty">{historyError}</p>}
+            <div className="contents">
+              {historyState === 'loading' && <p className="contents">Carregando…</p>}
+              {historyState === 'error' && <p className="contents">{historyError}</p>}
               {historyState === 'idle' && history.length === 0 && (
-                <p className="builder-ai-history-empty">Nenhuma geração ainda.</p>
+                <p className="contents">Nenhuma geração ainda.</p>
               )}
               {historyState === 'idle' &&
                 history.map((entry) => (
                   <button
                     key={entry.id}
                     type="button"
-                    className="builder-ai-history-item"
+                    className="contents"
                     onClick={() => handleReapplyHistory(entry)}
                   >
-                    <span className="builder-ai-history-prompt">{entry.prompt}</span>
-                    <span className="builder-ai-history-date">{new Date(entry.at).toLocaleString('pt-BR')}</span>
+                    <span className="contents">{entry.prompt}</span>
+                    <span className="contents">{new Date(entry.at).toLocaleString('pt-BR')}</span>
                   </button>
                 ))}
             </div>

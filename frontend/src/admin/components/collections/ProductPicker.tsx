@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client';
-
+import { adminUi } from '@/admin/lib/ui';
 import { useState } from 'react';
 import { formatBRL } from '@/admin/lib/format';
 
@@ -15,27 +15,27 @@ export default function ProductPicker({ products, excludeIds, onAdd }) {
     : [];
 
   return (
-    <div className="product-picker">
-      <div className="field">
+    <div className={adminUi.productPicker}>
+      <div className={adminUi.field}>
         <label>Adicionar produto</label>
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por nome..." />
       </div>
       {results.length > 0 && (
-        <div className="product-picker-results">
+        <div className={adminUi.productPickerResults}>
           {results.map((p) => (
             <button
               key={p.id}
-              className="product-picker-result"
+              className={adminUi.productPickerResult}
               onClick={() => {
                 onAdd(p.id);
                 setQuery('');
               }}
             >
               <img src={p.image || ''} alt={p.name} />
-              <span className="product-item-name" style={{ flex: 1 }}>
+              <span className={adminUi.productName} style={{ flex: 1 }}>
                 {p.name}
               </span>
-              <span className="product-item-price">{formatBRL(p.price)}</span>
+              <span className={adminUi.productPrice}>{formatBRL(p.price)}</span>
             </button>
           ))}
         </div>

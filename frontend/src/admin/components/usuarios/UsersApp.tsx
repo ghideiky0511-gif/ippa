@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client';
-
+import { adminUi } from '@/admin/lib/ui';
 import { Fragment, useMemo, useState } from 'react';
 import AdminNav from '@/admin/components/AdminNav';
 import { fetchUsers, deleteUser } from '@/admin/lib/usersClient';
@@ -126,20 +126,20 @@ export default function UsersApp({ initialUsers }) {
 
   return (
     <div className="products-page">
-      <div className="builder-topbar">
-        <div className="builder-topbar-left">
+      <div className={adminUi.topbar}>
+        <div className={adminUi.topbarLeft}>
           <h1>Usuários</h1>
           <AdminNav />
         </div>
       </div>
 
-      <main className="products-editor">
-        <div className="usuarios-tabs">
+      <main className={adminUi.productsEditor}>
+        <div className="contents">
           {TABS.map((tab) => (
             <button
               key={tab.id}
               type="button"
-              className={'btn' + (activeTab === tab.id ? ' btn-primary' : '')}
+              className={activeTab === tab.id ? adminUi.primaryButton : adminUi.button}
               onClick={() => {
                 setActiveTab(tab.id);
                 setQuery('');
@@ -151,8 +151,8 @@ export default function UsersApp({ initialUsers }) {
           ))}
         </div>
 
-        <div className="usuarios-toolbar">
-          <div className="field" style={{ maxWidth: 360 }}>
+        <div className="contents">
+          <div className={adminUi.field} style={{ maxWidth: 360 }}>
             <label>Buscar</label>
             <input
               value={query}
@@ -160,12 +160,12 @@ export default function UsersApp({ initialUsers }) {
               placeholder={activeTab === 'clientes' ? 'Nome, e-mail ou CPF/CNPJ...' : 'Nome ou e-mail...'}
             />
           </div>
-          <button type="button" className="btn btn-primary" onClick={() => setModal({ mode: 'create' })}>
+          <button type="button" className={adminUi.primaryButton} onClick={() => setModal({ mode: 'create' })}>
             + Criar {activeTab === 'clientes' ? 'cliente' : 'vendedora'}
           </button>
         </div>
 
-        <table className="admin-table">
+        <table className={adminUi.table}>
           <thead>
             <tr>
               <th>Nome</th>
@@ -182,20 +182,20 @@ export default function UsersApp({ initialUsers }) {
                   <td>{u.email}</td>
                   {activeTab === 'clientes' && <td>{u.cpfCnpj || '—'}</td>}
                   <td>
-                    <div className="user-row-actions">
+                    <div className="contents">
                       <button
                         type="button"
-                        className="btn btn-icon"
+                        className={adminUi.iconButton}
                         onClick={() => setExpandedId(expandedId === u.id ? null : u.id)}
                       >
                         {expandedId === u.id ? 'Ver menos' : 'Ver mais'}
                       </button>
-                      <button type="button" className="btn btn-icon" title="Editar" onClick={() => setModal({ mode: 'edit', user: u })}>
+                      <button type="button" className={adminUi.iconButton} title="Editar" onClick={() => setModal({ mode: 'edit', user: u })}>
                         ✎
                       </button>
                       <button
                         type="button"
-                        className="btn btn-icon btn-danger"
+                        className={adminUi.iconButton}
                         title="Excluir usuário"
                         disabled={deletingId === u.id}
                         onClick={() => handleDelete(u)}
@@ -206,11 +206,11 @@ export default function UsersApp({ initialUsers }) {
                   </td>
                 </tr>
                 {expandedId === u.id && (
-                  <tr className="user-detail-row">
+                  <tr className="contents">
                     <td colSpan={activeTab === 'clientes' ? 4 : 3}>
-                      <dl className="user-detail-grid">
+                      <dl className="contents">
                         {detailsFor(activeTab).map(([key, label]) => (
-                          <div className="user-detail-item" key={key}>
+                          <div className="contents" key={key}>
                             <dt>{label}</dt>
                             <dd>{formatValue(key, valueFor(u, key))}</dd>
                           </div>
@@ -223,7 +223,7 @@ export default function UsersApp({ initialUsers }) {
             ))}
           </tbody>
         </table>
-        {results.length === 0 && <p className="preview-empty-text">Nenhum usuário encontrado.</p>}
+        {results.length === 0 && <p className={adminUi.previewEmpty}>Nenhum usuário encontrado.</p>}
       </main>
 
       {modal && (

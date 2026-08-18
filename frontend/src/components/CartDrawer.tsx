@@ -1,4 +1,5 @@
 'use client';
+import { publicUi } from '@/lib/ui';
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -48,39 +49,39 @@ export default function CartDrawer() {
 
   return (
     <>
-      <div className={'cart-overlay' + (isCartOpen ? ' open' : '')} onClick={closeCart} />
-      <aside className={'cart-drawer' + (isCartOpen ? ' open' : '')}>
-        <div className="cart-header">
+      <div className={[publicUi.overlay, isCartOpen ? 'block' : 'hidden'].join(' ')} onClick={closeCart} />
+      <aside className={[publicUi.drawerRight, isCartOpen ? 'translate-x-0' : ''].join(' ')}>
+        <div className={publicUi.cartHeader}>
           <h2>Seu pedido</h2>
           <button aria-label="Fechar" onClick={closeCart}>&times;</button>
         </div>
-        <div className="cart-items">
+        <div className={publicUi.cartItems}>
           {cart.length === 0 ? (
-            <div className="cart-empty">Seu carrinho está vazio.</div>
+            <div className={publicUi.empty}>Seu carrinho está vazio.</div>
           ) : (
             <GroupedCartItems cart={cart} />
           )}
         </div>
-        <div className="cart-footer">
+        <div className={publicUi.cartFooter}>
           {!showPrices ? (
-            <Link href="/login" className="price price-locked price-locked-block">Entrar para ver o preço</Link>
+            <Link href="/login" className={publicUi.priceLocked}>Entrar para ver o preço</Link>
           ) : (
             <>
               {cartDiscountTotal > 0 && (
                 <>
-                  <div className="cart-total subtotal"><span>Subtotal</span><span>{formatBRL(cartSubtotal)}</span></div>
-                  <div className="cart-total discount">
+                  <div className={`${publicUi.cartTotal} font-normal`}><span>Subtotal</span><span>{formatBRL(cartSubtotal)}</span></div>
+                  <div className={`${publicUi.cartTotal} font-normal text-[#2e8b57]`}>
                     <span>Desconto ({cartDiscountLabel})</span>
                     <span>-{formatBRL(cartDiscountTotal)}</span>
                   </div>
                 </>
               )}
-              <div className="cart-total"><span>Total</span><span>{formatBRL(cartTotal)}</span></div>
+              <div className={publicUi.cartTotal}><span>Total</span><span>{formatBRL(cartTotal)}</span></div>
             </>
           )}
-          <button className="btn-whatsapp" onClick={checkoutWhatsapp}>Finalizar pedido via WhatsApp</button>
-          <button className="btn-site-checkout" onClick={goToCheckout}>Revisar e continuar no site</button>
-          <div className="whatsapp-hint">Ao enviar pelo WhatsApp, nada é cobrado automaticamente. Entre ou crie uma conta pra ver esse pedido depois em "Meus pedidos".</div>
+          <button className={publicUi.whatsapp} onClick={checkoutWhatsapp}>Finalizar pedido via WhatsApp</button>
+          <button className={publicUi.checkoutButton} onClick={goToCheckout}>Revisar e continuar no site</button>
+          <div className={publicUi.hint}>Ao enviar pelo WhatsApp, nada é cobrado automaticamente. Entre ou crie uma conta pra ver esse pedido depois em "Meus pedidos".</div>
         </div>
       </aside>
     </>

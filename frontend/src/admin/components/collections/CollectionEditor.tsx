@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client';
-
+import { adminUi } from '@/admin/lib/ui';
 import SortableProductRow from './SortableProductRow';
 import ProductPicker from './ProductPicker';
 import SharePanel from './SharePanel';
@@ -22,22 +22,22 @@ export default function CollectionEditor({ collection, products, onUpdate }) {
   }
 
   return (
-    <main className="collections-editor">
-      <div className="field" style={{ maxWidth: 360 }}>
+    <main className={adminUi.collectionsEditor}>
+      <div className={adminUi.field} style={{ maxWidth: 360 }}>
         <label>Nome da coleção</label>
         <input value={collection.label} onChange={handleLabelChange} />
       </div>
 
       <SharePanel collectionId={collection.id} />
 
-      <h2 className="collections-subheading">
+      <h2 className={adminUi.subheading}>
         Produtos ({collection.productIds.length}) — arraste pra reordenar
       </h2>
-      <div className="collection-product-list">
+      <div className={adminUi.productList}>
         {collection.productIds.map((id) => (
           <SortableProductRow key={id} id={id} product={byId.get(id)} onRemove={removeProduct} />
         ))}
-        {collection.productIds.length === 0 && <p className="preview-empty-text">Nenhum produto ainda.</p>}
+        {collection.productIds.length === 0 && <p className={adminUi.previewEmpty}>Nenhum produto ainda.</p>}
       </div>
 
       <ProductPicker products={products} excludeIds={collection.productIds} onAdd={addProduct} />

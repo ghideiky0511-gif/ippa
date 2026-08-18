@@ -1,4 +1,15 @@
 export type Availability = 'in_stock' | 'preorder' | 'backorder' | 'out_of_stock';
+// Espelham os enums PostgreSQL da migration 006. Campos dinâmicos de loja,
+// como categorias e métodos configuráveis, ficam em tabelas relacionais.
+export type ClassificationKind = 'category' | 'subcategory' | 'collection' | 'brand';
+export type OrderChannel = 'presencial' | 'whatsapp' | 'online';
+export type DiscountType = 'quantity' | 'products';
+export type HomeSectionType = 'banner' | 'product';
+export type BannerMediaType = 'image' | 'video';
+export type InventoryLocationKind = 'warehouse' | 'store' | 'virtual';
+export type InventorySourceKind = 'manual' | 'erp' | 'marketplace';
+export type InventoryMovementType = 'initial' | 'receipt' | 'sale' | 'return' | 'adjustment' | 'transfer_in' | 'transfer_out' | 'reservation' | 'release' | 'integration_sync';
+export type InventoryReservationStatus = 'active' | 'released' | 'consumed' | 'expired';
 
 export interface Variant {
   id: string;
@@ -231,7 +242,7 @@ export interface OrderSession {
   // 'online': sessão criada sozinha pelo gatilho de fila quando a cliente se
   // autocadastra (ver POST /api/auth/signup) — não é presencial nem
   // WhatsApp, ninguém digitou nada pra escolher o canal.
-  channel: 'presencial' | 'whatsapp' | 'online';
+  channel: OrderChannel;
   items: CartItem[];
   // Frete escolhido pela vendedora (ver /frete) — precisa sobreviver até a
   // cliente abrir o link de pagamento, por isso persistido aqui em vez de
@@ -309,7 +320,7 @@ export interface Discount {
   id: string;
   label: string;
   active: boolean;
-  type: 'quantity' | 'products';
+  type: DiscountType;
   tiers: DiscountTier[];
   productIds: string[];
   percent: number;
@@ -329,7 +340,7 @@ export interface Audience {
 
 export interface Banner {
   id: string;
-  type: 'image' | 'video';
+  type: BannerMediaType;
   mediaUrl: string;
   title?: string;
   subtitle?: string;

@@ -1,9 +1,11 @@
 /** Itens de venda, sessões de talão, frete e pedidos fechados. */
+export type OrderChannel = 'presencial' | 'whatsapp' | 'online';
+export type OrderSessionStatus = 'aberto' | 'fechado' | 'aguardando_pagamento';
 export interface CartItem { key: string; id: string; name: string; image?: string; color?: string; size?: string; price: number; qty: number; stockQty?: number; backorderDate?: string; }
 export interface ShippingOption { id: string; label: string; price: number; prazo: string; }
 export interface OrderSession {
-  id: string; clientName: string; clientId?: string; sellerId: string; channel: 'presencial' | 'whatsapp' | 'online'; items: CartItem[];
-  shipping?: ShippingOption; status: 'aberto' | 'fechado' | 'aguardando_pagamento'; paymentToken?: string; paymentTokenCreatedAt?: string;
+  id: string; clientName: string; clientId?: string; sellerId: string; channel: OrderChannel; items: CartItem[];
+  shipping?: ShippingOption; status: OrderSessionStatus; paymentToken?: string; paymentTokenCreatedAt?: string;
   notes?: string; createdAt: string; updatedAt: string; sellerName?: string;
 }
 export interface Order {

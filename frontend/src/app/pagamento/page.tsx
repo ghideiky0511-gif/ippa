@@ -1,4 +1,5 @@
 'use client';
+import { publicUi } from '@/lib/ui';
 
 import { useState } from 'react';
 import Link from 'next/link';
@@ -29,10 +30,10 @@ export default function PagamentoPage() {
 
   if (cart.length === 0) {
     return (
-      <main className="container checkout-page">
+      <main className="contents">
         <CheckoutSteps current="/pagamento" reachable={1} />
         <h1>Pagamento</h1>
-        <div className="cart-empty">
+        <div className={publicUi.empty}>
           Seu carrinho está vazio. <Link href="/carrinho">Voltar ao carrinho</Link>
         </div>
       </main>
@@ -41,10 +42,10 @@ export default function PagamentoPage() {
 
   if (!shipping) {
     return (
-      <main className="container checkout-page">
+      <main className="contents">
         <CheckoutSteps current="/pagamento" reachable={2} />
         <h1>Pagamento</h1>
-        <div className="cart-empty">
+        <div className={publicUi.empty}>
           Escolha o frete primeiro. <Link href="/frete">Voltar para o frete</Link>
         </div>
       </main>
@@ -57,12 +58,12 @@ export default function PagamentoPage() {
   // digitar /pagamento direto na URL e confirmar por ela.
   if (activeSession) {
     return (
-      <main className="container checkout-page">
+      <main className="contents">
         <CheckoutSteps current="/pagamento" reachable={2} />
         <h1>Pagamento</h1>
-        <div className="cart-empty talao-gate">
+        <div className="contents">
           Pagamento agora é feito pela cliente através do link — volte pro frete pra gerar/copiar.
-          <Link href="/frete" className="btn-add">Voltar para o frete</Link>
+          <Link href="/frete" className={publicUi.primaryButton}>Voltar para o frete</Link>
         </div>
       </main>
     );
@@ -70,16 +71,16 @@ export default function PagamentoPage() {
 
   if (gate.blocked) {
     return (
-      <main className="container checkout-page">
+      <main className="contents">
         <CheckoutSteps current="/pagamento" reachable={2} />
         <h1>Pagamento</h1>
-        <div className="cart-empty talao-gate">
+        <div className="contents">
           {gate.reason === 'no-client'
             ? 'Vincule um cadastro de cliente (nome, CPF/CNPJ, e-mail, CEP) no talão antes de continuar.'
             : gate.reason === 'no-login'
               ? 'A cliente ainda não tem login — crie um pra ela no talão antes de continuar.'
               : 'Complete o cadastro da cliente (CPF/CNPJ, e-mail, CEP) no talão antes de continuar.'}
-          <button className="btn-add" onClick={gate.openTalao}>Abrir talão</button>
+          <button className={publicUi.primaryButton} onClick={gate.openTalao}>Abrir talão</button>
         </div>
       </main>
     );
@@ -91,14 +92,14 @@ export default function PagamentoPage() {
   // /ferramentas), então também não faz sentido fechar pedido sem login.
   if (!authUser) {
     return (
-      <main className="container checkout-page">
+      <main className="contents">
         <CheckoutSteps current="/pagamento" reachable={2} />
         <h1>Pagamento</h1>
-        <div className="cart-empty talao-gate">
+        <div className="contents">
           Pra finalizar o pedido você precisa entrar ou criar uma conta — seu carrinho continua salvo.
-          <div className="checkout-actions">
-            <Link href={`/login?redirect=${encodeURIComponent('/pagamento')}`} className="btn-add">Entrar</Link>
-            <Link href={`/cadastro?redirect=${encodeURIComponent('/pagamento')}`} className="btn-clear">Criar conta</Link>
+          <div className={publicUi.checkoutActions}>
+            <Link href={`/login?redirect=${encodeURIComponent('/pagamento')}`} className={publicUi.primaryButton}>Entrar</Link>
+            <Link href={`/cadastro?redirect=${encodeURIComponent('/pagamento')}`} className={publicUi.subtleButton}>Criar conta</Link>
           </div>
         </div>
       </main>
@@ -111,10 +112,10 @@ export default function PagamentoPage() {
   // vendedora feche o pedido (link de pagamento ou fechamento manual).
   if (selfCheckoutBlocked) {
     return (
-      <main className="container checkout-page">
+      <main className="contents">
         <CheckoutSteps current="/pagamento" reachable={2} />
         <h1>Pagamento</h1>
-        <div className="cart-empty talao-gate">
+        <div className="contents">
           Esta loja finaliza pedidos de talão só pela vendedora — peça pra ela gerar o link de pagamento ou fechar o pedido.
         </div>
       </main>
@@ -137,13 +138,13 @@ export default function PagamentoPage() {
   }
 
   return (
-    <main className="container checkout-page">
+    <main className="contents">
       <CheckoutSteps current="/pagamento" reachable={3} />
       <h1>Pagamento</h1>
 
-      <div className="payment-methods">
+      <div className={publicUi.paymentOptions}>
         {PAYMENT_METHODS.map((method) => (
-          <label key={method.id} className={'payment-method' + (paymentMethod === method.id ? ' selected' : '')}>
+          <label key={method.id} className={[publicUi.paymentOption, paymentMethod === method.id ? 'border-brand-primary' : ''].join(' ')}>
             <input
               type="radio"
               name="payment"
@@ -155,35 +156,35 @@ export default function PagamentoPage() {
         ))}
       </div>
 
-      <div className="checkout-summary">
-        <div className="order-summary-line">
+      <div className={publicUi.checkoutSummary}>
+        <div className={publicUi.summaryLine}>
           <span>Subtotal</span>
           <span>{formatBRL(cartSubtotal)}</span>
         </div>
         {cartDiscountTotal > 0 && (
-          <div className="order-summary-line discount">
+          <div className="contents">
             <span>Desconto ({cartDiscountLabel})</span>
             <span>-{formatBRL(cartDiscountTotal)}</span>
           </div>
         )}
-        <div className="order-summary-line">
+        <div className={publicUi.summaryLine}>
           <span>Frete ({shipping.label})</span>
           <span>{shipping.price === 0 ? 'Grátis' : formatBRL(shipping.price)}</span>
         </div>
-        <div className="order-summary-line total">
+        <div className="contents">
           <span>Total</span>
           <span>{formatBRL(total)}</span>
         </div>
       </div>
 
-      <div className="checkout-actions">
-        <button className="btn-add" disabled={!paymentMethod} onClick={confirmOrder}>
+      <div className={publicUi.checkoutActions}>
+        <button className={publicUi.primaryButton} disabled={!paymentMethod} onClick={confirmOrder}>
           Confirmar pedido
         </button>
-        <div className="whatsapp-hint">Simulação — nenhuma cobrança real é processada.</div>
+        <div className={publicUi.hint}>Simulação — nenhuma cobrança real é processada.</div>
       </div>
 
-      <Link href="/frete" className="back-link">← Voltar para o frete</Link>
+      <Link href="/frete" className={publicUi.backLink}>← Voltar para o frete</Link>
     </main>
   );
 }

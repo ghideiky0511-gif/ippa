@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client';
-
+import { adminUi } from '@/admin/lib/ui';
 import ProductPicker from '@/admin/components/collections/ProductPicker';
 
 const TYPE_OPTIONS = [
@@ -64,13 +64,13 @@ export default function DiscountEditor({ discount, products, onUpdate }) {
   }
 
   return (
-    <main className="collections-editor">
-      <div className="field-row">
-        <div className="field" style={{ maxWidth: 320 }}>
+    <main className={adminUi.collectionsEditor}>
+      <div className={adminUi.fieldRow}>
+        <div className={adminUi.field} style={{ maxWidth: 320 }}>
           <label>Nome do desconto</label>
           <input value={discount.label} onChange={handleLabelChange} />
         </div>
-        <div className="field" style={{ maxWidth: 260 }}>
+        <div className={adminUi.field} style={{ maxWidth: 260 }}>
           <label>Tipo de desconto</label>
           <select value={discount.type} onChange={handleTypeChange}>
             {TYPE_OPTIONS.map((opt) => (
@@ -78,30 +78,30 @@ export default function DiscountEditor({ discount, products, onUpdate }) {
             ))}
           </select>
         </div>
-        <div className="field" style={{ maxWidth: 100 }}>
+        <div className={adminUi.field} style={{ maxWidth: 100 }}>
           <label>Ativo</label>
           <button
             type="button"
-            className={'toggle-switch' + (discount.active ? ' on' : '')}
+            className={[adminUi.toggle, discount.active ? 'bg-brand-primary' : ''].join(' ')}
             onClick={handleActiveToggle}
             aria-pressed={discount.active}
             aria-label={discount.active ? 'Desativar desconto' : 'Ativar desconto'}
           >
-            <span className="toggle-knob" />
+            <span className="contents" />
           </button>
         </div>
       </div>
 
       {discount.type === 'quantity' ? (
         <>
-          <h2 className="collections-subheading">Faixas de desconto</h2>
-          <p className="preview-empty-text">
+          <h2 className={adminUi.subheading}>Faixas de desconto</h2>
+          <p className={adminUi.previewEmpty}>
             Progressivo pela quantidade TOTAL de peças do pedido (somando todas as peças e cores) — quem
             atinge uma faixa recebe aquele desconto sobre o pedido inteiro.
           </p>
-          <div className="discount-tiers">
+          <div className={adminUi.tiers}>
             {discount.tiers.map((tier, i) => (
-              <div key={i} className="discount-tier-row">
+              <div key={i} className={adminUi.tierRow}>
                 <span>acima de</span>
                 <input
                   type="number"
@@ -118,41 +118,41 @@ export default function DiscountEditor({ discount, products, onUpdate }) {
                   onChange={(e) => updateTier(i, 'percent', toNumber(e.target.value, tier.percent))}
                 />
                 <span>%</span>
-                <button className="btn btn-icon btn-danger" onClick={() => removeTier(i)} title="Remover faixa">
+                <button className={adminUi.iconButton} onClick={() => removeTier(i)} title="Remover faixa">
                   ✕
                 </button>
               </div>
             ))}
-            {discount.tiers.length === 0 && <p className="preview-empty-text">Nenhuma faixa ainda.</p>}
+            {discount.tiers.length === 0 && <p className={adminUi.previewEmpty}>Nenhuma faixa ainda.</p>}
           </div>
-          <button className="btn" onClick={addTier}>+ adicionar faixa de desconto</button>
+          <button className={adminUi.button} onClick={addTier}>+ adicionar faixa de desconto</button>
         </>
       ) : (
         <>
-          <h2 className="collections-subheading">Peças específicas ({discount.productIds.length})</h2>
-          <p className="preview-empty-text">
+          <h2 className={adminUi.subheading}>Peças específicas ({discount.productIds.length})</h2>
+          <p className={adminUi.previewEmpty}>
             Desconto fixo aplicado só nas peças escolhidas abaixo, independente da quantidade do pedido.
           </p>
-          <div className="field" style={{ maxWidth: 160 }}>
+          <div className={adminUi.field} style={{ maxWidth: 160 }}>
             <label>Desconto (%)</label>
             <input type="number" min="0" max="100" value={discount.percent} onChange={handlePercentChange} />
           </div>
-          <div className="collection-product-list">
+          <div className={adminUi.productList}>
             {discount.productIds.map((id) => {
               const p = byId.get(id);
               return (
-                <div key={id} className="product-override-row">
+                <div key={id} className={adminUi.overrideRow}>
                   <img src={p?.image || ''} alt={p?.name || ''} />
-                  <div className="product-override-info">
-                    <span className="product-item-name">{p?.name || id}</span>
+                  <div className={adminUi.productInfo}>
+                    <span className={adminUi.productName}>{p?.name || id}</span>
                   </div>
-                  <button className="btn btn-icon btn-danger" onClick={() => removeProduct(id)} title="Remover">
+                  <button className={adminUi.iconButton} onClick={() => removeProduct(id)} title="Remover">
                     ✕
                   </button>
                 </div>
               );
             })}
-            {discount.productIds.length === 0 && <p className="preview-empty-text">Nenhuma peça ainda.</p>}
+            {discount.productIds.length === 0 && <p className={adminUi.previewEmpty}>Nenhuma peça ainda.</p>}
           </div>
           <ProductPicker products={products} excludeIds={discount.productIds} onAdd={addProduct} />
         </>

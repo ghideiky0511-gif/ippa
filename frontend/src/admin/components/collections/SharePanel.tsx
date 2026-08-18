@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client';
-
+import { adminUi } from '@/admin/lib/ui';
 import { useState } from 'react';
 
 export default function SharePanel({ collectionId }) {
@@ -22,20 +22,20 @@ export default function SharePanel({ collectionId }) {
   }
 
   return (
-    <div className="share-panel">
-      <h2 className="collections-subheading">Compartilhar</h2>
-      <p className="preview-hint">Salve a coleção antes de compartilhar — o link mostra o que estiver salvo.</p>
-      <div className="share-link-row">
+    <div className={adminUi.sharePanel}>
+      <h2 className={adminUi.subheading}>Compartilhar</h2>
+      <p className={adminUi.hint}>Salve a coleção antes de compartilhar — o link mostra o que estiver salvo.</p>
+      <div className={adminUi.shareLinkRow}>
         <input readOnly value={link} onClick={(e) => e.currentTarget.select()} />
-        <button className="btn" onClick={copyLink}>
+        <button className={adminUi.button} onClick={copyLink}>
           {copied ? 'Copiado!' : 'Copiar link'}
         </button>
       </div>
-      <div className="share-actions">
-        <button className="btn" onClick={shareWhatsApp}>
+      <div className={adminUi.shareActions}>
+        <button className={adminUi.button} onClick={shareWhatsApp}>
           Compartilhar no WhatsApp
         </button>
-        <a className="btn" href={pdfLink} target="_blank" rel="noreferrer">
+        <a className={adminUi.button} href={pdfLink} target="_blank" rel="noreferrer">
           Exportar PDF
         </a>
       </div>

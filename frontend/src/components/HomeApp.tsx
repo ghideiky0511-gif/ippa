@@ -1,4 +1,5 @@
 'use client';
+import { publicUi } from '@/lib/ui';
 
 import type { CSSProperties } from 'react';
 import HomeBanner from './HomeBanner';
@@ -15,8 +16,8 @@ const BOTTOM_PADDING = 60;
 export default function HomeApp({ sections }: { sections: ResolvedHomeSection[] }) {
   if (!sections || sections.length === 0) {
     return (
-      <header className="banner no-media">
-        <div className="banner-content">
+      <header className={publicUi.homeFallback}>
+        <div className="">
           <h1>{CONFIG.storeName}</h1>
           <p>Catálogo — MVP de teste</p>
         </div>
@@ -37,7 +38,7 @@ export default function HomeApp({ sections }: { sections: ResolvedHomeSection[] 
 
   return (
     <>
-      <main className="home-sections" style={{ '--canvas-height': `${canvasHeight}px` } as CSSProperties}>
+      <main className={publicUi.homeSections} style={{ '--canvas-height': `${canvasHeight}px` } as CSSProperties}>
         {ordered.map((section) => {
           // CSS vars em vez de left/top/width direto no style: assim a media
           // query no globals.css (celular = sempre fluxo normal) consegue
@@ -51,7 +52,7 @@ export default function HomeApp({ sections }: { sections: ResolvedHomeSection[] 
 
           if (section.type === 'banner') {
             return (
-              <div key={section.id} className="home-section-item" style={posStyle}>
+              <div key={section.id} className={publicUi.homeSectionItem} style={posStyle}>
                 <HomeBanner
                   banners={section.banners}
                   fallbackTitle={CONFIG.storeName}
@@ -65,7 +66,7 @@ export default function HomeApp({ sections }: { sections: ResolvedHomeSection[] 
 
           if (section.type === 'product' && section.product) {
             return (
-              <div key={section.id} className="home-section-item" style={posStyle}>
+              <div key={section.id} className={publicUi.homeSectionItem} style={posStyle}>
                 <ProductCard product={section.product} />
               </div>
             );

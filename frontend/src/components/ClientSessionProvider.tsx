@@ -1,5 +1,4 @@
 'use client';
-
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { CartItem, OrderSession, ShippingOption } from '@/domain/orders/types';
 

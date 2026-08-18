@@ -1,5 +1,5 @@
+import { adminUi } from '@/admin/lib/ui';
 import type { ReactNode } from 'react';
-import "@/admin/admin.css";
 import { AdminAuthProvider } from "@/admin/components/AdminAuthProvider";
 
 export const metadata = {
@@ -9,7 +9,7 @@ export const metadata = {
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="admin-root">
+    <div className={adminUi.root}>
       <AdminAuthProvider>{children}</AdminAuthProvider>
     </div>
   );

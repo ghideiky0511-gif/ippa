@@ -1,4 +1,5 @@
 'use client';
+import { publicUi } from '@/lib/ui';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -123,15 +124,15 @@ export default function ProductDetailContent({ product }: { product: Product }) 
   }
 
   return (
-    <div className="product-detail">
-      <div className="product-detail-gallery">
+    <div className={publicUi.productDetail}>
+      <div className={publicUi.gallery}>
         <img
-          className="product-detail-image"
+          className={publicUi.detailImage}
           src={displayImage || 'https://via.placeholder.com/500x620?text=Sem+imagem'}
           alt={product.name}
         />
         {gallery.length > 1 && (
-          <div className="product-detail-thumbs">
+          <div className="contents">
             {gallery.map((src, i) => (
               <img
                 key={src + i}
@@ -145,45 +146,45 @@ export default function ProductDetailContent({ product }: { product: Product }) 
         )}
       </div>
 
-      <div className="product-detail-info">
-        <div className="cat">{product.category}{product.subcategory ? ` · ${product.subcategory}` : ''}</div>
+      <div className={publicUi.detailInfo}>
+        <div className="contents">{product.category}{product.subcategory ? ` · ${product.subcategory}` : ''}</div>
         <h2>{product.name}</h2>
-        {product.sku && <div className="card-sku">{product.sku}</div>}
+        {product.sku && <div className="contents">{product.sku}</div>}
         {!showPrices ? (
-          <div className="price-locked-block">
-            <Link href="/login" className="btn-add">Entrar para ver o preço</Link>
+          <div className="contents">
+            <Link href="/login" className={publicUi.primaryButton}>Entrar para ver o preço</Link>
           </div>
         ) : (
           <>
             {effectivePercent > 0 ? (
               <div
-                className={'price-discount-row' + (justUnlocked ? ' just-unlocked' : '')}
+                className={[publicUi.discountRow, justUnlocked ? 'animate-[qty-discount-pop_.5s_ease]' : ''].join(' ')}
                 title={effectiveLabel}
                 onAnimationEnd={() => setJustUnlocked(false)}
               >
-                <span className="price-original">{formatBRL(product.price)}</span>
-                <span className="price price-discounted">{formatBRL(priceWithPercentOff(product.price, effectivePercent))}</span>
-                <span className="discount-badge">-{effectivePercent}%</span>
+                <span className={publicUi.originalPrice}>{formatBRL(product.price)}</span>
+                <span className="contents">{formatBRL(priceWithPercentOff(product.price, effectivePercent))}</span>
+                <span className={publicUi.discountBadge}>-{effectivePercent}%</span>
               </div>
             ) : (
-              <div className="price">{formatBRL(product.price)}</div>
+              <div className="contents">{formatBRL(product.price)}</div>
             )}
             {quantityTiers.length > 0 && (
-              <div className="qty-discount-hint">
+              <div className="contents">
                 {quantityTiers.map((t) => (
-                  <div key={t.minQty} className={'qty-tier' + (productCartQty >= t.minQty ? ' met' : '')}>
+                  <div key={t.minQty} className={productCartQty >= t.minQty ? 'font-semibold text-[#2e8b57]' : ''}>
                     {productCartQty >= t.minQty ? '✓ ' : ''}A partir de {t.minQty} unidades desta peça no carrinho: {t.percent}% de desconto
                   </div>
                 ))}
               </div>
             )}
             {showSuggestedPrice && (
-              <div className="suggested-price-block">
-                <div className="suggested-price-label">Preço varejo sugerido</div>
-                <div className="price-row">
-                  <div className="price-suggested">{formatBRL(product.suggestedRetailPrice!)}</div>
+              <div className="contents">
+                <div className="contents">Preço varejo sugerido</div>
+                <div className="contents">
+                  <div className="contents">{formatBRL(product.suggestedRetailPrice!)}</div>
                   {markup && (
-                    <span className="markup-chip" title="Markup sugerido sobre o preço de atacado">
+                    <span className="contents" title="Markup sugerido sobre o preço de atacado">
                       <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <line x1="7" y1="17" x2="17" y2="7" />
                         <polyline points="7 7 17 7 17 17" />
@@ -196,11 +197,11 @@ export default function ProductDetailContent({ product }: { product: Product }) 
             )}
           </>
         )}
-        {product.description && <p className="product-detail-desc">{product.description}</p>}
+        {product.description && <p className="contents">{product.description}</p>}
 
-        <div className="color-picker">
-          <div className="variant-label">Cor {selectedColor ? `— ${selectedColor}` : ''}</div>
-          <div className="pill-row">
+        <div className="contents">
+          <div className="contents">Cor {selectedColor ? `— ${selectedColor}` : ''}</div>
+          <div className="contents">
             <button
               type="button"
               className={'pill-filter' + (selectedColor === null ? ' active' : '')}
@@ -208,7 +209,7 @@ export default function ProductDetailContent({ product }: { product: Product }) 
             >
               todas as cores
             </button>
-            <div className="color-options">
+            <div className="contents">
               {matrix.colors.map((c) => (
                 <button
                   key={c}
@@ -228,32 +229,32 @@ export default function ProductDetailContent({ product }: { product: Product }) 
         </div>
 
         {product.packs && product.packs.length > 0 && (
-          <div className="product-packs">
-            <div className="variant-label">Grades e packs fechados (grade de fábrica)</div>
-            <div className="product-packs-list">
+          <div className="contents">
+            <div className="contents">Grades e packs fechados (grade de fábrica)</div>
+            <div className="contents">
               {product.packs.map((pack) => (
-                <div key={pack.id} className="pack-card">
-                  <div className="pack-card-header">
-                    <span className="pack-card-label">
+                <div key={pack.id} className="contents">
+                  <div className="contents">
+                    <span className="contents">
                       {pack.label}
-                      <span className={'pack-scope-tag pack-scope-' + pack.scope}>
+                      <span className="rounded-full bg-brand-background px-2 py-0.5 text-[10px] font-semibold text-brand-muted">
                         {pack.scope === 'grade' ? 'grade' : 'pack sortido'}
                       </span>
                     </span>
-                    <span className="pack-card-price">{formatBRL(pack.price)}</span>
+                    <span className="contents">{formatBRL(pack.price)}</span>
                   </div>
                   {pack.scope === 'grade' && pack.color && (
-                    <div className="pack-card-color">
-                      <span className="swatch" style={{ background: COLOR_MAP[pack.color] || '#ccc' }} />
+                    <div className="contents">
+                      <span className={publicUi.swatch} style={{ background: COLOR_MAP[pack.color] || '#ccc' }} />
                       {pack.color}
                     </div>
                   )}
-                  <div className="pack-card-grade">
+                  <div className="contents">
                     {pack.items.map((item, i) => (
-                      <span key={item.size + (item.color || '') + i} className="pack-grade-chip">
+                      <span key={item.size + (item.color || '') + i} className="contents">
                         {pack.scope === 'pack' && item.color && (
                           <span
-                            className="swatch swatch-sm"
+                            className="contents"
                             style={{ background: COLOR_MAP[item.color] || '#ccc' }}
                           />
                         )}
@@ -268,23 +269,23 @@ export default function ProductDetailContent({ product }: { product: Product }) 
         )}
       </div>
 
-      <div className="product-detail-grade">
+      <div className="contents">
         {pendingBackorders.length > 0 && (
-          <div className="backorder-panel">
-            <p className="backorder-panel-title">
+          <div className="contents">
+            <p className="contents">
               Quantidade além do estoque disponível — escolha a previsão de entrega da diferença:
             </p>
             {pendingBackorders.map(({ item, inStock, excess }) => (
-              <div key={item.key} className="backorder-row">
-                <span className="backorder-row-label">
+              <div key={item.key} className="contents">
+                <span className="contents">
                   {item.color} · {item.size} — {inStock} pronta entrega + <strong>{excess}</strong> sob encomenda
                 </span>
-                <div className="backorder-date-options">
+                <div className="contents">
                   {CONFIG.backorderDeliveryOptions.map((opt) => (
                     <button
                       key={opt.id}
                       type="button"
-                      className="backorder-date-btn"
+                      className="contents"
                       onClick={() => setBackorderDate(item.key, opt.label)}
                     >
                       {opt.label}
@@ -296,7 +297,7 @@ export default function ProductDetailContent({ product }: { product: Product }) 
           </div>
         )}
 
-        <div className="pill-row">
+        <div className="contents">
           <button
             type="button"
             className={'pill-filter' + (availabilityFilter === 'all' ? ' active' : '')}
@@ -324,8 +325,8 @@ export default function ProductDetailContent({ product }: { product: Product }) 
           )}
         </div>
 
-        <div className="matrix-table-wrap">
-          <table className="matrix-table">
+        <div className="contents">
+          <table className="contents">
             <thead>
               <tr>
                 <th>Cor</th>
@@ -337,8 +338,8 @@ export default function ProductDetailContent({ product }: { product: Product }) 
             <tbody>
               {matrix.rows.map((row) => (
                 <tr key={row.color}>
-                  <td className="matrix-color">
-                    <span className="swatch" style={{ background: COLOR_MAP[row.color] || '#ccc' }} />
+                  <td className="contents">
+                    <span className={publicUi.swatch} style={{ background: COLOR_MAP[row.color] || '#ccc' }} />
                     {row.color}
                   </td>
                   {row.cells.map((cell, i) => {
@@ -370,7 +371,7 @@ export default function ProductDetailContent({ product }: { product: Product }) 
                         }
                         title={deliveryLabel(cell.availability)}
                       >
-                        <div className="qty-stepper">
+                        <div className="contents">
                           <button
                             type="button"
                             disabled={qty === 0}
@@ -379,7 +380,7 @@ export default function ProductDetailContent({ product }: { product: Product }) 
                             −
                           </button>
                           <span className="qty-instock">{inStock}</span>
-                          {excess > 0 && <span className="qty-excess">+{excess}</span>}
+                          {excess > 0 && <span className="contents">+{excess}</span>}
                           <button type="button" onClick={() => increment(row.color, size, cell.stockQty)}>
                             +
                           </button>

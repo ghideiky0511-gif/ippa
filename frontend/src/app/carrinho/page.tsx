@@ -1,4 +1,5 @@
 'use client';
+import { publicUi } from '@/lib/ui';
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
@@ -116,32 +117,32 @@ export default function CarrinhoPage() {
   const reachable = shipping ? 3 : cartCount > 0 ? 2 : 1;
 
   return (
-    <main className="container checkout-page">
+    <main className="contents">
       <CheckoutSteps current="/carrinho" reachable={reachable} />
       <h1>Seu carrinho</h1>
 
-      <div className="checkout-items">
+      <div className={publicUi.checkoutItems}>
         <CartRows cart={cart} />
       </div>
 
       {cart.length > 0 && (
         <>
-          <div className="checkout-summary">
+          <div className={publicUi.checkoutSummary}>
             {!showPrices ? (
-              <Link href="/login" className="price price-locked price-locked-block">Entrar para ver o preço</Link>
+              <Link href="/login" className="contents">Entrar para ver o preço</Link>
             ) : (
               <>
-                <div className="order-summary-line">
+                <div className={publicUi.summaryLine}>
                   <span>Subtotal</span>
                   <span>{formatBRL(cartSubtotal)}</span>
                 </div>
                 {cartDiscountTotal > 0 && (
-                  <div className="order-summary-line discount">
+                  <div className="contents">
                     <span>Desconto ({cartDiscountLabel})</span>
                     <span>-{formatBRL(cartDiscountTotal)}</span>
                   </div>
                 )}
-                <div className="order-summary-line total">
+                <div className="contents">
                   <span>Total</span>
                   <span>{formatBRL(cartTotal)}</span>
                 </div>
@@ -149,9 +150,9 @@ export default function CarrinhoPage() {
             )}
           </div>
 
-          <div className="checkout-actions">
-            <button className="btn-whatsapp" onClick={checkoutWhatsapp}>Finalizar pedido via WhatsApp</button>
-            <button className="btn-add" disabled={cartCount === 0} onClick={goToFrete}>
+          <div className={publicUi.checkoutActions}>
+            <button className={publicUi.whatsapp} onClick={checkoutWhatsapp}>Finalizar pedido via WhatsApp</button>
+            <button className={publicUi.primaryButton} disabled={cartCount === 0} onClick={goToFrete}>
               Continuar para o frete
             </button>
           </div>
@@ -160,7 +161,7 @@ export default function CarrinhoPage() {
 
       <SimilarProducts products={similar} />
 
-      <Link href="/" className="back-link">← Voltar ao catálogo</Link>
+      <Link href="/" className={publicUi.backLink}>← Voltar ao catálogo</Link>
 
       {pendingAction && (
         <UnselectedItemsModal

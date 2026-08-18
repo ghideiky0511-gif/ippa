@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client';
-
+import { adminUi } from '@/admin/lib/ui';
 import Toolbox from './Toolbox';
 import { getBlockDefinition, CANVAS_WIDTH, MIN_SIZE } from '@/admin/lib/blockRegistry';
 
@@ -35,23 +35,23 @@ function PositionFields({ section, onUpdate }) {
   }
 
   return (
-    <div className="position-fields">
-      <div className="field-row">
-        <div className="field">
+    <div className={adminUi.positionFields}>
+      <div className={adminUi.fieldRow}>
+        <div className={adminUi.field}>
           <label>Posição X</label>
           <input type="number" step="10" value={x} onChange={(e) => setX(Number(e.target.value))} />
         </div>
-        <div className="field">
+        <div className={adminUi.field}>
           <label>Posição Y</label>
           <input type="number" step="10" min="0" value={y} onChange={(e) => setY(Number(e.target.value))} />
         </div>
       </div>
-      <div className="field-row">
-        <div className="field">
+      <div className={adminUi.fieldRow}>
+        <div className={adminUi.field}>
           <label>Largura</label>
           <input type="number" step="10" value={width} onChange={(e) => setWidth(Number(e.target.value))} />
         </div>
-        <div className="field">
+        <div className={adminUi.field}>
           <label>Altura</label>
           <input type="number" step="10" value={height} onChange={(e) => setHeight(Number(e.target.value))} />
         </div>
@@ -69,16 +69,16 @@ export default function RightPanel({ selectedSection, products, onUpdate, onDese
   const Editor = def?.Editor;
 
   return (
-    <aside className="builder-toolbox">
-      <div className="panel-editor-header">
+    <aside className={adminUi.toolbox}>
+      <div className={adminUi.panelHeader}>
         <h2>Editando</h2>
-        <button className="btn btn-icon" onClick={onDeselect}>Fechar</button>
+        <button className={adminUi.iconButton} onClick={onDeselect}>Fechar</button>
       </div>
 
       <PositionFields section={selectedSection} onUpdate={onUpdate} />
 
       {Editor && <Editor section={selectedSection} onUpdate={onUpdate} products={products} />}
-      <button className="btn btn-danger" style={{ marginTop: 14, width: '100%' }} onClick={onRemove}>
+      <button className={adminUi.dangerButton} style={{ marginTop: 14, width: '100%' }} onClick={onRemove}>
         Excluir bloco
       </button>
     </aside>

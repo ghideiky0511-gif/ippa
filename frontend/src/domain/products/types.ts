@@ -1,5 +1,10 @@
 /** Dados de produto recebidos do catálogo e usados no carrinho. */
 export type Availability = 'in_stock' | 'preorder' | 'backorder' | 'out_of_stock';
+export type ClassificationKind = 'category' | 'subcategory' | 'collection' | 'brand';
+export type InventoryLocationKind = 'warehouse' | 'store' | 'virtual';
+export type InventorySourceKind = 'manual' | 'erp' | 'marketplace';
+export type InventoryMovementType = 'initial' | 'receipt' | 'sale' | 'return' | 'adjustment' | 'transfer_in' | 'transfer_out' | 'reservation' | 'release' | 'integration_sync';
+export type InventoryReservationStatus = 'active' | 'released' | 'consumed' | 'expired';
 
 export interface Variant { id: string; color: string; size: string; price: number; availability: Availability; availableFrom?: string; stockQty?: number; }
 export type PackScope = 'grade' | 'pack';

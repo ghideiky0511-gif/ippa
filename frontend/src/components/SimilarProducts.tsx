@@ -1,5 +1,4 @@
 'use client';
-
 import { useRef, useState } from 'react';
 import ProductCard from './ProductCard';
 import type { Product } from '@/domain/products/types';
@@ -32,13 +31,13 @@ export default function SimilarProducts({ products }: { products: Product[] }) {
   if (products.length === 0) return null;
 
   return (
-    <section className="similar-products">
-      <div className="similar-products-header">
-        <h2 className="similar-products-title">Você também pode gostar</h2>
-        <div className="similar-products-arrows">
+    <section className="contents">
+      <div className="contents">
+        <h2 className="contents">Você também pode gostar</h2>
+        <div className="contents">
           <button
             type="button"
-            className="similar-products-arrow"
+            className="contents"
             onClick={() => scrollByCard(-1)}
             disabled={atStart}
             aria-label="Ver anteriores"
@@ -47,7 +46,7 @@ export default function SimilarProducts({ products }: { products: Product[] }) {
           </button>
           <button
             type="button"
-            className="similar-products-arrow"
+            className="contents"
             onClick={() => scrollByCard(1)}
             disabled={atEnd}
             aria-label="Ver mais"
@@ -56,9 +55,9 @@ export default function SimilarProducts({ products }: { products: Product[] }) {
           </button>
         </div>
       </div>
-      <div className="similar-products-track" ref={trackRef} onScroll={updateEdges}>
+      <div className="contents" ref={trackRef} onScroll={updateEdges}>
         {products.map((p) => (
-          <div key={p.id} className="similar-products-item">
+          <div key={p.id} className="contents">
             <ProductCard product={p} />
           </div>
         ))}

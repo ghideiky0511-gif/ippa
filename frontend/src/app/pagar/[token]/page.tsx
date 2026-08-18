@@ -1,4 +1,5 @@
 'use client';
+import { publicUi } from '@/lib/ui';
 
 import { use, useEffect, useState } from 'react';
 import { formatBRL } from '@/lib/format';
@@ -70,29 +71,29 @@ export default function PagarPage({ params }: { params: Promise<{ token: string 
   }
 
   return (
-    <div className="login-page">
-      <div className="login-form paylink-card">
+    <div className={publicUi.loginPage}>
+      <div className="contents">
         <h1>{CONFIG.storeName}</h1>
 
         {loading && <p>Carregando…</p>}
 
-        {!loading && error && !done && <p className="login-error">{error}</p>}
+        {!loading && error && !done && <p className={publicUi.error}>{error}</p>}
 
         {!loading && done && (
-          <p className="paylink-success">Pagamento confirmado! Obrigado pela compra.</p>
+          <p className="contents">Pagamento confirmado! Obrigado pela compra.</p>
         )}
 
         {!loading && summary && !done && (
           <>
-            <p className="paylink-hint">Pedido de {summary.clientName}</p>
+            <p className="contents">Pedido de {summary.clientName}</p>
 
-            <div className="order-items">
+            <div className={publicUi.orderItems}>
               {summary.items.map((item) => (
-                <div className="order-item" key={item.key}>
+                <div className={publicUi.orderItem} key={item.key}>
                   <img src={item.image || 'https://via.placeholder.com/80x100?text=Sem+imagem'} alt={item.name} />
                   <div>
-                    <div className="name">{item.name}</div>
-                    <div className="variant">
+                    <div className="contents">{item.name}</div>
+                    <div className="contents">
                       {[item.color, item.size].filter(Boolean).join(' · ')} — {item.qty}x {formatBRL(item.price)}
                     </div>
                   </div>
@@ -100,32 +101,32 @@ export default function PagarPage({ params }: { params: Promise<{ token: string 
               ))}
             </div>
 
-            <div className="checkout-summary">
-              <div className="order-summary-line">
+            <div className={publicUi.checkoutSummary}>
+              <div className={publicUi.summaryLine}>
                 <span>Subtotal</span>
                 <span>{formatBRL(summary.cartSubtotal)}</span>
               </div>
               {summary.cartDiscountTotal > 0 && (
-                <div className="order-summary-line discount">
+                <div className="contents">
                   <span>Desconto ({summary.cartDiscountLabel})</span>
                   <span>-{formatBRL(summary.cartDiscountTotal)}</span>
                 </div>
               )}
               {summary.shipping && (
-                <div className="order-summary-line">
+                <div className={publicUi.summaryLine}>
                   <span>Frete ({summary.shipping.label})</span>
                   <span>{summary.shipping.price === 0 ? 'Grátis' : formatBRL(summary.shipping.price)}</span>
                 </div>
               )}
-              <div className="order-summary-line total">
+              <div className="contents">
                 <span>Total</span>
                 <span>{formatBRL(summary.total)}</span>
               </div>
             </div>
 
-            <div className="payment-methods">
+            <div className={publicUi.paymentOptions}>
               {PAYMENT_METHODS.map((method) => (
-                <label key={method.id} className={'payment-method' + (paymentMethod === method.id ? ' selected' : '')}>
+                <label key={method.id} className={[publicUi.paymentOption, paymentMethod === method.id ? 'border-brand-primary' : ''].join(' ')}>
                   <input
                     type="radio"
                     name="payment"
@@ -137,12 +138,12 @@ export default function PagarPage({ params }: { params: Promise<{ token: string 
               ))}
             </div>
 
-            {error && <p className="login-error">{error}</p>}
+            {error && <p className={publicUi.error}>{error}</p>}
 
-            <button className="btn-add" disabled={!paymentMethod || confirming} onClick={handleConfirm}>
+            <button className={publicUi.primaryButton} disabled={!paymentMethod || confirming} onClick={handleConfirm}>
               {confirming ? 'Confirmando…' : 'Confirmar pagamento'}
             </button>
-            <div className="whatsapp-hint">Simulação — nenhuma cobrança real é processada.</div>
+            <div className={publicUi.hint}>Simulação — nenhuma cobrança real é processada.</div>
           </>
         )}
       </div>

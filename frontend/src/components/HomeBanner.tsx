@@ -1,5 +1,4 @@
 'use client';
-
 import { useState, type CSSProperties } from 'react';
 import type { Banner } from '@/domain/catalog/types';
 

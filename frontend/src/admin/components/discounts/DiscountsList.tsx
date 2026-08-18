@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client';
-
+import { adminUi } from '@/admin/lib/ui';
 import { useState } from 'react';
 
 export default function DiscountsList({ discounts, selectedId, onSelect, onAdd, onRemove }) {
@@ -14,30 +14,30 @@ export default function DiscountsList({ discounts, selectedId, onSelect, onAdd, 
   }
 
   return (
-    <aside className="collections-sidebar">
-      <div className="collections-list">
+    <aside className={adminUi.collectionsSidebar}>
+      <div className={adminUi.collectionsList}>
         {discounts.map((d) => (
-          <div key={d.id} className={`collection-item${selectedId === d.id ? ' active' : ''}`}>
-            <button className="collection-item-btn" onClick={() => onSelect(d.id)}>
+          <div key={d.id} className={[adminUi.collectionItem, selectedId === d.id ? 'bg-brand-background text-brand-primary' : ''].join(' ')}>
+            <button className={adminUi.collectionItemButton} onClick={() => onSelect(d.id)}>
               {d.label}
-              <span className="collection-item-count">{d.active ? 'ativo' : 'inativo'}</span>
+              <span className={adminUi.collectionCount}>{d.active ? 'ativo' : 'inativo'}</span>
             </button>
-            <button className="btn btn-icon btn-danger" onClick={() => onRemove(d.id)} title="Excluir desconto">
+            <button className={adminUi.iconButton} onClick={() => onRemove(d.id)} title="Excluir desconto">
               ✕
             </button>
           </div>
         ))}
-        {discounts.length === 0 && <p className="preview-empty-text">Nenhum desconto ainda.</p>}
+        {discounts.length === 0 && <p className={adminUi.previewEmpty}>Nenhum desconto ainda.</p>}
       </div>
 
-      <div className="collections-new">
+      <div className={adminUi.collectionsNew}>
         <input
           value={newLabel}
           onChange={(e) => setNewLabel(e.target.value)}
           placeholder="Nome do novo desconto"
           onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
         />
-        <button className="btn" onClick={handleAdd}>+ Novo desconto</button>
+        <button className={adminUi.button} onClick={handleAdd}>+ Novo desconto</button>
       </div>
     </aside>
   );

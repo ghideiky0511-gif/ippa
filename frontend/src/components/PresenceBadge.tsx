@@ -1,4 +1,5 @@
 'use client';
+import { publicUi } from '@/lib/ui';
 
 import { useEffect, useRef, useState } from 'react';
 import { useClientSession } from './ClientSessionProvider';
@@ -37,21 +38,21 @@ export default function PresenceBadge() {
   const initial = sellerName.trim().charAt(0).toUpperCase() || 'V';
 
   return (
-    <div className={'presence-badge' + (minimized ? ' minimized' : '')}>
+    <div className={[publicUi.presence, minimized ? 'gap-0' : ''].join(' ')}>
       <button
         type="button"
-        className="presence-avatar"
+        className={publicUi.presenceAvatar}
         onClick={() => setMinimized((v) => !v)}
         aria-label={minimized ? `Mostrar aviso de presença de ${sellerName}` : 'Minimizar aviso de presença'}
       >
         {initial}
       </button>
       {!minimized && (
-        <div className="presence-message">
+        <div className={publicUi.presenceMessage}>
           <span>
             A vendedora <strong>{sellerName}</strong> está no pedido com você
           </span>
-          <button type="button" className="presence-minimize" onClick={() => setMinimized(true)} aria-label="Minimizar">
+          <button type="button" className={publicUi.presenceMinimize} onClick={() => setMinimized(true)} aria-label="Minimizar">
             &times;
           </button>
         </div>

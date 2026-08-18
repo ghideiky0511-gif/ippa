@@ -1,18 +1,26 @@
 import type { PoolClient } from 'pg';
 
-export async function insertSession(client: PoolClient, userId: string, tokenHash: string, expiresAt: Date): Promise<void> {
-  await client.query(
-    `INSERT INTO user_sessions (tenant_id, user_id, token_hash, expires_at)
-     VALUES (app_tenant_id(), $1, $2, $3)`, [userId, tokenHash, expiresAt],
-  );
+export interface ActiveSession {
+  id: string;
+  userId: string;
 }
 
-export async function findSessionUserId(client: PoolClient, tokenHash: string): Promise<string | null> {
-  const result = await client.query<{ user_id: string }>(
-    `SELECT user_id FROM user_sessions
+export async function insertSession(client: PoolClient, userId: string, tokenHash: string, expiresAt: Date): Promise<string> {
+  const result = await client.query<{ id: string }>(
+    `INSERT INTO user_sessions (tenant_id, user_id, token_hash, expires_at)
+     VALUES (app_tenant_id(), $1, $2, $3)
+     RETURNING id`, [userId, tokenHash, expiresAt],
+  );
+  return result.rows[0].id;
+}
+
+export async function findActiveSession(client: PoolClient, tokenHash: string): Promise<ActiveSession | null> {
+  const result = await client.query<{ id: string; user_id: string }>(
+    `SELECT id, user_id FROM user_sessions
      WHERE tenant_id = app_tenant_id() AND token_hash = $1 AND expires_at > now() AND revoked_at IS NULL`, [tokenHash],
   );
-  return result.rows[0]?.user_id ?? null;
+  const session = result.rows[0];
+  return session ? { id: session.id, userId: session.user_id } : null;
 }
 
 export async function revokeSession(client: PoolClient, tokenHash: string): Promise<void> {

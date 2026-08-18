@@ -1,4 +1,5 @@
 'use client';
+import { publicUi } from '@/lib/ui';
 
 import { FormEvent, useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -87,10 +88,10 @@ export default function FretePage() {
 
   if (cart.length === 0) {
     return (
-      <main className="container checkout-page">
+      <main className="contents">
         <CheckoutSteps current="/frete" reachable={1} />
         <h1>Frete</h1>
-        <div className="cart-empty">
+        <div className={publicUi.empty}>
           Seu carrinho está vazio. <Link href="/carrinho">Voltar ao carrinho</Link>
         </div>
       </main>
@@ -103,14 +104,14 @@ export default function FretePage() {
   // continua salvo (localStorage) enquanto ela entra/cria conta.
   if (!authUser) {
     return (
-      <main className="container checkout-page">
+      <main className="contents">
         <CheckoutSteps current="/frete" reachable={1} />
         <h1>Frete</h1>
-        <div className="cart-empty talao-gate">
+        <div className="contents">
           Pra continuar pro frete você precisa entrar ou criar uma conta — seu carrinho continua salvo.
-          <div className="checkout-actions">
-            <Link href={`/login?redirect=${encodeURIComponent('/frete')}`} className="btn-add">Entrar</Link>
-            <Link href={`/cadastro?redirect=${encodeURIComponent('/frete')}`} className="btn-clear">Criar conta</Link>
+          <div className={publicUi.checkoutActions}>
+            <Link href={`/login?redirect=${encodeURIComponent('/frete')}`} className={publicUi.primaryButton}>Entrar</Link>
+            <Link href={`/cadastro?redirect=${encodeURIComponent('/frete')}`} className={publicUi.subtleButton}>Criar conta</Link>
           </div>
         </div>
       </main>
@@ -119,16 +120,16 @@ export default function FretePage() {
 
   if (gate.blocked) {
     return (
-      <main className="container checkout-page">
+      <main className="contents">
         <CheckoutSteps current="/frete" reachable={2} />
         <h1>Frete</h1>
-        <div className="cart-empty talao-gate">
+        <div className="contents">
           {gate.reason === 'no-client'
             ? 'Vincule um cadastro de cliente (nome, CPF/CNPJ, e-mail, CEP) no talão antes de continuar pro frete.'
             : gate.reason === 'no-login'
               ? 'A cliente ainda não tem login — crie um pra ela no talão antes de continuar pro frete.'
               : 'Complete o cadastro da cliente (CPF/CNPJ, e-mail, CEP) no talão antes de continuar pro frete.'}
-          <button className="btn-add" onClick={gate.openTalao}>Abrir talão</button>
+          <button className={publicUi.primaryButton} onClick={gate.openTalao}>Abrir talão</button>
         </div>
       </main>
     );
@@ -141,14 +142,14 @@ export default function FretePage() {
   // reportado pelo usuário).
   if (activeSession?.status === 'fechado') {
     return (
-      <main className="container checkout-page">
+      <main className="contents">
         <CheckoutSteps current="/frete" reachable={3} />
         <h1>Frete</h1>
-        <div className="payment-confirmed-panel">
-          <span className="payment-confirmed-check" aria-hidden="true">✓</span>
+        <div className="contents">
+          <span className="contents" aria-hidden="true">✓</span>
           <p>Pagamento confirmado! O pedido de {activeSession.clientName} foi fechado.</p>
         </div>
-        <Link href="/catalogo" className="back-link">← Voltar ao catálogo</Link>
+        <Link href="/catalogo" className={publicUi.backLink}>← Voltar ao catálogo</Link>
       </main>
     );
   }
@@ -156,63 +157,63 @@ export default function FretePage() {
   const paymentLink = linkState.token && typeof window !== 'undefined' ? `${window.location.origin}/pagar/${linkState.token}` : '';
 
   return (
-    <main className="container checkout-page">
+    <main className="contents">
       <CheckoutSteps current="/frete" reachable={reachable} />
       <h1>Frete</h1>
 
       {savedCep && (
-        <button type="button" className="btn-clear cep-shortcut" onClick={useSavedCep}>
+        <button type="button" className="contents" onClick={useSavedCep}>
           Usar meu CEP cadastrado ({savedCep})
         </button>
       )}
 
-      <form className="cep-form" onSubmit={handleCalculate}>
+      <form className="contents" onSubmit={handleCalculate}>
         <input
           type="text"
           placeholder="Digite seu CEP"
           value={cep}
           onChange={(e) => setCep(e.target.value)}
         />
-        <button type="submit" className="btn-add">Calcular</button>
+        <button type="submit" className={publicUi.primaryButton}>Calcular</button>
       </form>
 
       {options && (
-        <div className="shipping-options">
+        <div className="contents">
           {options.map((opt) => (
-            <label key={opt.id} className={'shipping-option' + (shipping?.id === opt.id ? ' selected' : '')}>
+            <label key={opt.id} className={[publicUi.paymentOption, shipping?.id === opt.id ? 'border-brand-primary' : ''].join(' ')}>
               <input
                 type="radio"
                 name="shipping"
                 checked={shipping?.id === opt.id}
                 onChange={() => setShipping(opt)}
               />
-              <div className="shipping-option-info">
-                <div className="shipping-option-label">{opt.label}</div>
-                <div className="shipping-option-prazo">{opt.prazo}</div>
+              <div className="contents">
+                <div className="contents">{opt.label}</div>
+                <div className="contents">{opt.prazo}</div>
               </div>
-              <div className="shipping-option-price">{opt.price === 0 ? 'Grátis' : formatBRL(opt.price)}</div>
+              <div className="contents">{opt.price === 0 ? 'Grátis' : formatBRL(opt.price)}</div>
             </label>
           ))}
         </div>
       )}
 
       {shipping && (
-        <div className="checkout-summary">
-          <div className="order-summary-line">
+        <div className={publicUi.checkoutSummary}>
+          <div className={publicUi.summaryLine}>
             <span>Subtotal</span>
             <span>{formatBRL(cartSubtotal)}</span>
           </div>
           {cartDiscountTotal > 0 && (
-            <div className="order-summary-line discount">
+            <div className="contents">
               <span>Desconto ({cartDiscountLabel})</span>
               <span>-{formatBRL(cartDiscountTotal)}</span>
             </div>
           )}
-          <div className="order-summary-line">
+          <div className={publicUi.summaryLine}>
             <span>Frete ({shipping.label})</span>
             <span>{shipping.price === 0 ? 'Grátis' : formatBRL(shipping.price)}</span>
           </div>
-          <div className="order-summary-line total">
+          <div className="contents">
             <span>Total</span>
             <span>{formatBRL(cartTotal + shipping.price)}</span>
           </div>
@@ -220,35 +221,35 @@ export default function FretePage() {
       )}
 
       {activeSession ? (
-        <div className="checkout-actions">
+        <div className={publicUi.checkoutActions}>
           {!paymentLink ? (
-            <button className="btn-add" disabled={!shipping || linkState.loading} onClick={handleGenerateLink}>
+            <button className={publicUi.primaryButton} disabled={!shipping || linkState.loading} onClick={handleGenerateLink}>
               {linkState.loading ? 'Gerando link…' : 'Gerar link de pagamento'}
             </button>
           ) : (
-            <div className="payment-link-panel">
+            <div className="contents">
               <p>Link de pagamento gerado — envie pra cliente:</p>
-              <div className="payment-link-row">
+              <div className="contents">
                 <input readOnly value={paymentLink} onFocus={(e) => e.target.select()} />
-                <button type="button" className="btn-add" onClick={() => copyLink(paymentLink)}>Copiar</button>
+                <button type="button" className={publicUi.primaryButton} onClick={() => copyLink(paymentLink)}>Copiar</button>
               </div>
-              <p className="payment-link-hint">Aguardando a cliente pagar — o pedido fecha sozinho assim que ela confirmar.</p>
-              <button type="button" className="btn-clear" disabled={linkState.loading} onClick={handleGenerateLink}>
+              <p className="contents">Aguardando a cliente pagar — o pedido fecha sozinho assim que ela confirmar.</p>
+              <button type="button" className={publicUi.subtleButton} disabled={linkState.loading} onClick={handleGenerateLink}>
                 {linkState.loading ? 'Gerando…' : 'Link expirou? Gerar novo'}
               </button>
             </div>
           )}
-          {linkState.error && <p className="login-error">{linkState.error}</p>}
+          {linkState.error && <p className={publicUi.error}>{linkState.error}</p>}
         </div>
       ) : (
-        <div className="checkout-actions">
-          <button className="btn-add" disabled={!shipping} onClick={handleContinue}>
+        <div className={publicUi.checkoutActions}>
+          <button className={publicUi.primaryButton} disabled={!shipping} onClick={handleContinue}>
             Continuar para pagamento
           </button>
         </div>
       )}
 
-      <Link href="/carrinho" className="back-link">← Voltar ao carrinho</Link>
+      <Link href="/carrinho" className={publicUi.backLink}>← Voltar ao carrinho</Link>
     </main>
   );
 }

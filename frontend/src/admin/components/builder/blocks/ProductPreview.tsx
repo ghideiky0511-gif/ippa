@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client';
-
+import { adminUi } from '@/admin/lib/ui';
 import { formatBRL } from '@/admin/lib/format';
 
 export default function ProductPreview({ section, products }) {
@@ -8,21 +8,21 @@ export default function ProductPreview({ section, products }) {
 
   if (!product) {
     return (
-      <div className="preview-empty-block">
+      <div className={adminUi.previewBlock}>
         <p>Nenhum produto selecionado ainda — cole o ID no painel ao lado.</p>
       </div>
     );
   }
 
   return (
-    <article className="card">
-      <div className="card-media">
+    <article className="contents">
+      <div className="contents">
         <img src={product.image || ''} alt={product.name} />
       </div>
-      <div className="body">
-        {product.category && <div className="cat">{product.category}</div>}
+      <div className="contents">
+        {product.category && <div className="contents">{product.category}</div>}
         <h3>{product.name}</h3>
-        <div className="price">{formatBRL(product.price)}</div>
+        <div className="contents">{formatBRL(product.price)}</div>
       </div>
     </article>
   );

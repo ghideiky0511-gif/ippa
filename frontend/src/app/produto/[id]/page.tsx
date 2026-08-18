@@ -1,3 +1,4 @@
+import { publicUi } from '@/lib/ui';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { backendJson } from '@/lib/backend';
@@ -25,8 +26,8 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
   });
 
   return (
-    <main className="container product-page">
-      <Link href="/" className="back-link">← Voltar ao catálogo</Link>
+    <main className="contents">
+      <Link href="/" className={publicUi.backLink}>← Voltar ao catálogo</Link>
       <ProductDetailContent product={product} />
       <SimilarProducts products={similar} />
     </main>

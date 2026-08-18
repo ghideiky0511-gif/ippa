@@ -1,4 +1,5 @@
 'use client';
+import { publicUi } from '@/lib/ui';
 
 import type { ReactNode } from 'react';
 import Link from 'next/link';
@@ -31,8 +32,8 @@ function TalaoButton() {
   const talao = useTalao();
   if (!talao) return null;
   return (
-    <button className="topnav-cart topnav-talao" onClick={talao.openTalao} aria-label="Talão de pedidos">
-      📋 <span className="count">{talao.openSessions.length}</span>
+    <button className="contents" onClick={talao.openTalao} aria-label="Talão de pedidos">
+      📋 <span className={publicUi.count}>{talao.openSessions.length}</span>
     </button>
   );
 }
@@ -53,22 +54,22 @@ function TopNav({ categoryTree, authUser }: { categoryTree: CategoryTreeEntry[];
   }
 
   return (
-    <nav className="topnav">
+    <nav className={publicUi.topnav}>
       <SideMenu categoryTree={categoryTree} />
-      <Link href="/" className="topnav-brand">
+      <Link href="/" className={publicUi.topnavBrand}>
         {CONFIG.logoUrl ? <img src={CONFIG.logoUrl} alt={CONFIG.storeName} /> : CONFIG.storeName}
       </Link>
-      <div className="topnav-links">
+      <div className={publicUi.topnavLinks}>
         {!onCatalogPage && <Link href="/catalogo">Catálogo</Link>}
         <Link href="/pedidos">{isVendedora ? 'Minhas vendas' : 'Meus pedidos'}</Link>
-        <button className="topnav-cart" onClick={openCart} aria-label="Carrinho">
-          🛍 <span className="count">{cartCount}</span>
+        <button className={publicUi.topnavCart} onClick={openCart} aria-label="Carrinho">
+          🛍 <span className={publicUi.count}>{cartCount}</span>
         </button>
         {isVendedora && <TalaoButton />}
         {authUser ? (
-          <button className="topnav-login-link" onClick={handleLogout}>Sair</button>
+          <button className={publicUi.topnavLogin} onClick={handleLogout}>Sair</button>
         ) : (
-          <Link href="/login" className="topnav-login-link">Entrar</Link>
+          <Link href="/login" className={publicUi.topnavLogin}>Entrar</Link>
         )}
       </div>
     </nav>

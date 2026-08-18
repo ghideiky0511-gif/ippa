@@ -4,7 +4,7 @@ import { getCategoryTree } from "@/lib/catalogFacets";
 import { backendJson, backendRequest } from "@/lib/backend";
 import type { AuthUser } from "@/domain/clients/types";
 import type { Product } from "@/domain/products/types";
-import "./globals.css";
+import "./tailwind.css";
 
 // productOverrides.json é editado pela plataforma admin (fora deste app) e
 // precisa refletir aqui sem rebuild — mesmo motivo de web/src/app/page.tsx.

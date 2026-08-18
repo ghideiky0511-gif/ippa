@@ -1,5 +1,4 @@
 'use client';
-
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { CategoryTreeEntry } from '@/domain/catalog/types';

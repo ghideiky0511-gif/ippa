@@ -1,3 +1,4 @@
+import { publicUi } from '@/lib/ui';
 import { getProductsByIds } from '@/lib/catalogFacets';
 import { backendJson } from '@/lib/backend';
 import { formatBRL } from '@/lib/format';
@@ -21,8 +22,8 @@ export default async function CatalogoPdfPage({
   const products = highlight ? getProductsByIds(catalog, highlight.productIds) : [];
 
   return (
-    <div className="pdf-page">
-      <div className="pdf-toolbar no-print">
+    <div className={publicUi.pdfPage}>
+      <div className={publicUi.pdfToolbar}>
         <PrintButton />
         <p>Use o botão acima e escolha &quot;Salvar como PDF&quot; na janela de impressão do navegador.</p>
       </div>
@@ -32,12 +33,12 @@ export default async function CatalogoPdfPage({
       {products.length === 0 ? (
         <p>Nenhum produto nesta coleção.</p>
       ) : (
-        <div className="pdf-grid">
+        <div className={publicUi.pdfGrid}>
           {products.map((p) => (
-            <div key={p.id} className="pdf-item">
+            <div key={p.id} className={publicUi.pdfItem}>
               <img src={p.image || ''} alt={p.name} />
-              <div className="pdf-item-name">{p.name}</div>
-              <div className="pdf-item-price">{formatBRL(p.price)}</div>
+              <div className="contents">{p.name}</div>
+              <div className="contents">{formatBRL(p.price)}</div>
             </div>
           ))}
         </div>

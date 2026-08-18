@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client';
-
+import { adminUi } from '@/admin/lib/ui';
 import { useDroppable } from '@dnd-kit/core';
 import CanvasBlock from './CanvasBlock';
 import { STARTER_TEMPLATE } from '@/admin/lib/blockRegistry';
@@ -25,21 +25,21 @@ export default function Canvas({
     : MIN_CANVAS_HEIGHT;
 
   return (
-    <main className="builder-canvas-wrap">
-      <p className="canvas-hint">
+    <main className={adminUi.canvasWrap}>
+      <p className={adminUi.hint}>
         Arraste um bloco pra mover; pelas bordas, pra redimensionar. Nada se move sozinho quando você mexe
         em outro bloco.
       </p>
 
       <div
         ref={setNodeRef}
-        className={`builder-canvas${isOver ? ' drag-over' : ''}`}
+        className={[adminUi.canvas, isOver ? 'outline-2 outline-dashed outline-brand-primary outline-offset-[-2px]' : ''].join(' ')}
         style={{ height: canvasHeight }}
       >
         {sections.length === 0 && (
-          <div className="empty-canvas">
+          <div className={adminUi.emptyCanvas}>
             <p>Arraste uma ferramenta aqui pra começar a montar a home.</p>
-            <button className="btn" onClick={() => onUseTemplate(STARTER_TEMPLATE)}>
+            <button className={adminUi.button} onClick={() => onUseTemplate(STARTER_TEMPLATE)}>
               Usar modelo inicial
             </button>
           </div>

@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client';
-
+import { adminUi } from '@/admin/lib/ui';
 import { useState } from 'react';
 import { createVendedora, createCliente, updateUser, updateClient } from '@/admin/lib/usersClient';
 
@@ -115,34 +115,34 @@ export default function UserFormModal({ role, mode, user, onClose, onSaved }) {
   }
 
   return (
-    <div className="admin-modal-overlay" onClick={onClose}>
-      <div className="admin-modal-panel" onClick={(e) => e.stopPropagation()}>
-        <div className="admin-modal-header">
+    <div className={adminUi.modalOverlay} onClick={onClose}>
+      <div className={adminUi.modalPanel} onClick={(e) => e.stopPropagation()}>
+        <div className={adminUi.modalHeader}>
           <h2>
             {isEdit ? 'Editar' : 'Criar'} {isCliente ? 'cliente' : 'vendedora'}
           </h2>
-          <button type="button" className="admin-modal-close" onClick={onClose}>&times;</button>
+          <button type="button" className="contents" onClick={onClose}>&times;</button>
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'contents' }}>
-          <div className="admin-modal-body">
-            <div className="admin-modal-section">
+          <div className={adminUi.modalBody}>
+            <div className="contents">
               <h3>Acesso (login)</h3>
-              <div className="field-row">
-                <div className="field">
+              <div className={adminUi.fieldRow}>
+                <div className={adminUi.field}>
                   <label>Nome</label>
                   <input value={form.name} onChange={set('name')} placeholder="Nome" />
                 </div>
               </div>
-              <div className="field-row">
-                <div className="field">
+              <div className={adminUi.fieldRow}>
+                <div className={adminUi.field}>
                   <label>E-mail de login</label>
                   <input type="email" value={form.email} onChange={set('email')} placeholder="email@loja.com" />
                 </div>
               </div>
-              <div className="field-row">
+              <div className={adminUi.fieldRow}>
                 {isEdit && (
-                  <div className="field">
+                  <div className={adminUi.field}>
                     <label>Senha atual</label>
                     {/* Senha só existe como hash (bcrypt, sem volta) — não
                         dá pra mostrar a senha de verdade aqui, só indicar
@@ -151,7 +151,7 @@ export default function UserFormModal({ role, mode, user, onClose, onSaved }) {
                     <input type="password" value="••••••••" disabled readOnly />
                   </div>
                 )}
-                <div className="field">
+                <div className={adminUi.field}>
                   <label>{isEdit ? 'Nova senha (opcional)' : 'Senha'}</label>
                   <input
                     type="password"
@@ -164,10 +164,10 @@ export default function UserFormModal({ role, mode, user, onClose, onSaved }) {
             </div>
 
             {!isCliente && (
-              <div className="admin-modal-section">
+              <div className="contents">
                 <h3>Ferramentas liberadas no catálogo</h3>
                 {CATALOG_AREAS.map((area) => (
-                  <label key={area.key} className="admin-checkbox-row">
+                  <label key={area.key} className="contents">
                     <input
                       type="checkbox"
                       checked={catalogAreas.includes(area.key)}
@@ -180,58 +180,58 @@ export default function UserFormModal({ role, mode, user, onClose, onSaved }) {
             )}
 
             {isCliente && (
-              <div className="admin-modal-section">
+              <div className="contents">
                 <h3>Cadastro</h3>
-                <div className="field-row">
-                  <div className="field">
+                <div className={adminUi.fieldRow}>
+                  <div className={adminUi.field}>
                     <label>CPF/CNPJ</label>
                     <input value={form.cpfCnpj} onChange={set('cpfCnpj')} placeholder="Somente números" />
                   </div>
-                  <div className="field">
+                  <div className={adminUi.field}>
                     <label>E-mail de contato</label>
                     <input type="email" value={form.clientEmail} onChange={set('clientEmail')} placeholder="Opcional, se diferente do login" />
                   </div>
                 </div>
-                <div className="field-row">
-                  <div className="field">
+                <div className={adminUi.fieldRow}>
+                  <div className={adminUi.field}>
                     <label>Responsável (CNPJ)</label>
                     <input value={form.companyResponsible} onChange={set('companyResponsible')} />
                   </div>
-                  <div className="field">
+                  <div className={adminUi.field}>
                     <label>Nome da loja (CPF)</label>
                     <input value={form.storeName} onChange={set('storeName')} />
                   </div>
                 </div>
-                <div className="field-row">
-                  <div className="field">
+                <div className={adminUi.fieldRow}>
+                  <div className={adminUi.field}>
                     <label>CEP</label>
                     <input value={form.cep} onChange={set('cep')} />
                   </div>
-                  <div className="field">
+                  <div className={adminUi.field}>
                     <label>Rua</label>
                     <input value={form.street} onChange={set('street')} />
                   </div>
-                  <div className="field">
+                  <div className={adminUi.field}>
                     <label>Número</label>
                     <input value={form.number} onChange={set('number')} />
                   </div>
                 </div>
-                <div className="field-row">
-                  <div className="field">
+                <div className={adminUi.fieldRow}>
+                  <div className={adminUi.field}>
                     <label>Complemento</label>
                     <input value={form.complement} onChange={set('complement')} />
                   </div>
-                  <div className="field">
+                  <div className={adminUi.field}>
                     <label>Bairro</label>
                     <input value={form.neighborhood} onChange={set('neighborhood')} />
                   </div>
                 </div>
-                <div className="field-row">
-                  <div className="field">
+                <div className={adminUi.fieldRow}>
+                  <div className={adminUi.field}>
                     <label>Cidade</label>
                     <input value={form.city} onChange={set('city')} />
                   </div>
-                  <div className="field">
+                  <div className={adminUi.field}>
                     <label>Estado</label>
                     <input value={form.state} onChange={set('state')} />
                   </div>
@@ -240,10 +240,10 @@ export default function UserFormModal({ role, mode, user, onClose, onSaved }) {
             )}
           </div>
 
-          <div className="admin-modal-footer">
-            {saveState === 'error' && <span className="admin-login-error">{errorMsg}</span>}
-            <button type="button" className="btn" onClick={onClose}>Cancelar</button>
-            <button type="submit" className="btn btn-primary" disabled={saveState === 'saving'}>
+          <div className={adminUi.modalFooter}>
+            {saveState === 'error' && <span className="contents">{errorMsg}</span>}
+            <button type="button" className={adminUi.button} onClick={onClose}>Cancelar</button>
+            <button type="submit" className={adminUi.primaryButton} disabled={saveState === 'saving'}>
               {saveState === 'saving' ? 'Salvando…' : 'Salvar'}
             </button>
           </div>

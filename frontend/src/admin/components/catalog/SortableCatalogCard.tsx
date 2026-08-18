@@ -1,6 +1,5 @@
 // @ts-nocheck
 'use client';
-
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { formatBRL } from '@/admin/lib/format';
@@ -15,14 +14,14 @@ export default function SortableCatalogCard({ product }) {
       style={style}
       {...attributes}
       {...listeners}
-      className={'card catalog-order-card' + (isDragging ? ' dragging' : '')}
+      className={[adminUi.productCard, isDragging ? 'opacity-50' : ''].join(' ')}
     >
-      <div className="card-media">
+      <div className="contents">
         <img src={product.image || ''} alt={product.name} />
       </div>
-      <div className="body">
+      <div className="contents">
         <h3>{product.name}</h3>
-        <div className="price">{formatBRL(product.price)}</div>
+        <div className="contents">{formatBRL(product.price)}</div>
       </div>
     </div>
   );

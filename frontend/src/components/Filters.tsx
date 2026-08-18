@@ -1,4 +1,5 @@
 'use client';
+import { publicUi } from '@/lib/ui';
 
 import type { CatalogFilters } from './CatalogApp';
 
@@ -20,9 +21,9 @@ export default function Filters({
   onClear: () => void;
 }) {
   return (
-    <div className="controls">
+    <div className={publicUi.controls}>
       <input
-        className="search"
+        className={publicUi.search}
         placeholder="Buscar por nome ou código..."
         value={filters.term}
         onChange={(e) => onChange({ ...filters, term: e.target.value })}
@@ -54,7 +55,7 @@ export default function Filters({
           <option key={s} value={s}>{s}</option>
         ))}
       </select>
-      <button className="btn-clear" onClick={onClear}>Limpar filtros</button>
+      <button className={publicUi.subtleButton} onClick={onClear}>Limpar filtros</button>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client';
-
+import { adminUi } from '@/admin/lib/ui';
 import { useState } from 'react';
 import ProductPicker from '@/admin/components/collections/ProductPicker';
 
@@ -15,28 +15,28 @@ export default function SimilarProductsField({ label, productIds, allProducts, o
   const byId = new Map((allProducts || []).map((p) => [p.id, p]));
 
   return (
-    <div className="similar-products-field">
-      <button type="button" className="similar-products-field-toggle" onClick={() => setExpanded((v) => !v)}>
+    <div className={adminUi.similarField}>
+      <button type="button" className={adminUi.similarToggle} onClick={() => setExpanded((v) => !v)}>
         {label} ({productIds.length}) {expanded ? '▾' : '▸'}
       </button>
       {expanded && (
-        <div className="similar-products-field-body">
-          <div className="collection-product-list">
+        <div className={adminUi.similarBody}>
+          <div className={adminUi.productList}>
             {productIds.map((id) => {
               const p = byId.get(id);
               return (
-                <div key={id} className="product-override-row">
+                <div key={id} className={adminUi.overrideRow}>
                   <img src={p?.image || ''} alt={p?.name || ''} />
-                  <div className="product-override-info">
-                    <span className="product-item-name">{p?.name || id}</span>
+                  <div className={adminUi.productInfo}>
+                    <span className={adminUi.productName}>{p?.name || id}</span>
                   </div>
-                  <button className="btn btn-icon btn-danger" onClick={() => onRemove(id)} title="Remover">
+                  <button className={adminUi.iconButton} onClick={() => onRemove(id)} title="Remover">
                     ✕
                   </button>
                 </div>
               );
             })}
-            {productIds.length === 0 && <p className="preview-empty-text">Nenhuma peça curada — usa a regra automática.</p>}
+            {productIds.length === 0 && <p className={adminUi.previewEmpty}>Nenhuma peça curada — usa a regra automática.</p>}
           </div>
           <ProductPicker products={allProducts} excludeIds={productIds} onAdd={onAdd} />
         </div>

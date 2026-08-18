@@ -1,6 +1,6 @@
 // @ts-nocheck
 'use client';
-
+import { adminUi } from '@/admin/lib/ui';
 import { useState } from 'react';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable';
@@ -97,30 +97,30 @@ export default function CatalogOrderApp({ products }) {
   }
 
   return (
-    <div className="catalog-order-page">
-      <div className="builder-topbar">
-        <div className="builder-topbar-left">
+    <div className={adminUi.catalogPage}>
+      <div className={adminUi.topbar}>
+        <div className={adminUi.topbarLeft}>
           <h1>Editor do catálogo</h1>
           <AdminNav />
         </div>
         <div>
-          {saveState === 'saved' && !dirty && <span className="status">Salvo</span>}
-          {saveState === 'error' && <span className="status">Erro ao salvar</span>}
-          {dirty && saveState !== 'saving' && <span className="status">Alterações não salvas</span>}
-          <button className="btn btn-primary" onClick={handleSave} disabled={saveState === 'saving'}>
+          {saveState === 'saved' && !dirty && <span className={adminUi.status}>Salvo</span>}
+          {saveState === 'error' && <span className={adminUi.status}>Erro ao salvar</span>}
+          {dirty && saveState !== 'saving' && <span className={adminUi.status}>Alterações não salvas</span>}
+          <button className={adminUi.primaryButton} onClick={handleSave} disabled={saveState === 'saving'}>
             {saveState === 'saving' ? 'Salvando…' : 'Salvar'}
           </button>
         </div>
       </div>
 
-      <p className="canvas-hint">
+      <p className={adminUi.hint}>
         Todos os cards têm o mesmo tamanho — só a posição é editável. Arraste um card em qualquer direção pra
         mudar a ordem; essa é a ordem que aparece em /catalogo quando nenhum filtro/busca está ativo. Produto
         novo (ainda não posicionado) entra no fim, na ordem natural do catálogo.
       </p>
 
-      <div className="catalog-order-toolbar">
-        <div className="field">
+      <div className="contents">
+        <div className={adminUi.field}>
           <label>Ordenar cards</label>
           <select value={sortBy} onChange={handleSortChange}>
             {SORT_OPTIONS.map((opt) => (
@@ -134,7 +134,7 @@ export default function CatalogOrderApp({ products }) {
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={order} strategy={rectSortingStrategy}>
-          <div className="catalog-order-grid">
+          <div className={adminUi.catalogGrid}>
             {orderedProducts.map((p) => (
               <SortableCatalogCard key={p.id} product={p} />
             ))}

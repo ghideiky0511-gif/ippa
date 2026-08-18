@@ -1,5 +1,4 @@
 'use client';
-
 import Link from 'next/link';
 import { COLOR_MAP } from '@/lib/config';
 import { formatBRL, priceWithPercentOff } from '@/lib/format';
