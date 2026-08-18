@@ -6,11 +6,17 @@
     "dev": "next dev -p 3011",
     "build": "next build",
     "start": "next start -p 3011",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:migrate": "node scripts/migrate.mjs",
+    "db:bootstrap": "node scripts/bootstrap.mjs",
+    "db:setup": "npm run db:migrate && npm run db:bootstrap"
   },
   "dependencies": {
+    "@node-rs/argon2": "^2.1.0",
+    "@types/pg": "^8.23.1",
     "bcryptjs": "^3.0.3",
     "next": "16.2.12",
+    "pg": "^8.23.0",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },

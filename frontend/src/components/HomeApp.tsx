@@ -4,7 +4,7 @@ import type { CSSProperties } from 'react';
 import HomeBanner from './HomeBanner';
 import ProductCard from './ProductCard';
 import { CONFIG } from '@/lib/config';
-import type { ResolvedHomeSection } from '@/lib/types';
+import type { ResolvedHomeSection } from '@/domain/catalog/types';
 
 // Mesmos padrões de admin/src/lib/blockRegistry.js — usados só quando um
 // bloco antigo/manual não trouxer x/y/width/height.

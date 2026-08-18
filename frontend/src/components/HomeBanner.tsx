@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, type CSSProperties } from 'react';
-import type { Banner } from '@/lib/types';
+import type { Banner } from '@/domain/catalog/types';
 
 // `headingLevel` existe porque HomeApp pode renderizar vários banners na
 // mesma página (um por section) — só o primeiro deve virar <h1> (uma página

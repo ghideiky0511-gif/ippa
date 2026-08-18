@@ -2,7 +2,8 @@ import type { ReactNode } from "react";
 import ConditionalShell from "@/components/ConditionalShell";
 import { getCategoryTree } from "@/lib/catalogFacets";
 import { backendJson, backendRequest } from "@/lib/backend";
-import type { AuthUser, Product } from "@/lib/types";
+import type { AuthUser } from "@/domain/clients/types";
+import type { Product } from "@/domain/products/types";
 import "./globals.css";
 
 // productOverrides.json é editado pela plataforma admin (fora deste app) e
@@ -25,7 +26,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     : { user: null };
   return (
     <html lang="pt-BR">
-      <body>
+      <body className="min-h-screen bg-[#f7f5f6] font-sans text-[#2a2a2a]">
         <ConditionalShell categoryTree={categoryTree} authUser={authPayload.user}>
           {children}
         </ConditionalShell>
