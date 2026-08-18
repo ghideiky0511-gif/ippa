@@ -77,7 +77,6 @@ export default function HomeApp({ sections }: { sections: ResolvedHomeSection[] 
         })}
       </main>
 
-      <footer>Catálogo de {tenant.name}.</footer>
     </>
   );
 }

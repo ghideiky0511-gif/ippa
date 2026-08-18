@@ -24,7 +24,7 @@ export default function CartDrawer() {
       toast.error('Seu carrinho está vazio. Adicione peças e escolha a grade antes de continuar.');
       return;
     }
-    if (!CONFIG.whatsappNumber) {
+    if (!CONFIG.contact.whatsappNumber) {
       toast.error('O WhatsApp da loja ainda não foi configurado.');
       return;
     }
@@ -37,7 +37,7 @@ export default function CartDrawer() {
     });
     if (cartDiscountTotal > 0) lines.push('', `Desconto (${cartDiscountLabel}): -${formatBRL(cartDiscountTotal)}`);
     lines.push('', `Total: ${formatBRL(cartTotal)}`);
-    window.open(`https://wa.me/${CONFIG.whatsappNumber}?text=${encodeURIComponent(lines.join('\n'))}`, '_blank');
+    window.open(`https://wa.me/${CONFIG.contact.whatsappNumber}?text=${encodeURIComponent(lines.join('\n'))}`, '_blank');
     saveOrderToHistory(resolvedItems, cartTotal, { discount: cartDiscountTotal > 0 ? { label: cartDiscountLabel!, amount: cartDiscountTotal } : undefined });
     clearCart();
     closeCart();

@@ -226,6 +226,30 @@ export interface Client {
   updatedAt: string;
 }
 
+// Filial/multi-empresa dentro do ERP de um tenant (matriz + filiais, cada
+// uma com seu CNPJ) — não confundir com Tenant (a loja no SaaS) nem com
+// Client.companyResponsible/storeName (texto livre da empresa da cliente).
+// Fonte de dado é o motor de integração ERP (ver backend/src/erp/), sem UI
+// de edição própria ainda.
+export interface Company {
+  id: string;
+  cnpj: string;
+  razaoSocial: string;
+  nomeFantasia?: string;
+  inscricaoEstadual?: string;
+  isMatriz: boolean;
+  cep?: string;
+  street?: string;
+  number?: string;
+  complement?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // Talão: um pedido em andamento, vinculado a uma vendedora e, opcionalmente,
 // a um cadastro de cliente (`clientId`, ver Client acima) — sem cadastro
 // ainda, `clientName` é só um nome livre (ex. "Sem cliente", ou o nome que

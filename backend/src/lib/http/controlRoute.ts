@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPlatformUser, type PlatformUser } from '@/services/platformService';
+import { getPlatformUser, type PlatformUser } from '@/services/platform';
 
 function bearerToken(request: NextRequest): string | undefined {
   const value = request.headers.get('authorization');

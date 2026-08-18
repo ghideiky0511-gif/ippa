@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isControlRouteError, requirePlatformUser } from '@/lib/http/controlRoute';
-import { listTenants, provisionTenant } from '@/services/platformService';
+import { listTenants, provisionTenant } from '@/services/platform';
 
 export async function GET(request: NextRequest) {
   const user = await requirePlatformUser(request);

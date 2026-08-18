@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticatePlatform, issuePlatformSession } from '@/services/platformService';
+import { authenticatePlatform, issuePlatformSession } from '@/services/platform';
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);

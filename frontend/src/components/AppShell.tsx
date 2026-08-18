@@ -14,6 +14,7 @@ import TalaoDrawer from './TalaoDrawer';
 import PresenceBadge from './PresenceBadge';
 import ProductQuickView from './ProductQuickView';
 import SideMenu from './SideMenu';
+import CatalogFooter from './CatalogFooter';
 import { publicUi } from '@/lib/ui';
 import { useTenant } from './TenantProvider';
 import type { AuthUser } from '@/domain/clients/types';
@@ -78,8 +79,11 @@ export default function AppShell({ children, categoryTree, authUser }: {
     <AuthProvider authUser={authUser}>
       <QuickViewProvider>
         <CartProvider>
-          <TopNav categoryTree={categoryTree} authUser={authUser} />
-          {children}
+          <div className="flex min-h-screen flex-col">
+            <TopNav categoryTree={categoryTree} authUser={authUser} />
+            <div className="flex-1">{children}</div>
+            <CatalogFooter />
+          </div>
           <CartDrawer />
           {isVendedora && <TalaoDrawer />}
           {isCliente && <PresenceBadge />}

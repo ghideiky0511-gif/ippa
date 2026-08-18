@@ -2,9 +2,12 @@
 import { publicUi } from '@/lib/ui';
 
 import { useEffect, useState } from 'react';
+import { UserRound } from 'lucide-react';
 import Link from '@/components/TenantLink';
 import { formatBRL } from '@/lib/format';
 import { useAuthUser } from '@/components/AuthProvider';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import type { CartItem, Order } from '@/domain/orders/types';
 import type { Product } from '@/domain/products/types';
 
@@ -71,22 +74,30 @@ export default function PedidosPage() {
   // (ver GET /api/orders), não mais um histórico solto por navegador.
   if (!authUser) {
     return (
-      <main className="contents">
-        <h1>Meus pedidos</h1>
-        <div className={publicUi.empty}>
-          Entre ou crie uma conta pra ver seus pedidos.
-          <div className={publicUi.checkoutActions}>
-            <Link href="/login" className={publicUi.primaryButton}>Entrar</Link>
-            <Link href="/cadastro" className={publicUi.primaryButton}>Criar conta</Link>
-          </div>
-        </div>
+      <main className={`${publicUi.container} py-8 sm:py-10`}>
+        <h1 className="mb-5 text-2xl font-bold tracking-[-0.03em] text-foreground sm:text-3xl">Meus pedidos</h1>
+        <EmptyState
+          title="Acesse seus pedidos"
+          description="Entre ou crie uma conta para acompanhar seus pedidos em qualquer dispositivo."
+          icon={<UserRound className="size-7" aria-hidden="true" />}
+          action={
+            <div className="mx-auto flex w-full max-w-[360px] flex-col gap-2.5">
+              <Button asChild className="w-full">
+                <Link href="/login">Entrar</Link>
+              </Button>
+              <Button asChild variant="outline" className="w-full">
+                <Link href="/cadastro">Criar conta</Link>
+              </Button>
+            </div>
+          }
+        />
         <Link href="/" className={publicUi.backLink}>← Voltar ao catálogo</Link>
       </main>
     );
   }
 
   return (
-    <main className="contents">
+    <main className={`${publicUi.container} py-8 pb-14 sm:py-10`}>
       <h1>{isVendedora ? 'Minhas vendas' : 'Meus pedidos'}</h1>
       <p className="contents">
         {isVendedora

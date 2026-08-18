@@ -74,7 +74,7 @@ export default function CarrinhoPage() {
   }, [cartProductIdsKey]);
 
   function sendWhatsapp() {
-    if (!CONFIG.whatsappNumber) {
+    if (!CONFIG.contact.whatsappNumber) {
       toast.error('O WhatsApp da loja ainda não foi configurado.');
       return;
     }
@@ -90,7 +90,7 @@ export default function CarrinhoPage() {
     }
     lines.push('', `Total: ${formatBRL(cartTotal)}`);
     const msg = encodeURIComponent(lines.join('\n'));
-    window.open(`https://wa.me/${CONFIG.whatsappNumber}?text=${msg}`, '_blank');
+    window.open(`https://wa.me/${CONFIG.contact.whatsappNumber}?text=${msg}`, '_blank');
     saveOrderToHistory(resolvedItems, cartTotal, {
       discount: cartDiscountTotal > 0 ? { label: cartDiscountLabel!, amount: cartDiscountTotal } : undefined,
     });

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isControlRouteError, requirePlatformUser } from '@/lib/http/controlRoute';
-import { changeTenantStatus, listTenantUsers } from '@/services/platformService';
+import { changeTenantStatus, listTenantUsers } from '@/services/platform';
 
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const user = await requirePlatformUser(request);

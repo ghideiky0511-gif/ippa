@@ -9,7 +9,6 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { getCategories, getColors, getSizes } from '@/lib/catalogFacets';
 import { CONFIG } from '@/lib/config';
-import { useTenant } from './TenantProvider';
 import type { Highlight } from '@/domain/catalog/types';
 import type { Product } from '@/domain/products/types';
 
@@ -24,7 +23,6 @@ export interface CatalogFilters {
 }
 
 export default function CatalogApp({ initialProducts }: { initialProducts: Product[] }) {
-  const { tenant } = useTenant();
   const searchParams = useSearchParams();
   const [filters, setFilters] = useState<CatalogFilters>(() => ({
     term: '',
@@ -106,7 +104,6 @@ export default function CatalogApp({ initialProducts }: { initialProducts: Produ
         )}
       </main>
 
-      <footer>Catálogo de {tenant.name}.</footer>
     </>
   );
 }

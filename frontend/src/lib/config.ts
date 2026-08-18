@@ -7,7 +7,17 @@
 // /ferramentas (GET/PUT em /api/store-settings) e aplicado em
 // web/src/lib/catalog.ts (`getCatalog`, `stripDisabledFeatures`).
 export const CONFIG: {
-  whatsappNumber: string;
+  contact: {
+    email: string;
+    whatsappNumber: string;
+    instagramUrl: string;
+    address: string;
+    serviceHours: string;
+  };
+  footer: {
+    privacyUrl: string;
+    termsUrl: string;
+  };
   // Opções de previsão de entrega pra quantidade que excede o estoque
   // (backorder) na grade de cor×tamanho — rótulo livre, cada loja define
   // os prazos que fazem sentido pro seu fornecedor. Mock por enquanto
@@ -19,7 +29,19 @@ export const CONFIG: {
     audiences: { id: string; label: string; productIds: string[] | null }[];
   };
 } = {
-  whatsappNumber: '', // formato internacional só números, ex: '5511999999999'. Vazio = avisa antes de abrir o link.
+  // Dados públicos da loja. Preencha estes valores para exibi-los no
+  // rodapé; o WhatsApp é também usado no fluxo de finalizar pedido.
+  contact: {
+    email: '',
+    whatsappNumber: '', // formato internacional só números, ex: '5511999999999'.
+    instagramUrl: '', // ex.: 'https://instagram.com/sualoja'
+    address: '',
+    serviceHours: '', // ex.: 'Segunda a sexta, das 9h às 18h'
+  },
+  footer: {
+    privacyUrl: '',
+    termsUrl: '',
+  },
 
   backorderDeliveryOptions: [
     { id: '30d', label: 'Em 30 dias' },
