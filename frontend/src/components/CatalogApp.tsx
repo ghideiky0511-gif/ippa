@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Filters from './Filters';
 import ProductCard from './ProductCard';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Button } from '@/components/ui/button';
 import { getCategories, getColors, getSizes } from '@/lib/catalogFacets';
 import { CONFIG } from '@/lib/config';
 import { useTenant } from './TenantProvider';
@@ -92,12 +94,16 @@ export default function CatalogApp({ initialProducts }: { initialProducts: Produ
           onChange={setFilters}
           onClear={() => setFilters({ term: '', category: '', subcategory: '', color: '', size: '', destaque: '', publico: '' })}
         />
-        <div className={publicUi.resultCount}>{filteredProducts.length} produto(s) encontrado(s)</div>
-        <div className={publicUi.grid}>
-          {filteredProducts.map((p) => (
-            <ProductCard key={p.id} product={p} />
-          ))}
-        </div>
+        <div className={publicUi.resultCount}>{filteredProducts.length} {filteredProducts.length === 1 ? 'produto encontrado' : 'produtos encontrados'}</div>
+        {filteredProducts.length === 0 ? (
+          <EmptyState
+            title="Nenhum produto encontrado"
+            description="Tente remover um filtro ou buscar por outro nome."
+            action={<Button type="button" variant="outline" onClick={() => setFilters({ term: '', category: '', subcategory: '', color: '', size: '', destaque: '', publico: '' })}>Limpar filtros</Button>}
+          />
+        ) : (
+          <div className={publicUi.grid}>{filteredProducts.map((p) => <ProductCard key={p.id} product={p} />)}</div>
+        )}
       </main>
 
       <footer>Catálogo de {tenant.name}.</footer>

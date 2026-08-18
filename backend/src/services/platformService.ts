@@ -9,9 +9,11 @@ import {
   insertTenant,
   insertTenantDefaults,
   listPlatformTenants,
+  listPlatformTenantUsers,
   revokePlatformSession,
   setTenantStatus,
   type PlatformTenant,
+  type PlatformTenantUser,
   type PlatformUserRow,
   type TenantStatus,
 } from '@/models/platformModel';
@@ -64,6 +66,14 @@ export async function listTenants(): Promise<PlatformTenant[]> {
   return withControlTransaction(listPlatformTenants);
 }
 
+export async function listTenantUsers(id: string): Promise<PlatformTenantUser[] | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error('INVALID_TENANT_ID');
+  return withControlTransaction(async (client) => {
+    const tenant = await client.query('SELECT 1 FROM tenants WHERE id = $1', [id]);
+    return tenant.rowCount === 0 ? null : listPlatformTenantUsers(client, id);
+  });
+}
+
 export async function provisionTenant(input: {
   slug: string; name: string; adminName: string; adminEmail: string; adminPassword: string;
 }): Promise<PlatformTenant> {
@@ -78,7 +88,7 @@ export async function provisionTenant(input: {
     const tenant = await insertTenant(client, slug, name);
     await insertTenantDefaults(client, tenant.id);
     await insertTenantAdministrator(client, tenant.id, adminEmail, adminName, await hash(input.adminPassword, PASSWORD_OPTIONS));
-    return { ...tenant, status: 'active', active: true, createdAt: new Date().toISOString() };
+    return { ...tenant, status: 'active', active: true, createdAt: new Date().toISOString(), userCount: 1, contract: null };
   });
 }
 

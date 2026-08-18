@@ -14,7 +14,7 @@ export const adminUi = {
   fieldRow: 'flex gap-3 max-sm:flex-col [&>.field]:min-w-0 [&>.field]:flex-1',
   hint: 'text-[13px] text-brand-muted',
   canvasWrap: 'overflow-x-auto px-6 pt-5 pb-[60px]',
-  canvas: 'relative min-h-[680px] min-w-[900px] rounded-brand bg-[#f3f1f2] p-5',
+  canvas: 'relative min-h-[680px] min-w-[900px] rounded-brand bg-[#f3f1f2] p-5 [background-image:linear-gradient(to_right,rgba(194,24,91,.07)_1px,transparent_1px),linear-gradient(to_bottom,rgba(194,24,91,.07)_1px,transparent_1px)] [background-size:20px_20px]',
   toolbox: 'w-[280px] shrink-0 border-l border-[#eee] bg-white p-5',
   toolboxList: 'flex flex-col gap-2.5',
   toolItem: 'flex cursor-grab items-center gap-2 rounded-lg border border-[#eee] bg-white p-3 text-sm shadow-sm active:cursor-grabbing',

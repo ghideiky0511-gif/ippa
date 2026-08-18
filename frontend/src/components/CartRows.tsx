@@ -1,7 +1,9 @@
 'use client';
+/* eslint-disable react-hooks/refs, react-hooks/set-state-in-effect -- stable cart row order and delayed color initialization are deliberately local to this legacy editor. */
 import { publicUi } from '@/lib/ui';
 
 import Link from '@/components/TenantLink';
+import { Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CONFIG, COLOR_MAP } from '@/lib/config';
 import { formatBRL, priceWithPercentOff } from '@/lib/format';
@@ -291,7 +293,7 @@ function ColorLine({
         ver mais
       </button>
 
-      <button className={publicUi.cartLineTrash} aria-label="Remover cor do carrinho" onClick={handleTrash}>🗑</button>
+      <button className={publicUi.cartLineTrash} aria-label="Remover cor do carrinho" onClick={handleTrash}><Trash2 className="size-4" aria-hidden="true" /></button>
     </div>
   );
 }

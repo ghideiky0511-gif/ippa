@@ -2,6 +2,7 @@
 import { publicUi } from '@/lib/ui';
 
 import { FormEvent, useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import Link from '@/components/TenantLink';
 import { useRouter } from 'next/navigation';
 import { formatBRL } from '@/lib/format';
@@ -82,8 +83,13 @@ export default function FretePage() {
     }
   }
 
-  function copyLink(link: string) {
-    navigator.clipboard?.writeText(link).catch(() => {});
+  async function copyLink(link: string) {
+    try {
+      await navigator.clipboard?.writeText(link);
+      toast.success('Link de pagamento copiado.');
+    } catch {
+      toast.error('Não foi possível copiar o link.');
+    }
   }
 
   const reachable = shipping ? 3 : cart.length > 0 ? 2 : 1;

@@ -53,7 +53,7 @@ export default function HomeBanner({
         <img src={current.mediaUrl} alt={current.title || ''} className="block size-full object-cover opacity-85" />
       )}
       <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
-        <Heading className="mb-1.5 text-[clamp(22px,4vw,36px)]">{current.title || fallbackTitle}</Heading>
+        <Heading className="mb-1.5 font-editorial text-[clamp(30px,4vw,48px)] leading-[.9] font-semibold tracking-[-0.025em]">{current.title || fallbackTitle}</Heading>
         {current.subtitle && <p className="opacity-90">{current.subtitle}</p>}
       </div>
 

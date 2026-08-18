@@ -4,6 +4,7 @@ import { publicUi } from '@/lib/ui';
 import Link from '@/components/TenantLink';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { formatBRL } from '@/lib/format';
 import { CONFIG } from '@/lib/config';
 import { useCart } from '@/components/CartProvider';
@@ -50,6 +51,8 @@ export default function CarrinhoPage() {
 
   useEffect(() => {
     if (cartProductIds.length === 0) {
+      // The similar-products panel must reset immediately when the cart becomes empty.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSimilar([]);
       return;
     }
@@ -72,7 +75,7 @@ export default function CarrinhoPage() {
 
   function sendWhatsapp() {
     if (!CONFIG.whatsappNumber) {
-      alert('Configure CONFIG.whatsappNumber em src/lib/config.js com o número da loja para habilitar o envio direto.');
+      toast.error('O WhatsApp da loja ainda não foi configurado.');
       return;
     }
     const resolvedItems = cart.filter((item) => item.qty > 0);
@@ -96,7 +99,7 @@ export default function CarrinhoPage() {
 
   function checkoutWhatsapp() {
     if (cartCount === 0) {
-      alert('Seu carrinho está vazio — adicione peças e escolha a grade antes de continuar.');
+      toast.error('Seu carrinho está vazio. Adicione peças e escolha a grade antes de continuar.');
       return;
     }
     const names = unselectedProductNames(cart);
@@ -119,9 +122,9 @@ export default function CarrinhoPage() {
   const reachable = shipping ? 3 : cartCount > 0 ? 2 : 1;
 
   return (
-    <main className="contents">
+    <main className={`${publicUi.container} py-5 pb-14`}>
       <CheckoutSteps current="/carrinho" reachable={reachable} />
-      <h1>Seu carrinho</h1>
+      <h1 className="mb-5 text-2xl font-extrabold tracking-[-0.03em]">Seu carrinho</h1>
 
       <div className={publicUi.checkoutItems}>
         <CartRows cart={cart} />
@@ -152,11 +155,11 @@ export default function CarrinhoPage() {
             )}
           </div>
 
-          <div className={publicUi.checkoutActions}>
-            <button className={publicUi.whatsapp} onClick={checkoutWhatsapp}>Finalizar pedido via WhatsApp</button>
+          <div className={`${publicUi.checkoutActions} max-w-[420px]`}>
             <button className={publicUi.primaryButton} disabled={cartCount === 0} onClick={goToFrete}>
               Continuar para o frete
             </button>
+            <button className={publicUi.whatsapp} onClick={checkoutWhatsapp}>Finalizar pedido via WhatsApp</button>
           </div>
         </>
       )}

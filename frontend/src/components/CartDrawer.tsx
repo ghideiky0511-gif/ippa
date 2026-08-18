@@ -1,7 +1,8 @@
 'use client';
-import { publicUi } from '@/lib/ui';
 
 import Link from '@/components/TenantLink';
+import { MessageCircle, ShoppingBag } from 'lucide-react';
+import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { formatBRL } from '@/lib/format';
 import { CONFIG } from '@/lib/config';
@@ -9,6 +10,8 @@ import { useCart } from './CartProvider';
 import { useAuthUser } from './AuthProvider';
 import GroupedCartItems from './GroupedCartItems';
 import { useTenant } from './TenantProvider';
+import { Button } from '@/components/ui/button';
+import { Sheet, SheetContent, SheetHeader } from '@/components/ui/sheet';
 
 export default function CartDrawer() {
   const router = useRouter();
@@ -18,11 +21,11 @@ export default function CartDrawer() {
 
   function checkoutWhatsapp() {
     if (cartCount === 0) {
-      alert('Seu carrinho está vazio — adicione peças e escolha a grade antes de continuar.');
+      toast.error('Seu carrinho está vazio. Adicione peças e escolha a grade antes de continuar.');
       return;
     }
     if (!CONFIG.whatsappNumber) {
-      alert('Configure CONFIG.whatsappNumber em src/lib/config.js com o número da loja para habilitar o envio direto.');
+      toast.error('O WhatsApp da loja ainda não foi configurado.');
       return;
     }
     const resolvedItems = cart.filter((item) => item.qty > 0);
@@ -32,16 +35,12 @@ export default function CartDrawer() {
       const variantText = variantParts.length ? ` (${variantParts.join(' / ')})` : '';
       lines.push(`• ${item.qty}x ${item.name}${variantText} — ${formatBRL(item.price * item.qty)}`);
     });
-    if (cartDiscountTotal > 0) {
-      lines.push('', `Desconto (${cartDiscountLabel}): -${formatBRL(cartDiscountTotal)}`);
-    }
+    if (cartDiscountTotal > 0) lines.push('', `Desconto (${cartDiscountLabel}): -${formatBRL(cartDiscountTotal)}`);
     lines.push('', `Total: ${formatBRL(cartTotal)}`);
-    const msg = encodeURIComponent(lines.join('\n'));
-    window.open(`https://wa.me/${CONFIG.whatsappNumber}?text=${msg}`, '_blank');
-    saveOrderToHistory(resolvedItems, cartTotal, {
-      discount: cartDiscountTotal > 0 ? { label: cartDiscountLabel!, amount: cartDiscountTotal } : undefined,
-    });
+    window.open(`https://wa.me/${CONFIG.whatsappNumber}?text=${encodeURIComponent(lines.join('\n'))}`, '_blank');
+    saveOrderToHistory(resolvedItems, cartTotal, { discount: cartDiscountTotal > 0 ? { label: cartDiscountLabel!, amount: cartDiscountTotal } : undefined });
     clearCart();
+    closeCart();
   }
 
   function goToCheckout() {
@@ -50,42 +49,32 @@ export default function CartDrawer() {
   }
 
   return (
-    <>
-      <div className={[publicUi.overlay, isCartOpen ? 'block' : 'hidden'].join(' ')} onClick={closeCart} />
-      <aside className={[publicUi.drawerRight, isCartOpen ? 'translate-x-0' : ''].join(' ')}>
-        <div className={publicUi.cartHeader}>
-          <h2>Seu pedido</h2>
-          <button aria-label="Fechar" onClick={closeCart}>&times;</button>
-        </div>
-        <div className={publicUi.cartItems}>
+    <Sheet open={isCartOpen} onOpenChange={(open) => !open && closeCart()}>
+      <SheetContent side="right" className="w-[min(100%,26rem)]">
+        <SheetHeader><h2 className="text-lg font-bold">Seu pedido</h2></SheetHeader>
+        <div className="flex-1 overflow-y-auto px-5 py-3">
           {cart.length === 0 ? (
-            <div className={publicUi.empty}>Seu carrinho está vazio.</div>
-          ) : (
-            <GroupedCartItems cart={cart} />
-          )}
+            <div className="flex min-h-56 flex-col items-center justify-center text-center">
+              <ShoppingBag className="mb-3 size-7 text-brand-primary" aria-hidden="true" />
+              <p className="font-semibold">Seu carrinho está vazio.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Escolha peças no catálogo para começar.</p>
+            </div>
+          ) : <GroupedCartItems cart={cart} />}
         </div>
-        <div className={publicUi.cartFooter}>
-          {!showPrices ? (
-            <Link href="/login" className={publicUi.priceLocked}>Entrar para ver o preço</Link>
-          ) : (
-            <>
-              {cartDiscountTotal > 0 && (
-                <>
-                  <div className={`${publicUi.cartTotal} font-normal`}><span>Subtotal</span><span>{formatBRL(cartSubtotal)}</span></div>
-                  <div className={`${publicUi.cartTotal} font-normal text-[#2e8b57]`}>
-                    <span>Desconto ({cartDiscountLabel})</span>
-                    <span>-{formatBRL(cartDiscountTotal)}</span>
-                  </div>
-                </>
-              )}
-              <div className={publicUi.cartTotal}><span>Total</span><span>{formatBRL(cartTotal)}</span></div>
-            </>
+        <div className="border-t border-border bg-surface-raised p-5">
+          {!showPrices ? <Link href="/login" className="text-sm font-bold text-brand-primary">Entrar para ver o preço</Link> : (
+            <div className="mb-4 space-y-1.5 text-sm">
+              {cartDiscountTotal > 0 && <><div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{formatBRL(cartSubtotal)}</span></div><div className="flex justify-between text-success"><span>Desconto ({cartDiscountLabel})</span><span>-{formatBRL(cartDiscountTotal)}</span></div></>}
+              <div className="flex justify-between text-base font-extrabold"><span>Total</span><span>{formatBRL(cartTotal)}</span></div>
+            </div>
           )}
-          <button className={publicUi.whatsapp} onClick={checkoutWhatsapp}>Finalizar pedido via WhatsApp</button>
-          <button className={publicUi.checkoutButton} onClick={goToCheckout}>Revisar e continuar no site</button>
-          <div className={publicUi.hint}>Ao enviar pelo WhatsApp, nada é cobrado automaticamente. Entre ou crie uma conta pra ver esse pedido depois em "Meus pedidos".</div>
+          <div className="flex flex-col gap-2">
+            <Button type="button" className="w-full" onClick={goToCheckout} disabled={cartCount === 0}>Revisar e continuar</Button>
+            <Button type="button" variant="outline" className="w-full" onClick={checkoutWhatsapp}><MessageCircle className="size-4" aria-hidden="true" />Finalizar pelo WhatsApp</Button>
+          </div>
+          <p className="mt-3 text-[11px] leading-4 text-muted-foreground">Ao enviar pelo WhatsApp, nada é cobrado automaticamente.</p>
         </div>
-      </aside>
-    </>
+      </SheetContent>
+    </Sheet>
   );
 }

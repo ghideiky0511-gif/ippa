@@ -1,8 +1,8 @@
 'use client';
-import { publicUi } from '@/lib/ui';
 
 import type { ReactNode } from 'react';
 import Link from '@/components/TenantLink';
+import { ClipboardList, ShoppingBag } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { CartProvider, useCart } from './CartProvider';
 import { TalaoProvider, useTalao } from './TalaoProvider';
@@ -14,26 +14,23 @@ import TalaoDrawer from './TalaoDrawer';
 import PresenceBadge from './PresenceBadge';
 import ProductQuickView from './ProductQuickView';
 import SideMenu from './SideMenu';
+import { publicUi } from '@/lib/ui';
 import { useTenant } from './TenantProvider';
 import type { AuthUser } from '@/domain/clients/types';
 import type { CategoryTreeEntry } from '@/domain/catalog/types';
 
-// Instância única do quick-view, pra qualquer página poder abrir (clique na
-// imagem de um ProductCard, ou "ver mais"/"selecionar" no carrinho — ver
-// QuickViewProvider.tsx pra por quê isso é global e não por página.
 function GlobalQuickView() {
   const { quickViewProduct, closeQuickView } = useQuickView();
   return <ProductQuickView product={quickViewProduct} onClose={closeQuickView} />;
 }
 
-// Ícone do talão no topo, ao lado de onde fica o carrinho pro cliente final
-// — mesma ideia, mostra quantos pedidos abertos a vendedora tem no talão.
 function TalaoButton() {
   const talao = useTalao();
   if (!talao) return null;
   return (
-    <button className="contents" onClick={talao.openTalao} aria-label="Talão de pedidos">
-      📋 <span className={publicUi.count}>{talao.openSessions.length}</span>
+    <button className={publicUi.topnavCart} onClick={talao.openTalao} aria-label="Talão de pedidos">
+      <ClipboardList className="size-5" aria-hidden="true" />
+      <span className={publicUi.count}>{talao.openSessions.length}</span>
     </button>
   );
 }
@@ -44,8 +41,6 @@ function TopNav({ categoryTree, authUser }: { categoryTree: CategoryTreeEntry[];
   const router = useRouter();
   const pathname = usePathname();
   const isVendedora = authUser?.role === 'vendedora';
-  // Link "Catálogo" some só nessa própria página (levaria pra onde já
-  // está) — nas outras (home, produto, carrinho...) continua útil.
   const onCatalogPage = pathname?.startsWith(href('/catalogo')) || pathname?.startsWith('/catalogo');
 
   async function handleLogout() {
@@ -55,47 +50,30 @@ function TopNav({ categoryTree, authUser }: { categoryTree: CategoryTreeEntry[];
   }
 
   return (
-    <nav className={publicUi.topnav}>
+    <nav className={publicUi.topnav} aria-label="Navegação principal">
       <SideMenu categoryTree={categoryTree} />
-      <Link href="/" className={publicUi.topnavBrand}>
-        {tenant.name}
-      </Link>
+      <Link href="/" className={publicUi.topnavBrand}>{tenant.name}</Link>
       <div className={publicUi.topnavLinks}>
         {!onCatalogPage && <Link href="/catalogo">Catálogo</Link>}
         <Link href="/pedidos">{isVendedora ? 'Minhas vendas' : 'Meus pedidos'}</Link>
         <button className={publicUi.topnavCart} onClick={openCart} aria-label="Carrinho">
-          🛍 <span className={publicUi.count}>{cartCount}</span>
+          <ShoppingBag className="size-5" aria-hidden="true" />
+          <span className={publicUi.count}>{cartCount}</span>
         </button>
         {isVendedora && <TalaoButton />}
-        {authUser ? (
-          <button className={publicUi.topnavLogin} onClick={handleLogout}>Sair</button>
-        ) : (
-          <Link href="/login" className={publicUi.topnavLogin}>Entrar</Link>
-        )}
+        {authUser ? <button className={publicUi.topnavLogin} onClick={handleLogout}>Sair</button> : <Link href="/login" className={publicUi.topnavLogin}>Entrar</Link>}
       </div>
     </nav>
   );
 }
 
-export default function AppShell({
-  children,
-  categoryTree,
-  authUser,
-}: {
+export default function AppShell({ children, categoryTree, authUser }: {
   children: ReactNode;
   categoryTree: CategoryTreeEntry[];
   authUser: AuthUser | null;
 }) {
   const isVendedora = authUser?.role === 'vendedora';
   const isCliente = authUser?.role === 'cliente';
-
-  // CartProvider precisa estar DENTRO do TalaoProvider/ClientSessionProvider
-  // — é assim que ele consegue enxergar useTalao()/useClientSession() e
-  // decidir se escreve no carrinho pessoal ou num pedido compartilhado (ver
-  // CartProvider.tsx). AuthProvider fica por fora de tudo —
-  // ProductCard/ProductDetailContent (bem lá embaixo em {children}) precisam
-  // dele pra decidir se mostram o preço, sem precisar de authUser sendo
-  // passado por prop em cada página.
   const body = (
     <AuthProvider authUser={authUser}>
       <QuickViewProvider>

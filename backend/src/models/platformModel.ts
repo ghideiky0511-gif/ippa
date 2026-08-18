@@ -17,6 +17,33 @@ export interface PlatformTenant {
   status: TenantStatus;
   active: boolean;
   createdAt: string;
+  userCount: number;
+  contract: PlatformTenantContract | null;
+}
+
+export type PlatformPlanCode = 'trial' | 'essential' | 'professional' | 'enterprise';
+export type TenantContractStatus = 'draft' | 'trialing' | 'active' | 'past_due' | 'suspended' | 'cancelled' | 'expired';
+export type TenantContractBillingCycle = 'monthly' | 'annual' | 'custom';
+
+export interface PlatformTenantContract {
+  id: string;
+  plan: { code: PlatformPlanCode; name: string };
+  status: TenantContractStatus;
+  billingCycle: TenantContractBillingCycle;
+  currency: string;
+  priceCents: number | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  externalReference: string | null;
+}
+
+export interface PlatformTenantUser {
+  id: string;
+  name: string;
+  email: string;
+  role: 'administrador' | 'vendedora' | 'expedicao' | 'entregador' | 'cliente';
+  active: boolean;
+  createdAt: string;
 }
 
 export async function findPlatformUserByEmail(client: PoolClient, email: string): Promise<PlatformUserRow | null> {
@@ -57,7 +84,40 @@ export async function listPlatformTenants(client: PoolClient): Promise<PlatformT
   }>(
     'SELECT id, slug, name, status, active, created_at FROM tenants ORDER BY created_at DESC',
   );
-  return result.rows.map((row) => ({ ...row, createdAt: row.created_at.toISOString() }));
+  const tenants = result.rows.map((row) => ({ ...row, createdAt: row.created_at.toISOString(), userCount: 0, contract: null }));
+  if (tenants.length === 0) return tenants;
+  const tenantIds = tenants.map((tenant) => tenant.id);
+  const [counts, contracts] = await Promise.all([
+    client.query<{ tenant_id: string; user_count: string }>(
+      'SELECT tenant_id, count(*)::text AS user_count FROM users WHERE tenant_id = ANY($1::uuid[]) GROUP BY tenant_id', [tenantIds],
+    ),
+    client.query<{ tenant_id: string; id: string; code: PlatformPlanCode; name: string; status: TenantContractStatus; billing_cycle: TenantContractBillingCycle; currency: string; price_cents: number | null; starts_at: Date | null; ends_at: Date | null; external_reference: string | null }>(
+      `SELECT DISTINCT ON (c.tenant_id) c.tenant_id, c.id, p.code, p.name, c.status, c.billing_cycle, c.currency, c.price_cents, c.starts_at, c.ends_at, c.external_reference
+       FROM tenant_contracts c JOIN platform_plans p ON p.id = c.plan_id
+       WHERE c.tenant_id = ANY($1::uuid[]) ORDER BY c.tenant_id, c.created_at DESC`, [tenantIds],
+    ),
+  ]);
+  const countByTenant = new Map(counts.rows.map((row) => [row.tenant_id, Number(row.user_count)]));
+  const contractByTenant = new Map<string, PlatformTenantContract>(contracts.rows.map((row) => [row.tenant_id, {
+    id: row.id, plan: { code: row.code, name: row.name }, status: row.status, billingCycle: row.billing_cycle, currency: row.currency,
+    priceCents: row.price_cents, startsAt: row.starts_at?.toISOString() ?? null, endsAt: row.ends_at?.toISOString() ?? null, externalReference: row.external_reference,
+  }]));
+  return tenants.map((tenant) => ({ ...tenant, userCount: countByTenant.get(tenant.id) ?? 0, contract: contractByTenant.get(tenant.id) ?? null }));
+}
+
+export async function listPlatformTenantUsers(client: PoolClient, tenantId: string): Promise<PlatformTenantUser[]> {
+  const result = await client.query<{ id: string; name: string; email: string; role: PlatformTenantUser['role']; created_at: Date }>(
+    'SELECT id, name, email, role, created_at FROM users WHERE tenant_id = $1 ORDER BY created_at DESC', [tenantId],
+  );
+  // A tabela tenant users ainda não suporta inativação individual; todo registro existente é ativo.
+  return result.rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    role: row.role,
+    active: true,
+    createdAt: row.created_at.toISOString(),
+  }));
 }
 
 export async function insertTenant(client: PoolClient, slug: string, name: string): Promise<{ id: string; slug: string; name: string }> {
@@ -82,7 +142,7 @@ export async function setTenantStatus(client: PoolClient, id: string, status: Te
     [id, status, active],
   );
   const row = result.rows[0];
-  return row ? { ...row, createdAt: row.created_at.toISOString() } : null;
+  return row ? { ...row, createdAt: row.created_at.toISOString(), userCount: 0, contract: null } : null;
 }
 
 export async function insertTenantAdministrator(client: PoolClient, tenantId: string, email: string, name: string, passwordHash: string): Promise<void> {
