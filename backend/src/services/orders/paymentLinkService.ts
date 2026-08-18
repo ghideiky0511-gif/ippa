@@ -37,6 +37,6 @@ export async function createPaymentLink(
     await setOrderSessionPaymentTokenRow(client, sessionId, digest(token));
     return { email: user.email, name: user.name };
   });
-  notifyPaymentLink(tenant, recipient, `${publicOrigin}/pagar/${token}`);
+  notifyPaymentLink(tenant, recipient, `${publicOrigin}/${tenant.slug}/pagar/${token}`);
   return { token };
 }

@@ -33,10 +33,14 @@ export async function findOrderSessionRow(client: PoolClient, id: string): Promi
     return result.rows[0] ?? null;
 }
 
-export async function findOrderSessionRowByPaymentTokenHash(client: PoolClient, tokenHash: string): Promise<OrderSessionRow | null> {
+export async function findOrderSessionRowByPaymentTokenHash(
+    client: PoolClient,
+    tokenHash: string,
+    lock = false,
+): Promise<OrderSessionRow | null> {
     const result = await client.query<OrderSessionRow>(
         `SELECT ${sessionFields} FROM order_sessions
-         WHERE tenant_id = app_tenant_id() AND payment_token_hash = $1`, [tokenHash],
+         WHERE tenant_id = app_tenant_id() AND payment_token_hash = $1${lock ? " FOR UPDATE" : ""}`, [tokenHash],
     );
     return result.rows[0] ?? null;
 }

@@ -33,6 +33,13 @@ export interface ProductVariantRow {
     available_from: string | null;
     track_inventory: boolean;
 }
+export interface ProductPackRow {
+    id: string; product_id: string; scope: import("@/lib/types").PackScope;
+    label: string; color: string | null; price: string;
+}
+export interface ProductPackItemRow {
+    pack_id: string; size: string; color: string | null; quantity: number;
+}
 
 export interface InventoryBalanceRow { variant_id: string; stock_qty: number }
 export interface ProductClassificationRow { product_id: string; kind: ClassificationKind; name: string }
@@ -50,6 +57,22 @@ export async function listProductVariantRows(client: PoolClient): Promise<Produc
     const result = await client.query<ProductVariantRow>(
         `SELECT product_id, id, color, size, price, availability, available_from, track_inventory
          FROM product_variants WHERE tenant_id = app_tenant_id() ORDER BY color, size`,
+    );
+    return result.rows;
+}
+
+export async function listProductPackRows(client: PoolClient): Promise<ProductPackRow[]> {
+    const result = await client.query<ProductPackRow>(
+        `SELECT id, product_id, scope, label, color, price FROM product_packs
+         WHERE tenant_id = app_tenant_id() ORDER BY label`,
+    );
+    return result.rows;
+}
+
+export async function listProductPackItemRows(client: PoolClient): Promise<ProductPackItemRow[]> {
+    const result = await client.query<ProductPackItemRow>(
+        `SELECT pack_id, size, color, quantity FROM product_pack_items
+         WHERE tenant_id = app_tenant_id() ORDER BY id`,
     );
     return result.rows;
 }

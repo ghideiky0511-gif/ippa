@@ -1,6 +1,5 @@
 import type { PoolClient } from "pg";
-import type { BannerMediaType, DiscountType, HomeSectionType, SimilarProductsSettings } from "@/lib/types";
-import type { AssignmentStrategy } from "@/services/settings/types";
+import type { AssignmentStrategy, BannerMediaType, DiscountType, HomeSectionType, SimilarProductsSettings } from "@/lib/types";
 
 export interface StoreSettingsRow {
     default_markup: string | null;

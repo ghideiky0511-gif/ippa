@@ -16,6 +16,8 @@ import * as users from "@/services/users";
 
 type RouteContext = { params: Promise<{ tenantSlug: string; path: string[] }> };
 
+export const dynamic = "force-dynamic";
+
 const ERROR_MESSAGES: Record<string, string> = {
   INVALID_INPUT: "Corpo inválido.",
   INCOMPLETE_SIGNUP: "Preencha nome, e-mail, senha, CPF/CNPJ, CEP, Rua, Número, Bairro, Cidade e Estado.",
@@ -168,9 +170,9 @@ export async function GET(request: NextRequest, context: RouteContext): Promise<
     return user ? NextResponse.json({ user }) : NextResponse.json({ user: null }, { status: 401 });
   }
   if (endpoint === "admin/auth/me") {
-    const session = await authenticated();
-    return session && users.isAdministrator(session.user)
-      ? NextResponse.json(session.user)
+    const user = await authentication.getAdministratorForToken(route.tenant, token);
+    return user
+      ? NextResponse.json(user)
       : NextResponse.json({ error: "Não autenticado." }, { status: 401 });
   }
 
@@ -203,8 +205,10 @@ export async function POST(request: NextRequest, context: RouteContext): Promise
     if (typeof body.email !== "string" || typeof body.password !== "string") {
       return NextResponse.json({ error: "Informe e-mail e senha." }, { status: 400 });
     }
-    const result = await authentication.login(route.tenant, body.email, body.password, contextData);
-    if (!result || (endpoint.startsWith("admin/") && !users.isAdministrator(result.user))) {
+    const result = endpoint === "admin/auth/login"
+      ? await authentication.loginAdministrator(route.tenant, body.email, body.password, contextData)
+      : await authentication.login(route.tenant, body.email, body.password, contextData);
+    if (!result) {
       return NextResponse.json({ error: "E-mail, senha ou permissão inválidos." }, { status: 401 });
     }
     if (endpoint === "admin/auth/login") return NextResponse.json(result);
@@ -241,7 +245,7 @@ export async function POST(request: NextRequest, context: RouteContext): Promise
   const mutationContext = { ...contextData, sessionId: authenticated.sessionId };
   if (endpoint === "admin/users") return execute(() => users.createTenantUser(route.tenant, authenticated.user, body, mutationContext), 201);
   if (endpoint === "admin/clients") return execute(() => clients.createAdministrativeClient(route.tenant, authenticated.user, body, mutationContext), 201);
-  if (endpoint === "clients") return execute(() => clients.createTenantClient(route.tenant, authenticated.user, body as never, mutationContext), 201);
+  if (endpoint === "clients") return execute(() => clients.createTenantClient(route.tenant, authenticated.user, body, mutationContext), 201);
   if (path[0] === "clients" && path[1] && path[2] === "create-login") {
     return execute(() => clients.createClientLogin(route.tenant, authenticated.user, path[1], body, mutationContext));
   }
@@ -280,8 +284,9 @@ export async function PUT(request: NextRequest, context: RouteContext): Promise<
   }
   if (path[0] === "clients" && path[1] && path[2] === "cart") {
     if (!Array.isArray(body.items)) return NextResponse.json({ error: "Corpo inválido." }, { status: 400 });
+    const items = body.items;
     return execute(async () => {
-      await clients.saveClientCart(route.tenant, authenticated.user, path[1], body.items, mutationContext);
+      await clients.saveClientCart(route.tenant, authenticated.user, path[1], items, mutationContext);
       return { ok: true };
     });
   }

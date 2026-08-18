@@ -10,6 +10,7 @@ export type InventoryLocationKind = 'warehouse' | 'store' | 'virtual';
 export type InventorySourceKind = 'manual' | 'erp' | 'marketplace';
 export type InventoryMovementType = 'initial' | 'receipt' | 'sale' | 'return' | 'adjustment' | 'transfer_in' | 'transfer_out' | 'reservation' | 'release' | 'integration_sync';
 export type InventoryReservationStatus = 'active' | 'released' | 'consumed' | 'expired';
+export type AssignmentStrategy = 'leastBusy' | 'roundRobin' | 'any';
 
 export interface Variant {
   id: string;

@@ -1,9 +1,10 @@
 # Catálogo IPPA/Bippa
 
-Aplicação de catálogo e pedidos com duas experiências no mesmo frontend:
+Aplicação de catálogo e pedidos com duas experiências no mesmo frontend, dentro do
+tenant (`http://localhost:3010/{tenant}/`):
 
-- loja e fluxo do usuário em `http://localhost:3010/`;
-- painel administrativo em `http://localhost:3010/admin`.
+- loja e fluxo do cliente em `http://localhost:3010/{tenant}/`;
+- workspace interno da equipe do tenant em `http://localhost:3010/{tenant}/workspace`.
 
 As regras, autenticação, dados e endpoints ficam em um backend separado, disponível em `http://localhost:3011/api`. O frontend encaminha chamadas `/api/*` para esse serviço, mantendo cookies e navegador na mesma origem.
 
@@ -11,8 +12,8 @@ As regras, autenticação, dados e endpoints ficam em um backend separado, dispo
 
 ```text
 frontend/
-  src/app/              loja e rotas /admin
-  src/admin/            componentes e clientes do painel
+  src/app/              loja e rotas /workspace
+  src/workspace/        componentes e clientes do workspace interno
   src/components/       componentes da loja
   Dockerfile
 
@@ -25,7 +26,7 @@ backend/
 docker-compose.yml
 ```
 
-O `frontend` é um único projeto Next.js. O painel que antes ficava em `admin/` foi incorporado sob `/admin`. O antigo `web/` foi dividido: a interface foi para `frontend/`, enquanto APIs e dados foram para `backend/`.
+O `frontend` é um único projeto Next.js. O painel que antes ficava em `admin/` foi incorporado sob `/admin` e depois reorganizado como o workspace interno do tenant, em `/{tenant}/workspace` (rotas antigas em `/{tenant}/admin` continuam funcionando via redirect). O antigo `web/` foi dividido: a interface foi para `frontend/`, enquanto APIs e dados foram para `backend/`.
 
 ## Executar com Docker
 
@@ -37,10 +38,10 @@ docker compose up --build
 
 Endereços:
 
-- loja: `http://localhost:3010`;
-- admin: `http://localhost:3010/admin`;
+- loja: `http://localhost:3010/{tenant}`;
+- workspace interno: `http://localhost:3010/{tenant}/workspace`;
 - control plane: `http://localhost:3010/control`;
-- API: `http://localhost:3011/api/catalog`.
+- API: `http://localhost:3011/api/{tenant}/catalog`.
 
 ## Control plane
 
@@ -84,7 +85,7 @@ Os valores padrão usam frontend na porta `3010` e backend na `3011`. Para outro
 
 ## Variáveis opcionais
 
-Consulte [.env.example](.env.example). As integrações com OpenAI e Resend só são necessárias para os recursos que as utilizam; catálogo, loja e painel funcionam sem essas chaves.
+Consulte [.env.example](.env.example). As integrações com OpenAI e Resend só são necessárias para os recursos que as utilizam; catálogo, loja e workspace funcionam sem essas chaves.
 
 ## Verificação
 

@@ -7,6 +7,7 @@ import {
 } from "@/models/settingsModel";
 import { ValidationError } from "@/services/shared/errors";
 import { requireSettingsAdministrator } from "./settingsAuthorization";
+import { databaseId } from "@/services/shared/identifiers";
 
 export async function listHighlights(tenant: Tenant): Promise<Highlight[]> {
     return withTenantTransaction(tenant, {}, async (client) => {
@@ -29,7 +30,7 @@ export async function replaceHighlights(tenant: Tenant, actor: AuthUser, value: 
         Array.isArray(highlight.productIds) && highlight.productIds.every((id: unknown) => typeof id === "string"))) {
         throw new ValidationError();
     }
-    const highlights = value as Highlight[];
+    const highlights = (value as Highlight[]).map((highlight) => ({ ...highlight, id: databaseId(highlight.id) }));
     await withTenantTransaction(tenant, actor, async (client) => {
         await deleteHighlightRows(client);
         for (const highlight of highlights) {

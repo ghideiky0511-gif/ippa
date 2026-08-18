@@ -33,9 +33,11 @@ try {
   await client.query("SELECT set_config('app.role', 'administrador', true)");
   const passwordHash = await hash(adminPassword);
   await client.query(
-    `INSERT INTO users (tenant_id, email, name, role, password_hash)
-     VALUES ($1, $2, $3, 'administrador', $4)
-     ON CONFLICT (tenant_id, email) DO UPDATE SET name = EXCLUDED.name, role = EXCLUDED.role, password_hash = EXCLUDED.password_hash`,
+    `INSERT INTO users (tenant_id, email, name, role, password_hash, permissions)
+     VALUES ($1, $2, $3, 'administrador', $4, '{"adminAccess": true, "catalogAreas": []}'::jsonb)
+     ON CONFLICT (tenant_id, email) WHERE deleted_at IS NULL DO UPDATE
+       SET name = EXCLUDED.name, role = EXCLUDED.role, password_hash = EXCLUDED.password_hash,
+           permissions = EXCLUDED.permissions`,
     [tenantId, adminEmail.trim().toLowerCase(), 'Administrador', passwordHash],
   );
   await client.query(

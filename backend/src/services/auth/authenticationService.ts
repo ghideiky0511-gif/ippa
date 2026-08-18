@@ -6,6 +6,7 @@ import type { AuthUser } from "@/lib/types";
 import { findActiveSessionRow, insertSessionRow, revokeSessionRow } from "@/models/sessionsModel";
 import { findUserRowByEmail, findUserRowById, type UserRow } from "@/models/usersModel";
 import { recordAuditEvent, AUTHENTICATION_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
+import { isAdministrator } from "@/services/users/userService";
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -48,6 +49,17 @@ export async function login(
     return user ? { user, token: await issueSession(tenant, user, context) } : null;
 }
 
+export async function loginAdministrator(
+    tenant: Tenant,
+    email: string,
+    password: string,
+    context: AuditRequestContext,
+): Promise<{ user: AuthUser; token: string } | null> {
+    const user = await authenticate(tenant, email, password);
+    if (!user || !isAdministrator(user)) return null;
+    return { user, token: await issueSession(tenant, user, context) };
+}
+
 export async function issueSession(
     tenant: Tenant,
     user: Pick<AuthUser, "id" | "role" | "name">,
@@ -80,6 +92,11 @@ export async function getAuthenticatedSession(tenant: Tenant, token?: string): P
 
 export async function getUserForToken(tenant: Tenant, token?: string): Promise<AuthUser | null> {
     return (await getAuthenticatedSession(tenant, token))?.user ?? null;
+}
+
+export async function getAdministratorForToken(tenant: Tenant, token?: string): Promise<AuthUser | null> {
+    const user = await getUserForToken(tenant, token);
+    return isAdministrator(user) ? user : null;
 }
 
 export async function logout(tenant: Tenant, token: string | undefined, context: AuditRequestContext): Promise<void> {

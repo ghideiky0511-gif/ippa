@@ -12,7 +12,7 @@ import { useTenant } from './TenantProvider';
 // /pagar/[token] é o link de pagamento público (ver POST
 // /api/sessions/[id]/payment-link/route.ts) — precisa funcionar sem login,
 // então nem faz sentido mostrar o topo do catálogo/carrinho ali.
-const NO_SHELL_PREFIXES = ['/login', '/cadastro', '/pagar', '/admin'];
+const NO_SHELL_PREFIXES = ['/login', '/cadastro', '/pagar', '/workspace'];
 
 export default function ConditionalShell({
   children,

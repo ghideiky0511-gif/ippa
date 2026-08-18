@@ -7,6 +7,7 @@ import {
 } from "@/models/settingsModel";
 import { ValidationError } from "@/services/shared/errors";
 import { requireSettingsAdministrator } from "./settingsAuthorization";
+import { databaseId } from "@/services/shared/identifiers";
 
 export async function listDiscounts(tenant: Tenant): Promise<Discount[]> {
     return withTenantTransaction(tenant, {}, async (client) => {
@@ -32,21 +33,22 @@ function validDiscounts(value: unknown): value is Discount[] {
         typeof discount.id === "string" && typeof discount.label === "string" &&
         typeof discount.active === "boolean" && (discount.type === "quantity" || discount.type === "products") &&
         Number.isFinite(discount.percent) && discount.percent >= 0 && discount.percent <= 100 &&
-        Array.isArray(discount.tiers) && discount.tiers.every((tier) => Number.isFinite(tier.minQty) && tier.minQty > 0 &&
+        Array.isArray(discount.tiers) && discount.tiers.every((tier: { minQty: number; percent: number }) => Number.isFinite(tier.minQty) && tier.minQty > 0 &&
             Number.isFinite(tier.percent) && tier.percent >= 0 && tier.percent <= 100) &&
-        Array.isArray(discount.productIds) && discount.productIds.every((id) => typeof id === "string"));
+        Array.isArray(discount.productIds) && discount.productIds.every((id: unknown) => typeof id === "string"));
 }
 
 export async function replaceDiscounts(tenant: Tenant, actor: AuthUser, value: unknown): Promise<Discount[]> {
     requireSettingsAdministrator(actor);
     if (!validDiscounts(value)) throw new ValidationError();
+    const discounts = value.map((discount) => ({ ...discount, id: databaseId(discount.id) }));
     await withTenantTransaction(tenant, actor, async (client) => {
         await deleteDiscountRows(client);
-        for (const discount of value) {
+        for (const discount of discounts) {
             await insertDiscountRow(client, discount);
             for (const tier of discount.tiers) await insertDiscountTierRow(client, discount.id, tier.minQty, tier.percent);
             for (const productId of discount.productIds) await insertDiscountProductRow(client, discount.id, productId);
         }
     });
-    return value;
+    return discounts;
 }

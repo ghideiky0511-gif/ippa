@@ -44,8 +44,8 @@ function expired(createdAt: Date | null, minutes: number): boolean {
   return Boolean(createdAt && Date.now() - createdAt.getTime() > minutes * 60_000);
 }
 
-async function paymentContext(client: PoolClient, token: string) {
-  const session = await findOrderSessionRowByPaymentTokenHash(client, digest(token));
+async function paymentContext(client: PoolClient, token: string, lock = false) {
+  const session = await findOrderSessionRowByPaymentTokenHash(client, digest(token), lock);
   if (!session || session.status !== "aguardando_pagamento") throw new NotFoundError("INVALID_PAYMENT_LINK");
   const settings = await findStoreSettingsRow(client);
   const expiration = settings?.payment_link_expiration_minutes ?? PAYMENT_LINK_EXPIRATION_DEFAULT_MINUTES;
@@ -93,7 +93,7 @@ export async function confirmPayment(
   let changedSession: OrderSession | undefined;
   let recipient: { email: string; name: string } | undefined;
   const order = await withTenantTransaction(tenant, {}, async (client) => {
-    const context = await paymentContext(client, token);
+    const context = await paymentContext(client, token, true);
     const total = context.cartTotal + (context.session.shipping?.price ?? 0);
     const row = await insertOrderRow(client, {
       clientId: context.session.client_id ?? undefined,

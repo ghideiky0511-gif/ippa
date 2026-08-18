@@ -7,6 +7,7 @@ import {
 } from "@/models/settingsModel";
 import { ValidationError } from "@/services/shared/errors";
 import { requireSettingsAdministrator } from "./settingsAuthorization";
+import { databaseId } from "@/services/shared/identifiers";
 
 export async function listHomeSections(tenant: Tenant): Promise<HomeSection[]> {
     return withTenantTransaction(tenant, {}, async (client) => {
@@ -36,7 +37,13 @@ export async function replaceHomeSections(tenant: Tenant, actor: AuthUser, value
         typeof section.id === "string" && (section.type === "banner" || section.type === "product") &&
         (section.type !== "product" || typeof section.productId === "string") &&
         (section.type !== "banner" || Array.isArray(section.banners)))) throw new ValidationError();
-    const sections = value as HomeSection[];
+    const sections = (value as HomeSection[]).map((section): HomeSection => section.type === "product"
+        ? { ...section, id: databaseId(section.id) }
+        : {
+            ...section,
+            id: databaseId(section.id),
+            banners: section.banners.map((banner) => ({ ...banner, id: databaseId(banner.id) })),
+        });
     await withTenantTransaction(tenant, actor, async (client) => {
         await deleteHomeSectionRows(client);
         for (const [position, section] of sections.entries()) {

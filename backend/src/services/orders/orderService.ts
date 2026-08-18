@@ -46,6 +46,7 @@ export async function createCustomerOrder(
     if (!Array.isArray(body.items) || typeof body.total !== "number" || !Number.isFinite(body.total) ||
         typeof body.channel !== "string") throw new ValidationError();
     const items = body.items as CartItem[];
+    const requestedChannel = body.channel;
     let changedSession: OrderSession | undefined;
     const order = await withTenantTransaction(tenant, user, async (client) => {
         let sellerId: string | undefined;
@@ -65,7 +66,7 @@ export async function createCustomerOrder(
             }
         }
         const allowedChannels = new Set(["presencial", "whatsapp", "online"]);
-        const channel = allowedChannels.has(body.channel) ? body.channel : "online";
+        const channel = allowedChannels.has(requestedChannel) ? requestedChannel : "online";
         const row = await insertOrderRow(client, {
             clientId: user.clientId,
             sellerId,

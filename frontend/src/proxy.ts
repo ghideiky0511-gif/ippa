@@ -20,7 +20,7 @@ function tenantFromReferer(request: NextRequest): string | null {
   try { return tenantFromPath(new URL(referer).pathname); } catch { return null; }
 }
 
-async function validateAdmin(request: NextRequest, tenantSlug: string): Promise<boolean> {
+async function validateWorkspaceAccess(request: NextRequest, tenantSlug: string): Promise<boolean> {
   const token = request.cookies.get('ippa_admin_session')?.value;
   if (!token) return false;
 
@@ -85,7 +85,7 @@ export async function proxy(request: NextRequest) {
   // Chamadas do navegador continuam usando /api por compatibilidade; o slug
   // vem da página de origem e é convertido antes de alcançar o backend.
   if (pathname.startsWith('/api/')) {
-    if (pathname.startsWith('/api/admin-session/')) return NextResponse.next();
+    if (pathname.startsWith('/api/workspace-session/')) return NextResponse.next();
     const tenantSlug = tenantFromReferer(request);
     if (!tenantSlug) return NextResponse.json({ error: 'Tenant ausente.' }, { status: 404 });
     return NextResponse.rewrite(new URL(`${BACKEND_URL}/api/${tenantSlug}${pathname.slice(4)}`, request.url));
@@ -102,12 +102,22 @@ export async function proxy(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-ippa-tenant', slugFromPath);
 
-  if (tenantPath.startsWith('/admin')) {
-    if (tenantPath.startsWith('/admin/login')) return NextResponse.rewrite(new URL('/admin/login', request.url), { request: { headers: requestHeaders } });
-    const authenticated = await validateAdmin(request, slugFromPath);
+  // Compatibilidade: painel antigo vivia em /admin, hoje é o workspace
+  // interno do tenant em /workspace. Redireciona preservando sub-rota e
+  // querystring — os slugs de folha (produtos, catalogo, etc.) não mudaram.
+  if (tenantPath.startsWith('/admin') && (tenantPath === '/admin' || tenantPath.startsWith('/admin/'))) {
+    const rest = tenantPath.slice('/admin'.length);
+    const target = new URL(`${tenantPrefix}/workspace${rest}`, request.url);
+    target.search = request.nextUrl.search;
+    return NextResponse.redirect(target, 307);
+  }
+
+  if (tenantPath.startsWith('/workspace')) {
+    if (tenantPath.startsWith('/workspace/login')) return NextResponse.rewrite(new URL('/workspace/login', request.url), { request: { headers: requestHeaders } });
+    const authenticated = await validateWorkspaceAccess(request, slugFromPath);
     return authenticated
       ? NextResponse.rewrite(new URL(tenantPath, request.url), { request: { headers: requestHeaders } })
-      : NextResponse.redirect(new URL(`${tenantPrefix}/admin/login`, request.url));
+      : NextResponse.redirect(new URL(`${tenantPrefix}/workspace/login`, request.url));
   }
 
   if (

@@ -4,6 +4,8 @@ import type { Discount, Product, Variant } from "@/lib/types";
 import {
     listInventoryBalanceRows,
     listPrimaryClassificationRows,
+    listProductPackItemRows,
+    listProductPackRows,
     listProductRows,
     listProductVariantRows,
 } from "@/models/catalogModel";
@@ -20,10 +22,12 @@ export async function listCatalog(tenant: Tenant): Promise<Product[]> {
         const products = await listProductRows(client);
         if (products.length === 0) return [];
 
-        const [variants, balances, classifications, storeSettings, discountRows, tierRows, discountProductRows] = await Promise.all([
+        const [variants, balances, classifications, packs, packItems, storeSettings, discountRows, tierRows, discountProductRows] = await Promise.all([
             listProductVariantRows(client),
             listInventoryBalanceRows(client),
             listPrimaryClassificationRows(client),
+            listProductPackRows(client),
+            listProductPackItemRows(client),
             findStoreSettingsRow(client),
             listDiscountRows(client),
             listDiscountTierRows(client),
@@ -88,6 +92,18 @@ export async function listCatalog(tenant: Tenant): Promise<Product[]> {
                 colors: [...new Set(productVariants.map((variant) => variant.color))],
                 sizes: [...new Set(productVariants.map((variant) => variant.size))],
                 variants: productVariants,
+                packs: packs.filter((pack) => pack.product_id === row.id).map((pack) => ({
+                    id: pack.id,
+                    scope: pack.scope,
+                    label: pack.label,
+                    color: pack.color ?? undefined,
+                    price: Number(pack.price),
+                    items: packItems.filter((item) => item.pack_id === pack.id).map((item) => ({
+                        size: item.size,
+                        qty: item.quantity,
+                        color: item.color ?? undefined,
+                    })),
+                })),
                 ...attributes,
                 ...manualOverride,
             } as Product;
@@ -102,8 +118,10 @@ export async function listCatalog(tenant: Tenant): Promise<Product[]> {
             const activeDiscount = getActiveProductDiscount(product.id, discounts);
             if (activeDiscount) product = { ...product, activeDiscount };
             if (storeSettings?.features?.suggestedPrice === false) {
-                const { suggestedRetailPrice: _suggestedRetailPrice, markup: _markup, ...withoutSuggestedPrice } = product;
-                product = withoutSuggestedPrice as Product;
+                const withoutSuggestedPrice = { ...product };
+                delete withoutSuggestedPrice.suggestedRetailPrice;
+                delete withoutSuggestedPrice.markup;
+                product = withoutSuggestedPrice;
             }
             return product;
         });

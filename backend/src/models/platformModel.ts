@@ -58,7 +58,8 @@ export async function listPlatformTenantRows(client: PoolClient): Promise<Platfo
 
 export async function listTenantUserCountRows(client: PoolClient, tenantIds: string[]): Promise<TenantUserCountRow[]> {
     const result = await client.query<TenantUserCountRow>(
-        "SELECT tenant_id, count(*)::text AS user_count FROM users WHERE tenant_id = ANY($1::uuid[]) GROUP BY tenant_id",
+        `SELECT tenant_id, count(*)::text AS user_count FROM users
+         WHERE tenant_id = ANY($1::uuid[]) AND deleted_at IS NULL GROUP BY tenant_id`,
         [tenantIds],
     );
     return result.rows;
@@ -82,7 +83,8 @@ export async function tenantExists(client: PoolClient, tenantId: string): Promis
 
 export async function listPlatformTenantUserRows(client: PoolClient, tenantId: string): Promise<PlatformTenantUserRow[]> {
     const result = await client.query<PlatformTenantUserRow>(
-        "SELECT id, name, email, role, created_at FROM users WHERE tenant_id = $1 ORDER BY created_at DESC",
+        `SELECT id, name, email, role, created_at FROM users
+         WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC`,
         [tenantId],
     );
     return result.rows;

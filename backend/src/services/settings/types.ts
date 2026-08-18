@@ -1,4 +1,5 @@
-export type AssignmentStrategy = "leastBusy" | "roundRobin" | "any";
+import type { AssignmentStrategy } from "@/lib/types";
+export type { AssignmentStrategy } from "@/lib/types";
 
 export interface StoreSettings {
   defaultMarkup?: number;

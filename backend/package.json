@@ -9,6 +9,7 @@
     "lint": "eslint",
     "db:migrate": "node scripts/migrate.mjs",
     "db:bootstrap": "node scripts/bootstrap.mjs",
+    "db:create-tenant-admin": "node scripts/create-tenant-admin.mjs",
     "db:setup": "npm run db:migrate && npm run db:bootstrap"
   },
   "dependencies": {

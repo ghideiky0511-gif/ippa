@@ -45,23 +45,21 @@ export async function getTenantClient(tenant: Tenant, user: AuthUser, id: string
 export async function createTenantClient(
     tenant: Tenant,
     user: AuthUser,
-    value: Pick<Client, "name" | "cpfCnpj">,
+    value: { name?: unknown; cpfCnpj?: unknown },
     context: AuditRequestContext,
 ): Promise<Client> {
     if (!canManageClients(user)) throw new ForbiddenError();
-    if (typeof value.name !== "string" || !value.name.trim()) throw new ValidationError();
+    const name = typeof value.name === "string" ? value.name.trim() : "";
+    const cpfCnpj = typeof value.cpfCnpj === "string" ? value.cpfCnpj.trim() || undefined : undefined;
+    if (!name) throw new ValidationError();
     return withTenantTransaction(tenant, user, async (client) => {
-        const currentRow = await findClientRow(client, id);
-        if (!currentRow) return null;
-        const current = toClient(currentRow);
-        const merged = { ...current, ...value };
-        const digits = merged.cpfCnpj ? documentDigits(merged.cpfCnpj) : "";
+        const digits = cpfCnpj ? documentDigits(cpfCnpj) : "";
         if (digits && await findClientRowByDocumentDigits(client, digits)) {
             throw new ConflictError("DOCUMENT_TAKEN");
         }
         const created = toClient(await insertClientRow(client, {
-            name: value.name.trim(),
-            cpfCnpj: value.cpfCnpj,
+            name,
+            cpfCnpj,
             lastSellerId: user.id,
         }));
         await recordAuditEvent(client, {
@@ -83,7 +81,11 @@ export async function updateTenantClient(
 ): Promise<Client | null> {
     if (!canManageClients(user) && user.clientId !== id) throw new ForbiddenError();
     return withTenantTransaction(tenant, user, async (client) => {
-        const digits = value.cpfCnpj ? documentDigits(value.cpfCnpj) : "";
+        const currentRow = await findClientRow(client, id);
+        if (!currentRow) return null;
+        const current = toClient(currentRow);
+        const merged = { ...current, ...value };
+        const digits = merged.cpfCnpj ? documentDigits(merged.cpfCnpj) : "";
         if (digits) {
             const existing = await findClientRowByDocumentDigits(client, digits);
             if (existing && existing.id !== id) throw new ConflictError("DOCUMENT_TAKEN");

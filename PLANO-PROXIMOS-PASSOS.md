@@ -1,6 +1,6 @@
 # Plano — parte do cliente do catálogo
 
-> Nota de estrutura: este documento registra decisões históricas e ainda contém referências aos antigos diretórios `web/` e `admin/`. Desde a consolidação, páginas e componentes ficam em `frontend/`, o painel fica em `frontend/src/app/admin` e `frontend/src/admin`, e APIs/dados/regras de servidor ficam em `backend/`.
+> Nota de estrutura: este documento registra decisões históricas e ainda contém referências aos antigos diretórios `web/` e `admin/`. Desde a consolidação, páginas e componentes ficam em `frontend/`, o workspace interno do tenant fica em `frontend/src/app/workspace` e `frontend/src/workspace` (rotas antigas em `/admin` redirecionam para `/workspace`), e APIs/dados/regras de servidor ficam em `backend/`.
 
 ## O que já existe (feito nesta rodada)
 

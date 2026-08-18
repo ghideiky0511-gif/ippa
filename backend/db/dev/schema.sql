@@ -894,9 +894,11 @@ CREATE TABLE public.users (
 	permissions jsonb DEFAULT '{}'::jsonb NOT NULL,
 	created_at timestamptz DEFAULT now() NOT NULL,
 	updated_at timestamptz DEFAULT now() NOT NULL,
-	CONSTRAINT users_pkey PRIMARY KEY (id),
-	CONSTRAINT users_tenant_id_email_key UNIQUE (tenant_id, email)
+	deleted_at timestamptz NULL,
+	CONSTRAINT users_pkey PRIMARY KEY (id)
 );
+CREATE INDEX users_tenant_active_role_idx ON public.users USING btree (tenant_id, role) WHERE (deleted_at IS NULL);
+CREATE UNIQUE INDEX users_tenant_email_active_key ON public.users USING btree (tenant_id, email) WHERE (deleted_at IS NULL);
 CREATE INDEX users_tenant_role_idx ON public.users USING btree (tenant_id, role);
 
 

@@ -3,7 +3,7 @@ import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser, CartItem } from "@/lib/types";
 import { deleteClientCartRows, findClientRow, insertClientCartRow } from "@/models/clientsModel";
 import { recordAuditEvent, CLIENT_CART_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
-import { ForbiddenError } from "@/services/shared/errors";
+import { ForbiddenError, NotFoundError } from "@/services/shared/errors";
 
 export async function saveClientCart(
     tenant: Tenant,
@@ -14,7 +14,7 @@ export async function saveClientCart(
 ): Promise<void> {
     if (user.clientId !== id) throw new ForbiddenError();
     await withTenantTransaction(tenant, user, async (client) => {
-        if (!await findClientRow(client, id)) throw new Error("NOT_FOUND");
+        if (!await findClientRow(client, id)) throw new NotFoundError("CLIENT_NOT_FOUND");
         await deleteClientCartRows(client, id);
         for (const item of items) await insertClientCartRow(client, id, item);
         await recordAuditEvent(client, {
