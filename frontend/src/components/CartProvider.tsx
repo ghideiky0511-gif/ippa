@@ -5,7 +5,9 @@ import { useTalao } from './TalaoProvider';
 import { useClientSession } from './ClientSessionProvider';
 import { useAuthUser } from './AuthProvider';
 import { getCartDiscount, type AppliedDiscount } from '@/lib/discounts';
-import type { CartItem, Discount, Order, Product, ShippingOption } from '@/lib/types';
+import type { CartItem, Order, ShippingOption } from '@/domain/orders/types';
+import type { Discount } from '@/domain/catalog/types';
+import type { Product } from '@/domain/products/types';
 
 interface CartContextValue {
   cart: CartItem[];

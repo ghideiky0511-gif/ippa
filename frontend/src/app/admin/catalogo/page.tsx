@@ -1,17 +1,16 @@
-// @ts-nocheck
 import CatalogOrderApp from '@/admin/components/catalog/CatalogOrderApp';
 import { fetchCatalog } from '@/admin/lib/catalogClient';
 
 export const dynamic = 'force-dynamic';
 
 export default async function CatalogoPage() {
-  let products = [];
-  let loadError = null;
+  let products: Awaited<ReturnType<typeof fetchCatalog>> = [];
+  let loadError: string | null = null;
 
   try {
     products = await fetchCatalog();
   } catch (err) {
-    loadError = err.message;
+    loadError = err instanceof Error ? err.message : 'Erro desconhecido';
   }
 
   if (loadError) {

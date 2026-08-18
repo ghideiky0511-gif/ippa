@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { formatBRL } from '@/lib/format';
 import { useAuthUser } from '@/components/AuthProvider';
-import type { CartItem, Order, Product } from '@/lib/types';
+import type { CartItem, Order } from '@/domain/orders/types';
+import type { Product } from '@/domain/products/types';
 
 // Pedido de atacado pode ter dezenas de linhas (peça×cor×tamanho) — listar
 // item a item deixaria o card gigante. Resume por categoria (peças, qty e

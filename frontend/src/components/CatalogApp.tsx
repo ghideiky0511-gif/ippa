@@ -6,7 +6,8 @@ import Filters from './Filters';
 import ProductCard from './ProductCard';
 import { getCategories, getColors, getSizes } from '@/lib/catalogFacets';
 import { CONFIG } from '@/lib/config';
-import type { Highlight, Product } from '@/lib/types';
+import type { Highlight } from '@/domain/catalog/types';
+import type { Product } from '@/domain/products/types';
 
 export interface CatalogFilters {
   term: string;

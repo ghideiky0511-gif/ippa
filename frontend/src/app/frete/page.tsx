@@ -10,7 +10,8 @@ import { useTalao } from '@/components/TalaoProvider';
 import { useAuthUser } from '@/components/AuthProvider';
 import { useTalaoClientGate } from '@/components/useTalaoClientGate';
 import CheckoutSteps from '@/components/CheckoutSteps';
-import type { Client, ShippingOption } from '@/lib/types';
+import type { Client } from '@/domain/clients/types';
+import type { ShippingOption } from '@/domain/orders/types';
 
 export default function FretePage() {
   const router = useRouter();

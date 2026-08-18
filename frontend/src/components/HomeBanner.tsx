@@ -47,26 +47,26 @@ export default function HomeBanner({
   }
 
   return (
-    <header className="banner home-banner" style={style}>
+    <header className="relative [height:var(--banner-h,320px)] overflow-hidden bg-linear-to-br from-brand-primary to-brand-primary-dark text-white max-sm:h-auto max-sm:[aspect-ratio:var(--banner-ratio,4/5)]" style={style}>
       {current.type === 'video' ? (
-        <video src={current.mediaUrl} autoPlay loop muted playsInline className="banner-media" />
+        <video src={current.mediaUrl} autoPlay loop muted playsInline className="block size-full object-cover opacity-85" />
       ) : (
-        <img src={current.mediaUrl} alt={current.title || ''} className="banner-media" />
+        <img src={current.mediaUrl} alt={current.title || ''} className="block size-full object-cover opacity-85" />
       )}
-      <div className="banner-content">
-        <Heading>{current.title || fallbackTitle}</Heading>
-        {current.subtitle && <p>{current.subtitle}</p>}
+      <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
+        <Heading className="mb-1.5 text-[clamp(22px,4vw,36px)]">{current.title || fallbackTitle}</Heading>
+        {current.subtitle && <p className="opacity-90">{current.subtitle}</p>}
       </div>
 
       {banners.length > 1 && (
         <>
-          <button className="home-banner-arrow prev" aria-label="Banner anterior" onClick={prev}>‹</button>
-          <button className="home-banner-arrow next" aria-label="Próximo banner" onClick={next}>›</button>
-          <div className="home-banner-dots">
+          <button className="absolute top-1/2 left-3.5 flex size-9 -translate-y-1/2 items-center justify-center rounded-full border-0 bg-black/35 text-[22px] leading-none text-white hover:bg-black/55 active:-translate-y-1/2 active:scale-90" aria-label="Banner anterior" onClick={prev}>‹</button>
+          <button className="absolute top-1/2 right-3.5 flex size-9 -translate-y-1/2 items-center justify-center rounded-full border-0 bg-black/35 text-[22px] leading-none text-white hover:bg-black/55 active:-translate-y-1/2 active:scale-90" aria-label="Próximo banner" onClick={next}>›</button>
+          <div className="absolute right-0 bottom-3.5 left-0 flex justify-center gap-2">
             {banners.map((b, i) => (
               <button
                 key={b.id}
-                className={'home-banner-dot' + (i === index ? ' active' : '')}
+                className={`size-2 cursor-pointer rounded-full border-0 p-0 ${i === index ? 'bg-white' : 'bg-white/50'}`}
                 aria-label={`Ir para o banner ${i + 1}`}
                 onClick={() => setIndex(i)}
               />

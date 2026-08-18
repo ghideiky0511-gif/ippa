@@ -6,7 +6,7 @@ import ProductDetailContent from './ProductDetailContent';
 import SimilarProducts from './SimilarProducts';
 import { useCart } from './CartProvider';
 import { formatBRL } from '@/lib/format';
-import type { Product } from '@/lib/types';
+import type { Product } from '@/domain/products/types';
 
 function MiniCartPreview() {
   const { cartCount, cartTotal, openCart } = useCart();

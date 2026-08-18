@@ -3,7 +3,7 @@
 import { use, useEffect, useState } from 'react';
 import { formatBRL } from '@/lib/format';
 import { CONFIG } from '@/lib/config';
-import type { CartItem } from '@/lib/types';
+import type { CartItem } from '@/domain/orders/types';
 
 const PAYMENT_METHODS = [
   { id: 'pix', label: 'Pix' },

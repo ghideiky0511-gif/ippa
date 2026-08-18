@@ -1,4 +1,3 @@
-// @ts-nocheck
 import ToolsApp from '@/admin/components/tools/ToolsApp';
 import { fetchStoreSettings } from '@/admin/lib/storeSettingsClient';
 import { fetchSimilarProductsSettings } from '@/admin/lib/similarProductsSettingsClient';
@@ -7,10 +6,10 @@ import { fetchCatalog } from '@/admin/lib/catalogClient';
 export const dynamic = 'force-dynamic';
 
 export default async function FerramentasPage() {
-  let settings = {};
-  let similarProductsSettings = null;
-  let products = [];
-  let loadError = null;
+  let settings: Awaited<ReturnType<typeof fetchStoreSettings>> = {};
+  let similarProductsSettings: Awaited<ReturnType<typeof fetchSimilarProductsSettings>> | null = null;
+  let products: Awaited<ReturnType<typeof fetchCatalog>> = [];
+  let loadError: string | null = null;
 
   try {
     [settings, similarProductsSettings, products] = await Promise.all([
@@ -19,7 +18,7 @@ export default async function FerramentasPage() {
       fetchCatalog(),
     ]);
   } catch (err) {
-    loadError = err.message;
+    loadError = err instanceof Error ? err.message : 'Erro desconhecido';
   }
 
   if (loadError) {

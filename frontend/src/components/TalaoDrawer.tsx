@@ -5,7 +5,8 @@ import { useTalao } from './TalaoProvider';
 import { useCart } from './CartProvider';
 import { formatBRL } from '@/lib/format';
 import { getDocumentType } from '@/lib/document';
-import type { Client, OrderSession } from '@/lib/types';
+import type { Client } from '@/domain/clients/types';
+import type { OrderSession } from '@/domain/orders/types';
 
 function itemCount(session: OrderSession): number {
   return session.items.reduce((sum, i) => sum + i.qty, 0);

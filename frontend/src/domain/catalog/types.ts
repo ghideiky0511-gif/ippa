@@ -12,3 +12,25 @@ export type ResolvedHomeSection = HomeSection & { product?: Product };
 export interface CategoryTreeEntry { category: string; subcategories: string[]; }
 export interface SimilarProductsRuleConfig { limit: number; rules: string[]; }
 export interface SimilarProductsSettings { quickview: SimilarProductsRuleConfig; cart: SimilarProductsRuleConfig; complementaryCategories: Record<string, string[]>; }
+export interface ProductOverride {
+  sku?: string;
+  suggestedRetailPrice?: number;
+  markup?: number;
+  category?: string;
+  subcategory?: string;
+  collection?: string;
+  similarProductIdsQuickview?: string[];
+  similarProductIdsCart?: string[];
+}
+export type ProductOverrides = Record<string, ProductOverride>;
+export interface StoreSettings {
+  defaultMarkup?: number;
+  paymentLinkExpirationMinutes?: number;
+  assignmentStrategy?: 'leastBusy' | 'roundRobin' | 'any';
+  features?: Record<string, boolean>;
+}
+export interface HomeAiHistoryItem {
+  prompt: string;
+  sections: HomeSection[];
+  createdAt?: string;
+}

@@ -1,6 +1,6 @@
 'use client';
 
-import type { CartItem } from '@/lib/types';
+import type { CartItem } from '@/domain/orders/types';
 
 export default function CartItemRow({
   item,

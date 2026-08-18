@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getDocumentType } from '@/lib/document';
 import { CART_KEY } from '@/components/CartProvider';
-import type { CartItem } from '@/lib/types';
+import type { CartItem } from '@/domain/orders/types';
 
 interface ViaCepResponse {
   erro?: boolean;

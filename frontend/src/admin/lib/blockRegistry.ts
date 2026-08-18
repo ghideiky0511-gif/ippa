@@ -1,8 +1,19 @@
-// @ts-nocheck
 import BannerBlockEditor from '@/admin/components/builder/blocks/BannerBlockEditor';
 import ProductBlockEditor from '@/admin/components/builder/blocks/ProductBlockEditor';
 import BannerPreview from '@/admin/components/builder/blocks/BannerPreview';
 import ProductPreview from '@/admin/components/builder/blocks/ProductPreview';
+import type { HomeSection } from '@/domain/catalog/types';
+
+type BlockToolType = 'banner-image' | 'banner-video' | 'product';
+type BlockDefinition = {
+  type: BlockToolType;
+  sectionType: HomeSection['type'];
+  label: string;
+  icon: string;
+  Editor: typeof BannerBlockEditor | typeof ProductBlockEditor;
+  Preview: typeof BannerPreview | typeof ProductPreview;
+  createDefault: (x?: number, y?: number) => HomeSection;
+};
 
 // Largura do canvas de referência (px) — mesma largura de `.home-sections`
 // em web/src/app/globals.css, pra x/y/width feitos aqui corresponderem 1:1
@@ -13,7 +24,7 @@ export const CANVAS_WIDTH = 1200;
 // arrastar quanto pelos campos numéricos de posição/tamanho no painel.
 export const MIN_SIZE = 80;
 
-function newId() {
+function newId(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
@@ -27,7 +38,7 @@ function newId() {
 // `createDefault(x, y)` recebe o ponto onde o adm soltou a ferramenta no
 // canvas (0,0 se não informado, ex. template inicial) e devolve o bloco já
 // posicionado ali, com o tamanho padrão daquele tipo.
-export const BLOCK_REGISTRY = [
+export const BLOCK_REGISTRY: BlockDefinition[] = [
   {
     type: 'banner-image',
     sectionType: 'banner',
@@ -83,12 +94,14 @@ export const BLOCK_REGISTRY = [
   },
 ];
 
-export function getBlockDefinition(sectionType) {
+export function getBlockDefinition(sectionType: HomeSection['type']): BlockDefinition | undefined {
   return BLOCK_REGISTRY.find((b) => b.sectionType === sectionType);
 }
 
-function findTool(type) {
-  return BLOCK_REGISTRY.find((b) => b.type === type);
+function findTool(type: BlockToolType): BlockDefinition {
+  const tool = BLOCK_REGISTRY.find((block) => block.type === type);
+  if (!tool) throw new Error(`Ferramenta de bloco não encontrada: ${type}`);
+  return tool;
 }
 
 // Estado inicial quando a loja ainda não tem nada configurado.

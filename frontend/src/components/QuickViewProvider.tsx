@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, type ReactNode } from 'react';
-import type { Product } from '@/lib/types';
+import type { Product } from '@/domain/products/types';
 
 interface QuickViewContextValue {
   quickViewProduct: Product | null;

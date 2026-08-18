@@ -1,4 +1,3 @@
-// @ts-nocheck
 import BuilderApp from '@/admin/components/builder/BuilderApp';
 import { fetchHomeSections } from '@/admin/lib/homeSectionsClient';
 import { fetchCatalog } from '@/admin/lib/catalogClient';
@@ -6,14 +5,14 @@ import { fetchCatalog } from '@/admin/lib/catalogClient';
 export const dynamic = 'force-dynamic';
 
 export default async function BuilderPage() {
-  let sections = [];
-  let products = [];
-  let loadError = null;
+  let sections: Awaited<ReturnType<typeof fetchHomeSections>> = [];
+  let products: Awaited<ReturnType<typeof fetchCatalog>> = [];
+  let loadError: string | null = null;
 
   try {
     [sections, products] = await Promise.all([fetchHomeSections(), fetchCatalog()]);
   } catch (err) {
-    loadError = err.message;
+    loadError = err instanceof Error ? err.message : 'Erro desconhecido';
   }
 
   if (loadError) {

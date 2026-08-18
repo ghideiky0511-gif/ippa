@@ -14,7 +14,8 @@ import PresenceBadge from './PresenceBadge';
 import ProductQuickView from './ProductQuickView';
 import SideMenu from './SideMenu';
 import { CONFIG } from '@/lib/config';
-import type { AuthUser, CategoryTreeEntry } from '@/lib/types';
+import type { AuthUser } from '@/domain/clients/types';
+import type { CategoryTreeEntry } from '@/domain/catalog/types';
 
 // Instância única do quick-view, pra qualquer página poder abrir (clique na
 // imagem de um ProductCard, ou "ver mais"/"selecionar" no carrinho — ver

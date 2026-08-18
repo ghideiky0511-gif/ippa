@@ -1,18 +1,14 @@
-// @ts-nocheck
-import { API_BASE } from '@/lib/api-config';
+import type { Highlight } from '@/domain/catalog/types';
+import { adminJson } from './http';
 
-export async function fetchHighlights() {
-  const res = await fetch(`${API_BASE}/api/highlights`, { cache: 'no-store' });
-  if (!res.ok) throw new Error('Não foi possível carregar as coleções.');
-  return res.json();
+export function fetchHighlights(): Promise<Highlight[]> {
+  return adminJson('/api/highlights', {}, 'Não foi possível carregar as coleções.');
 }
 
-export async function saveHighlights(highlights) {
-  const res = await fetch(`${API_BASE}/api/highlights`, {
+export function saveHighlights(highlights: Highlight[]): Promise<Highlight[]> {
+  return adminJson('/api/highlights', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(highlights),
-  });
-  if (!res.ok) throw new Error('Não foi possível salvar — confira os dados e tente de novo.');
-  return res.json();
+  }, 'Não foi possível salvar — confira os dados e tente de novo.');
 }

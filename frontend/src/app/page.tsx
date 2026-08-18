@@ -1,7 +1,8 @@
 import HomeApp from '@/components/HomeApp';
 import { resolveHomeSections } from '@/lib/catalogFacets';
 import { backendJson } from '@/lib/backend';
-import type { HomeSection, Product } from '@/lib/types';
+import type { HomeSection } from '@/domain/catalog/types';
+import type { Product } from '@/domain/products/types';
 
 // Força renderização em tempo de request: home-sections.json é editado pela
 // plataforma admin (fora deste app) e precisa refletir aqui sem rebuild.

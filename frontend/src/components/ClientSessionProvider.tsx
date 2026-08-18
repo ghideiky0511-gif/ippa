@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { CartItem, OrderSession, ShippingOption } from '@/lib/types';
+import type { CartItem, OrderSession, ShippingOption } from '@/domain/orders/types';
 
 // Contrato mínimo que CartProvider.tsx precisa pra escrever num pedido
 // compartilhado — mesmo formato que TalaoProvider.tsx expõe (ver

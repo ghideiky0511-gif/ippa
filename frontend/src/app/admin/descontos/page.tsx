@@ -1,4 +1,3 @@
-// @ts-nocheck
 import DiscountsApp from '@/admin/components/discounts/DiscountsApp';
 import { fetchDiscounts } from '@/admin/lib/discountsClient';
 import { fetchCatalog } from '@/admin/lib/catalogClient';
@@ -6,14 +5,14 @@ import { fetchCatalog } from '@/admin/lib/catalogClient';
 export const dynamic = 'force-dynamic';
 
 export default async function DescontosPage() {
-  let discounts = [];
-  let products = [];
-  let loadError = null;
+  let discounts: Awaited<ReturnType<typeof fetchDiscounts>> = [];
+  let products: Awaited<ReturnType<typeof fetchCatalog>> = [];
+  let loadError: string | null = null;
 
   try {
     [discounts, products] = await Promise.all([fetchDiscounts(), fetchCatalog()]);
   } catch (err) {
-    loadError = err.message;
+    loadError = err instanceof Error ? err.message : 'Erro desconhecido';
   }
 
   if (loadError) {

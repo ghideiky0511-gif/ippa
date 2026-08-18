@@ -1,18 +1,14 @@
-// @ts-nocheck
-import { API_BASE } from '@/lib/api-config';
+import type { StoreSettings } from '@/domain/catalog/types';
+import { adminJson } from './http';
 
-export async function fetchStoreSettings() {
-  const res = await fetch(`${API_BASE}/api/store-settings`, { cache: 'no-store' });
-  if (!res.ok) throw new Error('Não foi possível carregar as configurações da loja.');
-  return res.json();
+export function fetchStoreSettings(): Promise<StoreSettings> {
+  return adminJson('/api/store-settings', {}, 'Não foi possível carregar as configurações da loja.');
 }
 
-export async function saveStoreSettings(settings) {
-  const res = await fetch(`${API_BASE}/api/store-settings`, {
+export function saveStoreSettings(settings: StoreSettings): Promise<StoreSettings> {
+  return adminJson('/api/store-settings', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(settings),
-  });
-  if (!res.ok) throw new Error('Não foi possível salvar — confira os dados e tente de novo.');
-  return res.json();
+  }, 'Não foi possível salvar — confira os dados e tente de novo.');
 }

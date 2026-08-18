@@ -11,7 +11,8 @@ import CartRows from '@/components/CartRows';
 import CheckoutSteps from '@/components/CheckoutSteps';
 import UnselectedItemsModal from '@/components/UnselectedItemsModal';
 import SimilarProducts from '@/components/SimilarProducts';
-import type { CartItem, Product } from '@/lib/types';
+import type { CartItem } from '@/domain/orders/types';
+import type { Product } from '@/domain/products/types';
 
 // Peças que estão no carrinho mas com qty 0 em todo mundo (rascunho nunca
 // resolvido, ou grade zerada — ver decrement em CartRows.tsx, que agora

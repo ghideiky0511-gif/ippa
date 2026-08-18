@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import ProductCard from './ProductCard';
-import type { Product } from '@/lib/types';
+import type { Product } from '@/domain/products/types';
 
 // Fileira horizontal de "produtos similares" (regra configurável em
 // /ferramentas, ver web/src/lib/similarProducts.ts) — usada na página

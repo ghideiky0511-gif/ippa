@@ -1,9 +1,6 @@
-// @ts-nocheck
-import { API_BASE } from '@/lib/api-config';
+import type { Product } from '@/domain/products/types';
+import { adminJson } from './http';
 
-/** @returns {Promise<import('./homeSectionTypes').Product[]>} */
-export async function fetchCatalog() {
-  const res = await fetch(`${API_BASE}/api/catalog`, { cache: 'no-store' });
-  if (!res.ok) throw new Error('Não foi possível carregar os produtos do catálogo.');
-  return res.json();
+export function fetchCatalog(): Promise<Product[]> {
+  return adminJson('/api/catalog', {}, 'Não foi possível carregar os produtos do catálogo.');
 }

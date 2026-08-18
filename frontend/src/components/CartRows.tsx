@@ -9,7 +9,8 @@ import { resolveImageForColor } from '@/lib/images';
 import { useCart } from './CartProvider';
 import { useQuickView } from './QuickViewProvider';
 import { useAuthUser } from './AuthProvider';
-import type { CartItem, Product } from '@/lib/types';
+import type { CartItem } from '@/domain/orders/types';
+import type { Product } from '@/domain/products/types';
 
 // Visão de linhas do carrinho na página cheia (não é a de card do drawer —
 // ver GroupedCartItems.tsx, resumo enxuto do CartDrawer). Agrupado em dois

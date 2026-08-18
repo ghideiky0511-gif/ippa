@@ -3,7 +3,8 @@
 import type { ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
 import AppShell from './AppShell';
-import type { AuthUser, CategoryTreeEntry } from '@/lib/types';
+import type { AuthUser } from '@/domain/clients/types';
+import type { CategoryTreeEntry } from '@/domain/catalog/types';
 
 // /login, /cadastro e /pagar são as únicas páginas sem o shell do catálogo
 // público (AppShell) — o talão da vendedora agora vive dentro do próprio

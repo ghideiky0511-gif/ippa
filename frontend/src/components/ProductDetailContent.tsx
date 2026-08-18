@@ -9,7 +9,7 @@ import { ADDABLE_AVAILABILITY, buildVariantMatrix, deliveryLabel, splitStockQty 
 import { resolveGallery, resolveImageForColor } from '@/lib/images';
 import { useCart } from './CartProvider';
 import { useAuthUser } from './AuthProvider';
-import type { Availability, Product } from '@/lib/types';
+import type { Availability, Product } from '@/domain/products/types';
 
 type AvailabilityFilter = 'all' | 'in_stock' | 'preorder';
 

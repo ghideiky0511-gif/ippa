@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useTalao } from './TalaoProvider';
 import { isClientComplete } from '@/lib/clientComplete';
-import type { Client } from '@/lib/types';
+import type { Client } from '@/domain/clients/types';
 
 export interface TalaoClientGate {
   blocked: boolean;

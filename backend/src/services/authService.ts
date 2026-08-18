@@ -43,7 +43,7 @@ export async function issueSession(tenant: Tenant, user: Pick<AuthUser, 'id' | '
   const token = randomBytes(32).toString('base64url');
   await withTenantTransaction(tenant, { userId: user.id, role: user.role }, async (client) => {
     await insertSession(client, user.id, tokenDigest(token), new Date(Date.now() + SESSION_TTL_MS));
-    await recordAuditEvent(client, { action: AUTHENTICATION_AUDIT_ACTIONS.LOGGED_IN, entityType: 'user', entityId: user.id, actor: user });
+    await recordAuditEvent(client, { action: AUTHENTICATION_AUDIT_ACTIONS.LOGGED_IN, entityId: user.id, actor: user });
   });
   return token;
 }
@@ -65,7 +65,7 @@ export async function logout(tenant: Tenant, token?: string): Promise<void> {
     if (!userId) return;
     const user = await findUserById(client, userId);
     await revokeSession(client, tokenDigest(token));
-    if (user) await recordAuditEvent(client, { action: AUTHENTICATION_AUDIT_ACTIONS.LOGGED_OUT, entityType: 'user', entityId: user.id, actor: user });
+    if (user) await recordAuditEvent(client, { action: AUTHENTICATION_AUDIT_ACTIONS.LOGGED_OUT, entityId: user.id, actor: user });
   });
 }
 

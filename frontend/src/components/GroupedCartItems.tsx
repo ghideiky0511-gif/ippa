@@ -6,7 +6,7 @@ import { useCart } from './CartProvider';
 import { useQuickView } from './QuickViewProvider';
 import { useAuthUser } from './AuthProvider';
 import { formatBRL, priceWithPercentOff } from '@/lib/format';
-import type { CartItem } from '@/lib/types';
+import type { CartItem } from '@/domain/orders/types';
 
 function isDraft(item: CartItem): boolean {
   return !item.color && !item.size;

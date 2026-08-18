@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import CatalogApp from '@/components/CatalogApp';
 import { backendJson } from '@/lib/backend';
-import type { Product } from '@/lib/types';
+import type { Product } from '@/domain/products/types';
 
 // productOverrides.json é editado pela plataforma admin e precisa
 // refletir aqui sem rebuild — mesmo motivo de web/src/app/page.tsx.

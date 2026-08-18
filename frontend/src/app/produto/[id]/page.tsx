@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { backendJson } from '@/lib/backend';
-import type { Product } from '@/lib/types';
+import type { Product } from '@/domain/products/types';
 import ProductDetailContent from '@/components/ProductDetailContent';
 import SimilarProducts from '@/components/SimilarProducts';
 

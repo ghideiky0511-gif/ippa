@@ -2,7 +2,8 @@ import { getProductsByIds } from '@/lib/catalogFacets';
 import { backendJson } from '@/lib/backend';
 import { formatBRL } from '@/lib/format';
 import PrintButton from '@/components/PrintButton';
-import type { Highlight, Product } from '@/lib/types';
+import type { Highlight } from '@/domain/catalog/types';
+import type { Product } from '@/domain/products/types';
 
 // `searchParams` já é uma Request-time API — só de usar isso a página vira
 // dynamic sozinha, não precisa de `export const dynamic` aqui.

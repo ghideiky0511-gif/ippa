@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { CONFIG } from '@/lib/config';
 import { formatBRL } from '@/lib/format';
 import { getSearchSuggestions } from '@/lib/search';
-import type { CategoryTreeEntry, Highlight, Product } from '@/lib/types';
+import type { CategoryTreeEntry, Highlight } from '@/domain/catalog/types';
+import type { Product } from '@/domain/products/types';
 
 // Menu lateral global (hamburguer -> drawer da esquerda). Painel 1 tem busca
 // + destaques + públicos. Clicar num público abre o painel 2 (categorias

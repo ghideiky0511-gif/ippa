@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getBackendUrl } from '@/lib/api-config';
-import type { AuthUser } from '@/lib/types';
+import type { AuthUser } from '@/domain/clients/types';
 
 const BACKEND_URL = getBackendUrl();
 const CUSTOMER_PUBLIC_PREFIXES = ['/login', '/cadastro', '/pagar', '/em-construcao'];

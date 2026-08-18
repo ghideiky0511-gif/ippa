@@ -1,4 +1,3 @@
-// @ts-nocheck
 import ProductsApp from '@/admin/components/products/ProductsApp';
 import { fetchCatalog } from '@/admin/lib/catalogClient';
 import { fetchProductOverrides } from '@/admin/lib/productOverridesClient';
@@ -7,10 +6,10 @@ import { fetchStoreSettings } from '@/admin/lib/storeSettingsClient';
 export const dynamic = 'force-dynamic';
 
 export default async function ProdutosPage() {
-  let products = [];
-  let overrides = {};
-  let settings = {};
-  let loadError = null;
+  let products: Awaited<ReturnType<typeof fetchCatalog>> = [];
+  let overrides: Awaited<ReturnType<typeof fetchProductOverrides>> = {};
+  let settings: Awaited<ReturnType<typeof fetchStoreSettings>> = {};
+  let loadError: string | null = null;
 
   try {
     [products, overrides, settings] = await Promise.all([
@@ -19,7 +18,7 @@ export default async function ProdutosPage() {
       fetchStoreSettings(),
     ]);
   } catch (err) {
-    loadError = err.message;
+    loadError = err instanceof Error ? err.message : 'Erro desconhecido';
   }
 
   if (loadError) {

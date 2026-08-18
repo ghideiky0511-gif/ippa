@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { CartItem, OrderSession, ShippingOption } from '@/lib/types';
+import type { CartItem, OrderSession, ShippingOption } from '@/domain/orders/types';
 
 interface TalaoContextValue {
   sessions: OrderSession[]; // todas (aberta + fechada) — usado por "buscar existentes"

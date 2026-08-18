@@ -31,7 +31,7 @@ export async function createTenantClient(tenant: Tenant, user: AuthUser, value: 
   return withTenantTransaction(tenant, user, async (client) => {
     if (value.cpfCnpj && await findClientByDocument(client, value.cpfCnpj)) throw new ConflictError('DOCUMENT_TAKEN');
     const created = await insertClient(client, { name: value.name.trim(), cpfCnpj: value.cpfCnpj, email: undefined, cep: undefined, street: undefined, number: undefined, complement: undefined, neighborhood: undefined, city: undefined, state: undefined, companyResponsible: undefined, storeName: undefined, lastSellerId: user.id });
-    await recordAuditEvent(client, { action: CLIENT_AUDIT_ACTIONS.CREATED, entityType: 'client', entityId: created.id, actor: user });
+    await recordAuditEvent(client, { action: CLIENT_AUDIT_ACTIONS.CREATED, entityId: created.id, actor: user });
     return created;
   });
 }
@@ -46,7 +46,7 @@ export async function updateTenantClient(tenant: Tenant, user: AuthUser, id: str
     const updated = await replaceClient(client, id, value);
     if (updated) {
       const changedFields = AUDITED_CLIENT_FIELDS.filter((field) => Object.hasOwn(value, field));
-      await recordAuditEvent(client, { action: CLIENT_AUDIT_ACTIONS.UPDATED, entityType: 'client', entityId: id, actor: user, metadata: { changedFields } });
+      await recordAuditEvent(client, { action: CLIENT_AUDIT_ACTIONS.UPDATED, entityId: id, actor: user, metadata: { changedFields } });
     }
     return updated;
   });
@@ -57,7 +57,7 @@ export async function saveClientCart(tenant: Tenant, user: AuthUser, id: string,
   await withTenantTransaction(tenant, user, async (client) => {
     if (!await findClient(client, id)) throw new Error('NOT_FOUND');
     await replaceClientCart(client, id, items);
-    await recordAuditEvent(client, { action: CLIENT_CART_AUDIT_ACTIONS.SAVED, entityType: 'client_cart', entityId: id, actor: user, metadata: { itemCount: items.length } });
+    await recordAuditEvent(client, { action: CLIENT_CART_AUDIT_ACTIONS.SAVED, entityId: id, actor: user, metadata: { itemCount: items.length } });
   });
 }
 
@@ -74,7 +74,7 @@ export async function createSellerSession(tenant: Tenant, user: AuthUser, body: 
       clientId: body.clientId, sellerId: user.id, channel: body.channel === 'whatsapp' || body.channel === 'online' ? body.channel : 'presencial',
       items: Array.isArray(body.items) ? body.items : [], status: 'aberto', shipping: undefined, notes: body.notes,
     });
-    await recordAuditEvent(client, { action: ORDER_SESSION_AUDIT_ACTIONS.CREATED, entityType: 'order_session', entityId: created.id, actor: user, metadata: { channel: created.channel, hasClient: Boolean(created.clientId), itemCount: created.items.length } });
+    await recordAuditEvent(client, { action: ORDER_SESSION_AUDIT_ACTIONS.CREATED, entityId: created.id, actor: user, metadata: { channel: created.channel, hasClient: Boolean(created.clientId), itemCount: created.items.length } });
     return created;
   });
 }

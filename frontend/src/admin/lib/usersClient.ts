@@ -1,68 +1,35 @@
-// @ts-nocheck
-import { API_BASE } from '@/lib/api-config';
+import type { AdminUser, ClientRegistration, UserCredentials } from '@/domain/clients/types';
+import { adminJson } from './http';
 
-export async function fetchUsers() {
-  const res = await fetch(`${API_BASE}/api/admin/users`, { cache: 'no-store' });
-  if (!res.ok) throw new Error('Não foi possível carregar os usuários.');
-  return res.json();
+export function fetchUsers(): Promise<AdminUser[]> {
+  return adminJson('/api/admin/users', {}, 'Não foi possível carregar os usuários.');
 }
 
-export async function createVendedora({ name, email, password, catalogAreas }) {
-  const res = await fetch(`${API_BASE}/api/admin/users`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, email, password, catalogAreas }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Não foi possível criar o acesso.');
-  return data;
+export function createVendedora(credentials: UserCredentials & { password: string }): Promise<AdminUser> {
+  return adminJson('/api/admin/users', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(credentials),
+  }, 'Não foi possível criar o acesso.');
 }
 
-// Edita o LOGIN (nome/e-mail de acesso/senha) e, pra vendedora, as áreas
-// do catálogo liberadas — vale pra vendedora e cliente (cliente não manda
-// catalogAreas, ver UserFormModal.js). `password` vazio/omitido mantém a
-// senha atual.
-export async function updateUser(id, { name, email, password, catalogAreas }) {
-  const res = await fetch(`${API_BASE}/api/admin/users/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, email, password: password || undefined, catalogAreas }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Não foi possível salvar as alterações.');
-  return data;
+export function updateUser(id: string, credentials: UserCredentials): Promise<AdminUser> {
+  return adminJson(`/api/admin/users/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...credentials, password: credentials.password || undefined }),
+  }, 'Não foi possível salvar as alterações.');
 }
 
-export async function deleteUser(id) {
-  const res = await fetch(`${API_BASE}/api/admin/users/${id}`, { method: 'DELETE' });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Não foi possível excluir o usuário.');
-  return data;
+export function deleteUser(id: string): Promise<void> {
+  return adminJson(`/api/admin/users/${id}`, { method: 'DELETE' }, 'Não foi possível excluir o usuário.');
 }
 
-// Cria um cadastro de cliente completo (cadastro + login) direto pelo
-// admin — campos do formulário: name/email/password (login) +
-// clientEmail/cpfCnpj/cep/endereço/companyResponsible/storeName (cadastro).
-export async function createCliente(fields) {
-  const res = await fetch(`${API_BASE}/api/admin/clients`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(fields),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Não foi possível criar a cliente.');
-  return data;
+export function createCliente(fields: ClientRegistration): Promise<AdminUser> {
+  return adminJson('/api/admin/clients', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields),
+  }, 'Não foi possível criar a cliente.');
 }
 
-// Edita o CADASTRO (Client) — CPF/CNPJ, e-mail de contato, endereço,
-// responsável/nome da loja. Não mexe no login (ver updateUser acima).
-export async function updateClient(clientId, fields) {
-  const res = await fetch(`${API_BASE}/api/admin/clients/${clientId}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(fields),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'Não foi possível salvar o cadastro.');
-  return data;
+export function updateClient(clientId: string, fields: Partial<ClientRegistration>): Promise<AdminUser> {
+  return adminJson(`/api/admin/clients/${clientId}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields),
+  }, 'Não foi possível salvar o cadastro.');
 }

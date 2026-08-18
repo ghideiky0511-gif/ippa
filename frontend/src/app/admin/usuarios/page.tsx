@@ -1,17 +1,16 @@
-// @ts-nocheck
 import UsersApp from '@/admin/components/usuarios/UsersApp';
 import { fetchUsers } from '@/admin/lib/usersClient';
 
 export const dynamic = 'force-dynamic';
 
 export default async function UsuariosPage() {
-  let users = [];
-  let loadError = null;
+  let users: Awaited<ReturnType<typeof fetchUsers>> = [];
+  let loadError: string | null = null;
 
   try {
     users = await fetchUsers();
   } catch (err) {
-    loadError = err.message;
+    loadError = err instanceof Error ? err.message : 'Erro desconhecido';
   }
 
   if (loadError) {

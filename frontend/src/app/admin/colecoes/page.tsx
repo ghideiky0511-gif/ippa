@@ -1,4 +1,3 @@
-// @ts-nocheck
 import CollectionsApp from '@/admin/components/collections/CollectionsApp';
 import { fetchHighlights } from '@/admin/lib/highlightsClient';
 import { fetchCatalog } from '@/admin/lib/catalogClient';
@@ -6,14 +5,14 @@ import { fetchCatalog } from '@/admin/lib/catalogClient';
 export const dynamic = 'force-dynamic';
 
 export default async function ColecoesPage() {
-  let highlights = [];
-  let products = [];
-  let loadError = null;
+  let highlights: Awaited<ReturnType<typeof fetchHighlights>> = [];
+  let products: Awaited<ReturnType<typeof fetchCatalog>> = [];
+  let loadError: string | null = null;
 
   try {
     [highlights, products] = await Promise.all([fetchHighlights(), fetchCatalog()]);
   } catch (err) {
-    loadError = err.message;
+    loadError = err instanceof Error ? err.message : 'Erro desconhecido';
   }
 
   if (loadError) {

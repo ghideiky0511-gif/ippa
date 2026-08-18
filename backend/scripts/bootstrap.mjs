@@ -37,6 +37,19 @@ try {
      VALUES ($1) ON CONFLICT (tenant_id) DO NOTHING`,
     [tenantId],
   );
+  const locationResult = await client.query(
+    `INSERT INTO inventory_locations (tenant_id, code, name, kind, is_default)
+     VALUES ($1, 'default', 'Depósito padrão', 'warehouse', true)
+     ON CONFLICT (tenant_id, code) DO UPDATE SET name = EXCLUDED.name
+     RETURNING id`,
+    [tenantId],
+  );
+  await client.query(
+    `UPDATE store_settings
+     SET default_inventory_location_id = COALESCE(default_inventory_location_id, $2)
+     WHERE tenant_id = $1`,
+    [tenantId, locationResult.rows[0].id],
+  );
   await client.query('COMMIT');
   console.log(`Bootstrap concluído para o tenant ${slug}.`);
 } catch (error) {

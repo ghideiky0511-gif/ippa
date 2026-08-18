@@ -1,18 +1,14 @@
-// @ts-nocheck
-import { API_BASE } from '@/lib/api-config';
+import type { ProductOverrides } from '@/domain/catalog/types';
+import { adminJson } from './http';
 
-export async function fetchProductOverrides() {
-  const res = await fetch(`${API_BASE}/api/product-overrides`, { cache: 'no-store' });
-  if (!res.ok) throw new Error('Não foi possível carregar os ajustes de produto.');
-  return res.json();
+export function fetchProductOverrides(): Promise<ProductOverrides> {
+  return adminJson('/api/product-overrides', {}, 'Não foi possível carregar os ajustes de produto.');
 }
 
-export async function saveProductOverrides(overrides) {
-  const res = await fetch(`${API_BASE}/api/product-overrides`, {
+export function saveProductOverrides(overrides: ProductOverrides): Promise<ProductOverrides> {
+  return adminJson('/api/product-overrides', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(overrides),
-  });
-  if (!res.ok) throw new Error('Não foi possível salvar — confira os dados e tente de novo.');
-  return res.json();
+  }, 'Não foi possível salvar — confira os dados e tente de novo.');
 }
