@@ -6,6 +6,7 @@ import {
     clientSubject,
     ordersSubject,
     sellerSubject,
+    sessionSubject,
     subscribe,
     unsubscribe,
 } from "@/lib/sseHub";
@@ -55,6 +56,7 @@ const ERROR_MESSAGES: Record<string, string> = {
     OPENAI_NOT_CONFIGURED: "OPENAI_API_KEY não configurada.",
     HOME_AI_PROVIDER_ERROR: "Falha ao gerar a home.",
     HOME_AI_INVALID_RESPONSE: "Não foi possível interpretar a resposta da IA.",
+    SESSION_ALREADY_FINALIZED: "This order was already finalized.",
 };
 
 function cookieOptions() {
@@ -135,15 +137,18 @@ function eventStream(
     request: NextRequest,
     user: import("@/lib/types").AuthUser,
     tenantId: string,
+    subjectOverride?: string,
 ): Response {
     const subject =
-        user.role === "administrador" && user.permissions?.adminAccess === true
+        subjectOverride ?? (user.role === "administrador" && user.permissions?.adminAccess === true
             ? ordersSubject(tenantId)
             : user.role === "vendedora"
             ? sellerSubject(user.id)
             : user.role === "cliente" && user.clientId
               ? clientSubject(user.clientId)
-              : null;
+              : user.role !== "cliente"
+                ? ordersSubject(tenantId)
+                : null);
     if (!subject) return new Response("Não autenticado.", { status: 401 });
     let controllerRef: ReadableStreamDefaultController<Uint8Array> | null =
         null;
@@ -219,6 +224,7 @@ export async function GET(
         [
             "tenant",
             "catalog",
+            "catalog-filters",
             "categories",
             "discounts",
             "highlights",
@@ -236,6 +242,7 @@ export async function GET(
                 name: route.tenant.name,
             }),
             catalog: () => catalog.listCatalog(route.tenant),
+            "catalog-filters": () => catalog.listCatalogFilters(route.tenant),
             categories: () => catalog.categoryMenu(route.tenant),
             discounts: () => settings.listDiscounts(route.tenant),
             highlights: () => settings.listHighlights(route.tenant),
@@ -282,6 +289,11 @@ export async function GET(
     if (endpoint === "push/status") return execute(() => pushNotifications.pushStatus(route.tenant, session.user,
         request.nextUrl.searchParams.get("installationId") ?? undefined,
         request.nextUrl.searchParams.get("endpoint") ?? undefined));
+    if (path[0] === "sessions" && path[1] && path[2] === "stream") {
+        const allowed = await orders.canAccessOrderSession(route.tenant, session.user, path[1]);
+        if (!allowed) return NextResponse.json({ error: "Sem permissÃ£o." }, { status: 403 });
+        return eventStream(request, session.user, route.tenant.id, sessionSubject(path[1]));
+    }
     switch (endpoint) {
         case "clients":
             return execute(() =>
@@ -293,8 +305,10 @@ export async function GET(
             );
         case "sessions":
             return execute(() =>
-                orders.sellerSessions(route.tenant, session.user),
+                orders.orderSessions(route.tenant, session.user),
             );
+        case "order-books":
+            return execute(() => orders.orderBooks(route.tenant, session.user));
         case "sessions/mine":
             return execute(() =>
                 orders.customerActiveSession(route.tenant, session.user),
@@ -515,7 +529,7 @@ export async function POST(
     if (endpoint === "sessions")
         return execute(
             () =>
-                orders.createSellerSession(
+                orders.createOrderSession(
                     route.tenant,
                     authenticated.user,
                     body,
@@ -523,6 +537,13 @@ export async function POST(
                 ),
             201,
         );
+    if (endpoint === "order-books")
+        return execute(
+            () => orders.createOrderBook(route.tenant, authenticated.user, body),
+            201,
+        );
+    if (endpoint === "order-books/active")
+        return execute(() => orders.activeOrderBook(route.tenant, authenticated.user));
     if (path[0] === "sessions" && path[1] && path[2] === "payment-link") {
         return execute(() =>
             orders.createPaymentLink(
@@ -530,6 +551,16 @@ export async function POST(
                 authenticated.user,
                 path[1],
                 publicOrigin(request),
+            ),
+        );
+    }
+    if (path[0] === "sessions" && path[1] && path[2] === "finalize") {
+        return execute(() =>
+            orders.finalizeOrderSession(
+                route.tenant,
+                authenticated.user,
+                path[1],
+                body,
             ),
         );
     }
@@ -693,6 +724,11 @@ export async function PUT(
                 path[1],
                 body,
             ),
+        );
+    }
+    if (path[0] === "order-books" && path[1] && path[2] === "activate") {
+        return execute(() =>
+            orders.activateOrderBook(route.tenant, authenticated.user, path[1]),
         );
     }
     return NextResponse.json(

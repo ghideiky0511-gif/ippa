@@ -8,6 +8,7 @@ import {
   insertOrderSessionItemRow,
   insertOrderSessionRow,
 } from "@/models/ordersModel";
+import { findActiveOrderBookRow, insertOrderBookRow } from "@/models/orderBooksModel";
 import { listOnlineSellerIds } from "@/models/usersModel";
 import { recordAuditEvent, ORDER_SESSION_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
 import { notifySignup } from "@/services/notifications";
@@ -38,7 +39,9 @@ async function createAssignedSession(
   ]);
   const sellerId = pickSeller(sellerIds, openCounts, settings?.assignment_strategy ?? undefined);
   if (!sellerId) return undefined;
+  const book = (await findActiveOrderBookRow(client, sellerId)) ?? await insertOrderBookRow(client, sellerId, "Atendimentos online");
   const row = await insertOrderSessionRow(client, {
+    orderBookId: book.id,
     clientName: registration.name,
     clientId: registration.id,
     sellerId,
@@ -56,6 +59,7 @@ async function createAssignedSession(
   });
   return {
     id: row.id,
+    orderBookId: row.order_book_id,
     clientName: row.client_name,
     clientId: row.client_id ?? undefined,
     sellerId: row.seller_id,
@@ -110,7 +114,7 @@ export async function signupCustomer(
     });
     return { user, orderSession: await createAssignedSession(client, user, registration, items, context) };
   });
-  if (result.orderSession) notifySession(result.orderSession);
+  if (result.orderSession) notifySession(tenant.id, result.orderSession);
   notifySignup(tenant, result.user);
   return { user: result.user, token: await issueSession(tenant, result.user, context) };
 }

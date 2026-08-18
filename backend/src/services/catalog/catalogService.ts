@@ -33,6 +33,32 @@ export async function categoryMenu(tenant: Tenant): Promise<CategoryTreeEntry[]>
     });
 }
 
+export interface CatalogFilters {
+    categories: string[];
+    colors: string[];
+    sizes: string[];
+}
+
+export async function listCatalogFilters(tenant: Tenant): Promise<CatalogFilters> {
+    return withTenantTransaction(tenant, {}, async (client) => {
+        const [categories, variants] = await Promise.all([
+            categoryMenu(tenant),
+            listProductVariantRows(client),
+        ]);
+
+        const allColors = [...new Set(variants.map((v) => v.color).filter(Boolean))].sort();
+        const allSizes = [...new Set(variants.map((v) => v.size).filter(Boolean))].sort((a, b) =>
+            isNaN(Number(a)) || isNaN(Number(b)) ? a.localeCompare(b) : Number(a) - Number(b)
+        );
+
+        return {
+            categories: categories.flatMap((c) => [c.category, ...c.subcategories]).filter((v, i, arr) => arr.indexOf(v) === i),
+            colors: allColors,
+            sizes: allSizes,
+        };
+    });
+}
+
 export async function listCatalog(tenant: Tenant): Promise<Product[]> {
     return withTenantTransaction(tenant, {}, async (client) => {
         const products = await listProductRows(client);

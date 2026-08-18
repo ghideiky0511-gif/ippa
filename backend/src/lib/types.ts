@@ -261,6 +261,9 @@ export interface Company {
 // usa.
 export interface OrderSession {
   id: string;
+  // Pedido atual dentro de um talão. O talão é o agrupador operacional,
+  // enquanto esta sessão pertence a uma cliente/atendimento específico.
+  orderBookId: string;
   clientName: string;
   clientId?: string;
   sellerId: string;
@@ -297,6 +300,16 @@ export interface OrderSession {
   // (PresenceBadge.tsx). Ausente em qualquer outro lugar que devolve
   // OrderSession (talão da vendedora não precisa disso, ela já sabe quem é).
   sellerName?: string;
+}
+
+export interface OrderBook {
+  id: string;
+  sellerId: string;
+  name: string;
+  status: 'aberto' | 'fechado';
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Order {

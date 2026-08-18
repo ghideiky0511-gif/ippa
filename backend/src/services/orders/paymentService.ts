@@ -119,7 +119,7 @@ export async function confirmPayment(
     }
     return toOrder(row, context.items);
   });
-  if (changedSession) notifySession(changedSession);
+  if (changedSession) notifySession(tenant.id, changedSession);
   notifyOrder(tenant.id, order);
   if (recipient) notifyOrderConfirmed(tenant, recipient, order);
   if (sellerRecipient) notifyNewOrderForSeller(tenant, sellerRecipient, order);

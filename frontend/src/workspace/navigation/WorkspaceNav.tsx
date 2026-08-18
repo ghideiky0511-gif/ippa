@@ -3,6 +3,7 @@ import Link from '@/components/TenantLink';
 import { usePathname } from 'next/navigation';
 import { useWorkspaceAuth } from '../components/WorkspaceAuthProvider';
 import { useTenant } from '@/components/TenantProvider';
+import { NotificationCenter } from '@/components/notification-center';
 import { WORKSPACE_NAV_ITEMS } from './navigation';
 
 export default function WorkspaceNav() {
@@ -22,6 +23,7 @@ export default function WorkspaceNav() {
       ))}
       {workspaceUser && (
         <span className="ml-2 flex items-center gap-2 text-[13px] text-brand-muted">
+          <NotificationCenter />
           {workspaceUser.name}
           <button type="button" className="border-0 bg-transparent p-0 text-[13px] text-brand-muted underline-offset-2 hover:underline" onClick={logout}>Sair</button>
         </span>

@@ -4,6 +4,7 @@ import type { OrderRow, OrderSessionRow } from "@/models/ordersModel";
 export function toOrderSession(row: OrderSessionRow, items: CartItem[]): OrderSession {
     return {
         id: row.id,
+        orderBookId: row.order_book_id,
         clientName: row.client_name,
         clientId: row.client_id ?? undefined,
         sellerId: row.seller_id,

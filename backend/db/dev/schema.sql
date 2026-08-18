@@ -816,6 +816,7 @@ CREATE TABLE public.order_session_items (
 CREATE TABLE public.order_sessions (
 	id uuid DEFAULT gen_random_uuid() NOT NULL,
 	tenant_id uuid NOT NULL,
+	order_book_id uuid NOT NULL,
 	client_name text NOT NULL,
 	client_id uuid NULL,
 	seller_id uuid NOT NULL,
@@ -831,6 +832,25 @@ CREATE TABLE public.order_sessions (
 	CONSTRAINT order_sessions_pkey PRIMARY KEY (id)
 );
 CREATE INDEX order_sessions_tenant_seller_status_idx ON public.order_sessions USING btree (tenant_id, seller_id, status);
+CREATE INDEX order_sessions_tenant_book_status_idx ON public.order_sessions USING btree (tenant_id, order_book_id, status, updated_at DESC);
+
+
+-- public.order_books definição
+
+CREATE TABLE public.order_books (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NOT NULL,
+	seller_id uuid NOT NULL,
+	name text NOT NULL,
+	status text DEFAULT 'aberto'::text NOT NULL,
+	is_active bool DEFAULT true NOT NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	updated_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT order_books_pkey PRIMARY KEY (id),
+	CONSTRAINT order_books_status_check CHECK ((status = ANY (ARRAY['aberto'::text, 'fechado'::text)))
+);
+CREATE INDEX order_books_tenant_seller_updated_idx ON public.order_books USING btree (tenant_id, seller_id, updated_at DESC);
+CREATE UNIQUE INDEX order_books_one_active_per_seller_idx ON public.order_books USING btree (tenant_id, seller_id) WHERE ((is_active AND (status = 'aberto'::text)));
 
 
 -- public.orders definição
@@ -935,6 +955,7 @@ ALTER TABLE public.order_session_items ADD CONSTRAINT order_session_items_tenant
 -- public.order_sessions chaves estrangeiras
 
 ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_client_id_fkey FOREIGN KEY (client_id) REFERENCES public.clients(id) ON DELETE SET NULL;
+ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_order_book_id_fkey FOREIGN KEY (order_book_id) REFERENCES public.order_books(id) ON DELETE RESTRICT;
 ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id) ON DELETE RESTRICT;
 ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
 

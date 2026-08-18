@@ -34,7 +34,7 @@ export async function userOrders(
                   ? listOrderRowsBy(client, "client_id", user.clientId)
                   : user.role === "vendedora"
                     ? listOrderRowsBy(client, "seller_id", user.id)
-                    : Promise.reject(new ForbiddenError()),
+                    : listTenantOrderRows(client),
             listOrderItemRows(client),
         ]);
         return orders.map((order) =>
@@ -78,6 +78,7 @@ export async function createCustomerOrder(
                 if (closed)
                     changedSession = {
                         id: closed.id,
+                        orderBookId: closed.order_book_id,
                         clientName: closed.client_name,
                         clientId: closed.client_id ?? undefined,
                         sellerId: closed.seller_id,
@@ -117,7 +118,7 @@ export async function createCustomerOrder(
         await deleteClientCartRows(client, user.clientId!);
         return toOrder(row, items);
     });
-    if (changedSession) notifySession(changedSession);
+    if (changedSession) notifySession(tenant.id, changedSession);
     notifyOrder(tenant.id, order);
     notifyOrderConfirmed(tenant, user, order);
     if (sellerRecipient) notifyNewOrderForSeller(tenant, sellerRecipient, order);

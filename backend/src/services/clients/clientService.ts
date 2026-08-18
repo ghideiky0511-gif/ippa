@@ -19,7 +19,7 @@ const AUDITED_CLIENT_FIELDS = [
 ] as const;
 
 function canManageClients(user: AuthUser): boolean {
-    return user.role === "administrador" || user.role === "vendedora";
+    return user.role !== "cliente";
 }
 
 function documentDigits(value: string): string {

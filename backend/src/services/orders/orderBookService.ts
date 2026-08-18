@@ -1,0 +1,80 @@
+import type { Tenant } from "@/lib/db/tenant";
+import { withTenantTransaction } from "@/lib/db/tenant";
+import type { AuthUser, OrderBook } from "@/lib/types";
+import {
+    activateOrderBookRow,
+    findActiveOrderBookRow,
+    findOrderBookRow,
+    insertOrderBookRow,
+    listOrderBookRowsBySeller,
+    type OrderBookRow,
+} from "@/models/orderBooksModel";
+import { ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
+import { notifyOrderBook } from "@/lib/sseHub";
+
+function toOrderBook(row: OrderBookRow): OrderBook {
+    return {
+        id: row.id,
+        sellerId: row.seller_id,
+        name: row.name,
+        status: row.status,
+        isActive: row.is_active,
+        createdAt: row.created_at.toISOString(),
+        updatedAt: row.updated_at.toISOString(),
+    };
+}
+
+function requireInternal(user: AuthUser) {
+    if (user.role === "cliente") throw new ForbiddenError();
+}
+
+export async function orderBooks(tenant: Tenant, user: AuthUser): Promise<OrderBook[]> {
+    requireInternal(user);
+    return withTenantTransaction(tenant, user, async (client) =>
+        (await listOrderBookRowsBySeller(client, user.id)).map(toOrderBook),
+    );
+}
+
+export async function activeOrderBook(tenant: Tenant, user: AuthUser): Promise<OrderBook> {
+    requireInternal(user);
+    const book = await withTenantTransaction(tenant, user, async (client) => {
+        const active = await findActiveOrderBookRow(client, user.id);
+        if (active) return active;
+        return insertOrderBookRow(client, user.id, "Talão atual");
+    });
+    const result = toOrderBook(book);
+    notifyOrderBook(tenant.id, result);
+    return result;
+}
+
+export async function createOrderBook(tenant: Tenant, user: AuthUser, body: { name?: unknown }): Promise<OrderBook> {
+    requireInternal(user);
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    if (!name) throw new ValidationError("ORDER_BOOK_NAME_REQUIRED");
+    const book = toOrderBook(await withTenantTransaction(tenant, user, (client) => insertOrderBookRow(client, user.id, name)));
+    notifyOrderBook(tenant.id, book);
+    return book;
+}
+
+export async function activateOrderBook(tenant: Tenant, user: AuthUser, id: string): Promise<OrderBook> {
+    requireInternal(user);
+    const book = await withTenantTransaction(tenant, user, async (client) => {
+        const existing = await findOrderBookRow(client, id);
+        if (!existing) throw new NotFoundError("ORDER_BOOK_NOT_FOUND");
+        if (existing.seller_id !== user.id) throw new ForbiddenError();
+        const activated = await activateOrderBookRow(client, id, user.id);
+        if (!activated) throw new NotFoundError("ORDER_BOOK_NOT_FOUND");
+        return activated;
+    });
+    const result = toOrderBook(book);
+    notifyOrderBook(tenant.id, result);
+    return result;
+}
+
+export async function canUseOrderBook(tenant: Tenant, user: AuthUser, id: string): Promise<boolean> {
+    if (user.role === "cliente") return false;
+    return withTenantTransaction(tenant, user, async (client) => {
+        const book = await findOrderBookRow(client, id);
+        return Boolean(book && book.seller_id === user.id && book.status === "aberto");
+    });
+}

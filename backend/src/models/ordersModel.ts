@@ -2,7 +2,7 @@ import type { PoolClient } from "pg";
 import type { CartItem, Order, OrderSession } from "@/lib/types";
 
 export interface OrderSessionRow {
-    id: string; client_name: string; client_id: string | null; seller_id: string;
+    id: string; order_book_id: string; client_name: string; client_id: string | null; seller_id: string;
     channel: OrderSession["channel"]; status: OrderSession["status"];
     shipping: OrderSession["shipping"]; payment_token_created_at: Date | null;
     notes: string | null; created_at: Date; updated_at: Date;
@@ -15,12 +15,29 @@ export interface OrderRow {
 }
 export interface OrderItemRow { order_id: string; snapshot: CartItem }
 
-const sessionFields = "id, client_name, client_id, seller_id, channel, status, shipping, payment_token_created_at, notes, created_at, updated_at";
+const sessionFields = "id, order_book_id, client_name, client_id, seller_id, channel, status, shipping, payment_token_created_at, notes, created_at, updated_at";
 
 export async function listOrderSessionRowsBySeller(client: PoolClient, sellerId: string): Promise<OrderSessionRow[]> {
     const result = await client.query<OrderSessionRow>(
         `SELECT ${sessionFields} FROM order_sessions
          WHERE tenant_id = app_tenant_id() AND seller_id = $1 ORDER BY updated_at DESC`, [sellerId],
+    );
+    return result.rows;
+}
+
+export async function listTenantOrderSessionRows(client: PoolClient): Promise<OrderSessionRow[]> {
+    const result = await client.query<OrderSessionRow>(
+        `SELECT ${sessionFields} FROM order_sessions
+         WHERE tenant_id = app_tenant_id() ORDER BY updated_at DESC`,
+    );
+    return result.rows;
+}
+
+export async function listOrderSessionRowsByBook(client: PoolClient, orderBookId: string): Promise<OrderSessionRow[]> {
+    const result = await client.query<OrderSessionRow>(
+        `SELECT ${sessionFields} FROM order_sessions
+         WHERE tenant_id = app_tenant_id() AND order_book_id = $1 ORDER BY updated_at DESC`,
+        [orderBookId],
     );
     return result.rows;
 }
@@ -83,10 +100,10 @@ export async function insertOrderSessionRow(
     value: Omit<OrderSession, "id" | "items" | "createdAt" | "updatedAt">,
 ): Promise<OrderSessionRow> {
     const result = await client.query<OrderSessionRow>(
-        `INSERT INTO order_sessions (tenant_id, client_name, client_id, seller_id, channel, status, shipping, notes)
-         VALUES (app_tenant_id(), $1,$2,$3,$4,$5,$6,$7)
+        `INSERT INTO order_sessions (tenant_id, order_book_id, client_name, client_id, seller_id, channel, status, shipping, notes)
+         VALUES (app_tenant_id(), $1,$2,$3,$4,$5,$6,$7,$8)
          RETURNING ${sessionFields}`,
-        [value.clientName, value.clientId ?? null, value.sellerId, value.channel, value.status,
+        [value.orderBookId, value.clientName, value.clientId ?? null, value.sellerId, value.channel, value.status,
          value.shipping ? JSON.stringify(value.shipping) : null, value.notes ?? null],
     );
     return result.rows[0];
