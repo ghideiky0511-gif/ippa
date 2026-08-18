@@ -1,0 +1,46 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    environment:
+      ADMIN_ORIGIN: ${APP_URL:-http://localhost:3000}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-luna}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+    ports:
+      - "3001:3001"
+    volumes:
+      - backend-data:/app/src/data
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3001/api/catalog"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        BACKEND_INTERNAL_URL: http://backend:3001
+        NEXT_PUBLIC_APP_URL: ${APP_URL:-http://localhost:3000}
+    environment:
+      BACKEND_INTERNAL_URL: http://backend:3001
+      NEXT_PUBLIC_APP_URL: ${APP_URL:-http://localhost:3000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/login"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+volumes:
+  backend-data:

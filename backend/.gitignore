@@ -1,0 +1,6 @@
+/node_modules
+/.next
+/src/data/authSessions.json
+*.tsbuildinfo
+next-env.d.ts
+.env*
