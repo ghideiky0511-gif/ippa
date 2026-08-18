@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
+import { API_BASE } from '@/lib/api-config';
 
-const API_BASE = process.env.BACKEND_INTERNAL_URL || 'http://localhost:3001';
-
-// Proxy fino pro login de verdade (POST /api/admin/auth/login em `web` —
-// é lá que users.json/authSessions.json moram). Sucesso vira cookie
-// própria desta origem (ippa_admin_session); o token nunca chega no
-// navegador solto.
+// Proxy fino para o login no backend. Em caso de sucesso, cria um cookie
+// próprio desta origem (ippa_admin_session); o token nunca fica exposto
+// diretamente no navegador.
 export async function POST(request) {
   const body = await request.json().catch(() => null);
   const res = await fetch(`${API_BASE}/api/admin/auth/login`, {

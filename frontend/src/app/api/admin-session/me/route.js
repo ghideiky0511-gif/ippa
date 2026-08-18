@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-
-const API_BASE = process.env.BACKEND_INTERNAL_URL || 'http://localhost:3001';
+import { API_BASE } from '@/lib/api-config';
 
 // Usado pelo AdminAuthProvider.js (client) pra saber quem está logada e
 // mostrar nome/perfil + "Sair" no AdminNav.

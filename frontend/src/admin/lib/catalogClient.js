@@ -1,4 +1,4 @@
-const API_BASE = typeof window === 'undefined' ? (process.env.BACKEND_INTERNAL_URL || 'http://localhost:3001') : '';
+import { API_BASE } from '@/lib/api-config';
 
 /** @returns {Promise<import('./homeSectionTypes').Product[]>} */
 export async function fetchCatalog() {

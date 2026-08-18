@@ -12,7 +12,7 @@ import type { Client } from '@/lib/types';
 // acesso, pra casos em que a cliente não passa por nenhum dos dois fluxos
 // normais. Mesmo padrão CORS de ../users/route.ts.
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': process.env.ADMIN_ORIGIN || 'http://localhost:3000',
+  'Access-Control-Allow-Origin': process.env.ADMIN_ORIGIN || 'http://localhost:3010',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };

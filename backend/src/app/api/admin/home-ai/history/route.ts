@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { listHomeAiHistory } from '@/lib/homeAiHistory';
 
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': process.env.ADMIN_ORIGIN || 'http://localhost:3000',
+  'Access-Control-Allow-Origin': process.env.ADMIN_ORIGIN || 'http://localhost:3010',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };

@@ -3,17 +3,17 @@ services:
     build:
       context: ./backend
     environment:
-      ADMIN_ORIGIN: ${APP_URL:-http://localhost:3000}
+      ADMIN_ORIGIN: ${APP_URL:-http://localhost:3010}
       EMAIL_FROM: ${EMAIL_FROM:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-luna}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
     ports:
-      - "3001:3001"
+      - "3011:3011"
     volumes:
       - backend-data:/app/src/data
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3001/api/catalog"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3011/api/catalog"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -24,18 +24,18 @@ services:
     build:
       context: ./frontend
       args:
-        BACKEND_INTERNAL_URL: http://backend:3001
-        NEXT_PUBLIC_APP_URL: ${APP_URL:-http://localhost:3000}
+        BACKEND_INTERNAL_URL: http://backend:3011
+        NEXT_PUBLIC_APP_URL: ${APP_URL:-http://localhost:3010}
     environment:
-      BACKEND_INTERNAL_URL: http://backend:3001
-      NEXT_PUBLIC_APP_URL: ${APP_URL:-http://localhost:3000}
+      BACKEND_INTERNAL_URL: http://backend:3011
+      NEXT_PUBLIC_APP_URL: ${APP_URL:-http://localhost:3010}
     ports:
-      - "3000:3000"
+      - "3010:3010"
     depends_on:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/login"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3010/login"]
       interval: 10s
       timeout: 5s
       retries: 5

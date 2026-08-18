@@ -45,7 +45,7 @@
   classificação física da peça (um valor só, hierárquica). Logo da loja
   centralizado no topo.
 - Primeira fatia da plataforma admin (`admin/`, app Next.js à parte, porta
-  3001 em dev): editor visual da home com blocos arrastáveis (banner
+  3010 em dev): editor visual da home com blocos arrastáveis (banner
   foto/vídeo, produto), canvas de posição livre (x/y/largura/altura, nada
   se move sozinho) — ver seção abaixo. `CONFIG.home.sections` saiu de
   `web/src/lib/config.js` e virou `web/src/data/homeSections.json`, servido

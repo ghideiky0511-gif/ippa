@@ -8,7 +8,7 @@ import { getUserFromToken } from '@/lib/auth';
 // sessão do admin é da ORIGEM do admin, este endpoint é chamado
 // servidor-a-servidor).
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': process.env.ADMIN_ORIGIN || 'http://localhost:3000',
+  'Access-Control-Allow-Origin': process.env.ADMIN_ORIGIN || 'http://localhost:3010',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };

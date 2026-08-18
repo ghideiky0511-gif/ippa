@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
+import { getBackendUrl } from '@/lib/api-config';
 
-const BACKEND_URL = process.env.BACKEND_INTERNAL_URL || 'http://localhost:3001';
+const BACKEND_URL = getBackendUrl();
 
 export async function backendRequest(pathname: string, init: RequestInit = {}): Promise<Response> {
   const cookieStore = await cookies();

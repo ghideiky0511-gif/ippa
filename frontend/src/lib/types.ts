@@ -156,10 +156,10 @@ export interface AuthUser {
   // em web/src/lib/auth.ts (o que cada role ganha ao ser criado, só como
   // ponto de partida editável).
   permissions?: {
-    // Acesso à plataforma admin (porta 3001) — checado em
+    // Acesso à plataforma admin (frontend na porta 3010) — checado em
     // POST /api/admin/auth/login, nada a ver com o role em si.
     adminAccess?: boolean;
-    // Áreas do catálogo (porta 3000) liberadas pra essa conta — chaves
+    // Áreas do catálogo (frontend na porta 3010) liberadas pra essa conta — chaves
     // hoje: 'talao', 'pedidos'. Lista pensada pra crescer (separação,
     // rota de entrega) sem precisar redesenhar nada — ver
     // web/src/middleware.ts (só intercepta quem não é vendedora/cliente,

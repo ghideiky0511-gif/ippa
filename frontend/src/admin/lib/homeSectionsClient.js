@@ -1,7 +1,7 @@
-// web/ e admin/ rodam como dois apps separados (portas diferentes em dev).
-// Esta é a única porta de entrada do admin pro catálogo público: GET pra
-// carregar o estado atual da home, PUT pra salvar.
-const API_BASE = typeof window === 'undefined' ? (process.env.BACKEND_INTERNAL_URL || 'http://localhost:3001') : '';
+import { API_BASE } from '@/lib/api-config';
+
+// Porta de entrada do admin para o catálogo público: GET para carregar o
+// estado atual da home e PUT para salvar.
 
 export async function fetchHomeSections() {
   const res = await fetch(`${API_BASE}/api/home-sections`, { cache: 'no-store' });

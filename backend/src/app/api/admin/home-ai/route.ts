@@ -16,7 +16,7 @@ import type { HomeSection, Banner } from '@/lib/types';
 // log do prompt+resultado em homeAiHistory.json (ver lib/homeAiHistory.ts),
 // pro botão "Histórico" do admin — isso não afeta a home publicada.
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': process.env.ADMIN_ORIGIN || 'http://localhost:3000',
+  'Access-Control-Allow-Origin': process.env.ADMIN_ORIGIN || 'http://localhost:3010',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };

@@ -6,10 +6,10 @@ import { verifyLogin, createSessionToken } from '@/lib/auth';
 // proxy do próprio admin (admin/src/app/api/auth/login/route.js), nunca
 // direto pelo navegador — por isso devolve o token no corpo em vez de
 // setar cookie aqui: quem seta a cookie é o admin, na PRÓPRIA origem dele
-// (admin/porta 3001 em dev, subdomínio próprio em produção — cookie desta
+// (frontend/porta 3010 em dev, subdomínio próprio em produção — cookie desta
 // origem não chegaria lá).
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': process.env.ADMIN_ORIGIN || 'http://localhost:3000',
+  'Access-Control-Allow-Origin': process.env.ADMIN_ORIGIN || 'http://localhost:3010',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };

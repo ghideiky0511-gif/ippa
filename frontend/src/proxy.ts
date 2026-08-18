@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getBackendUrl } from '@/lib/api-config';
 import type { AuthUser } from '@/lib/types';
 
-const BACKEND_URL = process.env.BACKEND_INTERNAL_URL || 'http://localhost:3001';
+const BACKEND_URL = getBackendUrl();
 const CUSTOMER_PUBLIC_PREFIXES = ['/login', '/cadastro', '/pagar', '/em-construcao'];
 
 function catalogAreaForPath(pathname: string): string {

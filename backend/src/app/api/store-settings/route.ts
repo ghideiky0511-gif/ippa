@@ -16,7 +16,7 @@ import { readStoreSettings, writeStoreSettings, type StoreSettings } from '@/lib
 // padrão do /api/highlights: arquivo hoje, GET/PUT aqui, banco de verdade
 // depois só troca o que tem dentro de cada handler.
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': process.env.ADMIN_ORIGIN || 'http://localhost:3000',
+  'Access-Control-Allow-Origin': process.env.ADMIN_ORIGIN || 'http://localhost:3010',
   'Access-Control-Allow-Methods': 'GET, PUT, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };

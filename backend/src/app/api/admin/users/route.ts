@@ -8,13 +8,13 @@ import { sendSignupConfirmationEmail } from '@/lib/email';
 // listUsersWithoutPasswords em web/src/lib/auth.ts) com o cadastro em
 // clients.json quando o usuário é uma cliente (AuthUser.clientId), pra
 // mostrar CPF/CNPJ junto — mesmo padrão CORS de /api/store-settings, porque
-// o admin roda numa origem separada (porta 3001 em dev). POST cria conta de
+// o admin roda no frontend (porta 3010 em dev). POST cria conta de
 // VENDEDORA — é o único jeito de virar vendedora hoje (não existe
 // autocadastro público pra esse papel, ver POST /api/auth/signup, que
 // sempre cria role 'cliente'); de propósito, pra acesso ao talão não ser
 // algo que qualquer visitante ganha sozinho.
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': process.env.ADMIN_ORIGIN || 'http://localhost:3000',
+  'Access-Control-Allow-Origin': process.env.ADMIN_ORIGIN || 'http://localhost:3010',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };

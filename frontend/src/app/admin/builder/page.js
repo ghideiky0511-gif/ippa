@@ -19,7 +19,7 @@ export default async function BuilderPage() {
     return (
       <div style={{ padding: 40 }}>
         <p>Não foi possível carregar o catálogo ({loadError}).</p>
-        <p>Confira se o serviço `backend` está rodando em localhost:3001.</p>
+        <p>Confira se o serviço `backend` está rodando em localhost:3011.</p>
       </div>
     );
   }

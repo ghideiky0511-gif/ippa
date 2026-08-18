@@ -4,7 +4,7 @@ import { useState } from 'react';
 
 export default function SharePanel({ collectionId }) {
   const [copied, setCopied] = useState(false);
-  const origin = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const origin = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3010';
   const link = `${origin}/catalogo?destaque=${encodeURIComponent(collectionId)}`;
   const pdfLink = `${origin}/catalogo/pdf?destaque=${encodeURIComponent(collectionId)}`;
 

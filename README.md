@@ -2,10 +2,10 @@
 
 Aplicação de catálogo e pedidos com duas experiências no mesmo frontend:
 
-- loja e fluxo do usuário em `http://localhost:3000/`;
-- painel administrativo em `http://localhost:3000/admin`.
+- loja e fluxo do usuário em `http://localhost:3010/`;
+- painel administrativo em `http://localhost:3010/admin`.
 
-As regras, autenticação, dados e endpoints ficam em um backend separado, disponível em `http://localhost:3001/api`. O frontend encaminha chamadas `/api/*` para esse serviço, mantendo cookies e navegador na mesma origem.
+As regras, autenticação, dados e endpoints ficam em um backend separado, disponível em `http://localhost:3011/api`. O frontend encaminha chamadas `/api/*` para esse serviço, mantendo cookies e navegador na mesma origem.
 
 ## Estrutura
 
@@ -37,9 +37,9 @@ docker compose up --build
 
 Endereços:
 
-- loja: `http://localhost:3000`;
-- admin: `http://localhost:3000/admin`;
-- API: `http://localhost:3001/api/catalog`.
+- loja: `http://localhost:3010`;
+- admin: `http://localhost:3010/admin`;
+- API: `http://localhost:3011/api/catalog`.
 
 O volume `backend-data` mantém os JSONs alterados em runtime entre recriações dos containers. Para encerrar os serviços sem apagar os dados:
 
@@ -69,7 +69,7 @@ npm ci
 npm run dev
 ```
 
-Os valores padrão usam frontend na porta `3000` e backend na `3001`. Para outros endereços, configure `BACKEND_INTERNAL_URL` no frontend e `ADMIN_ORIGIN` no backend.
+Os valores padrão usam frontend na porta `3010` e backend na `3011`. Para outros endereços, configure `BACKEND_INTERNAL_URL` no frontend e `ADMIN_ORIGIN` no backend.
 
 ## Variáveis opcionais
 

@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-
-const API_BASE = process.env.BACKEND_INTERNAL_URL || 'http://localhost:3001';
+import { API_BASE } from '@/lib/api-config';
 
 export async function POST(request) {
   const token = request.cookies.get('ippa_admin_session')?.value;

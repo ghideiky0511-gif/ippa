@@ -12,7 +12,7 @@ const ALLOWED_TYPES = new Set(['banner', 'product']);
 
 // CORS liberado pro admin (porta diferente em dev) poder ler/gravar aqui.
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': process.env.ADMIN_ORIGIN || 'http://localhost:3000',
+  'Access-Control-Allow-Origin': process.env.ADMIN_ORIGIN || 'http://localhost:3010',
   'Access-Control-Allow-Methods': 'GET, PUT, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };

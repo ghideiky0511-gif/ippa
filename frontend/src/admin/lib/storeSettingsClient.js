@@ -1,4 +1,4 @@
-const API_BASE = typeof window === 'undefined' ? (process.env.BACKEND_INTERNAL_URL || 'http://localhost:3001') : '';
+import { API_BASE } from '@/lib/api-config';
 
 export async function fetchStoreSettings() {
   const res = await fetch(`${API_BASE}/api/store-settings`, { cache: 'no-store' });

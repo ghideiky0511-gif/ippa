@@ -9,7 +9,7 @@ import type { Client } from '@/lib/types';
 // Client, types.ts) — a tela de edição do admin chama os dois quando
 // necessário.
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': process.env.ADMIN_ORIGIN || 'http://localhost:3000',
+  'Access-Control-Allow-Origin': process.env.ADMIN_ORIGIN || 'http://localhost:3010',
   'Access-Control-Allow-Methods': 'PUT, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };

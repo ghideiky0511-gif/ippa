@@ -10,7 +10,7 @@ import { deleteClient } from '@/lib/clients';
 // ninguém, igual qualquer sistema de pedidos que mantém a venda mesmo
 // depois da conta sair.
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': process.env.ADMIN_ORIGIN || 'http://localhost:3000',
+  'Access-Control-Allow-Origin': process.env.ADMIN_ORIGIN || 'http://localhost:3010',
   'Access-Control-Allow-Methods': 'DELETE, PUT, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };
