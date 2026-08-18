@@ -1,10 +1,6 @@
 import type { Discount } from '@/domain/catalog/types';
 import { adminJson } from './http';
 
-export function fetchDiscounts(): Promise<Discount[]> {
-  return adminJson('/api/discounts', {}, 'Não foi possível carregar os descontos.');
-}
-
 export function saveDiscounts(discounts: Discount[]): Promise<Discount[]> {
   return adminJson('/api/discounts', {
     method: 'PUT',

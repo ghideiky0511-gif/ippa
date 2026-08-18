@@ -1,7 +1,7 @@
 import ProductsApp from '@/workspace/components/products/ProductsApp';
 import { fetchCatalog } from '@/workspace/lib/catalogClient';
-import { fetchProductOverrides } from '@/workspace/lib/productOverridesClient';
-import { fetchStoreSettings } from '@/workspace/lib/storeSettingsClient';
+import { fetchProductOverrides } from '@/workspace/lib/productOverridesClient.server';
+import { fetchStoreSettings } from '@/workspace/lib/storeSettingsClient.server';
 
 export const dynamic = 'force-dynamic';
 

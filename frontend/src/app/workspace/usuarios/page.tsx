@@ -1,5 +1,5 @@
 import UsersApp from '@/workspace/components/usuarios/UsersApp';
-import { fetchUsers } from '@/workspace/lib/usersClient';
+import { fetchUsers } from '@/workspace/lib/usersClient.server';
 
 export const dynamic = 'force-dynamic';
 

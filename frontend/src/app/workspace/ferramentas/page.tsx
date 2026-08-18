@@ -1,7 +1,8 @@
 import ToolsApp from '@/workspace/components/tools/ToolsApp';
-import { fetchStoreSettings } from '@/workspace/lib/storeSettingsClient';
-import { fetchSimilarProductsSettings } from '@/workspace/lib/similarProductsSettingsClient';
+import { fetchStoreSettings } from '@/workspace/lib/storeSettingsClient.server';
+import { fetchSimilarProductsSettings } from '@/workspace/lib/similarProductsSettingsClient.server';
 import { fetchCatalog } from '@/workspace/lib/catalogClient';
+import { fetchClassifications } from '@/workspace/lib/classificationsClient.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,13 +10,15 @@ export default async function FerramentasPage() {
   let settings: Awaited<ReturnType<typeof fetchStoreSettings>> = {};
   let similarProductsSettings: Awaited<ReturnType<typeof fetchSimilarProductsSettings>> | null = null;
   let products: Awaited<ReturnType<typeof fetchCatalog>> = [];
+  let classifications: Awaited<ReturnType<typeof fetchClassifications>> = [];
   let loadError: string | null = null;
 
   try {
-    [settings, similarProductsSettings, products] = await Promise.all([
+    [settings, similarProductsSettings, products, classifications] = await Promise.all([
       fetchStoreSettings(),
       fetchSimilarProductsSettings(),
       fetchCatalog(),
+      fetchClassifications(),
     ]);
   } catch (err) {
     loadError = err instanceof Error ? err.message : 'Erro desconhecido';
@@ -35,6 +38,7 @@ export default async function FerramentasPage() {
       initialSettings={settings}
       initialSimilarProductsSettings={similarProductsSettings}
       products={products}
+      initialClassifications={classifications}
     />
   );
 }

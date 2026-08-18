@@ -1,7 +1,8 @@
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
-import type { Discount, Product, Variant } from "@/lib/types";
+import type { CategoryTreeEntry, Discount, Product, Variant } from "@/lib/types";
 import {
+    listCategoryMenuRows,
     listInventoryBalanceRows,
     listPrimaryClassificationRows,
     listProductPackItemRows,
@@ -16,6 +17,21 @@ import {
     listDiscountTierRows,
 } from "@/models/settingsModel";
 import { getActiveProductDiscount } from "@/services/settings/discountCalculator";
+
+// Árvore categoria->subcategorias pro menu público — direto de `classifications`/
+// `classification_types` (hierarquia real via `parent_id`, sem heurística de
+// nome), já filtrada pelo opt-in do tenant (`active`, ver listCategoryMenuRows).
+export async function categoryMenu(tenant: Tenant): Promise<CategoryTreeEntry[]> {
+    return withTenantTransaction(tenant, {}, async (client) => {
+        const rows = await listCategoryMenuRows(client);
+        const categories = rows.filter((row) => row.kind === "category");
+        const subcategories = rows.filter((row) => row.kind === "subcategory");
+        return categories.map((category) => ({
+            category: category.name,
+            subcategories: subcategories.filter((sub) => sub.parent_id === category.id).map((sub) => sub.name),
+        }));
+    });
+}
 
 export async function listCatalog(tenant: Tenant): Promise<Product[]> {
     return withTenantTransaction(tenant, {}, async (client) => {

@@ -13,6 +13,14 @@ export type HomeSection =
   | { type: 'product'; id: string; productId: string; x?: number; y?: number; width?: number; height?: number };
 export type ResolvedHomeSection = HomeSection & { product?: Product };
 export interface CategoryTreeEntry { category: string; subcategories: string[]; }
+export interface ClassificationEntry {
+  id: string;
+  kind: 'category' | 'subcategory';
+  parentId: string | null;
+  name: string;
+  active: boolean;
+  position: number;
+}
 export interface SimilarProductsRuleConfig { limit: number; rules: string[]; }
 export interface SimilarProductsSettings { quickview: SimilarProductsRuleConfig; cart: SimilarProductsRuleConfig; complementaryCategories: Record<string, string[]>; }
 export interface ProductOverride {

@@ -1,7 +1,7 @@
 // Facetas derivadas do catálogo (categorias/cores/tamanhos), usadas tanto
 // pela home (menu de categorias) quanto pelo catálogo (filtros).
 
-import type { CategoryTreeEntry, HomeSection, Product, ResolvedHomeSection } from './types';
+import type { HomeSection, Product, ResolvedHomeSection } from './types';
 
 export function getCategories(products: Product[]): string[] {
   return Array.from(new Set(products.map((p) => p.category).filter(Boolean))).sort();
@@ -15,36 +15,6 @@ export function getSizes(products: Product[]): string[] {
   return Array.from(new Set(products.flatMap((p) => p.sizes || []).filter(Boolean))).sort((a, b) =>
     isNaN(Number(a)) || isNaN(Number(b)) ? a.localeCompare(b) : Number(a) - Number(b)
   );
-}
-
-// Categoria -> subcategorias, pro menu da home (ex.: BODY -> [BODY ALCA, ...]).
-//
-// O feed tem categorias "soltas" que na prática são uma variação de outra
-// (ex.: "BODY ALCA" é só um recorte de "BODY"). Quando o nome de uma
-// categoria começa com o nome de outra categoria existente + espaço, ela
-// deixa de ser um item próprio no menu e vira mais uma subcategoria dela —
-// isso é o que resume BODY/BODY ALCA e SHORTS/SHORTS SAIA num item só.
-export function getCategoryTree(products: Product[]): CategoryTreeEntry[] {
-  const map = new Map<string, Set<string>>();
-  for (const p of products) {
-    if (!p.category) continue;
-    if (!map.has(p.category)) map.set(p.category, new Set());
-    if (p.subcategory) map.get(p.category)!.add(p.subcategory);
-  }
-
-  const categoryNames = Array.from(map.keys());
-  for (const name of categoryNames) {
-    const base = categoryNames.find((other) => other !== name && name.startsWith(other + ' '));
-    if (!base) continue;
-    const folded = map.get(name)!;
-    folded.add(name);
-    for (const sub of folded) map.get(base)!.add(sub);
-    map.delete(name);
-  }
-
-  return Array.from(map.entries())
-    .map(([category, subs]) => ({ category, subcategories: Array.from(subs).sort() }))
-    .sort((a, b) => a.category.localeCompare(b.category));
 }
 
 // Resolve uma lista de IDs pra produtos, preservando a ordem da lista e

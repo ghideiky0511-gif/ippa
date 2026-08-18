@@ -50,6 +50,22 @@ export default function PedidosPage() {
       .catch(() => setOrders([]));
   }, [authUser]);
 
+  // O mesmo fluxo SSE já usado pelo talão também sinaliza confirmação de
+  // pedidos. O evento não traz dados: a API refaz a consulta já limitada à
+  // conta autenticada, evitando expor pedidos de outras pessoas.
+  useEffect(() => {
+    if (!authUser) return;
+    const source = new EventSource('/api/sessions/stream');
+    const refreshOrders = () => {
+      fetch('/api/orders', { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : []))
+        .then(setOrders)
+        .catch(() => {});
+    };
+    source.addEventListener('orders-updated', refreshOrders);
+    return () => source.close();
+  }, [authUser]);
+
   // Só pra resolver a categoria de cada item (CartItem não guarda categoria,
   // só o Product completo tem — ver types.ts). Mesmo fetch que CartProvider
   // já faz, mas essa página não está necessariamente dentro de um carrinho

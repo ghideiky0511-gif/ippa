@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
-import type { CartItem, Discount, Order, OrderSession } from "@/lib/types";
+import type { AuthUser, CartItem, Discount, Order, OrderSession } from "@/lib/types";
 import {
   closeOrderSessionRow,
   findOrderSessionRowByPaymentTokenHash,
@@ -16,9 +16,9 @@ import {
   listDiscountRows,
   listDiscountTierRows,
 } from "@/models/settingsModel";
-import { findUserRowByClientId } from "@/models/usersModel";
-import { notifySession } from "@/lib/sseHub";
-import { notifyOrderConfirmed } from "@/services/notifications";
+import { findUserRowByClientId, findUserRowById } from "@/models/usersModel";
+import { notifyOrder, notifySession } from "@/lib/sseHub";
+import { notifyNewOrderForSeller, notifyOrderConfirmed } from "@/services/notifications";
 import { GoneError, NotFoundError } from "@/services/shared/errors";
 import { getCartDiscount } from "@/services/settings";
 import { PAYMENT_LINK_EXPIRATION_DEFAULT_MINUTES } from "@/services/settings";
@@ -91,7 +91,8 @@ export async function confirmPayment(
   paymentMethod?: string,
 ): Promise<{ ok: true; order: Order }> {
   let changedSession: OrderSession | undefined;
-  let recipient: { email: string; name: string } | undefined;
+  let recipient: Pick<AuthUser, "id" | "role" | "email" | "name"> | undefined;
+  let sellerRecipient: Pick<AuthUser, "id" | "role"> | undefined;
   const order = await withTenantTransaction(tenant, {}, async (client) => {
     const context = await paymentContext(client, token, true);
     const total = context.cartTotal + (context.session.shipping?.price ?? 0);
@@ -108,15 +109,19 @@ export async function confirmPayment(
         : undefined,
     });
     for (const item of context.items) await insertOrderItemRow(client, row.id, item);
+    const seller = await findUserRowById(client, context.session.seller_id);
+    if (seller) sellerRecipient = { id: seller.id, role: seller.role };
     const closed = await closeOrderSessionRow(client, context.session.id);
     if (closed) changedSession = toOrderSession(closed, context.items);
     if (context.session.client_id) {
       const user = await findUserRowByClientId(client, context.session.client_id);
-      if (user) recipient = { email: user.email, name: user.name };
+      if (user) recipient = { id: user.id, role: user.role, email: user.email, name: user.name };
     }
     return toOrder(row, context.items);
   });
   if (changedSession) notifySession(changedSession);
+  notifyOrder(tenant.id, order);
   if (recipient) notifyOrderConfirmed(tenant, recipient, order);
+  if (sellerRecipient) notifyNewOrderForSeller(tenant, sellerRecipient, order);
   return { ok: true, order };
 }

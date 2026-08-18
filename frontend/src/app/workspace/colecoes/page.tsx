@@ -1,5 +1,5 @@
 import CollectionsApp from '@/workspace/components/collections/CollectionsApp';
-import { fetchHighlights } from '@/workspace/lib/highlightsClient';
+import { fetchHighlights } from '@/workspace/lib/highlightsClient.server';
 import { fetchCatalog } from '@/workspace/lib/catalogClient';
 
 export const dynamic = 'force-dynamic';

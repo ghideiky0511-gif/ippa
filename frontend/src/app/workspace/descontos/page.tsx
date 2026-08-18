@@ -1,5 +1,5 @@
 import DiscountsApp from '@/workspace/components/discounts/DiscountsApp';
-import { fetchDiscounts } from '@/workspace/lib/discountsClient';
+import { fetchDiscounts } from '@/workspace/lib/discountsClient.server';
 import { fetchCatalog } from '@/workspace/lib/catalogClient';
 
 export const dynamic = 'force-dynamic';

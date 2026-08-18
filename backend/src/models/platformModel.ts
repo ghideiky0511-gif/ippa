@@ -107,12 +107,24 @@ export async function updateTenantStatusRow(client: PoolClient, id: string, stat
     return result.rows[0] ?? null;
 }
 
-export async function insertTenantAdministratorRow(client: PoolClient, tenantId: string, email: string, name: string, passwordHash: string): Promise<void> {
-    await client.query(
+export async function insertTenantAdministratorRow(client: PoolClient, tenantId: string, email: string, name: string, passwordHash: string): Promise<PlatformTenantUserRow> {
+    const result = await client.query<PlatformTenantUserRow>(
         `INSERT INTO users (tenant_id, email, name, role, password_hash, permissions)
-         VALUES ($1, $2, $3, 'administrador', $4, '{"adminAccess": true, "catalogAreas": []}'::jsonb)`,
+         VALUES ($1, $2, $3, 'administrador', $4, '{"adminAccess": true, "catalogAreas": []}'::jsonb)
+         RETURNING id, name, email, role, created_at`,
         [tenantId, email, name, passwordHash],
     );
+    return result.rows[0];
+}
+
+export async function softDeleteTenantUserRow(client: PoolClient, tenantId: string, userId: string): Promise<{ id: string } | null> {
+    const result = await client.query<{ id: string }>(
+        `UPDATE users SET deleted_at = now(), updated_at = now()
+         WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+         RETURNING id`,
+        [tenantId, userId],
+    );
+    return result.rows[0] ?? null;
 }
 
 export async function insertTenantStoreSettingsRow(client: PoolClient, tenantId: string): Promise<void> {

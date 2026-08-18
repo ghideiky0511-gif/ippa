@@ -1,10 +1,6 @@
 import type { ProductOverrides } from '@/domain/catalog/types';
 import { adminJson } from './http';
 
-export function fetchProductOverrides(): Promise<ProductOverrides> {
-  return adminJson('/api/product-overrides', {}, 'Não foi possível carregar os ajustes de produto.');
-}
-
 export function saveProductOverrides(overrides: ProductOverrides): Promise<ProductOverrides> {
   return adminJson('/api/product-overrides', {
     method: 'PUT',

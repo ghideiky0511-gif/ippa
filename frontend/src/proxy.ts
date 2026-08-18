@@ -21,15 +21,17 @@ function tenantFromReferer(request: NextRequest): string | null {
 }
 
 async function validateWorkspaceAccess(request: NextRequest, tenantSlug: string): Promise<boolean> {
-  const token = request.cookies.get('ippa_admin_session')?.value;
+  const token = request.cookies.get('ippa_workspace_session')?.value;
   if (!token) return false;
 
   try {
-    const response = await fetch(`${BACKEND_URL}/api/${tenantSlug}/admin/auth/me`, {
+    const response = await fetch(`${BACKEND_URL}/api/${tenantSlug}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
       cache: 'no-store',
     });
-    return response.ok;
+    if (!response.ok) return false;
+    const payload = await response.json() as { user?: AuthUser | null };
+    return Boolean(payload.user && payload.user.role !== 'cliente');
   } catch {
     return false;
   }

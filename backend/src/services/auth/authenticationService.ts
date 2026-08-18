@@ -60,6 +60,18 @@ export async function loginAdministrator(
     return { user, token: await issueSession(tenant, user, context) };
 }
 
+/** Sessão do workspace: qualquer perfil interno, nunca uma cliente. */
+export async function loginInternalUser(
+    tenant: Tenant,
+    email: string,
+    password: string,
+    context: AuditRequestContext,
+): Promise<{ user: AuthUser; token: string } | null> {
+    const user = await authenticate(tenant, email, password);
+    if (!user || user.role === "cliente") return null;
+    return { user, token: await issueSession(tenant, user, context) };
+}
+
 export async function issueSession(
     tenant: Tenant,
     user: Pick<AuthUser, "id" | "role" | "name">,

@@ -1,18 +1,57 @@
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
-import type { AuthUser } from "@/lib/types";
+import type { AuthUser, ClassificationKind } from "@/lib/types";
 import {
   clearProductOverrideRows,
   listCatalogOrderRows,
+  listClassificationRows,
   listProductOverrideRows,
   replaceCatalogOrderRows,
+  setClassificationActiveRow,
   setProductOverrideRow,
   type ProductOverrideRow,
 } from "@/models/catalogModel";
-import { ForbiddenError, ValidationError } from "@/services/shared/errors";
+import { ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
 
 function requireAdministrator(user: AuthUser): void {
   if (user.role !== "administrador" || user.permissions?.adminAccess !== true) throw new ForbiddenError();
+}
+
+export interface ClassificationEntry {
+  id: string;
+  kind: ClassificationKind;
+  parentId: string | null;
+  name: string;
+  active: boolean;
+  position: number;
+}
+
+export async function listClassifications(tenant: Tenant, actor: AuthUser): Promise<ClassificationEntry[]> {
+  requireAdministrator(actor);
+  return withTenantTransaction(tenant, actor, async (client) => (await listClassificationRows(client)).map((row) => ({
+    id: row.id,
+    kind: row.kind,
+    parentId: row.parent_id,
+    name: row.name,
+    active: row.active,
+    position: row.position,
+  })));
+}
+
+export async function setClassificationActive(tenant: Tenant, actor: AuthUser, id: string, value: unknown): Promise<ClassificationEntry> {
+  requireAdministrator(actor);
+  const body = value as { active?: unknown } | null;
+  if (!body || typeof body.active !== "boolean") throw new ValidationError();
+  const updated = await withTenantTransaction(tenant, actor, (client) => setClassificationActiveRow(client, id, body.active as boolean));
+  if (!updated) throw new NotFoundError("CLASSIFICATION_NOT_FOUND");
+  return {
+    id: updated.id,
+    kind: updated.kind,
+    parentId: updated.parent_id,
+    name: updated.name,
+    active: updated.active,
+    position: updated.position,
+  };
 }
 
 export async function catalogOrder(tenant: Tenant, actor: AuthUser): Promise<string[]> {

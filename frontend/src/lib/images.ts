@@ -5,16 +5,20 @@
 //   - product.imagesByColor: { COR: url }    -> foto específica por cor
 // Enquanto esses campos não existem, cai tudo no product.image mesmo.
 
-import type { Product } from './types';
+import type { Product } from "./types";
 
 export function resolveGallery(product: Product): string[] {
-  if (Array.isArray(product.images) && product.images.length) return product.images;
-  return product.image ? [product.image] : [];
+    if (Array.isArray(product.images) && product.images.length)
+        return product.images;
+    return product.image ? [product.image] : [];
 }
 
-export function resolveImageForColor(product: Product, color?: string | null): string | null {
-  if (product.imagesByColor && color && product.imagesByColor[color]) {
-    return product.imagesByColor[color];
-  }
-  return product.image || null;
+export function resolveImageForColor(
+    product: Product,
+    color?: string | null,
+): string | null {
+    if (product.imagesByColor && color && product.imagesByColor[color]) {
+        return product.imagesByColor[color];
+    }
+    return product.image || null;
 }

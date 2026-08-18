@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 import Link from '@/components/TenantLink';
 import { ClipboardList, ShoppingBag } from 'lucide-react';
+import { NotificationCenter } from './notification-center';
 import { usePathname, useRouter } from 'next/navigation';
 import { CartProvider, useCart } from './CartProvider';
 import { TalaoProvider, useTalao } from './TalaoProvider';
@@ -61,6 +62,7 @@ function TopNav({ categoryTree, authUser }: { categoryTree: CategoryTreeEntry[];
           <ShoppingBag className="size-5" aria-hidden="true" />
           <span className={publicUi.count}>{cartCount}</span>
         </button>
+        {authUser && <NotificationCenter />}
         {isVendedora && <TalaoButton />}
         {authUser ? <button className={publicUi.topnavLogin} onClick={handleLogout}>Sair</button> : <Link href="/login" className={publicUi.topnavLogin}>Entrar</Link>}
       </div>

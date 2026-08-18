@@ -161,6 +161,15 @@ export async function listOrderRowsBy(client: PoolClient, field: "client_id" | "
     return result.rows;
 }
 
+/** Lista o histórico completo do tenant. A autorização fica no serviço. */
+export async function listTenantOrderRows(client: PoolClient): Promise<OrderRow[]> {
+    const result = await client.query<OrderRow>(
+        `SELECT id, created_at, client_id, seller_id, client_name, channel, total, shipping, payment_method, discount
+         FROM orders WHERE tenant_id = app_tenant_id() ORDER BY created_at DESC`,
+    );
+    return result.rows;
+}
+
 export async function listOrderItemRows(client: PoolClient): Promise<OrderItemRow[]> {
     const result = await client.query<OrderItemRow>(
         "SELECT order_id, snapshot FROM order_items WHERE tenant_id = app_tenant_id()",

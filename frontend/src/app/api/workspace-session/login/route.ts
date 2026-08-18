@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   const tenant = new URL(request.headers.get('referer') || request.url).pathname.split('/')[1];
   if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(tenant || '')) return NextResponse.json({ error: 'Tenant ausente.' }, { status: 404 });
-  const res = await fetch(`${API_BASE}/api/${tenant}/admin/auth/login`, {
+  const res = await fetch(`${API_BASE}/api/${tenant}/workspace/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -20,12 +20,12 @@ export async function POST(request: NextRequest) {
   }
 
   const response = NextResponse.json({ user: data.user });
-  response.cookies.set('ippa_admin_session', data.token, {
+  response.cookies.set('ippa_workspace_session', data.token, {
     httpOnly: true,
     sameSite: 'lax',
     path: '/',
     maxAge: 60 * 60 * 24 * 7,
   });
-  response.cookies.set('ippa_admin_tenant', tenant, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 60 * 60 * 24 * 7 });
+  response.cookies.set('ippa_workspace_tenant', tenant, { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 60 * 60 * 24 * 7 });
   return response;
 }

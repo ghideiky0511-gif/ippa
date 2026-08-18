@@ -1,6 +1,6 @@
 import type { Product } from '@/domain/products/types';
-import { adminJson } from './http';
+import { adminJsonServer } from './httpServer';
 
 export function fetchCatalog(): Promise<Product[]> {
-  return adminJson('/api/catalog', {}, 'Não foi possível carregar os produtos do catálogo.');
+  return adminJsonServer('/api/catalog', {}, 'Não foi possível carregar os produtos do catálogo.');
 }

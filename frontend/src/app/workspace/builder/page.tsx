@@ -1,5 +1,5 @@
 import BuilderApp from '@/workspace/components/builder/BuilderApp';
-import { fetchHomeSections } from '@/workspace/lib/homeSectionsClient';
+import { fetchHomeSections } from '@/workspace/lib/homeSectionsClient.server';
 import { fetchCatalog } from '@/workspace/lib/catalogClient';
 
 export const dynamic = 'force-dynamic';

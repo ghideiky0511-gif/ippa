@@ -44,6 +44,16 @@ export interface ProductPackItemRow {
 export interface InventoryBalanceRow { variant_id: string; stock_qty: number }
 export interface ProductClassificationRow { product_id: string; kind: ClassificationKind; name: string }
 
+export interface ClassificationRow {
+    id: string;
+    classification_type_id: string;
+    kind: ClassificationKind;
+    parent_id: string | null;
+    name: string;
+    active: boolean;
+    position: number;
+}
+
 export async function listProductRows(client: PoolClient): Promise<ProductRow[]> {
     const result = await client.query<ProductRow>(
         `SELECT id, name, description, category, subcategory, collection, brand, sku, price, suggested_retail_price, markup, media, attributes
@@ -97,6 +107,49 @@ export async function listPrimaryClassificationRows(client: PoolClient): Promise
          WHERE link.tenant_id = app_tenant_id() AND link.is_primary`,
     );
     return result.rows;
+}
+
+// Só o que deve aparecer no menu público — respeita o opt-in do tenant
+// (`classification.active`/`type.active`, ambos default true no schema).
+export async function listCategoryMenuRows(client: PoolClient): Promise<ClassificationRow[]> {
+    const result = await client.query<ClassificationRow>(
+        `SELECT classification.id, classification.classification_type_id, type.kind,
+                classification.parent_id, classification.name, classification.active, classification.position
+         FROM classifications classification
+         JOIN classification_types type ON type.id = classification.classification_type_id
+         WHERE classification.tenant_id = app_tenant_id() AND type.kind IN ('category', 'subcategory')
+           AND classification.active AND type.active
+         ORDER BY classification.position, classification.name`,
+    );
+    return result.rows;
+}
+
+// Todas as classificações de categoria/subcategoria, ligadas ou não — pra
+// tela de admin listar e deixar o tenant optar quais mostrar.
+export async function listClassificationRows(client: PoolClient): Promise<ClassificationRow[]> {
+    const result = await client.query<ClassificationRow>(
+        `SELECT classification.id, classification.classification_type_id, type.kind,
+                classification.parent_id, classification.name, classification.active, classification.position
+         FROM classifications classification
+         JOIN classification_types type ON type.id = classification.classification_type_id
+         WHERE classification.tenant_id = app_tenant_id() AND type.kind IN ('category', 'subcategory')
+         ORDER BY type.kind, classification.position, classification.name`,
+    );
+    return result.rows;
+}
+
+export async function setClassificationActiveRow(client: PoolClient, id: string, active: boolean): Promise<ClassificationRow | null> {
+    const result = await client.query<ClassificationRow>(
+        `WITH updated AS (
+           UPDATE classifications SET active = $2, updated_at = now()
+           WHERE tenant_id = app_tenant_id() AND id = $1
+           RETURNING id, classification_type_id, parent_id, name, active, position
+         )
+         SELECT updated.id, updated.classification_type_id, type.kind, updated.parent_id, updated.name, updated.active, updated.position
+         FROM updated JOIN classification_types type ON type.id = updated.classification_type_id`,
+        [id, active],
+    );
+    return result.rows[0] ?? null;
 }
 
 export interface ProductWriteRow {

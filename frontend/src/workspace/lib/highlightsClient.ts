@@ -1,10 +1,6 @@
 import type { Highlight } from '@/domain/catalog/types';
 import { adminJson } from './http';
 
-export function fetchHighlights(): Promise<Highlight[]> {
-  return adminJson('/api/highlights', {}, 'Não foi possível carregar as coleções.');
-}
-
 export function saveHighlights(highlights: Highlight[]): Promise<Highlight[]> {
   return adminJson('/api/highlights', {
     method: 'PUT',

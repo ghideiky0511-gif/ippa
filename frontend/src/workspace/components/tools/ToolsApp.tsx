@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import WorkspaceNav from '@/workspace/navigation/WorkspaceNav';
 import { saveStoreSettings } from '@/workspace/lib/storeSettingsClient';
 import { saveSimilarProductsSettings } from '@/workspace/lib/similarProductsSettingsClient';
+import { setClassificationActive } from '@/workspace/lib/classificationsClient';
 
 // Lista de ferramentas opcionais do catálogo — cada uma tem um id (chave em
 // storeSettings.json `features`), um rótulo e uma descrição curta. Adicionar
@@ -79,10 +80,14 @@ const DEFAULT_SIMILAR_PRODUCTS_SETTINGS = {
   complementaryCategories: {},
 };
 
-export default function ToolsApp({ initialSettings, initialSimilarProductsSettings, products }) {
+export default function ToolsApp({ initialSettings, initialSimilarProductsSettings, products, initialClassifications }) {
   const [settings, setSettings] = useState(initialSettings || {});
   const [pendingId, setPendingId] = useState(null);
   const [errorId, setErrorId] = useState(null);
+
+  const [classifications, setClassifications] = useState(initialClassifications || []);
+  const [pendingClassificationId, setPendingClassificationId] = useState(null);
+  const [errorClassificationId, setErrorClassificationId] = useState(null);
   const [assignmentSaveState, setAssignmentSaveState] = useState('idle');
   const [expirationInput, setExpirationInput] = useState(
     initialSettings?.paymentLinkExpirationMinutes != null ? String(initialSettings.paymentLinkExpirationMinutes) : '15'
@@ -118,6 +123,28 @@ export default function ToolsApp({ initialSettings, initialSimilarProductsSettin
       setErrorId(id);
     } finally {
       setPendingId(null);
+    }
+  }
+
+  const categoryTree = useMemo(() => {
+    const categories = classifications.filter((c) => c.kind === 'category');
+    const subcategories = classifications.filter((c) => c.kind === 'subcategory');
+    return categories.map((category) => ({
+      ...category,
+      subcategories: subcategories.filter((sub) => sub.parentId === category.id),
+    }));
+  }, [classifications]);
+
+  async function handleClassificationToggle(item) {
+    setPendingClassificationId(item.id);
+    setErrorClassificationId(null);
+    try {
+      const updated = await setClassificationActive(item.id, !item.active);
+      setClassifications((prev) => prev.map((c) => (c.id === updated.id ? { ...c, active: updated.active } : c)));
+    } catch {
+      setErrorClassificationId(item.id);
+    } finally {
+      setPendingClassificationId(null);
     }
   }
 
@@ -256,6 +283,53 @@ export default function ToolsApp({ initialSettings, initialSimilarProductsSettin
               </div>
             );
           })}
+        </div>
+
+        <h2 className={adminUi.subheading}>Categorias visíveis no menu</h2>
+        <p className={adminUi.previewEmpty}>
+          Liga/desliga cada categoria e subcategoria do menu lateral do catálogo — desligada aqui, some do menu
+          mesmo que ainda tenha peças cadastradas nela. Cada mudança já salva na hora.
+        </p>
+        {categoryTree.length === 0 && <p className={adminUi.previewEmpty}>Nenhuma categoria cadastrada ainda.</p>}
+        <div className={adminUi.toolsList}>
+          {categoryTree.map((category) => (
+            <div key={category.id} className={adminUi.toolRow}>
+              <div className="contents">
+                <span className="contents">{category.name}</span>
+                {errorClassificationId === category.id && <span className={adminUi.status}>Erro ao salvar — tente de novo.</span>}
+                <button
+                  type="button"
+                  className={[adminUi.toggle, category.active ? 'bg-brand-primary' : ''].join(' ')}
+                  onClick={() => handleClassificationToggle(category)}
+                  disabled={pendingClassificationId === category.id}
+                  aria-pressed={category.active}
+                  aria-label={`${category.active ? 'Desligar' : 'Ligar'} ${category.name}`}
+                >
+                  <span className="contents" />
+                </button>
+              </div>
+              {category.subcategories.length > 0 && (
+                <div className="mt-2 space-y-1 pl-3">
+                  {category.subcategories.map((sub) => (
+                    <div key={sub.id} className="flex items-center justify-between gap-2">
+                      <span className="text-[13px]">{sub.name}</span>
+                      {errorClassificationId === sub.id && <span className={adminUi.status}>Erro ao salvar.</span>}
+                      <button
+                        type="button"
+                        className={[adminUi.toggle, sub.active ? 'bg-brand-primary' : ''].join(' ')}
+                        onClick={() => handleClassificationToggle(sub)}
+                        disabled={pendingClassificationId === sub.id}
+                        aria-pressed={sub.active}
+                        aria-label={`${sub.active ? 'Desligar' : 'Ligar'} ${sub.name}`}
+                      >
+                        <span className="contents" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
 
         <h2 className={adminUi.subheading}>Talão de pedidos</h2>

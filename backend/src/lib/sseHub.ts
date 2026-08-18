@@ -1,4 +1,4 @@
-import type { OrderSession } from './types';
+import type { Order, OrderSession } from './types';
 
 // Hub de SSE em memória, um canal por "assunto" — `seller:<sellerId>` (a
 // vendedora dona do talão) ou `client:<clientId>` (a cliente vinculada a
@@ -31,6 +31,10 @@ export function clientSubject(clientId: string): string {
   return `client:${clientId}`;
 }
 
+export function ordersSubject(tenantId: string): string {
+  return `orders:${tenantId}`;
+}
+
 export function subscribe(subject: string, controller: Controller) {
   if (!subscribers.has(subject)) subscribers.set(subject, new Set());
   subscribers.get(subject)!.add(controller);
@@ -42,8 +46,8 @@ export function unsubscribe(subject: string, controller: Controller) {
 
 const encoder = new TextEncoder();
 
-function notify(subject: string) {
-  const chunk = encoder.encode('event: sessions-updated\ndata: {}\n\n');
+function notify(subject: string, event: 'sessions-updated' | 'orders-updated') {
+  const chunk = encoder.encode(`event: ${event}\ndata: {}\n\n`);
   for (const controller of subscribers.get(subject) || []) {
     try {
       controller.enqueue(chunk);
@@ -58,6 +62,14 @@ function notify(subject: string) {
 // atualizam sem F5 (ver ClientSessionProvider.tsx / TalaoProvider.tsx, que
 // assinam e refetcham no evento 'sessions-updated').
 export function notifySession(session: Pick<OrderSession, 'sellerId' | 'clientId'>) {
-  notify(sellerSubject(session.sellerId));
-  if (session.clientId) notify(clientSubject(session.clientId));
+  notify(sellerSubject(session.sellerId), 'sessions-updated');
+  if (session.clientId) notify(clientSubject(session.clientId), 'sessions-updated');
+}
+
+// Um sinal sem dados sensíveis: cada assinante refaz sua própria consulta,
+// que continua protegida pelas regras de autorização da API.
+export function notifyOrder(tenantId: string, order: Pick<Order, 'clientId' | 'sellerId'>) {
+  notify(ordersSubject(tenantId), 'orders-updated');
+  if (order.sellerId) notify(sellerSubject(order.sellerId), 'orders-updated');
+  if (order.clientId) notify(clientSubject(order.clientId), 'orders-updated');
 }

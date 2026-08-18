@@ -5,10 +5,9 @@ import { Cormorant_Garamond, Manrope } from 'next/font/google';
 import ConditionalShell from "@/components/ConditionalShell";
 import { TenantProvider } from '@/components/TenantProvider';
 import { AppToaster } from '@/components/ui/toaster';
-import { getCategoryTree } from "@/lib/catalogFacets";
 import { backendJson, backendRequest } from "@/lib/backend";
 import type { AuthUser } from "@/domain/clients/types";
-import type { Product } from "@/domain/products/types";
+import type { CategoryTreeEntry } from "@/domain/catalog/types";
 import type { TenantProfile } from '@/domain/tenant/types';
 import "./tailwind.css";
 
@@ -48,12 +47,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       </html>
     );
   }
-  const [catalog, authResponse, tenant] = await Promise.all([
-    backendJson<Product[]>('/api/catalog'),
+  const [categoryTree, authResponse, tenant] = await Promise.all([
+    backendJson<CategoryTreeEntry[]>('/api/categories'),
     backendRequest('/api/auth/me'),
     backendJson<TenantProfile>('/api/tenant'),
   ]);
-  const categoryTree = getCategoryTree(catalog);
   const authPayload = authResponse.ok
     ? await authResponse.json() as { user: AuthUser | null }
     : { user: null };

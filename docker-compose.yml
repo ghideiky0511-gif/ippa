@@ -48,6 +48,11 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-luna}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
+      PUSH_ENABLED: ${PUSH_ENABLED:-true}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+      NOTIFICATION_DISPATCH_SECRET: ${NOTIFICATION_DISPATCH_SECRET:-}
       DATABASE_URL: postgresql://ippa_app:${POSTGRES_APP_PASSWORD:-ippa_app_dev_only}@postgres:5432/${POSTGRES_DB:-ippa}
       CONTROL_DATABASE_URL: postgresql://ippa_control:${POSTGRES_CONTROL_PASSWORD:-ippa_control_dev_only}@postgres:5432/${POSTGRES_DB:-ippa}
       DATABASE_SSL: "false"

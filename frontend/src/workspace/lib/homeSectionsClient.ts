@@ -1,10 +1,6 @@
 import type { HomeAiHistoryItem, HomeSection } from '@/domain/catalog/types';
 import { adminJson } from './http';
 
-export function fetchHomeSections(): Promise<HomeSection[]> {
-  return adminJson('/api/home-sections', {}, 'Não foi possível carregar a home atual.');
-}
-
 export function saveHomeSections(sections: HomeSection[]): Promise<HomeSection[]> {
   return adminJson('/api/home-sections', {
     method: 'PUT',

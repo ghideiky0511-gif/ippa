@@ -10,6 +10,7 @@ import {
     listPlatformTenantUserRows,
     listTenantUserCountRows,
     setDefaultInventoryLocationRow,
+    softDeleteTenantUserRow,
     tenantExists,
     updateTenantStatusRow,
     type TenantStatus,
@@ -99,6 +100,34 @@ export async function provisionTenant(input: {
             userCount: 1,
             contract: null,
         };
+    });
+}
+
+export async function createTenantAdministrator(tenantId: string, input: {
+    name: string; email: string; password: string;
+}): Promise<PlatformTenantUser> {
+    if (!/^[0-9a-f-]{36}$/i.test(tenantId)) throw new Error("INVALID_TENANT_ID");
+    const name = input.name.trim();
+    const email = input.email.trim().toLowerCase();
+    if (!name || !/^\S+@\S+\.\S+$/.test(email) || input.password.length < 12) {
+        throw new Error("INVALID_TENANT_ADMIN_INPUT");
+    }
+
+    return withControlTransaction(async (client) => {
+        if (!await tenantExists(client, tenantId)) throw new Error("TENANT_NOT_FOUND");
+        const row = await insertTenantAdministratorRow(client, tenantId, email, name, await hash(input.password, PASSWORD_OPTIONS));
+        return { id: row.id, name: row.name, email: row.email, role: row.role, active: true, createdAt: row.created_at.toISOString() };
+    });
+}
+
+export async function deleteTenantUser(tenantId: string, userId: string): Promise<void> {
+    if (!/^[0-9a-f-]{36}$/i.test(tenantId) || !/^[0-9a-f-]{36}$/i.test(userId)) {
+        throw new Error("INVALID_TENANT_USER_ID");
+    }
+    return withControlTransaction(async (client) => {
+        if (!await tenantExists(client, tenantId)) throw new Error("TENANT_NOT_FOUND");
+        const removed = await softDeleteTenantUserRow(client, tenantId, userId);
+        if (!removed) throw new Error("USER_NOT_FOUND");
     });
 }
 
