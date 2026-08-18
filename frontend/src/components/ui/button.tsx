@@ -34,8 +34,12 @@ export function Button({ className, variant, size, asChild = false, loading = fa
   const Comp = asChild ? Slot : 'button';
   return (
     <Comp className={cn(buttonVariants({ variant, size }), className)} disabled={disabled || loading} {...props}>
-      {loading && <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />}
-      {children}
+      {asChild ? children : (
+        <>
+          {loading && <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />}
+          {children}
+        </>
+      )}
     </Comp>
   );
 }

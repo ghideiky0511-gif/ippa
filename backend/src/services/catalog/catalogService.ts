@@ -1,23 +1,45 @@
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
-import type { Product, Variant } from "@/lib/types";
+import type { Discount, Product, Variant } from "@/lib/types";
 import {
     listInventoryBalanceRows,
     listPrimaryClassificationRows,
     listProductRows,
     listProductVariantRows,
 } from "@/models/catalogModel";
+import {
+    findStoreSettingsRow,
+    listDiscountProductRows,
+    listDiscountRows,
+    listDiscountTierRows,
+} from "@/models/settingsModel";
+import { getActiveProductDiscount } from "@/services/settings/discountCalculator";
 
 export async function listCatalog(tenant: Tenant): Promise<Product[]> {
     return withTenantTransaction(tenant, {}, async (client) => {
         const products = await listProductRows(client);
         if (products.length === 0) return [];
 
-        const [variants, balances, classifications] = await Promise.all([
+        const [variants, balances, classifications, storeSettings, discountRows, tierRows, discountProductRows] = await Promise.all([
             listProductVariantRows(client),
             listInventoryBalanceRows(client),
             listPrimaryClassificationRows(client),
+            findStoreSettingsRow(client),
+            listDiscountRows(client),
+            listDiscountTierRows(client),
+            listDiscountProductRows(client),
         ]);
+        const discounts: Discount[] = discountRows.map((discount) => ({
+            id: discount.id,
+            label: discount.label,
+            active: discount.active,
+            type: discount.type,
+            percent: Number(discount.percent),
+            tiers: tierRows.filter((tier) => tier.discount_id === discount.id)
+                .map((tier) => ({ minQty: tier.min_qty, percent: Number(tier.percent) })),
+            productIds: discountProductRows.filter((product) => product.discount_id === discount.id)
+                .map((product) => product.product_id),
+        }));
         const stockByVariant = new Map(balances.map((row) => [row.variant_id, row.stock_qty]));
         const classificationsByProduct = new Map<string, Partial<Record<"category" | "subcategory" | "collection" | "brand", string>>>();
         for (const row of classifications) {
@@ -44,7 +66,10 @@ export async function listCatalog(tenant: Tenant): Promise<Product[]> {
         return products.map((row) => {
             const productVariants = variantsByProduct.get(row.id) ?? [];
             const classification = classificationsByProduct.get(row.id);
-            return {
+            const { manualOverride, ...attributes } = row.attributes as typeof row.attributes & {
+                manualOverride?: Partial<Product>;
+            };
+            let product: Product = {
                 id: row.id,
                 name: row.name,
                 description: row.description,
@@ -63,8 +88,24 @@ export async function listCatalog(tenant: Tenant): Promise<Product[]> {
                 colors: [...new Set(productVariants.map((variant) => variant.color))],
                 sizes: [...new Set(productVariants.map((variant) => variant.size))],
                 variants: productVariants,
-                ...row.attributes,
+                ...attributes,
+                ...manualOverride,
             } as Product;
+            if (storeSettings?.default_markup && product.suggestedRetailPrice === undefined && product.markup === undefined) {
+                const defaultMarkup = Number(storeSettings.default_markup);
+                product = {
+                    ...product,
+                    suggestedRetailPrice: Math.round(product.price * defaultMarkup * 100) / 100,
+                    markup: defaultMarkup,
+                };
+            }
+            const activeDiscount = getActiveProductDiscount(product.id, discounts);
+            if (activeDiscount) product = { ...product, activeDiscount };
+            if (storeSettings?.features?.suggestedPrice === false) {
+                const { suggestedRetailPrice: _suggestedRetailPrice, markup: _markup, ...withoutSuggestedPrice } = product;
+                product = withoutSuggestedPrice as Product;
+            }
+            return product;
         });
     });
 }

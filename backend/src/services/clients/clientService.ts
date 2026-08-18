@@ -8,8 +8,9 @@ import {
     searchClientRows,
     updateClientRow,
 } from "@/models/clientsModel";
+import { findUserRowByClientId } from "@/models/usersModel";
 import { recordAuditEvent, CLIENT_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
-import { ConflictError, ForbiddenError } from "@/services/shared/errors";
+import { ConflictError, ForbiddenError, ValidationError } from "@/services/shared/errors";
 import { toClient } from "./clientMapper";
 
 const AUDITED_CLIENT_FIELDS = [
@@ -32,11 +33,12 @@ export async function searchTenantClients(tenant: Tenant, user: AuthUser, query?
     );
 }
 
-export async function getTenantClient(tenant: Tenant, user: AuthUser, id: string): Promise<Client | null> {
+export async function getTenantClient(tenant: Tenant, user: AuthUser, id: string): Promise<(Client & { hasLogin: boolean }) | null> {
     if (!canManageClients(user) && user.clientId !== id) throw new ForbiddenError();
     return withTenantTransaction(tenant, user, async (client) => {
         const row = await findClientRow(client, id);
-        return row ? toClient(row) : null;
+        if (!row) return null;
+        return { ...toClient(row), hasLogin: Boolean(await findUserRowByClientId(client, id)) };
     });
 }
 
@@ -47,8 +49,13 @@ export async function createTenantClient(
     context: AuditRequestContext,
 ): Promise<Client> {
     if (!canManageClients(user)) throw new ForbiddenError();
+    if (typeof value.name !== "string" || !value.name.trim()) throw new ValidationError();
     return withTenantTransaction(tenant, user, async (client) => {
-        const digits = value.cpfCnpj ? documentDigits(value.cpfCnpj) : "";
+        const currentRow = await findClientRow(client, id);
+        if (!currentRow) return null;
+        const current = toClient(currentRow);
+        const merged = { ...current, ...value };
+        const digits = merged.cpfCnpj ? documentDigits(merged.cpfCnpj) : "";
         if (digits && await findClientRowByDocumentDigits(client, digits)) {
             throw new ConflictError("DOCUMENT_TAKEN");
         }
@@ -82,8 +89,8 @@ export async function updateTenantClient(
             if (existing && existing.id !== id) throw new ConflictError("DOCUMENT_TAKEN");
         }
         const row = await updateClientRow(client, id, {
-            ...value,
-            name: value.name?.trim() || undefined,
+            ...merged,
+            name: merged.name.trim(),
         });
         if (!row) return null;
         const changedFields = AUDITED_CLIENT_FIELDS.filter((field) => Object.hasOwn(value, field));

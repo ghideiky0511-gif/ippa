@@ -28,6 +28,13 @@ export async function searchClientRows(client: PoolClient, search: string | null
     return result.rows;
 }
 
+export async function listClientRows(client: PoolClient): Promise<ClientRow[]> {
+    const result = await client.query<ClientRow>(
+        `SELECT ${clientFields} FROM clients WHERE tenant_id = app_tenant_id() ORDER BY name`,
+    );
+    return result.rows;
+}
+
 export async function findClientRow(client: PoolClient, id: string): Promise<ClientRow | null> {
     const result = await client.query<ClientRow>(
         `SELECT ${clientFields} FROM clients WHERE tenant_id = app_tenant_id() AND id = $1`, [id],
@@ -60,12 +67,22 @@ export async function insertClientRow(client: PoolClient, value: ClientWriteRow)
 export async function updateClientRow(client: PoolClient, id: string, value: Partial<ClientWriteRow>): Promise<ClientRow | null> {
     const result = await client.query<ClientRow>(
         `UPDATE clients SET name = COALESCE($2, name), cpf_cnpj = $3, email = $4, cep = $5, street = $6, number = $7, complement = $8,
-           neighborhood = $9, city = $10, state = $11, company_responsible = $12, store_name = $13, updated_at = now()
+           neighborhood = $9, city = $10, state = $11, company_responsible = $12, store_name = $13,
+           last_seller_id = COALESCE($14, last_seller_id), updated_at = now()
          WHERE tenant_id = app_tenant_id() AND id = $1 RETURNING ${clientFields}`,
         [id, value.name ?? null, value.cpfCnpj ?? null, value.email ?? null,
          value.cep ?? null, value.street ?? null, value.number ?? null,
          value.complement ?? null, value.neighborhood ?? null, value.city ?? null,
-         value.state ?? null, value.companyResponsible ?? null, value.storeName ?? null],
+         value.state ?? null, value.companyResponsible ?? null, value.storeName ?? null,
+         value.lastSellerId ?? null],
+    );
+    return result.rows[0] ?? null;
+}
+
+export async function deleteClientRow(client: PoolClient, id: string): Promise<ClientRow | null> {
+    const result = await client.query<ClientRow>(
+        `DELETE FROM clients WHERE tenant_id = app_tenant_id() AND id = $1 RETURNING ${clientFields}`,
+        [id],
     );
     return result.rows[0] ?? null;
 }

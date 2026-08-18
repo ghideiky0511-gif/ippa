@@ -65,15 +65,14 @@ export const CONFIG: {
     // ordenar os produtos dentro da coleção). Lidos em tempo de request
     // por web/src/app/layout.tsx (menu lateral) e /catalogo (filtro).
 
-    // Públicos/segmentos mostrados no menu lateral (ex.: "Moda teen"). Cada
-    // entrada leva pras categorias filtradas por esse público.
-    // `productIds: null` é a convenção pra "sem filtro, catálogo inteiro" —
-    // usada aqui porque o feed atual já é 100% moda teen. Adicionar um
-    // segundo público (ex. "Moda adulto") com sua própria lista de IDs não
-    // exige mexer em componente nenhum.
-    audiences: [
-      { id: 'moda-teen', label: 'Moda teen', productIds: null },
-    ],
+    // Públicos/segmentos mostrados no menu lateral (ex.: "Moda teen",
+    // "Moda adulto"). Cada entrada leva pras categorias filtradas por esse
+    // público; `productIds: null` é a convenção pra "sem filtro, catálogo
+    // inteiro". Vazio por padrão (sem tenant configurado ainda) — os dois
+    // consumidores (SideMenu, CatalogApp) já tratam lista vazia como "sem
+    // segmentação": o menu de públicos não aparece e o catálogo não é
+    // filtrado. Preencher aqui não exige mexer em componente nenhum.
+    audiences: [],
   },
 };
 

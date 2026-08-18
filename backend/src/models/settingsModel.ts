@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 import type { BannerMediaType, DiscountType, HomeSectionType, SimilarProductsSettings } from "@/lib/types";
-import type { AssignmentStrategy } from "@/lib/assignment";
+import type { AssignmentStrategy } from "@/services/settings/types";
 
 export interface StoreSettingsRow {
     default_markup: string | null;
@@ -90,4 +90,87 @@ export async function findSimilarProductsSettingsRow(client: PoolClient): Promis
         "SELECT similar_products_settings FROM store_settings WHERE tenant_id = app_tenant_id()",
     );
     return result.rows[0]?.similar_products_settings ?? null;
+}
+
+export async function deleteDiscountRows(client: PoolClient): Promise<void> {
+    await client.query("DELETE FROM discounts WHERE tenant_id = app_tenant_id()");
+}
+
+export async function insertDiscountRow(client: PoolClient, discount: {
+    id: string; label: string; active: boolean; type: DiscountType; percent: number;
+}): Promise<void> {
+    await client.query(
+        `INSERT INTO discounts (id, tenant_id, label, active, type, percent)
+         VALUES ($1, app_tenant_id(), $2, $3, $4, $5)`,
+        [discount.id, discount.label, discount.active, discount.type, discount.percent],
+    );
+}
+
+export async function insertDiscountTierRow(client: PoolClient, discountId: string, minQty: number, percent: number): Promise<void> {
+    await client.query(
+        `INSERT INTO discount_tiers (tenant_id, discount_id, min_qty, percent)
+         VALUES (app_tenant_id(), $1, $2, $3)`,
+        [discountId, minQty, percent],
+    );
+}
+
+export async function insertDiscountProductRow(client: PoolClient, discountId: string, productId: string): Promise<void> {
+    await client.query(
+        `INSERT INTO discount_products (tenant_id, discount_id, product_id)
+         VALUES (app_tenant_id(), $1, $2)`,
+        [discountId, productId],
+    );
+}
+
+export async function deleteHighlightRows(client: PoolClient): Promise<void> {
+    await client.query("DELETE FROM highlights WHERE tenant_id = app_tenant_id()");
+}
+
+export async function insertHighlightRow(client: PoolClient, value: HighlightRow): Promise<void> {
+    await client.query(
+        `INSERT INTO highlights (id, tenant_id, label) VALUES ($1, app_tenant_id(), $2)`,
+        [value.id, value.label],
+    );
+}
+
+export async function insertHighlightProductRow(client: PoolClient, highlightId: string, productId: string, position: number): Promise<void> {
+    await client.query(
+        `INSERT INTO highlight_products (tenant_id, highlight_id, product_id, position)
+         VALUES (app_tenant_id(), $1, $2, $3)`,
+        [highlightId, productId, position],
+    );
+}
+
+export async function deleteHomeSectionRows(client: PoolClient): Promise<void> {
+    await client.query("DELETE FROM home_sections WHERE tenant_id = app_tenant_id()");
+}
+
+export async function insertHomeSectionRow(client: PoolClient, value: {
+    id: string; type: HomeSectionType; productId?: string; layout: Record<string, number>; position: number;
+}): Promise<void> {
+    await client.query(
+        `INSERT INTO home_sections (id, tenant_id, type, product_id, layout, position)
+         VALUES ($1, app_tenant_id(), $2, $3, $4, $5)`,
+        [value.id, value.type, value.productId ?? null, JSON.stringify(value.layout), value.position],
+    );
+}
+
+export async function insertHomeBannerRow(client: PoolClient, sectionId: string, value: {
+    id: string; type: BannerMediaType; mediaUrl: string; title?: string; subtitle?: string; position: number;
+}): Promise<void> {
+    await client.query(
+        `INSERT INTO home_banners (id, tenant_id, home_section_id, type, media_url, title, subtitle, position)
+         VALUES ($1, app_tenant_id(), $2, $3, $4, $5, $6, $7)`,
+        [value.id, sectionId, value.type, value.mediaUrl, value.title ?? null, value.subtitle ?? null, value.position],
+    );
+}
+
+export async function upsertSimilarProductsSettingsRow(client: PoolClient, settings: SimilarProductsSettings): Promise<void> {
+    await client.query(
+        `INSERT INTO store_settings (tenant_id, similar_products_settings)
+         VALUES (app_tenant_id(), $1)
+         ON CONFLICT (tenant_id) DO UPDATE SET similar_products_settings = EXCLUDED.similar_products_settings,
+           updated_at = now()`,
+        [JSON.stringify(settings)],
+    );
 }

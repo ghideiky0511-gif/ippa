@@ -1,0 +1,84 @@
+import type { Tenant } from "@/lib/db/tenant";
+import type { Product, SimilarProductsRuleConfig, SimilarProductsSettings } from "@/lib/types";
+import { listCatalog } from "@/services/catalog";
+import { getSimilarProductsSettings } from "@/services/settings";
+
+type SimilarProductsContext = "quickview" | "cart";
+type Rule = (catalog: Product[], anchors: Product[], excluded: Set<string>, settings: SimilarProductsSettings) => Product[];
+
+const RULES: Record<string, Rule> = {
+  sameSubcategory: (catalog, anchors, excluded) => catalog.filter((product) => !excluded.has(product.id) &&
+    anchors.some((anchor) => Boolean(anchor.subcategory) && product.category === anchor.category &&
+      product.subcategory === anchor.subcategory)),
+  sameCategory: (catalog, anchors, excluded) => catalog.filter((product) => !excluded.has(product.id) &&
+    anchors.some((anchor) => product.category === anchor.category)),
+  complementaryCategory: (catalog, anchors, excluded, settings) => {
+    const categories = new Set(anchors.flatMap((anchor) => settings.complementaryCategories[anchor.category] ?? []));
+    return catalog.filter((product) => !excluded.has(product.id) && categories.has(product.category));
+  },
+};
+
+function interleave(lists: Product[][]): Product[] {
+  const result: Product[] = [];
+  const seen = new Set<string>();
+  const maximum = Math.max(0, ...lists.map((list) => list.length));
+  for (let index = 0; index < maximum; index += 1) {
+    for (const list of lists) {
+      const product = list[index];
+      if (product && !seen.has(product.id)) {
+        seen.add(product.id);
+        result.push(product);
+      }
+    }
+  }
+  return result;
+}
+
+export function computeSimilarProducts(
+  context: SimilarProductsContext,
+  anchors: Product[],
+  catalog: Product[],
+  settings: SimilarProductsSettings,
+): Product[] {
+  const config: SimilarProductsRuleConfig = settings[context];
+  const overrideField = context === "cart" ? "similarProductIdsCart" : "similarProductIdsQuickview";
+  const anchorIds = new Set(anchors.map((anchor) => anchor.id));
+  const byId = new Map(catalog.map((product) => [product.id, product]));
+  const manuallyCurated = anchors.filter((anchor) => (anchor[overrideField]?.length ?? 0) > 0);
+  const ruleBased = anchors.filter((anchor) => (anchor[overrideField]?.length ?? 0) === 0);
+  const manual: Product[] = [];
+  const manualIds = new Set<string>();
+  for (const anchor of manuallyCurated) {
+    for (const id of anchor[overrideField] ?? []) {
+      const product = byId.get(id);
+      if (!product || anchorIds.has(id) || manualIds.has(id)) continue;
+      manualIds.add(id);
+      manual.push(product);
+    }
+  }
+  const excluded = new Set([...anchorIds, ...manualIds]);
+  const candidates = ruleBased.length === 0 ? [] : interleave(config.rules
+    .map((rule) => RULES[rule])
+    .filter((rule): rule is Rule => Boolean(rule))
+    .map((rule) => rule(catalog, ruleBased, excluded, settings)));
+  const seen = new Set<string>();
+  return [...manual, ...candidates].filter((product) => {
+    if (seen.has(product.id)) return false;
+    seen.add(product.id);
+    return true;
+  }).slice(0, config.limit);
+}
+
+export async function recommendSimilarProducts(
+  tenant: Tenant,
+  body: { context?: unknown; productIds?: unknown },
+): Promise<{ products: Product[] }> {
+  const context: SimilarProductsContext = body.context === "cart" ? "cart" : "quickview";
+  const productIds = Array.isArray(body.productIds)
+    ? body.productIds.filter((id): id is string => typeof id === "string")
+    : [];
+  const [catalog, settings] = await Promise.all([listCatalog(tenant), getSimilarProductsSettings(tenant)]);
+  const byId = new Map(catalog.map((product) => [product.id, product]));
+  const anchors = productIds.map((id) => byId.get(id)).filter((product): product is Product => Boolean(product));
+  return { products: computeSimilarProducts(context, anchors, catalog, settings) };
+}

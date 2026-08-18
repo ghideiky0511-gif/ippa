@@ -10,14 +10,24 @@ const userFields = "id, email, name, role, client_id, permissions, password_hash
 
 export async function findUserRowByEmail(client: PoolClient, email: string): Promise<UserRow | null> {
     const result = await client.query<UserRow>(
-        `SELECT ${userFields} FROM users WHERE tenant_id = app_tenant_id() AND email = $1`, [email],
+        `SELECT ${userFields} FROM users
+         WHERE tenant_id = app_tenant_id() AND email = $1 AND deleted_at IS NULL`, [email],
     );
     return result.rows[0] ?? null;
 }
 
 export async function findUserRowById(client: PoolClient, id: string): Promise<UserRow | null> {
     const result = await client.query<UserRow>(
-        `SELECT ${userFields} FROM users WHERE tenant_id = app_tenant_id() AND id = $1`, [id],
+        `SELECT ${userFields} FROM users
+         WHERE tenant_id = app_tenant_id() AND id = $1 AND deleted_at IS NULL`, [id],
+    );
+    return result.rows[0] ?? null;
+}
+
+export async function findUserRowByClientId(client: PoolClient, clientId: string): Promise<UserRow | null> {
+    const result = await client.query<UserRow>(
+        `SELECT ${userFields} FROM users
+         WHERE tenant_id = app_tenant_id() AND client_id = $1 AND deleted_at IS NULL`, [clientId],
     );
     return result.rows[0] ?? null;
 }
@@ -38,7 +48,53 @@ export async function insertUserRow(client: PoolClient, params: {
 
 export async function listUserRows(client: PoolClient): Promise<UserRow[]> {
     const result = await client.query<UserRow>(
-        `SELECT ${userFields} FROM users WHERE tenant_id = app_tenant_id() ORDER BY name, email`,
+        `SELECT ${userFields} FROM users
+         WHERE tenant_id = app_tenant_id() AND deleted_at IS NULL ORDER BY name, email`,
     );
     return result.rows;
+}
+
+
+export async function updateUserRow(client: PoolClient, id: string, value: {
+    name?: string; email?: string; passwordHash?: string; permissions?: AuthUser["permissions"];
+}): Promise<UserRow | null> {
+    const result = await client.query<UserRow>(
+        `UPDATE users SET name = COALESCE($2, name), email = COALESCE($3, email),
+           password_hash = COALESCE($4, password_hash), permissions = COALESCE($5, permissions), updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND id = $1 AND deleted_at IS NULL
+         RETURNING ${userFields}`,
+        [id, value.name ?? null, value.email ?? null, value.passwordHash ?? null,
+         value.permissions ? JSON.stringify(value.permissions) : null],
+    );
+    return result.rows[0] ?? null;
+}
+
+export async function softDeleteUserRow(client: PoolClient, id: string): Promise<UserRow | null> {
+    const result = await client.query<UserRow>(
+        `UPDATE users SET deleted_at = now(), updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND id = $1 AND deleted_at IS NULL
+         RETURNING ${userFields}`,
+        [id],
+    );
+    return result.rows[0] ?? null;
+}
+
+export async function listOnlineSellerIds(client: PoolClient): Promise<string[]> {
+    const result = await client.query<{ id: string }>(
+        `SELECT DISTINCT users.id FROM users
+         JOIN user_sessions ON user_sessions.user_id = users.id
+         WHERE users.tenant_id = app_tenant_id() AND users.role = 'vendedora'
+           AND users.deleted_at IS NULL AND user_sessions.revoked_at IS NULL
+           AND user_sessions.expires_at > now()
+         ORDER BY users.id`,
+    );
+    return result.rows.map((row) => row.id);
+}
+
+export async function revokeUserSessionRows(client: PoolClient, userId: string): Promise<void> {
+    await client.query(
+        `UPDATE user_sessions SET revoked_at = now()
+         WHERE tenant_id = app_tenant_id() AND user_id = $1 AND revoked_at IS NULL`,
+        [userId],
+    );
 }
