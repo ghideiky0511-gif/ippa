@@ -1,5 +1,5 @@
 'use client';
-import Link from 'next/link';
+import Link from '@/components/TenantLink';
 import { COLOR_MAP } from '@/lib/config';
 import { formatBRL, priceWithPercentOff } from '@/lib/format';
 import { useCart } from './CartProvider';

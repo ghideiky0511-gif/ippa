@@ -1,5 +1,5 @@
 import { publicUi } from '@/lib/ui';
-import Link from 'next/link';
+import Link from '@/components/TenantLink';
 import { notFound } from 'next/navigation';
 import { backendJson } from '@/lib/backend';
 import type { Product } from '@/domain/products/types';

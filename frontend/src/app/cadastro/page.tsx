@@ -2,11 +2,12 @@
 import { publicUi } from '@/lib/ui';
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import Link from 'next/link';
+import Link from '@/components/TenantLink';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getDocumentType } from '@/lib/document';
 import { CART_KEY } from '@/components/CartProvider';
 import type { CartItem } from '@/domain/orders/types';
+import { useTenant } from '@/components/TenantProvider';
 
 interface ViaCepResponse {
   erro?: boolean;
@@ -18,6 +19,7 @@ interface ViaCepResponse {
 
 export default function CadastroPage() {
   const router = useRouter();
+  const { href } = useTenant();
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect');
   // Lido direto do localStorage (não via useCart()) porque /cadastro fica
@@ -109,7 +111,7 @@ export default function CadastroPage() {
         setError(data.error || 'Não foi possível criar sua conta.');
         return;
       }
-      router.push(redirect || '/');
+      router.push(href(redirect || '/'));
       router.refresh();
     } finally {
       setLoading(false);

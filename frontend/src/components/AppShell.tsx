@@ -2,7 +2,7 @@
 import { publicUi } from '@/lib/ui';
 
 import type { ReactNode } from 'react';
-import Link from 'next/link';
+import Link from '@/components/TenantLink';
 import { usePathname, useRouter } from 'next/navigation';
 import { CartProvider, useCart } from './CartProvider';
 import { TalaoProvider, useTalao } from './TalaoProvider';
@@ -14,7 +14,7 @@ import TalaoDrawer from './TalaoDrawer';
 import PresenceBadge from './PresenceBadge';
 import ProductQuickView from './ProductQuickView';
 import SideMenu from './SideMenu';
-import { CONFIG } from '@/lib/config';
+import { useTenant } from './TenantProvider';
 import type { AuthUser } from '@/domain/clients/types';
 import type { CategoryTreeEntry } from '@/domain/catalog/types';
 
@@ -40,16 +40,17 @@ function TalaoButton() {
 
 function TopNav({ categoryTree, authUser }: { categoryTree: CategoryTreeEntry[]; authUser: AuthUser | null }) {
   const { cartCount, openCart } = useCart();
+  const { tenant, href } = useTenant();
   const router = useRouter();
   const pathname = usePathname();
   const isVendedora = authUser?.role === 'vendedora';
   // Link "Catálogo" some só nessa própria página (levaria pra onde já
   // está) — nas outras (home, produto, carrinho...) continua útil.
-  const onCatalogPage = pathname?.startsWith('/catalogo');
+  const onCatalogPage = pathname?.startsWith(href('/catalogo')) || pathname?.startsWith('/catalogo');
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/login');
+    router.push(href('/login'));
     router.refresh();
   }
 
@@ -57,7 +58,7 @@ function TopNav({ categoryTree, authUser }: { categoryTree: CategoryTreeEntry[];
     <nav className={publicUi.topnav}>
       <SideMenu categoryTree={categoryTree} />
       <Link href="/" className={publicUi.topnavBrand}>
-        {CONFIG.logoUrl ? <img src={CONFIG.logoUrl} alt={CONFIG.storeName} /> : CONFIG.storeName}
+        {tenant.name}
       </Link>
       <div className={publicUi.topnavLinks}>
         {!onCatalogPage && <Link href="/catalogo">Catálogo</Link>}

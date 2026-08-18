@@ -4,6 +4,7 @@ import { publicUi } from '@/lib/ui';
 import { use, useEffect, useState } from 'react';
 import { formatBRL } from '@/lib/format';
 import { CONFIG } from '@/lib/config';
+import { useTenant } from '@/components/TenantProvider';
 import type { CartItem } from '@/domain/orders/types';
 
 const PAYMENT_METHODS = [
@@ -28,6 +29,7 @@ interface PaySummary {
 // exigir login: o token da URL já é a autenticação (ver GET/POST
 // /api/pay/[token]/route.ts).
 export default function PagarPage({ params }: { params: Promise<{ token: string }> }) {
+  const { tenant } = useTenant();
   const { token } = use(params);
   const [summary, setSummary] = useState<PaySummary | null>(null);
   const [error, setError] = useState('');
@@ -73,7 +75,7 @@ export default function PagarPage({ params }: { params: Promise<{ token: string 
   return (
     <div className={publicUi.loginPage}>
       <div className="contents">
-        <h1>{CONFIG.storeName}</h1>
+        <h1>{tenant.name}</h1>
 
         {loading && <p>Carregando…</p>}
 

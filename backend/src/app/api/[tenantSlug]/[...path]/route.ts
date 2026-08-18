@@ -53,6 +53,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 
   switch (endpoint) {
+    case 'tenant': return NextResponse.json({ slug: tenant.slug, name: tenant.name });
     case 'catalog': return NextResponse.json(await tenantApi.catalog(route.tenant));
     case 'discounts': return NextResponse.json(await tenantApi.discounts(route.tenant));
     case 'highlights': return NextResponse.json(await tenantApi.highlights(route.tenant));

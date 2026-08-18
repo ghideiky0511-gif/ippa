@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/TenantLink';
 import type { CategoryTreeEntry } from '@/domain/catalog/types';
 
 // Categorias com subcategoria viram um dropdown: no desktop abre passando o

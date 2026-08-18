@@ -2,6 +2,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { AuthUser } from '@/domain/clients/types';
+import { useTenant } from '@/components/TenantProvider';
 
 interface AdminAuthContextValue {
   adminUser: AuthUser | null;
@@ -18,6 +19,7 @@ const AdminAuthContext = createContext<AdminAuthContextValue>({
 // proxy.js (antes da página nem renderizar); este provider não protege
 // nada sozinho.
 export function AdminAuthProvider({ children }: { children: ReactNode }) {
+  const { href } = useTenant();
   const [adminUser, setAdminUser] = useState<AuthUser | null>(null);
 
   useEffect(() => {
@@ -29,7 +31,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
 
   async function logout() {
     await fetch('/api/admin-session/logout', { method: 'POST' });
-    window.location.href = '/admin/login';
+    window.location.href = href('/admin/login');
   }
 
   return <AdminAuthContext.Provider value={{ adminUser, logout }}>{children}</AdminAuthContext.Provider>;

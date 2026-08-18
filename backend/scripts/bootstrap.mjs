@@ -6,10 +6,16 @@ const slug = process.env.INITIAL_TENANT_SLUG;
 const name = process.env.INITIAL_TENANT_NAME;
 const adminEmail = process.env.INITIAL_ADMIN_EMAIL;
 const adminPassword = process.env.INITIAL_ADMIN_PASSWORD;
+const platformAdminEmail = process.env.PLATFORM_ADMIN_EMAIL;
+const platformAdminName = process.env.PLATFORM_ADMIN_NAME || 'Administrador da Plataforma';
+const platformAdminPassword = process.env.PLATFORM_ADMIN_PASSWORD;
 
 if (!connectionString) throw new Error('Defina MIGRATIONS_DATABASE_URL ou DATABASE_URL.');
 if (!slug || !name || !adminEmail || !adminPassword) {
   throw new Error('Defina INITIAL_TENANT_SLUG, INITIAL_TENANT_NAME, INITIAL_ADMIN_EMAIL e INITIAL_ADMIN_PASSWORD.');
+}
+if (!platformAdminEmail || !platformAdminPassword) {
+  throw new Error('Defina PLATFORM_ADMIN_EMAIL e PLATFORM_ADMIN_PASSWORD.');
 }
 
 const client = new Client({ connectionString, application_name: 'ippa-bootstrap' });
@@ -49,6 +55,14 @@ try {
      SET default_inventory_location_id = COALESCE(default_inventory_location_id, $2)
      WHERE tenant_id = $1`,
     [tenantId, locationResult.rows[0].id],
+  );
+  const platformPasswordHash = await hash(platformAdminPassword);
+  await client.query(
+    `INSERT INTO platform_users (email, name, password_hash)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (email) DO UPDATE
+       SET name = EXCLUDED.name, password_hash = EXCLUDED.password_hash, active = true, updated_at = now()`,
+    [platformAdminEmail.trim().toLowerCase(), platformAdminName.trim(), platformPasswordHash],
   );
   await client.query('COMMIT');
   console.log(`Bootstrap concluído para o tenant ${slug}.`);

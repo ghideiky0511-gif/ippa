@@ -2,7 +2,7 @@
 import { publicUi } from '@/lib/ui';
 
 import { FormEvent, useEffect, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/TenantLink';
 import { useRouter } from 'next/navigation';
 import { formatBRL } from '@/lib/format';
 import { calculateShipping } from '@/lib/shipping';
@@ -13,9 +13,11 @@ import { useTalaoClientGate } from '@/components/useTalaoClientGate';
 import CheckoutSteps from '@/components/CheckoutSteps';
 import type { Client } from '@/domain/clients/types';
 import type { ShippingOption } from '@/domain/orders/types';
+import { useTenant } from '@/components/TenantProvider';
 
 export default function FretePage() {
   const router = useRouter();
+  const { href } = useTenant();
   const { cart, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, shipping, setShipping } = useCart();
   const talao = useTalao();
   const activeSession = talao?.activeSession ?? null;
@@ -67,7 +69,7 @@ export default function FretePage() {
 
   function handleContinue() {
     if (!shipping) return;
-    router.push('/pagamento');
+    router.push(href('/pagamento'));
   }
 
   async function handleGenerateLink() {
@@ -154,7 +156,7 @@ export default function FretePage() {
     );
   }
 
-  const paymentLink = linkState.token && typeof window !== 'undefined' ? `${window.location.origin}/pagar/${linkState.token}` : '';
+  const paymentLink = linkState.token && typeof window !== 'undefined' ? `${window.location.origin}${href(`/pagar/${linkState.token}`)}` : '';
 
   return (
     <main className="contents">

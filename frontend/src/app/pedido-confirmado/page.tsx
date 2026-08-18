@@ -1,7 +1,7 @@
 'use client';
 import { publicUi } from '@/lib/ui';
 
-import Link from 'next/link';
+import Link from '@/components/TenantLink';
 
 export default function PedidoConfirmadoPage() {
   return (

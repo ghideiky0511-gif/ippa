@@ -2,7 +2,7 @@
 import { publicUi } from '@/lib/ui';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/TenantLink';
 import ProductDetailContent from './ProductDetailContent';
 import SimilarProducts from './SimilarProducts';
 import { useCart } from './CartProvider';

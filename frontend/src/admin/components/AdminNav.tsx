@@ -1,7 +1,8 @@
 'use client';
-import Link from 'next/link';
+import Link from '@/components/TenantLink';
 import { usePathname } from 'next/navigation';
 import { useAdminAuth } from './AdminAuthProvider';
+import { useTenant } from '@/components/TenantProvider';
 
 const LINKS = [
   { href: '/admin/builder', label: 'Home' },
@@ -16,13 +17,14 @@ const LINKS = [
 export default function AdminNav() {
   const pathname = usePathname();
   const { adminUser, logout } = useAdminAuth();
+  const { href } = useTenant();
   return (
     <nav className="flex gap-1">
       {LINKS.map((link) => (
         <Link
           key={link.href}
           href={link.href}
-          className={`rounded-md px-2.5 py-1.5 text-[13px] ${pathname?.startsWith(link.href) ? 'bg-brand-background font-semibold text-brand-primary' : 'text-brand-muted hover:bg-brand-background'}`}
+          className={`rounded-md px-2.5 py-1.5 text-[13px] ${pathname?.startsWith(href(link.href)) || pathname?.startsWith(link.href) ? 'bg-brand-background font-semibold text-brand-primary' : 'text-brand-muted hover:bg-brand-background'}`}
         >
           {link.label}
         </Link>

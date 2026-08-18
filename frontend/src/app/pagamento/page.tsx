@@ -2,7 +2,7 @@
 import { publicUi } from '@/lib/ui';
 
 import { useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/TenantLink';
 import { useRouter } from 'next/navigation';
 import { formatBRL } from '@/lib/format';
 import { useCart } from '@/components/CartProvider';
@@ -11,6 +11,7 @@ import { useTalaoClientGate } from '@/components/useTalaoClientGate';
 import { useClientSelfCheckoutGate } from '@/components/useClientSelfCheckoutGate';
 import { useAuthUser } from '@/components/AuthProvider';
 import CheckoutSteps from '@/components/CheckoutSteps';
+import { useTenant } from '@/components/TenantProvider';
 
 const PAYMENT_METHODS = [
   { id: 'pix', label: 'Pix' },
@@ -20,6 +21,7 @@ const PAYMENT_METHODS = [
 
 export default function PagamentoPage() {
   const router = useRouter();
+  const { href } = useTenant();
   const { cart, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, shipping, clearCart, clearShipping, saveOrderToHistory } = useCart();
   const talao = useTalao();
   const activeSession = talao?.activeSession ?? null;
@@ -134,7 +136,7 @@ export default function PagamentoPage() {
     });
     clearCart();
     clearShipping();
-    router.push('/pedido-confirmado');
+    router.push(href('/pedido-confirmado'));
   }
 
   return (

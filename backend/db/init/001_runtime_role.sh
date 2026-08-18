@@ -1,8 +1,26 @@
 #!/bin/sh
 set -eu
 
-psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --set=ON_ERROR_STOP=1 --set=app_password="$POSTGRES_APP_PASSWORD" <<'SQL'
+psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --set=ON_ERROR_STOP=1 --set=app_password="$POSTGRES_APP_PASSWORD" --set=dev_password="$POSTGRES_DEV_PASSWORD" --set=control_password="$POSTGRES_CONTROL_PASSWORD" <<'SQL'
 SELECT format('CREATE ROLE ippa_app LOGIN NOINHERIT NOBYPASSRLS PASSWORD %L', :'app_password')
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ippa_app')
 \gexec
+
+SELECT format('CREATE ROLE ippa_dev LOGIN NOINHERIT BYPASSRLS PASSWORD %L', :'dev_password')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ippa_dev')
+\gexec
+
+ALTER ROLE ippa_dev NOCREATEDB NOCREATEROLE NOREPLICATION;
+
+GRANT USAGE ON SCHEMA public TO ippa_dev;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO ippa_dev;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ippa_dev;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO ippa_dev;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO ippa_dev;
+
+SELECT format('CREATE ROLE ippa_control LOGIN NOINHERIT BYPASSRLS PASSWORD %L', :'control_password')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ippa_control')
+\gexec
+
+ALTER ROLE ippa_control NOCREATEDB NOCREATEROLE NOREPLICATION;
 SQL

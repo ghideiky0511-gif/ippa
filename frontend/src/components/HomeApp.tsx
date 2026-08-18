@@ -4,7 +4,7 @@ import { publicUi } from '@/lib/ui';
 import type { CSSProperties } from 'react';
 import HomeBanner from './HomeBanner';
 import ProductCard from './ProductCard';
-import { CONFIG } from '@/lib/config';
+import { useTenant } from './TenantProvider';
 import type { ResolvedHomeSection } from '@/domain/catalog/types';
 
 // Mesmos padrões de admin/src/lib/blockRegistry.js — usados só quando um
@@ -14,11 +14,12 @@ const DEFAULT_HEIGHT = 320;
 const BOTTOM_PADDING = 60;
 
 export default function HomeApp({ sections }: { sections: ResolvedHomeSection[] }) {
+  const { tenant } = useTenant();
   if (!sections || sections.length === 0) {
     return (
       <header className={publicUi.homeFallback}>
         <div className="">
-          <h1>{CONFIG.storeName}</h1>
+          <h1>{tenant.name}</h1>
           <p>Catálogo — MVP de teste</p>
         </div>
       </header>
@@ -55,7 +56,7 @@ export default function HomeApp({ sections }: { sections: ResolvedHomeSection[] 
               <div key={section.id} className={publicUi.homeSectionItem} style={posStyle}>
                 <HomeBanner
                   banners={section.banners}
-                  fallbackTitle={CONFIG.storeName}
+                  fallbackTitle={tenant.name}
                   headingLevel={section.id === firstBannerId ? 'h1' : 'h2'}
                   height={section.height}
                   width={section.width}
@@ -76,7 +77,7 @@ export default function HomeApp({ sections }: { sections: ResolvedHomeSection[] 
         })}
       </main>
 
-      <footer>MVP de catálogo — dados de teste vindos do feed público da Fashion Girl Atacado.</footer>
+      <footer>Catálogo de {tenant.name}.</footer>
     </>
   );
 }

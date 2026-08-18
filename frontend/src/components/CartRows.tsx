@@ -1,7 +1,7 @@
 'use client';
 import { publicUi } from '@/lib/ui';
 
-import Link from 'next/link';
+import Link from '@/components/TenantLink';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CONFIG, COLOR_MAP } from '@/lib/config';
 import { formatBRL, priceWithPercentOff } from '@/lib/format';

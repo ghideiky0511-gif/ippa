@@ -1,7 +1,5 @@
-// Configuração da loja — troque aqui para reaproveitar o catálogo com outra
-// marca/cliente. Ainda é um arquivo único por deploy (sem multi-tenant real
-// ainda — isso é uma etapa à parte, precisa de banco/login), mas o conteúdo
-// da loja já fica organizado aqui num único lugar fácil de trocar.
+// Regras do catálogo que ainda não possuem configuração por tenant. A
+// identidade da loja (nome e slug) vem do tenant ativo, nunca deste arquivo.
 //
 // Liga/desliga de ferramentas opcionais do catálogo (ex. preço sugerido +
 // markup) NÃO mora mais aqui — virou web/src/data/storeSettings.json
@@ -9,8 +7,6 @@
 // /ferramentas (GET/PUT em /api/store-settings) e aplicado em
 // web/src/lib/catalog.ts (`getCatalog`, `stripDisabledFeatures`).
 export const CONFIG: {
-  storeName: string;
-  logoUrl: string;
   whatsappNumber: string;
   // Opções de previsão de entrega pra quantidade que excede o estoque
   // (backorder) na grade de cor×tamanho — rótulo livre, cada loja define
@@ -23,8 +19,6 @@ export const CONFIG: {
     audiences: { id: string; label: string; productIds: string[] | null }[];
   };
 } = {
-  storeName: 'Fashion Girl Atacado',
-  logoUrl: '', // opcional; sem logo, mostra o storeName como texto
   whatsappNumber: '', // formato internacional só números, ex: '5511999999999'. Vazio = avisa antes de abrir o link.
 
   backorderDeliveryOptions: [

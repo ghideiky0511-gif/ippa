@@ -1,18 +1,20 @@
 'use client';
 import { publicUi } from '@/lib/ui';
 
-import Link from 'next/link';
+import Link from '@/components/TenantLink';
 import { useRouter } from 'next/navigation';
 import { formatBRL } from '@/lib/format';
 import { CONFIG } from '@/lib/config';
 import { useCart } from './CartProvider';
 import { useAuthUser } from './AuthProvider';
 import GroupedCartItems from './GroupedCartItems';
+import { useTenant } from './TenantProvider';
 
 export default function CartDrawer() {
   const router = useRouter();
   const { cart, cartCount, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, isCartOpen, closeCart, clearCart, saveOrderToHistory } = useCart();
   const { showPrices } = useAuthUser();
+  const { tenant, href } = useTenant();
 
   function checkoutWhatsapp() {
     if (cartCount === 0) {
@@ -24,7 +26,7 @@ export default function CartDrawer() {
       return;
     }
     const resolvedItems = cart.filter((item) => item.qty > 0);
-    const lines = [`Olá! Gostaria de fazer o seguinte pedido no ${CONFIG.storeName}:`, ''];
+    const lines = [`Olá! Gostaria de fazer o seguinte pedido no ${tenant.name}:`, ''];
     resolvedItems.forEach((item) => {
       const variantParts = [item.color, item.size].filter(Boolean);
       const variantText = variantParts.length ? ` (${variantParts.join(' / ')})` : '';
@@ -44,7 +46,7 @@ export default function CartDrawer() {
 
   function goToCheckout() {
     closeCart();
-    router.push('/carrinho');
+    router.push(href('/carrinho'));
   }
 
   return (

@@ -6,6 +6,8 @@ services:
       POSTGRES_USER: ${POSTGRES_MIGRATOR_USER:-ippa_migrator}
       POSTGRES_PASSWORD: ${POSTGRES_MIGRATOR_PASSWORD:-ippa_migrator_dev_only}
       POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:-ippa_app_dev_only}
+      POSTGRES_DEV_PASSWORD: ${POSTGRES_DEV_PASSWORD:-ippa_dev_local_only}
+      POSTGRES_CONTROL_PASSWORD: ${POSTGRES_CONTROL_PASSWORD:-ippa_control_dev_only}
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./backend/db/init:/docker-entrypoint-initdb.d:ro
@@ -15,6 +17,8 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:5433:5432"
 
   migrate:
     build:
@@ -26,6 +30,9 @@ services:
       INITIAL_TENANT_NAME: ${INITIAL_TENANT_NAME:-IPPA Demo}
       INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:-admin@demo.local}
       INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-troque-esta-senha}
+      PLATFORM_ADMIN_EMAIL: ${PLATFORM_ADMIN_EMAIL:-control@ippa.local}
+      PLATFORM_ADMIN_NAME: ${PLATFORM_ADMIN_NAME:-Administrador da Plataforma}
+      PLATFORM_ADMIN_PASSWORD: ${PLATFORM_ADMIN_PASSWORD:-troque-esta-senha-control}
     command: npm run db:setup
     depends_on:
       postgres:
@@ -42,6 +49,7 @@ services:
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-luna}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       DATABASE_URL: postgresql://ippa_app:${POSTGRES_APP_PASSWORD:-ippa_app_dev_only}@postgres:5432/${POSTGRES_DB:-ippa}
+      CONTROL_DATABASE_URL: postgresql://ippa_control:${POSTGRES_CONTROL_PASSWORD:-ippa_control_dev_only}@postgres:5432/${POSTGRES_DB:-ippa}
       DATABASE_SSL: "false"
     ports:
       - "127.0.0.1:3011:3011"

@@ -35,6 +35,20 @@ async function validateAdmin(request: NextRequest, tenantSlug: string): Promise<
   }
 }
 
+async function validateControl(request: NextRequest): Promise<boolean> {
+  const token = request.cookies.get('ippa_control_session')?.value;
+  if (!token) return false;
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/control/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 async function getCustomer(request: NextRequest, tenantSlug: string): Promise<AuthUser | null> {
   try {
     const response = await fetch(`${BACKEND_URL}/api/${tenantSlug}/auth/me`, {
@@ -52,6 +66,20 @@ async function getCustomer(request: NextRequest, tenantSlug: string): Promise<Au
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (pathname.startsWith('/_next') || pathname === '/favicon.ico') return NextResponse.next();
+
+  if (pathname.startsWith('/api/control-session/')) return NextResponse.next();
+
+  if (pathname === '/control' || pathname.startsWith('/control/')) {
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set('x-ippa-control', '1');
+    if (pathname === '/control/login' || pathname.startsWith('/control/login/')) {
+      return NextResponse.next({ request: { headers: requestHeaders } });
+    }
+    return await validateControl(request)
+      ? NextResponse.next({ request: { headers: requestHeaders } })
+      : NextResponse.redirect(new URL('/control/login', request.url));
+  }
+
   const slugFromPath = tenantFromPath(pathname);
 
   // Chamadas do navegador continuam usando /api por compatibilidade; o slug

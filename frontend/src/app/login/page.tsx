@@ -2,11 +2,13 @@
 import { publicUi } from '@/lib/ui';
 
 import { useState, type FormEvent } from 'react';
-import Link from 'next/link';
+import Link from '@/components/TenantLink';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useTenant } from '@/components/TenantProvider';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { href } = useTenant();
   const searchParams = useSearchParams();
   // Volta pra onde a pessoa estava (ex.: /frete, /pagamento — ver os gates
   // de login em cada um) em vez do destino padrão por role, quando veio de
@@ -33,7 +35,7 @@ export default function LoginPage() {
         setError(data.error || 'Não foi possível entrar.');
         return;
       }
-      router.push(redirect || (data.user.role === 'vendedora' ? '/catalogo' : '/'));
+      router.push(href(redirect || (data.user.role === 'vendedora' ? '/catalogo' : '/')));
       router.refresh();
     } finally {
       setLoading(false);

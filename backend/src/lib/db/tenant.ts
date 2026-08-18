@@ -16,7 +16,7 @@ export async function findActiveTenant(slug: string): Promise<Tenant | null> {
   const normalized = slug.trim().toLowerCase();
   if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(normalized)) return null;
   const result = await getPool().query<Tenant>(
-    'SELECT id, slug, name FROM tenants WHERE slug = $1 AND active = true',
+    "SELECT id, slug, name FROM tenants WHERE slug = $1 AND active = true AND status = 'active'",
     [normalized],
   );
   return result.rows[0] ?? null;

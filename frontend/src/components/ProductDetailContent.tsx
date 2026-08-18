@@ -2,7 +2,7 @@
 import { publicUi } from '@/lib/ui';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/TenantLink';
 import { COLOR_MAP, CONFIG } from '@/lib/config';
 import { formatBRL, formatMarkup, priceWithPercentOff } from '@/lib/format';
 import { getMetQuantityTier, getQuantityDiscountTiers } from '@/lib/discounts';

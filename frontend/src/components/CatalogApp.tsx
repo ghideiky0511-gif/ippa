@@ -7,6 +7,7 @@ import Filters from './Filters';
 import ProductCard from './ProductCard';
 import { getCategories, getColors, getSizes } from '@/lib/catalogFacets';
 import { CONFIG } from '@/lib/config';
+import { useTenant } from './TenantProvider';
 import type { Highlight } from '@/domain/catalog/types';
 import type { Product } from '@/domain/products/types';
 
@@ -21,6 +22,7 @@ export interface CatalogFilters {
 }
 
 export default function CatalogApp({ initialProducts }: { initialProducts: Product[] }) {
+  const { tenant } = useTenant();
   const searchParams = useSearchParams();
   const [filters, setFilters] = useState<CatalogFilters>(() => ({
     term: '',
@@ -98,7 +100,7 @@ export default function CatalogApp({ initialProducts }: { initialProducts: Produ
         </div>
       </main>
 
-      <footer>MVP de catálogo — dados de teste vindos do feed público da Fashion Girl Atacado.</footer>
+      <footer>Catálogo de {tenant.name}.</footer>
     </>
   );
 }

@@ -2,7 +2,7 @@
 import { publicUi } from '@/lib/ui';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/TenantLink';
 import { CONFIG } from '@/lib/config';
 import { formatBRL } from '@/lib/format';
 import { getSearchSuggestions } from '@/lib/search';

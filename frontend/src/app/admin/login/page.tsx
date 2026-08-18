@@ -1,6 +1,7 @@
 'use client';
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTenant } from '@/components/TenantProvider';
 
 // Login da plataforma admin — antes disso não existia nenhum. Só entra
 // quem tem permissions.adminAccess (ver POST /api/admin/auth/login em
@@ -8,6 +9,7 @@ import { useRouter } from 'next/navigation';
 // (api/auth/login/route.js), que seta a cookie própria do admin.
 export default function AdminLoginPage() {
   const router = useRouter();
+  const { href } = useTenant();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -28,7 +30,7 @@ export default function AdminLoginPage() {
         setError(data.error || 'Não foi possível entrar.');
         return;
       }
-      router.push('/admin');
+      router.push(href('/admin'));
       router.refresh();
     } finally {
       setLoading(false);

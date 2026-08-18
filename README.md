@@ -39,7 +39,18 @@ Endereços:
 
 - loja: `http://localhost:3010`;
 - admin: `http://localhost:3010/admin`;
+- control plane: `http://localhost:3010/control`;
 - API: `http://localhost:3011/api/catalog`.
+
+## Control plane
+
+O acesso de plataforma fica em `/control`, fora de qualquer tenant. Em um ambiente novo,
+o bootstrap cria o usuário definido por `PLATFORM_ADMIN_EMAIL`,
+`PLATFORM_ADMIN_NAME` e `PLATFORM_ADMIN_PASSWORD`.
+
+O control plane cria tenants com administrador inicial e depósito padrão, além de permitir
+ativar, inativar e arquivar tenants. Altere as senhas de exemplo antes de usar qualquer
+ambiente compartilhado ou de produção.
 
 O volume `backend-data` mantém os JSONs alterados em runtime entre recriações dos containers. Para encerrar os serviços sem apagar os dados:
 

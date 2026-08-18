@@ -1,7 +1,7 @@
 'use client';
 import { publicUi } from '@/lib/ui';
 
-import Link from 'next/link';
+import Link from '@/components/TenantLink';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatBRL } from '@/lib/format';
@@ -12,6 +12,7 @@ import CartRows from '@/components/CartRows';
 import CheckoutSteps from '@/components/CheckoutSteps';
 import UnselectedItemsModal from '@/components/UnselectedItemsModal';
 import SimilarProducts from '@/components/SimilarProducts';
+import { useTenant } from '@/components/TenantProvider';
 import type { CartItem } from '@/domain/orders/types';
 import type { Product } from '@/domain/products/types';
 
@@ -32,6 +33,7 @@ function unselectedProductNames(cart: CartItem[]): string[] {
 
 export default function CarrinhoPage() {
   const router = useRouter();
+  const { tenant, href } = useTenant();
   const { cart, cartCount, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, clearCart, saveOrderToHistory, shipping } = useCart();
   const { showPrices } = useAuthUser();
   const [pendingAction, setPendingAction] = useState<{ names: string[]; run: () => void } | null>(null);
@@ -74,7 +76,7 @@ export default function CarrinhoPage() {
       return;
     }
     const resolvedItems = cart.filter((item) => item.qty > 0);
-    const lines = [`Olá! Gostaria de fazer o seguinte pedido no ${CONFIG.storeName}:`, ''];
+    const lines = [`Olá! Gostaria de fazer o seguinte pedido no ${tenant.name}:`, ''];
     resolvedItems.forEach((item) => {
       const variantParts = [item.color, item.size].filter(Boolean);
       const variantText = variantParts.length ? ` (${variantParts.join(' / ')})` : '';
@@ -108,10 +110,10 @@ export default function CarrinhoPage() {
   function goToFrete() {
     const names = unselectedProductNames(cart);
     if (names.length > 0) {
-      setPendingAction({ names, run: () => router.push('/frete') });
+      setPendingAction({ names, run: () => router.push(href('/frete')) });
       return;
     }
-    router.push('/frete');
+    router.push(href('/frete'));
   }
 
   const reachable = shipping ? 3 : cartCount > 0 ? 2 : 1;

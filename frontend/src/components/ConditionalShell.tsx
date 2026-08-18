@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 import AppShell from './AppShell';
 import type { AuthUser } from '@/domain/clients/types';
 import type { CategoryTreeEntry } from '@/domain/catalog/types';
+import { useTenant } from './TenantProvider';
 
 // /login, /cadastro e /pagar são as únicas páginas sem o shell do catálogo
 // público (AppShell) — o talão da vendedora agora vive dentro do próprio
@@ -23,7 +24,9 @@ export default function ConditionalShell({
   authUser: AuthUser | null;
 }) {
   const pathname = usePathname();
-  const skipShell = NO_SHELL_PREFIXES.some((prefix) => pathname?.startsWith(prefix));
+  const { tenant } = useTenant();
+  const tenantPath = pathname?.startsWith(`/${tenant.slug}`) ? pathname.slice(tenant.slug.length + 1) || '/' : pathname;
+  const skipShell = NO_SHELL_PREFIXES.some((prefix) => tenantPath?.startsWith(prefix));
   if (skipShell) return <>{children}</>;
   return (
     <AppShell categoryTree={categoryTree} authUser={authUser}>
