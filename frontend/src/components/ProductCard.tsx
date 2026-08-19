@@ -66,7 +66,7 @@ export default function ProductCard({ product }: { product: Product }) {
         <Link href={`/produto/${product.id}`} className="hover:text-brand-primary">
           <h3 className="min-h-[2.7em] text-[15px] font-semibold leading-[1.35]">{product.name}</h3>
         </Link>
-        {product.sku && <div className="-mt-1 text-[11px] text-brand-muted">{product.sku}</div>}
+        {product.referenceId && <div className="-mt-1 text-[11px] text-brand-muted">{product.referenceId}</div>}
         {!showPrices ? (
           <Link href="/login" className="text-[13px] font-semibold text-brand-primary">Entrar para ver o preço</Link>
         ) : product.activeDiscount ? (

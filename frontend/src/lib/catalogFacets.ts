@@ -1,21 +1,4 @@
-// Facetas derivadas do catálogo (categorias/cores/tamanhos), usadas tanto
-// pela home (menu de categorias) quanto pelo catálogo (filtros).
-
 import type { HomeSection, Product, ResolvedHomeSection } from './types';
-
-export function getCategories(products: Product[]): string[] {
-  return Array.from(new Set(products.map((p) => p.category).filter(Boolean))).sort();
-}
-
-export function getColors(products: Product[]): string[] {
-  return Array.from(new Set(products.flatMap((p) => p.colors || []).filter(Boolean))).sort();
-}
-
-export function getSizes(products: Product[]): string[] {
-  return Array.from(new Set(products.flatMap((p) => p.sizes || []).filter(Boolean))).sort((a, b) =>
-    isNaN(Number(a)) || isNaN(Number(b)) ? a.localeCompare(b) : Number(a) - Number(b)
-  );
-}
 
 // Resolve uma lista de IDs pra produtos, preservando a ordem da lista e
 // ignorando IDs que não existem mais. `ids` null/undefined é a convenção

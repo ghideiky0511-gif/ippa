@@ -2,11 +2,13 @@
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
 import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import WorkspaceNav from '@/workspace/navigation/WorkspaceNav';
 import SimilarProductsField from './SimilarProductsField';
 import { formatBRL, formatMarkup } from '@/workspace/lib/format';
 import { saveProductOverrides } from '@/workspace/lib/productOverridesClient';
 import { saveStoreSettings } from '@/workspace/lib/storeSettingsClient';
+import { createProduct } from '@/workspace/lib/catalogClient';
 
 function toNumberOrUndefined(raw) {
   if (raw === '') return undefined;
@@ -15,6 +17,7 @@ function toNumberOrUndefined(raw) {
 }
 
 export default function ProductsApp({ products, initialOverrides, initialSettings }) {
+  const router = useRouter();
   const [overrides, setOverrides] = useState(initialOverrides || {});
   const [rowSaveState, setRowSaveState] = useState({}); // productId -> 'saving' | 'saved' | 'error'
   const [query, setQuery] = useState('');
@@ -23,14 +26,19 @@ export default function ProductsApp({ products, initialOverrides, initialSetting
     initialSettings?.defaultMarkup != null ? String(initialSettings.defaultMarkup) : ''
   );
   const [defaultMarkupSaveState, setDefaultMarkupSaveState] = useState('idle');
+  const [newProduct, setNewProduct] = useState({
+    name: '', price: '', category: '', referenceId: '', description: '', image: '', color: '', size: '',
+  });
+  const [newProductState, setNewProductState] = useState('idle');
+  const [newProductError, setNewProductError] = useState('');
 
   const q = query.trim().toLowerCase();
   const results = useMemo(() => {
     if (!q) return [];
     return (products || [])
       .filter((p) => {
-        const sku = overrides[p.id]?.sku || '';
-        return (p.name || '').toLowerCase().includes(q) || sku.toLowerCase().includes(q);
+        const referenceId = overrides[p.id]?.referenceId || '';
+        return (p.name || '').toLowerCase().includes(q) || referenceId.toLowerCase().includes(q);
       })
       .slice(0, 20);
   }, [products, overrides, q]);
@@ -105,6 +113,46 @@ export default function ProductsApp({ products, initialOverrides, initialSetting
     }
   }
 
+  function updateNewProduct(field, value) {
+    setNewProduct((current) => ({ ...current, [field]: value }));
+    setNewProductState('idle');
+    setNewProductError('');
+  }
+
+  async function handleCreateProduct(event) {
+    event.preventDefault();
+    const price = Number(newProduct.price);
+    if (!newProduct.name.trim() || !Number.isFinite(price) || price < 0) {
+      setNewProductError('Informe nome e preço de atacado igual ou maior que zero.');
+      return;
+    }
+    if ((newProduct.color.trim() && !newProduct.size.trim()) || (!newProduct.color.trim() && newProduct.size.trim())) {
+      setNewProductError('Preencha cor e tamanho juntos, ou deixe ambos em branco.');
+      return;
+    }
+    setNewProductState('saving');
+    setNewProductError('');
+    try {
+      await createProduct({
+        name: newProduct.name,
+        price,
+        category: newProduct.category || undefined,
+        referenceId: newProduct.referenceId || undefined,
+        description: newProduct.description || undefined,
+        image: newProduct.image || undefined,
+        variant: newProduct.color && newProduct.size
+          ? { color: newProduct.color, size: newProduct.size }
+          : undefined,
+      });
+      setNewProduct({ name: '', price: '', category: '', referenceId: '', description: '', image: '', color: '', size: '' });
+      setNewProductState('saved');
+      router.refresh();
+    } catch (error) {
+      setNewProductState('error');
+      setNewProductError(error instanceof Error ? error.message : 'Não foi possível cadastrar o produto.');
+    }
+  }
+
   return (
     <div className="products-page">
       <div className={adminUi.topbar}>
@@ -115,6 +163,55 @@ export default function ProductsApp({ products, initialOverrides, initialSetting
       </div>
 
       <main className={adminUi.productsEditor}>
+        <form className={`${adminUi.defaultMarkup} grid gap-3`} onSubmit={handleCreateProduct}>
+          <div>
+            <h2 className="text-base font-bold">Adicionar produto ao catálogo</h2>
+            <p className={adminUi.hint}>Cadastre o básico agora. A grade e o estoque podem ser configurados depois.</p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className={adminUi.field}>
+              <label>Nome *</label>
+              <input value={newProduct.name} onChange={(e) => updateNewProduct('name', e.target.value)} required />
+            </div>
+            <div className={adminUi.field}>
+              <label>Preço de atacado *</label>
+              <input type="number" step="0.01" min="0" value={newProduct.price} onChange={(e) => updateNewProduct('price', e.target.value)} required />
+            </div>
+            <div className={adminUi.field}>
+              <label>Referência (REF)</label>
+              <input value={newProduct.referenceId} onChange={(e) => updateNewProduct('referenceId', e.target.value)} placeholder="Único por loja" />
+            </div>
+            <div className={adminUi.field}>
+              <label>Categoria</label>
+              <input list="classification-categories" value={newProduct.category} onChange={(e) => updateNewProduct('category', e.target.value)} placeholder="Sem categoria" />
+            </div>
+            <div className={adminUi.field}>
+              <label>Cor da primeira variante</label>
+              <input value={newProduct.color} onChange={(e) => updateNewProduct('color', e.target.value)} placeholder="Ex.: Preto" />
+            </div>
+            <div className={adminUi.field}>
+              <label>Tamanho da primeira variante</label>
+              <input value={newProduct.size} onChange={(e) => updateNewProduct('size', e.target.value)} placeholder="Ex.: M" />
+            </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className={adminUi.field}>
+              <label>URL da imagem</label>
+              <input type="url" value={newProduct.image} onChange={(e) => updateNewProduct('image', e.target.value)} placeholder="https://..." />
+            </div>
+            <div className={adminUi.field}>
+              <label>Descrição</label>
+              <input value={newProduct.description} onChange={(e) => updateNewProduct('description', e.target.value)} placeholder="Opcional" />
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <button className={adminUi.primaryButton} disabled={newProductState === 'saving'}>
+              {newProductState === 'saving' ? 'Cadastrando…' : 'Adicionar produto'}
+            </button>
+            {newProductState === 'saved' && <span className={adminUi.status}>Produto adicionado ao catálogo.</span>}
+            {newProductError && <span className="text-[13px] text-red-700">{newProductError}</span>}
+          </div>
+        </form>
         <p className={adminUi.previewEmpty}>
           Código, preço sugerido de revenda e markup são dados opcionais da loja — quando o Bippa/ERP mandar
           esses campos direto no catálogo, eles aparecem sozinhos; o que for editado aqui tem prioridade sobre
@@ -193,10 +290,10 @@ export default function ProductsApp({ products, initialOverrides, initialSetting
                     <span className={adminUi.productPrice}>Atacado: {formatBRL(p.price)}</span>
                   </div>
                   <div className={adminUi.field}>
-                    <label>Código</label>
+                    <label>Referência</label>
                     <input
-                      value={o.sku ?? ''}
-                      onChange={(e) => updateField(p.id, 'sku', e.target.value)}
+                      value={o.referenceId ?? ''}
+                      onChange={(e) => updateField(p.id, 'referenceId', e.target.value)}
                       placeholder="Opcional"
                     />
                   </div>

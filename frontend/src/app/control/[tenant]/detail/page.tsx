@@ -6,6 +6,13 @@ import type { ControlTenant, ControlTenantUser, TenantStatus } from '@/lib/contr
 
 const emptyAdminForm = { name: '', email: '', password: '' };
 
+interface VestiImportSummary {
+  productsCreated: number;
+  productsUpdated: number;
+  variantsCreated: number;
+  variantsUpdated: number;
+}
+
 export default function TenantDetailPage({ params }: { params: Promise<{ tenant: string }> }) {
   const [tenantSlug, setTenantSlug] = useState('');
   const [tenant, setTenant] = useState<ControlTenant | null>(null);
@@ -17,6 +24,12 @@ export default function TenantDetailPage({ params }: { params: Promise<{ tenant:
   const [adminError, setAdminError] = useState('');
   const [creatingAdmin, setCreatingAdmin] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState('');
+  const [vestiSlug, setVestiSlug] = useState('');
+  const [vestiSlugInput, setVestiSlugInput] = useState('');
+  const [savingVestiSlug, setSavingVestiSlug] = useState(false);
+  const [importingVesti, setImportingVesti] = useState(false);
+  const [vestiError, setVestiError] = useState('');
+  const [vestiSummary, setVestiSummary] = useState<VestiImportSummary | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -33,6 +46,10 @@ export default function TenantDetailPage({ params }: { params: Promise<{ tenant:
       const usersPayload = await usersResponse.json().catch(() => ({}));
       if (!usersResponse.ok) { setError(usersPayload.error || 'Nao foi possivel carregar os usuarios.'); return; }
       setUsers(usersPayload.users || []);
+
+      const vestiResponse = await fetch(`/api/control-session/tenants/${found.id}/vesti-config`, { cache: 'no-store' });
+      const vestiPayload = await vestiResponse.json().catch(() => ({}));
+      if (vestiResponse.ok) { setVestiSlug(vestiPayload.slug || ''); setVestiSlugInput(vestiPayload.slug || ''); }
     }
     load().finally(() => setLoading(false));
   }, [params]);
@@ -59,6 +76,30 @@ export default function TenantDetailPage({ params }: { params: Promise<{ tenant:
     } finally { setCreatingAdmin(false); }
   }
 
+  async function saveVestiSlug(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!tenant) return;
+    setSavingVestiSlug(true); setVestiError('');
+    try {
+      const response = await fetch(`/api/control-session/tenants/${tenant.id}/vesti-config`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slug: vestiSlugInput }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) return setVestiError(payload.error || 'Nao foi possivel salvar o slug.');
+      setVestiSlug(payload.slug || '');
+      setVestiSlugInput(payload.slug || '');
+    } finally { setSavingVestiSlug(false); }
+  }
+
+  async function importVestiProducts() {
+    if (!tenant) return;
+    setImportingVesti(true); setVestiError(''); setVestiSummary(null);
+    try {
+      const response = await fetch(`/api/control-session/tenants/${tenant.id}/vesti-import`, { method: 'POST' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) return setVestiError(payload.error || 'Nao foi possivel importar os produtos.');
+      setVestiSummary(payload.summary);
+    } finally { setImportingVesti(false); }
+  }
+
   async function deleteUser(user: ControlTenantUser) {
     if (!tenant) return;
     if (!window.confirm(`Excluir o usuario ${user.name}?`)) return;
@@ -79,6 +120,22 @@ export default function TenantDetailPage({ params }: { params: Promise<{ tenant:
       <header className="mb-7"><h1 className="text-2xl font-semibold">{tenant.name}</h1><p className="text-sm text-brand-muted">/{tenantSlug}</p></header>
       <section className="mb-6 rounded-brand bg-white p-5 shadow-sm"><h2 className="mb-3 text-lg font-semibold">Situacao do tenant</h2><p className="mb-4 text-sm text-brand-muted">Status atual: {tenant.status}</p><div className="flex flex-wrap gap-2"><button className="rounded border px-3 py-1.5 text-sm" onClick={() => updateStatus('active')}>Ativar</button><button className="rounded border px-3 py-1.5 text-sm" onClick={() => updateStatus('inactive')}>Inativar</button><button className="rounded border border-red-200 px-3 py-1.5 text-sm text-red-700" onClick={() => updateStatus('archived')}>Arquivar</button></div></section>
       <section className="mb-6 rounded-brand bg-white p-5 shadow-sm"><h2 className="mb-3 text-lg font-semibold">Plano e contrato</h2>{tenant.contract ? <div className="text-sm"><p>{tenant.contract.plan.name} ({tenant.contract.plan.code})</p><p className="text-brand-muted">{tenant.contract.status} - {tenant.contract.billingCycle}</p></div> : <p className="text-sm text-brand-muted">Sem plano ou contrato definido.</p>}</section>
+      <section className="mb-6 rounded-brand bg-white p-5 shadow-sm">
+        <h2 className="mb-3 text-lg font-semibold">Catalogo Vesti</h2>
+        <form className="mb-4 flex flex-wrap items-end gap-3" onSubmit={saveVestiSlug}>
+          <label className="flex flex-col gap-1 text-sm">
+            Slug do catalogo
+            <input className="rounded-lg border p-2" placeholder="ex: minha-loja" value={vestiSlugInput} onChange={(event) => setVestiSlugInput(event.target.value)} />
+          </label>
+          <button className="rounded border px-3 py-1.5 text-sm disabled:opacity-60" disabled={savingVestiSlug}>{savingVestiSlug ? 'Salvando...' : 'Salvar'}</button>
+        </form>
+        <button className="rounded-lg bg-brand-primary px-4 py-2 font-semibold text-white disabled:opacity-60" onClick={importVestiProducts} disabled={importingVesti || !vestiSlug}>{importingVesti ? 'Importando...' : 'Importar produtos da Vesti'}</button>
+        {!vestiSlug && <p className="mt-2 text-sm text-brand-muted">Configure e salve o slug antes de importar.</p>}
+        {vestiError && <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{vestiError}</p>}
+        {vestiSummary && <p className="mt-3 rounded-lg bg-brand-background p-3 text-sm">
+          {vestiSummary.productsCreated} produtos criados, {vestiSummary.productsUpdated} atualizados - {vestiSummary.variantsCreated} variantes criadas, {vestiSummary.variantsUpdated} atualizadas.
+        </p>}
+      </section>
       <section className="rounded-brand bg-white p-5 shadow-sm">
         <div className="mb-3 flex items-center justify-between"><h2 className="text-lg font-semibold">Usuarios atuais</h2><button className="rounded border px-3 py-1.5 text-sm" onClick={() => setShowCreateAdmin((current) => !current)}>{showCreateAdmin ? 'Cancelar' : 'Criar administrador'}</button></div>
         {showCreateAdmin && <form className="mb-4 grid gap-3 rounded-lg bg-brand-background p-4 md:grid-cols-3" onSubmit={createAdmin}>

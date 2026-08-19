@@ -22,6 +22,12 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 // (preço visível) até o fetch resolver.
 export function AuthProvider({ authUser, children }: { authUser: AuthUser | null; children: ReactNode }) {
   const [hidePriceWithoutLogin, setHidePriceWithoutLogin] = useState(false);
+  // Links públicos gerados no atendimento podem solicitar uma versão de
+  // vitrine sem preços. É uma escolha da apresentação do link, independente
+  // da regra global que já esconde preço para visitantes sem login.
+  const [forceHiddenPrices] = useState(() =>
+    typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('precos') === 'ocultos'
+  );
 
   useEffect(() => {
     fetch('/api/store-settings')
@@ -30,7 +36,7 @@ export function AuthProvider({ authUser, children }: { authUser: AuthUser | null
       .catch(() => {});
   }, []);
 
-  const showPrices = !!authUser || !hidePriceWithoutLogin;
+  const showPrices = !forceHiddenPrices && (!!authUser || !hidePriceWithoutLogin);
 
   return <AuthContext.Provider value={{ authUser, showPrices }}>{children}</AuthContext.Provider>;
 }

@@ -1,5 +1,5 @@
 import ProductsApp from '@/workspace/components/products/ProductsApp';
-import { fetchCatalog } from '@/workspace/lib/catalogClient';
+import { fetchCatalog } from '@/workspace/lib/catalogClient.server';
 import { fetchProductOverrides } from '@/workspace/lib/productOverridesClient.server';
 import { fetchStoreSettings } from '@/workspace/lib/storeSettingsClient.server';
 

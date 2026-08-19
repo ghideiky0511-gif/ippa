@@ -85,7 +85,7 @@ export async function syncTenantProducts(tenant: Tenant, actor: AuthUser): Promi
                 subcategory: data.subcategory,
                 collection: data.collection,
                 brand: data.brand,
-                sku: data.sku,
+                referenceId: data.referenceId,
                 price: data.price,
                 suggestedRetailPrice: data.suggestedRetailPrice,
                 markup: data.markup,

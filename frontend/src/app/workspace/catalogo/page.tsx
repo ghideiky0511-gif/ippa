@@ -1,5 +1,5 @@
 import InternalCatalogApp from '@/workspace/components/catalog/InternalCatalogApp';
-import { fetchCatalog } from '@/workspace/lib/catalogClient';
+import { fetchCatalog } from '@/workspace/lib/catalogClient.server';
 import { fetchOrderBooks, fetchOrderSessions } from '@/workspace/lib/ordersClient.server';
 
 export const dynamic = 'force-dynamic';

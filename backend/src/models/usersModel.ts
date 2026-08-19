@@ -79,6 +79,14 @@ export async function softDeleteUserRow(client: PoolClient, id: string): Promise
     return result.rows[0] ?? null;
 }
 
+export async function listAdministradorUserIds(client: PoolClient): Promise<string[]> {
+    const result = await client.query<{ id: string }>(
+        `SELECT id FROM users
+         WHERE tenant_id = app_tenant_id() AND role = 'administrador' AND deleted_at IS NULL`,
+    );
+    return result.rows.map((row) => row.id);
+}
+
 export async function listOnlineSellerIds(client: PoolClient): Promise<string[]> {
     const result = await client.query<{ id: string }>(
         `SELECT DISTINCT users.id FROM users

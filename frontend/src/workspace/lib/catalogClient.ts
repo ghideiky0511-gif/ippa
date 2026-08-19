@@ -1,6 +1,19 @@
-import type { Product } from '@/domain/products/types';
-import { adminJsonServer } from './httpServer';
+import { adminJson } from './http';
 
-export function fetchCatalog(): Promise<Product[]> {
-  return adminJsonServer('/api/catalog', {}, 'Não foi possível carregar os produtos do catálogo.');
+export interface CreateProductInput {
+  name: string;
+  price: number;
+  category?: string;
+  referenceId?: string;
+  description?: string;
+  image?: string;
+  variant?: { color: string; size: string };
+}
+
+export function createProduct(product: CreateProductInput): Promise<{ id: string }> {
+  return adminJson('/api/admin/products', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(product),
+  }, 'Não foi possível cadastrar o produto.');
 }

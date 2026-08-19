@@ -123,7 +123,7 @@ export async function listCatalog(tenant: Tenant): Promise<Product[]> {
                 subcategory: classification?.subcategory ?? row.subcategory ?? undefined,
                 collection: classification?.collection ?? row.collection ?? undefined,
                 brand: classification?.brand ?? row.brand ?? undefined,
-                sku: row.sku ?? undefined,
+                referenceId: row.reference_id ?? undefined,
                 price: Number(row.price),
                 suggestedRetailPrice: row.suggested_retail_price ? Number(row.suggested_retail_price) : undefined,
                 markup: row.markup ? Number(row.markup) : undefined,

@@ -9,7 +9,7 @@ export interface ProductRow {
     subcategory: string | null;
     collection: string | null;
     brand: string | null;
-    sku: string | null;
+    reference_id: string | null;
     price: string;
     suggested_retail_price: string | null;
     markup: string | null;
@@ -19,7 +19,7 @@ export interface ProductRow {
 
 export type ProductOverrideRow = Partial<Pick<
     import("@/lib/types").Product,
-    "sku" | "suggestedRetailPrice" | "markup" | "similarProductIdsQuickview" |
+    "referenceId" | "suggestedRetailPrice" | "markup" | "similarProductIdsQuickview" |
     "similarProductIdsCart" | "category" | "subcategory" | "collection"
 >>;
 
@@ -56,7 +56,7 @@ export interface ClassificationRow {
 
 export async function listProductRows(client: PoolClient): Promise<ProductRow[]> {
     const result = await client.query<ProductRow>(
-        `SELECT id, name, description, category, subcategory, collection, brand, sku, price, suggested_retail_price, markup, media, attributes
+        `SELECT id, name, description, category, subcategory, collection, brand, reference_id, price, suggested_retail_price, markup, media, attributes
          FROM products WHERE tenant_id = app_tenant_id()
          ORDER BY display_position NULLS LAST, created_at`,
     );
@@ -154,25 +154,125 @@ export async function setClassificationActiveRow(client: PoolClient, id: string,
 
 export interface ProductWriteRow {
     name: string; description?: string; category: string; subcategory?: string;
-    collection?: string; brand?: string; sku?: string; price: number;
+    collection?: string; brand?: string; referenceId?: string; price: number;
     suggestedRetailPrice?: number; markup?: number;
     media?: ProductRow["media"]; attributes?: Record<string, unknown>;
 }
 
+export interface ProductVariantWriteRow {
+    color: string;
+    size: string;
+    price: number;
+    availability?: Availability;
+}
+
 const productFields =
-    "id, name, description, category, subcategory, collection, brand, sku, price, suggested_retail_price, markup, media, attributes";
+    "id, name, description, category, subcategory, collection, brand, reference_id, price, suggested_retail_price, markup, media, attributes";
 
 export async function insertProductRow(client: PoolClient, value: ProductWriteRow): Promise<ProductRow> {
     const result = await client.query<ProductRow>(
-        `INSERT INTO products (tenant_id, name, description, category, subcategory, collection, brand, sku, price, suggested_retail_price, markup, media, attributes)
+        `INSERT INTO products (tenant_id, name, description, category, subcategory, collection, brand, reference_id, price, suggested_retail_price, markup, media, attributes)
          VALUES (app_tenant_id(), $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
          RETURNING ${productFields}`,
         [value.name, value.description ?? "", value.category, value.subcategory ?? null,
-         value.collection ?? null, value.brand ?? null, value.sku ?? null, value.price,
+         value.collection ?? null, value.brand ?? null, value.referenceId ?? null, value.price,
          value.suggestedRetailPrice ?? null, value.markup ?? null,
          JSON.stringify(value.media ?? {}), JSON.stringify(value.attributes ?? {})],
     );
     return result.rows[0];
+}
+
+/** A variante é criada junto do produto manual para que o catálogo já possa ser pedido. */
+export async function insertProductVariantRow(
+    client: PoolClient,
+    productId: string,
+    value: ProductVariantWriteRow,
+): Promise<void> {
+    await client.query(
+        `INSERT INTO product_variants (tenant_id, product_id, color, size, price, availability)
+         VALUES (app_tenant_id(), $1, $2, $3, $4, $5)`,
+        [productId, value.color, value.size, value.price, value.availability ?? "in_stock"],
+    );
+}
+
+export async function productReferenceIdExists(client: PoolClient, referenceId: string): Promise<boolean> {
+    const result = await client.query(
+        "SELECT 1 FROM products WHERE tenant_id = app_tenant_id() AND reference_id = $1 LIMIT 1",
+        [referenceId],
+    );
+    return (result.rowCount ?? 0) > 0;
+}
+
+// Upsert usado pelo import de catálogo externo da Vesti
+// (services/platform/vestiCatalogService.ts). Reconcilia pela mesma
+// UNIQUE (tenant_id, reference_id) que o sync de ERP já preenche em
+// insertProductRow/updateProductRow — reference_id é o código bruto do
+// provider externo, qualquer que ele seja.
+export async function upsertProductByReferenceIdRow(
+    client: PoolClient,
+    value: ProductWriteRow & { referenceId: string },
+): Promise<{ row: ProductRow; created: boolean }> {
+    const result = await client.query<ProductRow & { inserted: boolean }>(
+        `INSERT INTO products (tenant_id, name, description, category, subcategory, collection, brand, reference_id, price, suggested_retail_price, markup, media, attributes)
+         VALUES (app_tenant_id(), $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         ON CONFLICT (tenant_id, reference_id) DO UPDATE SET
+           name = EXCLUDED.name, description = EXCLUDED.description, category = EXCLUDED.category,
+           subcategory = EXCLUDED.subcategory, collection = EXCLUDED.collection, brand = EXCLUDED.brand,
+           price = EXCLUDED.price, suggested_retail_price = EXCLUDED.suggested_retail_price, markup = EXCLUDED.markup,
+           media = EXCLUDED.media, attributes = EXCLUDED.attributes, updated_at = now()
+         RETURNING ${productFields}, (xmax = 0) AS inserted`,
+        [value.name, value.description ?? "", value.category, value.subcategory ?? null,
+         value.collection ?? null, value.brand ?? null, value.referenceId, value.price,
+         value.suggestedRetailPrice ?? null, value.markup ?? null,
+         JSON.stringify(value.media ?? {}), JSON.stringify(value.attributes ?? {})],
+    );
+    const { inserted, ...row } = result.rows[0];
+    return { row, created: inserted };
+}
+
+// Upsert usado pelo mesmo import — chave natural já existente no schema
+// (UNIQUE (tenant_id, product_id, color, size), migration 002), sem
+// precisar de reconciliação por external-id como o ERP.
+export async function upsertProductVariantRow(
+    client: PoolClient,
+    productId: string,
+    value: ProductVariantWriteRow,
+): Promise<{ id: string; created: boolean }> {
+    const result = await client.query<{ id: string; inserted: boolean }>(
+        `INSERT INTO product_variants (tenant_id, product_id, color, size, price, availability)
+         VALUES (app_tenant_id(), $1, $2, $3, $4, $5)
+         ON CONFLICT (tenant_id, product_id, color, size)
+         DO UPDATE SET price = EXCLUDED.price, availability = EXCLUDED.availability
+         RETURNING id, (xmax = 0) AS inserted`,
+        [productId, value.color, value.size, value.price, value.availability ?? "in_stock"],
+    );
+    return { id: result.rows[0].id, created: result.rows[0].inserted };
+}
+
+/** Mantém a classificação canônica em sincronia com a coluna legada do produto. */
+export async function setPrimaryProductCategoryRow(
+    client: PoolClient,
+    productId: string,
+    name: string,
+    slug: string,
+): Promise<void> {
+    await client.query(
+        `WITH category_type AS (
+           SELECT id FROM classification_types
+           WHERE tenant_id = app_tenant_id() AND kind = 'category'
+         ), category AS (
+           INSERT INTO classifications (tenant_id, classification_type_id, name, slug)
+           SELECT app_tenant_id(), id, $2, $3 FROM category_type
+           ON CONFLICT (tenant_id, classification_type_id, parent_id, slug)
+           DO UPDATE SET name = EXCLUDED.name, updated_at = now()
+           RETURNING id, classification_type_id
+         )
+         INSERT INTO product_classifications (tenant_id, product_id, classification_id, classification_type_id, is_primary)
+         SELECT app_tenant_id(), $1, id, classification_type_id, true FROM category
+         ON CONFLICT (tenant_id, product_id, classification_id)
+         DO UPDATE SET is_primary = true`,
+        [productId, name, slug],
+    );
 }
 
 // COALESCE em vez de sobrescrever com null: um payload de sync do ERP pode
@@ -181,12 +281,12 @@ export async function updateProductRow(client: PoolClient, id: string, value: Pa
     const result = await client.query<ProductRow>(
         `UPDATE products SET name = COALESCE($2, name), description = COALESCE($3, description), category = COALESCE($4, category),
            subcategory = COALESCE($5, subcategory), collection = COALESCE($6, collection), brand = COALESCE($7, brand),
-           sku = COALESCE($8, sku), price = COALESCE($9, price), suggested_retail_price = COALESCE($10, suggested_retail_price),
+           reference_id = COALESCE($8, reference_id), price = COALESCE($9, price), suggested_retail_price = COALESCE($10, suggested_retail_price),
            markup = COALESCE($11, markup), media = COALESCE($12, media), attributes = COALESCE($13, attributes),
            updated_at = now()
          WHERE tenant_id = app_tenant_id() AND id = $1 RETURNING ${productFields}`,
         [id, value.name ?? null, value.description ?? null, value.category ?? null,
-         value.subcategory ?? null, value.collection ?? null, value.brand ?? null, value.sku ?? null,
+         value.subcategory ?? null, value.collection ?? null, value.brand ?? null, value.referenceId ?? null,
          value.price ?? null, value.suggestedRetailPrice ?? null, value.markup ?? null,
          value.media ? JSON.stringify(value.media) : null, value.attributes ? JSON.stringify(value.attributes) : null],
     );

@@ -40,7 +40,7 @@ export async function createPaymentLink(
     const updated = await setOrderSessionPaymentTokenRow(client, sessionId, digest(token));
     if (!updated) throw new NotFoundError("SESSION_NOT_FOUND");
     changedSession = toOrderSession(updated, items);
-    return { email: user.email, name: user.name };
+    return { id: user.id, role: user.role, email: user.email, name: user.name };
   });
   if (changedSession) notifySession(tenant.id, changedSession);
   notifyPaymentLink(tenant, recipient, `${publicOrigin}/${tenant.slug}/pagar/${token}`);

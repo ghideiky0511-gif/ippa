@@ -81,7 +81,7 @@ export interface Product {
   // /produtos (ver ProductOverride em web/src/lib/catalog.ts).
   collection?: string;
   brand?: string;
-  sku?: string; // código/referência interna (Bippa/ERP) — mostrado no card e na página de produto
+  referenceId?: string; // código de referência (REF) — vem do ERP (ex. TOTVS Moda ReferenceCode) ou digitado à mão pra produto manual; mostrado no card e na página de produto
   price: number;
   image?: string;
   images?: string[];

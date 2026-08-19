@@ -8,7 +8,6 @@ import ProductCard from './ProductCard';
 import ProductCardSkeleton from './ProductCardSkeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
-import { getCategories, getColors, getSizes } from '@/lib/catalogFacets';
 import { CONFIG } from '@/lib/config';
 import type { Highlight } from '@/domain/catalog/types';
 import type { Product } from '@/domain/products/types';
@@ -23,7 +22,13 @@ export interface CatalogFilters {
   publico: string;
 }
 
-export default function CatalogApp({ initialProducts }: { initialProducts: Product[] }) {
+export interface CatalogFilterOptions {
+  categories: string[];
+  colors: string[];
+  sizes: string[];
+}
+
+export default function CatalogApp({ initialProducts, filterOptions }: { initialProducts: Product[]; filterOptions: CatalogFilterOptions }) {
   const searchParams = useSearchParams();
   const [filters, setFilters] = useState<CatalogFilters>(() => ({
     term: '',
@@ -44,15 +49,6 @@ export default function CatalogApp({ initialProducts }: { initialProducts: Produ
       .then(setHighlights)
       .catch(() => {});
   }, []);
-
-  const options = useMemo(
-    () => ({
-      categories: getCategories(initialProducts),
-      colors: getColors(initialProducts),
-      sizes: getSizes(initialProducts),
-    }),
-    [initialProducts]
-  );
 
   const highlight = useMemo(
     () => highlights.find((h) => h.id === filters.destaque),
@@ -88,7 +84,7 @@ export default function CatalogApp({ initialProducts }: { initialProducts: Produ
     <>
       <main className={publicUi.container}>
         <Filters
-          options={options}
+          options={filterOptions}
           filters={filters}
           onChange={setFilters}
           onClear={() => setFilters({ term: '', category: '', subcategory: '', color: '', size: '', destaque: '', publico: '' })}

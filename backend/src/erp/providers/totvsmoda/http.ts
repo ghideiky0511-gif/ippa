@@ -1,0 +1,123 @@
+// Único transporte HTTP permitido para a API TOTVS Moda — porta http.py e as
+// constantes de base.py. Camada pura: não conhece tenant nem banco, só sabe
+// falar com a API externa e traduzir a resposta em erros tipados.
+
+import { TotvsModaAuthError, TotvsModaNotFoundError, TotvsModaResponseError, TotvsModaTransportError } from "./errors";
+
+export const TOTVS_MODA_BASE_URL = "https://apitotvsmoda.bhan.com.br";
+export const TOTVS_MODA_DEFAULT_TIMEOUT_MS = 20_000;
+
+export const AUTH_TOKEN_PATH = "/api/totvsmoda/authorization/v2/token";
+export const BRANCHES_LIST_PATH = "/api/totvsmoda/person/v2/branchesList";
+export const BRANCHES_PATH = "/api/totvsmoda/person/v2/branches";
+export const SALES_ORDER_SEARCH_PATH = "/api/totvsmoda/sales-order/v2/orders/search";
+export const PRODUCTS_SEARCH_PATH = "/api/totvsmoda/product/v2/products/search";
+export const PRODUCT_PRICES_SEARCH_PATH = "/api/totvsmoda/product/v2/prices/search";
+export const PRODUCT_BALANCES_SEARCH_PATH = "/api/totvsmoda/product/v2/balances/search";
+export const INDIVIDUALS_SEARCH_PATH = "/api/totvsmoda/person/v2/individuals/search";
+export const LEGAL_ENTITIES_SEARCH_PATH = "/api/totvsmoda/person/v2/legal-entities/search";
+export const REPRESENTATIVES_SEARCH_PATH = "/api/totvsmoda/person/v2/representatives/search";
+export const CLASSIFICATIONS_PATH = "/api/totvsmoda/person/v2/classifications";
+export const EMAIL_TYPES_PATH = "/api/totvsmoda/person/v2/email-types";
+export const PHONE_TYPES_PATH = "/api/totvsmoda/person/v2/phone-types";
+export const PERSON_STATISTICS_PATH = "/api/totvsmoda/person/v2/person-statistics";
+
+function extractErrorMessage(payload: unknown, fallback: string): string {
+    if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+        const record = payload as Record<string, unknown>;
+        const parts = ["message", "detailedMessage", "error", "detail", "mensagem"]
+            .map((key) => String(record[key] ?? "").trim())
+            .filter(Boolean);
+        if (parts.length) return parts.join(" — ");
+    }
+    if (Array.isArray(payload) && payload.length) return extractErrorMessage(payload[0], fallback);
+    return String(fallback || "Erro na API TOTVS Moda.").trim();
+}
+
+export interface TotvsModaRequestOptions {
+    token?: string;
+    jsonBody?: unknown;
+    formData?: Record<string, string>;
+    params?: Record<string, string | number | undefined>;
+    timeoutMs?: number;
+}
+
+export async function totvsModaRequest<T = unknown>(
+    method: string,
+    path: string,
+    options: TotvsModaRequestOptions = {},
+): Promise<T> {
+    const { token, jsonBody, formData, params, timeoutMs = TOTVS_MODA_DEFAULT_TIMEOUT_MS } = options;
+    const methodNorm = (method || "GET").trim().toUpperCase();
+    const pathNorm = "/" + (path || "").trim().replace(/^\/+/, "");
+    const url = new URL(`${TOTVS_MODA_BASE_URL.replace(/\/+$/, "")}${pathNorm}`);
+    if (params) {
+        for (const [key, value] of Object.entries(params)) {
+            if (value !== undefined) url.searchParams.set(key, String(value));
+        }
+    }
+
+    const headers: Record<string, string> = { Accept: "application/json" };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    let body: string | undefined;
+    if (formData !== undefined) {
+        headers["Content-Type"] = "application/x-www-form-urlencoded";
+        body = new URLSearchParams(formData).toString();
+    } else {
+        headers["Content-Type"] = "application/json";
+        if (jsonBody !== undefined) body = JSON.stringify(jsonBody);
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let response: Response;
+    try {
+        response = await fetch(url, { method: methodNorm, headers, body, signal: controller.signal });
+    } catch (exc) {
+        throw new TotvsModaTransportError(`Falha de rede na API TOTVS Moda: ${(exc as Error).message}`, {
+            endpoint: url.toString(),
+        });
+    } finally {
+        clearTimeout(timer);
+    }
+
+    const statusCode = response.status;
+    const responseText = await response.text();
+    let payload: unknown;
+    try {
+        payload = responseText ? JSON.parse(responseText) : {};
+    } catch {
+        payload = undefined;
+    }
+    const success = statusCode >= 200 && statusCode < 300;
+    const errorMessage = success ? undefined : extractErrorMessage(payload, responseText);
+
+    if (statusCode === 401 || statusCode === 403) {
+        throw new TotvsModaAuthError(errorMessage || "Credenciais recusadas pelo TOTVS Moda.", {
+            statusCode,
+            endpoint: url.toString(),
+            payload,
+        });
+    }
+    if (statusCode === 404) {
+        throw new TotvsModaNotFoundError(errorMessage || "Recurso não encontrado no TOTVS Moda.", {
+            statusCode,
+            endpoint: url.toString(),
+            payload,
+        });
+    }
+    if (!success) {
+        throw new TotvsModaResponseError(errorMessage || `TOTVS Moda retornou HTTP ${statusCode}.`, {
+            statusCode,
+            endpoint: url.toString(),
+            payload,
+        });
+    }
+    if (payload === undefined) {
+        throw new TotvsModaResponseError("TOTVS Moda retornou uma resposta que não é JSON.", {
+            statusCode,
+            endpoint: url.toString(),
+        });
+    }
+    return payload as T;
+}

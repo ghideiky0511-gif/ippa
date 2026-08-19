@@ -29,16 +29,16 @@ export default function Filters({ options, filters, onChange, onClear }: {
 
   const filterFields = (
     <>
-      <Select value={filters.category} onChange={(e) => onChange({ ...filters, category: e.target.value, subcategory: '' })}>
-        <option value="">Todas as categorias</option>
+      <Select value={filters.category} disabled={options.categories.length === 0} onChange={(e) => onChange({ ...filters, category: e.target.value, subcategory: '' })}>
+        <option value="">{options.categories.length === 0 ? 'Sem categorias disponíveis' : 'Todas as categorias'}</option>
         {options.categories.map((c) => <option key={c} value={c}>{c}</option>)}
       </Select>
-      <Select value={filters.color} onChange={(e) => onChange({ ...filters, color: e.target.value })}>
-        <option value="">Todas as cores</option>
+      <Select value={filters.color} disabled={options.colors.length === 0} onChange={(e) => onChange({ ...filters, color: e.target.value })}>
+        <option value="">{options.colors.length === 0 ? 'Sem cores disponíveis' : 'Todas as cores'}</option>
         {options.colors.map((c) => <option key={c} value={c}>{c}</option>)}
       </Select>
-      <Select value={filters.size} onChange={(e) => onChange({ ...filters, size: e.target.value })}>
-        <option value="">Todos os tamanhos</option>
+      <Select value={filters.size} disabled={options.sizes.length === 0} onChange={(e) => onChange({ ...filters, size: e.target.value })}>
+        <option value="">{options.sizes.length === 0 ? 'Sem tamanhos disponíveis' : 'Todos os tamanhos'}</option>
         {options.sizes.map((s) => <option key={s} value={s}>{s}</option>)}
       </Select>
     </>

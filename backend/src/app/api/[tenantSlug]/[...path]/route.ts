@@ -52,6 +52,7 @@ const ERROR_MESSAGES: Record<string, string> = {
         "Esse link de pagamento expirou. Peça um novo para a vendedora.",
     CANNOT_DELETE_SELF: "Você não pode excluir a própria conta.",
     CLASSIFICATION_NOT_FOUND: "Categoria não encontrada.",
+    PRODUCT_SKU_TAKEN: "Já existe um produto com este código nesta loja.",
     PROMPT_REQUIRED: "Descreva o que você quer na home.",
     OPENAI_NOT_CONFIGURED: "OPENAI_API_KEY não configurada.",
     HOME_AI_PROVIDER_ERROR: "Falha ao gerar a home.",
@@ -502,6 +503,11 @@ export async function POST(
                     body,
                     mutationContext,
                 ),
+            201,
+        );
+    if (endpoint === "admin/products")
+        return execute(
+            () => catalog.createProduct(route.tenant, authenticated.user, body),
             201,
         );
     if (endpoint === "clients")

@@ -24,7 +24,7 @@ export interface ClassificationEntry {
 export interface SimilarProductsRuleConfig { limit: number; rules: string[]; }
 export interface SimilarProductsSettings { quickview: SimilarProductsRuleConfig; cart: SimilarProductsRuleConfig; complementaryCategories: Record<string, string[]>; }
 export interface ProductOverride {
-  sku?: string;
+  referenceId?: string;
   suggestedRetailPrice?: number;
   markup?: number;
   category?: string;

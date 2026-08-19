@@ -81,6 +81,15 @@ export async function tenantExists(client: PoolClient, tenantId: string): Promis
     return result.rowCount !== 0;
 }
 
+// Resolve o {id, slug, name} que withTenantTransaction exige, a partir de
+// uma ação disparada pelo Control (sem sessão de tenant real).
+export async function findTenantRow(client: PoolClient, tenantId: string): Promise<{ id: string; slug: string; name: string } | null> {
+    const result = await client.query<{ id: string; slug: string; name: string }>(
+        "SELECT id, slug, name FROM tenants WHERE id = $1", [tenantId],
+    );
+    return result.rows[0] ?? null;
+}
+
 export async function listPlatformTenantUserRows(client: PoolClient, tenantId: string): Promise<PlatformTenantUserRow[]> {
     const result = await client.query<PlatformTenantUserRow>(
         `SELECT id, name, email, role, created_at FROM users

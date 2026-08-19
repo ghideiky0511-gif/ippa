@@ -2,19 +2,98 @@ import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser, ClassificationKind } from "@/lib/types";
 import {
-  clearProductOverrideRows,
+    clearProductOverrideRows,
+    insertProductRow,
+    insertProductVariantRow,
   listCatalogOrderRows,
   listClassificationRows,
   listProductOverrideRows,
   replaceCatalogOrderRows,
   setClassificationActiveRow,
-  setProductOverrideRow,
-  type ProductOverrideRow,
+    setProductOverrideRow,
+    setPrimaryProductCategoryRow,
+    productReferenceIdExists,
+    type ProductOverrideRow,
 } from "@/models/catalogModel";
-import { ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
 
 function requireAdministrator(user: AuthUser): void {
   if (user.role !== "administrador" || user.permissions?.adminAccess !== true) throw new ForbiddenError();
+}
+
+export interface CreateProductInput {
+  name: string;
+  price: number;
+  category?: string;
+  referenceId?: string;
+  description?: string;
+  image?: string;
+  variant?: { color: string; size: string };
+}
+
+function optionalText(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string") throw new ValidationError();
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
+function classificationSlug(value: string): string {
+  const slug = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 127);
+  return slug || "categoria";
+}
+
+function parseCreateProduct(value: unknown): CreateProductInput {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new ValidationError();
+  const body = value as Record<string, unknown>;
+  const name = optionalText(body.name);
+  const price = body.price;
+  if (!name || typeof price !== "number" || !Number.isFinite(price) || price < 0) throw new ValidationError();
+  const image = optionalText(body.image);
+  if (image) {
+    try {
+      const url = new URL(image);
+      if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error();
+    } catch { throw new ValidationError(); }
+  }
+  const rawVariant = body.variant;
+  let variant: CreateProductInput["variant"];
+  if (rawVariant !== undefined) {
+    if (!rawVariant || typeof rawVariant !== "object" || Array.isArray(rawVariant)) throw new ValidationError();
+    const item = rawVariant as Record<string, unknown>;
+    const color = optionalText(item.color);
+    const size = optionalText(item.size);
+    if (!color || !size) throw new ValidationError();
+    variant = { color, size };
+  }
+  return { name, price, category: optionalText(body.category), referenceId: optionalText(body.referenceId),
+    description: optionalText(body.description), image, variant };
+}
+
+/** Cadastro manual enxuto. Variantes adicionais e estoque ficam para a tela de estoque. */
+export async function createProduct(tenant: Tenant, actor: AuthUser, value: unknown): Promise<{ id: string }> {
+  requireAdministrator(actor);
+  const input = parseCreateProduct(value);
+  return withTenantTransaction(tenant, actor, async (client) => {
+    if (input.referenceId && await productReferenceIdExists(client, input.referenceId)) throw new ConflictError("PRODUCT_REFERENCE_ID_TAKEN");
+    const product = await insertProductRow(client, {
+      name: input.name,
+      description: input.description,
+      category: input.category ?? "Sem categoria",
+      referenceId: input.referenceId,
+      price: input.price,
+      media: input.image ? { image: input.image, images: [input.image] } : undefined,
+    });
+    if (input.category) await setPrimaryProductCategoryRow(
+      client, product.id, input.category, classificationSlug(input.category),
+    );
+    if (input.variant) await insertProductVariantRow(client, product.id, {
+      ...input.variant,
+      price: input.price,
+    });
+    return { id: product.id };
+  });
 }
 
 export interface ClassificationEntry {
@@ -71,7 +150,7 @@ function validOverride(value: unknown): value is ProductOverrideRow {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const item = value as Record<string, unknown>;
   const numberFields = ["suggestedRetailPrice", "markup"];
-  const stringFields = ["sku", "category", "subcategory", "collection"];
+  const stringFields = ["referenceId", "category", "subcategory", "collection"];
   const arrayFields = ["similarProductIdsQuickview", "similarProductIdsCart"];
   return numberFields.every((key) => item[key] === undefined || typeof item[key] === "number") &&
     stringFields.every((key) => item[key] === undefined || typeof item[key] === "string") &&

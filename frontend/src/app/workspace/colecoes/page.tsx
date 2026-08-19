@@ -1,6 +1,6 @@
 import CollectionsApp from '@/workspace/components/collections/CollectionsApp';
 import { fetchHighlights } from '@/workspace/lib/highlightsClient.server';
-import { fetchCatalog } from '@/workspace/lib/catalogClient';
+import { fetchCatalog } from '@/workspace/lib/catalogClient.server';
 
 export const dynamic = 'force-dynamic';
 

@@ -91,6 +91,22 @@ export async function findSimilarProductsSettingsRow(client: PoolClient): Promis
     return result.rows[0]?.similar_products_settings ?? null;
 }
 
+export async function findVestiCatalogSlugRow(client: PoolClient): Promise<string | null> {
+    const result = await client.query<{ vesti_catalog_slug: string | null }>(
+        "SELECT vesti_catalog_slug FROM store_settings WHERE tenant_id = app_tenant_id()",
+    );
+    return result.rows[0]?.vesti_catalog_slug ?? null;
+}
+
+export async function upsertVestiCatalogSlugRow(client: PoolClient, slug: string): Promise<void> {
+    await client.query(
+        `INSERT INTO store_settings (tenant_id, vesti_catalog_slug)
+         VALUES (app_tenant_id(), $1)
+         ON CONFLICT (tenant_id) DO UPDATE SET vesti_catalog_slug = EXCLUDED.vesti_catalog_slug, updated_at = now()`,
+        [slug],
+    );
+}
+
 export async function deleteDiscountRows(client: PoolClient): Promise<void> {
     await client.query("DELETE FROM discounts WHERE tenant_id = app_tenant_id()");
 }

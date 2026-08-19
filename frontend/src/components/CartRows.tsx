@@ -17,10 +17,10 @@ import type { Product } from '@/domain/products/types';
 
 // Visão de linhas do carrinho na página cheia (não é a de card do drawer —
 // ver GroupedCartItems.tsx, resumo enxuto do CartDrawer). Agrupado em dois
-// níveis: um bloco por PRODUTO (nome/sku aparecem uma vez só) e, dentro
+// níveis: um bloco por PRODUTO (nome/referência aparecem uma vez só) e, dentro
 // dele, uma linha por COR escolhida — uma peça com 2 cores no carrinho
 // aparece como 1 bloco com 2 linhas de cor, não como 2 blocos repetindo
-// nome/imagem/sku. Cada linha de cor tem a grade INTEIRA de tamanhos
+// nome/imagem/referência. Cada linha de cor tem a grade INTEIRA de tamanhos
 // daquela cor, editável (+/- direto na linha). Peças ainda sem grade
 // escolhida (rascunho, ver addDraft em CartProvider.tsx) mostram a mesma
 // linha completa (cor/entrega/grade), só que nada ainda está no carrinho
@@ -120,7 +120,7 @@ function ColorSelect({
 }
 
 // Uma linha por cor, dentro do bloco do produto (ver CartProductBlock) —
-// sem repetir nome/sku, só a fotinho pequena (troca com a cor), cor,
+// sem repetir nome/referência, só a fotinho pequena (troca com a cor), cor,
 // entrega, grade e preço daquela cor. Cada cor tem sua PRÓPRIA grade,
 // independente das outras — depois que a linha já tem alguma quantidade
 // de verdade (group.color definido), a cor fica travada (não dá pra
@@ -298,9 +298,9 @@ function ColorLine({
   );
 }
 
-// Bloco de um produto: nome/sku uma vez só + uma ColorLine por cor presente
+// Bloco de um produto: nome/referência uma vez só + uma ColorLine por cor presente
 // no carrinho (normalmente 1, mas pode ter mais — daí o motivo desse
-// agrupamento: evitar repetir nome/imagem/sku pra cada cor). "+ cor" cria
+// agrupamento: evitar repetir nome/imagem/referência pra cada cor). "+ cor" cria
 // uma linha nova (só local, ainda sem nenhum CartItem — ver isPending em
 // ColorLine) pra vender outra cor da mesma peça com sua própria grade
 // independente; assim que a 1ª quantidade é marcada nela, vira uma linha
@@ -339,7 +339,7 @@ function CartProductBlock({
     <div className={publicUi.cartProduct}>
       <div className={publicUi.cartProductHeader}>
         <div className="contents">{sample.name}</div>
-        {product?.sku && <div className="contents">{product.sku}</div>}
+        {product?.referenceId && <div className="contents">{product.referenceId}</div>}
       </div>
       <div className={publicUi.cartProductLines}>
         {colorGroups.map((g) => (

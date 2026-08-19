@@ -1,11 +1,13 @@
 import type { ErpProvider, ErpProviderCredentials, ErpProviderFactory } from "./types";
 import { createMockErpProvider } from "./providers/mock";
+import { createTotvsModaErpProvider } from "./providers/totvsmoda";
 
 // Fábrica pura (sem banco/tenant) — mapa código de provider -> implementação.
 // Um provider real novo entra como providers/<nome>/ (mesmo formato do
 // mock: index.ts + mapper.ts + cliente HTTP próprio) e ganha uma linha aqui.
 const PROVIDER_FACTORIES: Record<string, ErpProviderFactory> = {
     mock: createMockErpProvider,
+    totvsmoda: createTotvsModaErpProvider,
 };
 
 export function createErpProvider(providerCode: string, credentials: ErpProviderCredentials): ErpProvider {

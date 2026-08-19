@@ -67,7 +67,9 @@ async function getCustomer(request: NextRequest, tenantSlug: string): Promise<Au
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  if (pathname.startsWith('/_next') || pathname === '/favicon.ico') return NextResponse.next();
+  // O navegador exige que o script do Service Worker seja servido sem
+  // redirecionamentos. Ele fica na raiz para poder atender cada tenant.
+  if (pathname.startsWith('/_next') || pathname === '/favicon.ico' || pathname === '/push-sw.js') return NextResponse.next();
 
   if (pathname.startsWith('/api/control-session/')) return NextResponse.next();
 

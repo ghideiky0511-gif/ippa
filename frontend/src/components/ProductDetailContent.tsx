@@ -149,7 +149,7 @@ export default function ProductDetailContent({ product }: { product: Product }) 
       <div className={publicUi.detailInfo}>
         <div className="contents">{product.category}{product.subcategory ? ` · ${product.subcategory}` : ''}</div>
         <h2>{product.name}</h2>
-        {product.sku && <div className="contents">{product.sku}</div>}
+        {product.referenceId && <div className="contents">{product.referenceId}</div>}
         {!showPrices ? (
           <div className="contents">
             <Link href="/login" className={publicUi.primaryButton}>Entrar para ver o preço</Link>

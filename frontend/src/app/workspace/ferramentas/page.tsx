@@ -1,7 +1,7 @@
 import ToolsApp from '@/workspace/components/tools/ToolsApp';
 import { fetchStoreSettings } from '@/workspace/lib/storeSettingsClient.server';
 import { fetchSimilarProductsSettings } from '@/workspace/lib/similarProductsSettingsClient.server';
-import { fetchCatalog } from '@/workspace/lib/catalogClient';
+import { fetchCatalog } from '@/workspace/lib/catalogClient.server';
 import { fetchClassifications } from '@/workspace/lib/classificationsClient.server';
 
 export const dynamic = 'force-dynamic';
