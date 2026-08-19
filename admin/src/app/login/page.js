@@ -39,6 +39,7 @@ export default function AdminLoginPage() {
   return (
     <div className="admin-login-page">
       <form className="admin-login-form" onSubmit={handleSubmit}>
+        <img src="/logo-fashiongirl.svg" alt="Fashion Girl" className="admin-login-logo" />
         <h1>Entrar</h1>
         <p className="preview-empty-text">Acesso restrito à plataforma admin.</p>
         <div className="field">

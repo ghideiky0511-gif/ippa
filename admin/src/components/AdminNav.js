@@ -19,6 +19,9 @@ export default function AdminNav() {
   const { adminUser, logout } = useAdminAuth();
   return (
     <nav className="admin-nav">
+      <Link href="/builder" className="admin-nav-logo">
+        <img src="/logo-fashiongirl.svg" alt="Fashion Girl" />
+      </Link>
       {LINKS.map((link) => (
         <Link key={link.href} href={link.href} className={pathname?.startsWith(link.href) ? 'active' : ''}>
           {link.label}

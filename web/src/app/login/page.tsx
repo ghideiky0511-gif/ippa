@@ -42,6 +42,7 @@ export default function LoginPage() {
   return (
     <div className="login-page">
       <form className="login-form" onSubmit={handleSubmit}>
+        <img src="/logo-fashiongirl.svg" alt="Fashion Girl" className="login-logo" />
         <h1>Entrar</h1>
         <div className="field">
           <label>Email</label>

@@ -1,9 +1,10 @@
 :root{
-  --brand-primary:#c2185b;
-  --brand-primary-dark:#8c1046;
-  --brand-bg:#f7f5f6;
+  --brand-primary:#2f7a6c;
+  --brand-primary-dark:#1f5a4f;
+  --brand-mint-soft:#d3ede6;
+  --brand-bg:#f7f9f8;
   --brand-card:#ffffff;
-  --brand-text:#2a2a2a;
+  --brand-text:#1a1a1a;
   --brand-muted:#767676;
   --radius:10px;
 }
@@ -172,56 +173,74 @@ button:active:not(:disabled),.btn-add:active{transform:scale(.96)}
    scroll, sticky logo abaixo do topnav), vitrines na direita. Vira uma
    coluna só (sidebar acima do conteúdo) abaixo de 900px — largura
    insuficiente pra duas colunas sem espremer os cards. */
-.catalog-layout{display:flex;align-items:flex-start;gap:32px;padding-bottom:40px}
+.catalog-layout{display:flex;align-items:flex-start;gap:44px;padding-bottom:40px}
 .catalog-sidebar{
-  flex:0 0 232px;position:sticky;top:70px;
-  background:var(--brand-card);border:1px solid rgba(0,0,0,0.05);border-radius:14px;
-  padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.06);
-  display:flex;flex-direction:column;gap:14px;
+  flex:0 0 210px;position:sticky;top:70px;
+  padding:4px 0 16px;
+  display:flex;flex-direction:column;gap:4px;
   max-height:calc(100vh - 90px);overflow-y:auto;
 }
-.catalog-subtitle{font-size:12.5px;color:var(--brand-muted);font-weight:600}
+.catalog-subtitle{font-size:12.5px;color:var(--brand-muted);font-weight:600;margin-bottom:10px}
 .catalog-main{flex:1;min-width:0}
 @media (max-width:900px){
-  .catalog-layout{flex-direction:column;gap:20px}
+  .catalog-layout{flex-direction:column;gap:24px}
   .catalog-sidebar{position:static;width:100%;max-height:none;flex:none}
 }
 
-.controls{display:flex;flex-direction:column;gap:10px}
-.search-field{position:relative;display:flex;align-items:center}
-.search-field svg{position:absolute;left:13px;color:var(--brand-muted);pointer-events:none}
-.search-field input{width:100%;padding:10px 12px 10px 36px;border:1px solid #e4dfe1;border-radius:9px;font-size:14px;background:#fff;transition:border-color .15s ease,box-shadow .15s ease}
-.select-field{position:relative}
-.select-field::after{content:'';position:absolute;right:14px;top:50%;width:7px;height:7px;border-right:2px solid var(--brand-muted);border-bottom:2px solid var(--brand-muted);transform:translateY(-65%) rotate(45deg);pointer-events:none}
-.select-field select{width:100%;appearance:none;-webkit-appearance:none;padding:10px 32px 10px 12px;border:1px solid #e4dfe1;border-radius:9px;font-size:13.5px;background:#fff;color:var(--brand-text);cursor:pointer;transition:border-color .15s ease,box-shadow .15s ease}
-.controls input:hover,.select-field select:hover{border-color:var(--brand-primary)}
-.controls input:focus,.select-field select:focus{outline:none;border-color:var(--brand-primary);box-shadow:0 0 0 3px rgba(194,24,91,0.12)}
-.btn-clear{background:#fff;border:1px solid #e4dfe1;border-radius:9px;padding:10px 16px;cursor:pointer;font-size:13.5px;font-weight:600;color:var(--brand-muted)}
-.btn-clear:hover{border-color:var(--brand-primary);color:var(--brand-primary);background:rgba(194,24,91,0.05)}
+.controls{display:flex;flex-direction:column}
+.controls-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--brand-muted);margin:18px 0 8px}
+.controls-label:first-child{margin-top:4px}
+.search-field{position:relative;display:flex;align-items:center;margin-bottom:6px}
+.search-field svg{position:absolute;left:2px;color:var(--brand-muted);pointer-events:none;transition:color .15s ease}
+.search-field input{width:100%;padding:9px 4px 9px 24px;border:none;border-bottom:1px solid #e2e2e2;font-size:14px;background:none;transition:border-color .15s ease}
+.search-field:focus-within svg{color:var(--brand-primary)}
+.select-field{position:relative;border-bottom:1px solid #ececec;transition:border-color .15s ease}
+.select-field:last-of-type{border-bottom:none}
+.select-field::after{content:'';position:absolute;right:2px;top:50%;width:6px;height:6px;border-right:1.5px solid var(--brand-muted);border-bottom:1.5px solid var(--brand-muted);transform:translateY(-65%) rotate(45deg);pointer-events:none;transition:transform .15s ease,color .15s ease}
+.select-field select{width:100%;appearance:none;-webkit-appearance:none;padding:10px 18px 10px 2px;border:none;font-size:13.5px;background:none;color:var(--brand-text);cursor:pointer}
+.select-field:hover{border-color:var(--brand-primary)}
+.controls input:focus{outline:none;border-color:var(--brand-primary)}
+.select-field select:focus{outline:none}
+.select-field select:focus + *,.select-field select:focus{border-color:var(--brand-primary)}
+.btn-clear{background:none;border:none;padding:14px 0 0;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--brand-muted);text-decoration:underline;text-underline-offset:2px;align-self:flex-start;opacity:0;max-height:0;overflow:hidden;pointer-events:none;transition:opacity .2s ease}
+.btn-clear.visible{opacity:1;max-height:40px;pointer-events:auto}
+.btn-clear:hover{color:var(--brand-primary)}
 
 /* Abas de vitrine (Verão 2027 / Atemporal / Promoções) — clicar rola até a
    seção (goToSection em CatalogApp.tsx); rolando manualmente, um
    IntersectionObserver troca a aba ativa sozinho (scrollspy). O traço
    embaixo é um span só que desliza (translateX + width medidos via
    offsetLeft/offsetWidth do botão ativo), não um traço por aba. */
-.catalog-tabs{position:sticky;top:53px;z-index:6;display:flex;gap:22px;background:var(--brand-bg);padding:14px 2px 0;margin-bottom:20px;border-bottom:1px solid #eee;overflow-x:auto;scrollbar-width:none}
+.catalog-tabs{position:sticky;top:53px;z-index:6;display:flex;gap:28px;background:var(--brand-bg);padding:14px 2px 0;margin-bottom:20px;border-bottom:1px solid #eee;overflow-x:auto;scrollbar-width:none}
 .catalog-tabs::-webkit-scrollbar{display:none}
-.catalog-tab{position:relative;flex:none;background:none;border:none;padding:0 0 14px;font-size:14.5px;font-weight:600;color:var(--brand-muted);cursor:pointer;white-space:nowrap;transition:color .2s ease}
-.catalog-tab:hover{color:var(--brand-text)}
+.catalog-tab{position:relative;flex:none;background:none;border:none;padding:0 0 14px;font-size:14.5px;font-weight:600;color:var(--brand-muted);cursor:pointer;white-space:nowrap;transition:color .25s ease,transform .15s ease}
+.catalog-tab:hover{color:var(--brand-text);transform:translateY(-1px)}
 .catalog-tab.active{color:var(--brand-primary)}
-.catalog-tab-underline{position:absolute;left:0;bottom:-1px;height:2px;background:var(--brand-primary);transition:transform .28s cubic-bezier(.4,0,.2,1),width .28s cubic-bezier(.4,0,.2,1)}
+.catalog-tab-underline{position:absolute;left:0;bottom:-1px;height:2px;background:var(--brand-primary);transition:transform .32s cubic-bezier(.65,0,.35,1),width .32s cubic-bezier(.65,0,.35,1)}
 
 .catalog-loading{color:var(--brand-muted);font-size:13px;padding:12px 2px}
 
-.catalog-section{scroll-margin-top:118px;padding-top:8px;margin-bottom:36px}
-.catalog-section-title{font-size:17px;font-weight:700;color:var(--brand-text);margin-bottom:14px}
+.catalog-section{scroll-margin-top:118px;padding-top:8px;margin-bottom:88px;animation:sectionFadeIn .5s ease both}
+.catalog-section:last-child{margin-bottom:24px}
+.catalog-section-title{font-size:20px;font-weight:700;color:var(--brand-text);margin-bottom:20px;letter-spacing:-0.01em}
+@keyframes sectionFadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:20px}
 @media (max-width:640px){
   .grid{grid-template-columns:repeat(2,1fr);gap:10px}
 }
-.card{background:var(--brand-card);border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.07);display:flex;flex-direction:column;transition:transform .2s ease,box-shadow .2s ease}
+.card{background:var(--brand-card);border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.07);display:flex;flex-direction:column;transition:transform .2s ease,box-shadow .2s ease;animation:cardFadeIn .45s ease both}
 .card:hover{transform:translateY(-3px);box-shadow:0 12px 24px rgba(0,0,0,0.1)}
+@keyframes cardFadeIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+.grid .card:nth-child(1){animation-delay:.01s}
+.grid .card:nth-child(2){animation-delay:.04s}
+.grid .card:nth-child(3){animation-delay:.07s}
+.grid .card:nth-child(4){animation-delay:.1s}
+.grid .card:nth-child(5){animation-delay:.13s}
+.grid .card:nth-child(6){animation-delay:.16s}
+.grid .card:nth-child(7){animation-delay:.19s}
+.grid .card:nth-child(8){animation-delay:.22s}
+.grid .card:nth-child(n+9){animation-delay:.24s}
 .card-media{position:relative;aspect-ratio:9/16;overflow:hidden}
 .card-media-open{display:block;width:100%;height:100%;padding:0;margin:0;border:none;background:none;cursor:pointer}
 .card-media img,.card-media video{width:100%;height:100%;object-fit:cover;background:#eee;display:block;transition:transform .25s ease}
@@ -335,7 +354,7 @@ button:active:not(:disabled),.btn-add:active{transform:scale(.96)}
 .btn-whatsapp{width:100%;background:#25D366;color:#fff;border:none;border-radius:8px;padding:12px;font-size:15px;font-weight:700;cursor:pointer}
 .btn-whatsapp:hover{background:#1ebe5a}
 .btn-site-checkout{width:100%;background:none;border:1px solid var(--brand-primary);color:var(--brand-primary);border-radius:8px;padding:10px;font-size:14px;font-weight:600;cursor:pointer;margin-top:8px}
-.btn-site-checkout:hover{background:rgba(194,24,91,0.06)}
+.btn-site-checkout:hover{background:rgba(47,122,108,0.06)}
 .whatsapp-hint{font-size:11px;color:var(--brand-muted);margin-top:8px;text-align:center}
 
 .quickview-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);display:none;z-index:40}
@@ -608,6 +627,7 @@ footer{padding:24px 16px;text-align:center;color:var(--brand-muted);font-size:13
 /* /login — sem AppShell (ver ConditionalShell.tsx), página isolada. */
 .login-page{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--brand-bg);padding:20px}
 .login-form{width:100%;max-width:340px;background:var(--brand-card);border-radius:var(--radius);padding:28px;box-shadow:0 1px 4px rgba(0,0,0,0.08);display:flex;flex-direction:column;gap:14px}
+.login-logo{height:30px;align-self:center;margin-bottom:4px}
 .login-form h1{font-size:20px;margin-bottom:4px}
 .login-error{color:#c0392b;font-size:13px;margin:0}
 .auth-switch-link{font-size:13px;color:var(--brand-muted);text-align:center;margin:0}
@@ -660,9 +680,9 @@ footer{padding:24px 16px;text-align:center;color:var(--brand-muted);font-size:13
    pulso deixa claro que o cartão trocou de dono, não só de conteúdo. */
 .talao-active-card{background:var(--brand-primary);border-color:var(--brand-primary);color:#fff;animation:talaoActiveSwap .45s ease}
 @keyframes talaoActiveSwap{
-  0%{transform:scale(.96);box-shadow:0 0 0 0 rgba(194,24,91,.45)}
-  50%{transform:scale(1.015);box-shadow:0 0 0 6px rgba(194,24,91,0)}
-  100%{transform:scale(1);box-shadow:0 0 0 0 rgba(194,24,91,0)}
+  0%{transform:scale(.96);box-shadow:0 0 0 0 rgba(47,122,108,.45)}
+  50%{transform:scale(1.015);box-shadow:0 0 0 6px rgba(47,122,108,0)}
+  100%{transform:scale(1);box-shadow:0 0 0 0 rgba(47,122,108,0)}
 }
 .talao-card-info{flex:1;display:flex;flex-direction:column;min-width:0}
 .talao-card-name{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -693,7 +713,7 @@ footer{padding:24px 16px;text-align:center;color:var(--brand-muted);font-size:13
    fim da animação (onAnimationEnd). */
 .talao-cadastro-toggle.just-linked{animation:talaoCadastroLinked .7s ease}
 @keyframes talaoCadastroLinked{
-  0%{background:rgba(194,24,91,.18);border-color:var(--brand-primary);border-style:solid;color:var(--brand-primary)}
+  0%{background:rgba(47,122,108,.18);border-color:var(--brand-primary);border-style:solid;color:var(--brand-primary)}
   100%{background:none;border-color:#ddd;color:var(--brand-muted)}
 }
 .talao-cadastro-panel{display:flex;flex-direction:column;gap:8px;border:1px solid #eee;border-radius:10px;padding:12px;background:var(--brand-bg)}

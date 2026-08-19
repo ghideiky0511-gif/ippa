@@ -24,7 +24,7 @@ export const CONFIG: {
   };
 } = {
   storeName: 'Fashion Girl Atacado',
-  logoUrl: '', // opcional; sem logo, mostra o storeName como texto
+  logoUrl: '/logo-fashiongirl.svg',
   whatsappNumber: '', // formato internacional só números, ex: '5511999999999'. Vazio = avisa antes de abrir o link.
 
   backorderDeliveryOptions: [

@@ -19,8 +19,11 @@ export default function Filters({
   onChange: (filters: CatalogFilters) => void;
   onClear: () => void;
 }) {
+  const hasActiveFilters = !!(filters.category || filters.color || filters.size);
+
   return (
     <div className="controls">
+      <p className="controls-label">Pesquisar por</p>
       <div className="search-field">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <circle cx="11" cy="11" r="7"></circle>
@@ -28,17 +31,19 @@ export default function Filters({
         </svg>
         <input
           className="search"
-          placeholder="Buscar por nome ou código..."
+          placeholder="Nome ou código do produto"
           value={filters.term}
           onChange={(e) => onChange({ ...filters, term: e.target.value })}
         />
       </div>
+
+      <p className="controls-label">Filtrar por</p>
       <div className="select-field">
         <select
           value={filters.category}
           onChange={(e) => onChange({ ...filters, category: e.target.value, subcategory: '' })}
         >
-          <option value="">Todas as categorias</option>
+          <option value="">Categoria</option>
           {options.categories.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
@@ -49,7 +54,7 @@ export default function Filters({
           value={filters.color}
           onChange={(e) => onChange({ ...filters, color: e.target.value })}
         >
-          <option value="">Todas as cores</option>
+          <option value="">Cor</option>
           {options.colors.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
@@ -60,13 +65,14 @@ export default function Filters({
           value={filters.size}
           onChange={(e) => onChange({ ...filters, size: e.target.value })}
         >
-          <option value="">Todos os tamanhos</option>
+          <option value="">Tamanho</option>
           {options.sizes.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
       </div>
-      <button className="btn-clear" onClick={onClear}>Limpar filtros</button>
+
+      <button className={'btn-clear' + (hasActiveFilters ? ' visible' : '')} onClick={onClear}>Limpar filtros</button>
     </div>
   );
 }

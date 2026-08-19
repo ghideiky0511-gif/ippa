@@ -87,6 +87,12 @@ export default function CatalogApp({ initialProducts }: { initialProducts: Produ
     });
   }, [initialProducts, filters, highlight, audience]);
 
+  // Chave só dos filtros "estruturais" (não o texto livre, que muda a cada
+  // tecla) — remonta a grade pra replay da animação de entrada dos cards
+  // quando a pessoa troca categoria/cor/tamanho/destaque, sem piscar a
+  // cada letra digitada na busca.
+  const structuralFilterKey = [filters.category, filters.subcategory, filters.color, filters.size, filters.destaque, filters.publico].join('|');
+
   // Catálogo em vitrines (não uma grade única): a coleção da estação
   // ("Verão 2027", cadastrada em /colecoes na plataforma admin), as peças
   // "atemporais" (mesmo mecanismo de coleção, tag manual em /colecoes — no
@@ -113,10 +119,17 @@ export default function CatalogApp({ initialProducts }: { initialProducts: Produ
   const tabsRef = useRef<HTMLDivElement>(null);
   const [underline, setUnderline] = useState({ left: 0, width: 0 });
 
+  // Espera highlightsLoaded antes de escolher a aba padrão pelo mesmo
+  // motivo do hash-sync logo abaixo: antes da busca de highlights.json
+  // resolver, `sections` só tem "Promoções" (não depende de highlight), e
+  // esse efeito travaria activeId nela — como "promocoes" continua sendo
+  // um id válido depois que Verão 2027/Atemporal aparecem, o `!sections.some`
+  // nunca mais dispara de novo e a aba errada fica marcada como ativa pro
+  // resto da visita.
   useEffect(() => {
-    if (sections.length === 0) return;
+    if (!highlightsLoaded || sections.length === 0) return;
     if (!sections.some((s) => s.id === activeId)) setActiveId(sections[0].id);
-  }, [sections, activeId]);
+  }, [highlightsLoaded, sections, activeId]);
 
   // Link direto pra uma vitrine (ex.: /catalogo#promocoes, campanha de
   // WhatsApp) — highlights.json chega via fetch client-side (useEffect lá
@@ -247,7 +260,7 @@ export default function CatalogApp({ initialProducts }: { initialProducts: Produ
                   className="catalog-section"
                 >
                   <h2 className="catalog-section-title">{s.label}</h2>
-                  <div className="grid">
+                  <div className="grid" key={structuralFilterKey}>
                     {s.products.map((p) => (
                       <ProductCard key={p.id} product={p} />
                     ))}

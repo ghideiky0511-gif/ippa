@@ -85,7 +85,7 @@ export async function sendPaymentLinkEmail(params: { to: string; name: string; l
     html: layout(
       'Seu pedido está pronto pra pagamento',
       `<p>Olá, ${params.name}! A vendedora montou seu pedido — falta só confirmar o pagamento.</p>
-       <p><a href="${params.link}" style="display: inline-block; background: #c2185b; color: #fff; padding: 10px 16px; border-radius: 6px; text-decoration: none;">Finalizar pagamento</a></p>
+       <p><a href="${params.link}" style="display: inline-block; background: #2f7a6c; color: #fff; padding: 10px 16px; border-radius: 6px; text-decoration: none;">Finalizar pagamento</a></p>
        <p style="font-size: 13px; color: #767676;">Ou copie e cole: ${params.link}</p>`
     ),
   });
