@@ -1,4 +1,5 @@
 import type { Client, Company, Order, Product } from "@/lib/types";
+import type { ExternalApiCallReporter } from "@/lib/externalApiCall";
 
 // Contrato que todo provider de ERP implementa. Cada método já devolve o
 // tipo interno do domínio (Product/Order/Client/Company) — a "adequação"
@@ -30,6 +31,13 @@ export interface ErpProvider {
     getOrders(options?: ErpFetchOptions): Promise<ErpFetchResult<Omit<Order, "id">>>;
     getClients(options?: ErpFetchOptions): Promise<ErpFetchResult<Omit<Client, "id" | "createdAt" | "updatedAt">>>;
     getCompanies(options?: ErpFetchOptions): Promise<ErpFetchResult<Omit<Company, "id" | "createdAt" | "updatedAt">>>;
+    // Opcional: providers sem uma checagem barata própria simplesmente não
+    // implementam — quem chama trata a ausência como "sem teste disponível",
+    // nunca como falha.
+    testConnection?(): Promise<{ ok: boolean; message?: string }>;
 }
 
-export type ErpProviderFactory = (credentials: ErpProviderCredentials) => ErpProvider;
+// reporter é opcional e não carrega tenant/banco (ver lib/externalApiCall.ts)
+// — quem resolve o tenant (erpSyncService) fecha o reporter sobre ele antes
+// de chamar a fábrica.
+export type ErpProviderFactory = (credentials: ErpProviderCredentials, reporter?: ExternalApiCallReporter) => ErpProvider;

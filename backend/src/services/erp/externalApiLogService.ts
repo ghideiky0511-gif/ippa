@@ -12,6 +12,7 @@ import type { PoolClient } from "pg";
 import type { Tenant, ActorContext } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import { logger, errorMeta } from "@/lib/logger";
+import type { ExternalApiCallReporter } from "@/lib/externalApiCall";
 import { notifyAdmins } from "@/services/notifications/pushNotificationService";
 import {
     insertExternalApiRequestLogRow,
@@ -276,4 +277,28 @@ export async function listProviderStatuses(
     return withTenantTransaction(tenant, actor, (client) =>
         listProviderStatusRows(client, provider ? normalizeProvider(provider) : undefined),
     );
+}
+
+// Ponte entre o contrato genérico de transporte (ExternalApiCallReporter, sem
+// tenant nem banco) e logExternalApiRequest (que precisa dos dois). É isto
+// que um service com contexto de tenant passa para um client/provider de
+// integração — ver docs/external-api-observability.md.
+export function createExternalApiCallReporter(tenant: Tenant, actor: ActorContext, provider: string): ExternalApiCallReporter {
+    return (report) =>
+        logExternalApiRequest(tenant, actor, {
+            provider,
+            operation: report.operation,
+            method: report.method,
+            endpoint: report.endpoint,
+            endpointPath: report.endpointPath,
+            statusCode: report.statusCode,
+            success: report.success,
+            attemptCount: report.attemptCount,
+            waitMs: report.waitMs,
+            durationMs: report.durationMs,
+            requestPayload: report.requestPayload,
+            responseBody: report.responseBody,
+            errorMessage: report.errorMessage,
+            errorClass: report.errorClass,
+        });
 }

@@ -1,4 +1,5 @@
 import type { Client } from "@/lib/types";
+import type { ExternalApiCallReporter } from "@/lib/externalApiCall";
 import type { ErpFetchOptions, ErpFetchResult, ErpProvider, ErpProviderCredentials } from "../../types";
 import { TotvsModaClient, type TotvsModaCredentials, type TotvsModaSearchPayload } from "./client";
 import { TotvsModaAuthError } from "./errors";
@@ -87,8 +88,8 @@ function onlyDigits(value: string): string {
 // Provider real: autentica e consome a API do TOTVS Moda via TotvsModaClient,
 // devolvendo os dados já adequados ao formato interno (ver mapper.ts) — o
 // mesmo contrato ErpProvider que providers/mock implementa com fixtures.
-export function createTotvsModaErpProvider(credentials: ErpProviderCredentials): ErpProvider {
-    const client = new TotvsModaClient(normalizeCredentials(credentials));
+export function createTotvsModaErpProvider(credentials: ErpProviderCredentials, reporter?: ExternalApiCallReporter): ErpProvider {
+    const client = new TotvsModaClient(normalizeCredentials(credentials), reporter);
 
     return {
         code: "totvsmoda",
@@ -170,6 +171,18 @@ export function createTotvsModaErpProvider(credentials: ErpProviderCredentials):
                 })),
             };
         },
+
+        // Exercita autenticação + uma leitura real (mesma ideia do app de
+        // referência, que usa a busca de filiais como teste de conexão
+        // implícito) — não lança, converte qualquer falha em { ok: false }.
+        async testConnection() {
+            try {
+                await client.listBranches();
+                return { ok: true };
+            } catch (exc) {
+                return { ok: false, message: exc instanceof Error ? exc.message : "Falha ao conectar ao TOTVS Moda." };
+            }
+        },
     };
 }
 
@@ -182,13 +195,14 @@ export function createTotvsModaErpProvider(credentials: ErpProviderCredentials):
 export async function findTotvsModaClientByDocument(
     credentials: ErpProviderCredentials,
     document: string,
+    reporter?: ExternalApiCallReporter,
 ): Promise<Omit<Client, "id" | "createdAt" | "updatedAt"> | null> {
     const digits = onlyDigits(document);
     if (digits.length !== 11 && digits.length !== 14) {
         throw new Error("Documento inválido: informe um CPF (11 dígitos) ou CNPJ (14 dígitos).");
     }
 
-    const client = new TotvsModaClient(normalizeCredentials(credentials));
+    const client = new TotvsModaClient(normalizeCredentials(credentials), reporter);
     if (digits.length === 11) {
         const result = await client.searchIndividuals({ page: 1, pageSize: 1, cpfList: [digits] });
         const raw = result.items[0] as TotvsModaIndividual | undefined;

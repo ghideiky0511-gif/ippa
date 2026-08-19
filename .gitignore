@@ -5,3 +5,5 @@ admin\.next\dev
 .env
 /.npm-cache/
 /node_modules/
+js
+sockets

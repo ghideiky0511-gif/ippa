@@ -14,6 +14,7 @@ import * as authentication from "@/services/auth";
 import type { AuditRequestContext } from "@/services/audit";
 import * as catalog from "@/services/catalog";
 import * as clients from "@/services/clients";
+import * as erp from "@/services/erp";
 import * as home from "@/services/home";
 import * as orders from "@/services/orders";
 import * as recommendations from "@/services/recommendations";
@@ -58,6 +59,8 @@ const ERROR_MESSAGES: Record<string, string> = {
     HOME_AI_PROVIDER_ERROR: "Falha ao gerar a home.",
     HOME_AI_INVALID_RESPONSE: "Não foi possível interpretar a resposta da IA.",
     SESSION_ALREADY_FINALIZED: "This order was already finalized.",
+    ERP_INTEGRATION_NOT_CONFIGURED:
+        "Configure e salve as credenciais deste provider antes de ativá-lo.",
 };
 
 function cookieOptions() {
@@ -342,6 +345,10 @@ export async function GET(
             return execute(async () => ({
                 history: await home.homeAiHistory(route.tenant, session.user),
             }));
+        case "erp-integration":
+            return execute(() =>
+                erp.listTenantErpIntegrations(route.tenant, session.user),
+            );
         default:
             return NextResponse.json(
                 { error: "Rota não encontrada." },
@@ -583,6 +590,33 @@ export async function POST(
         return execute(() =>
             home.generateHome(route.tenant, authenticated.user, body),
         );
+    if (endpoint === "erp-integration/activate")
+        return execute(() =>
+            erp.activateTenantErpIntegration(
+                route.tenant,
+                authenticated.user,
+                String(body.provider ?? ""),
+                mutationContext,
+            ),
+        );
+    if (endpoint === "erp-integration/deactivate")
+        return execute(() =>
+            erp.deactivateTenantErpIntegration(
+                route.tenant,
+                authenticated.user,
+                mutationContext,
+            ),
+        );
+    if (endpoint === "erp-integration/test")
+        return execute(() =>
+            erp.testTenantErpIntegrationConnection(
+                route.tenant,
+                authenticated.user,
+                String(body.provider ?? ""),
+                (body.credentials as Record<string, unknown> | undefined) ??
+                    undefined,
+            ),
+        );
     return NextResponse.json(
         { error: "Rota não encontrada." },
         { status: 404 },
@@ -647,6 +681,16 @@ export async function PUT(
                 route.tenant,
                 authenticated.user,
                 body,
+            ),
+        );
+    if (endpoint === "erp-integration")
+        return execute(() =>
+            erp.saveTenantErpIntegrationCredentials(
+                route.tenant,
+                authenticated.user,
+                String(body.provider ?? ""),
+                (body.credentials as Record<string, unknown>) ?? {},
+                mutationContext,
             ),
         );
     if (endpoint === "catalog-order")

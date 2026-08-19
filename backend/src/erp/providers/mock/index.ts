@@ -24,5 +24,9 @@ export function createMockErpProvider(_credentials: ErpProviderCredentials): Erp
         async getCompanies(): Promise<ErpFetchResult<ReturnType<typeof mapMockCompany>>> {
             return { items: MOCK_RAW_COMPANIES.map(({ externalId, raw }) => ({ externalId, data: mapMockCompany(raw) })) };
         },
+
+        async testConnection() {
+            return { ok: true };
+        },
     };
 }

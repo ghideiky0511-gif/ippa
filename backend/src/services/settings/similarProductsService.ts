@@ -12,9 +12,12 @@ const DEFAULT_SETTINGS: SimilarProductsSettings = {
 };
 
 export async function getSimilarProductsSettings(tenant: Tenant): Promise<SimilarProductsSettings> {
-    return withTenantTransaction(tenant, {}, async (client) =>
-        (await findSimilarProductsSettingsRow(client)) ?? DEFAULT_SETTINGS,
-    );
+    const row = await withTenantTransaction(tenant, {}, (client) => findSimilarProductsSettingsRow(client));
+    return {
+        quickview: row?.quickview ?? DEFAULT_SETTINGS.quickview,
+        cart: row?.cart ?? DEFAULT_SETTINGS.cart,
+        complementaryCategories: row?.complementaryCategories ?? DEFAULT_SETTINGS.complementaryCategories,
+    };
 }
 
 export async function replaceSimilarProductsSettings(

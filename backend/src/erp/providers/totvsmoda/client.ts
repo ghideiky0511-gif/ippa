@@ -15,6 +15,7 @@
 // count/totalPages/hasNext/totalItems/items — devolve um objeto único, por
 // isso tem seu próprio método (getPersonStatistics) fora de searchAndValidate.
 
+import type { ExternalApiCallReporter } from "@/lib/externalApiCall";
 import { TotvsModaAuthError, TotvsModaNotFoundError, TotvsModaResponseError } from "./errors";
 import {
     AUTH_TOKEN_PATH,
@@ -104,7 +105,10 @@ export class TotvsModaClient {
     private accessToken: string | null = null;
     private tokenExpiresAt: number | null = null;
 
-    constructor(private readonly credentials: TotvsModaCredentials) {}
+    constructor(
+        private readonly credentials: TotvsModaCredentials,
+        private readonly reporter?: ExternalApiCallReporter,
+    ) {}
 
     private async authenticate(force = false): Promise<string> {
         const { clientId, clientSecret, username, password } = this.credentials;
@@ -123,6 +127,8 @@ export class TotvsModaClient {
             payload = await totvsModaRequest<TotvsModaTokenResponse>("POST", AUTH_TOKEN_PATH, {
                 formData: { grant_type: "password", clientId, clientSecret, username, password },
                 timeoutMs: 10_000,
+                operation: "authenticate",
+                reporter: this.reporter,
             });
         } catch (exc) {
             if (exc instanceof TotvsModaResponseError) {
@@ -146,14 +152,15 @@ export class TotvsModaClient {
     private async request<T>(
         method: string,
         path: string,
+        operation: string,
         options: { jsonBody?: unknown; params?: Record<string, string | number | undefined>; timeoutMs?: number } = {},
     ): Promise<T> {
         const token = await this.authenticate();
-        return totvsModaRequest<T>(method, path, { token, ...options });
+        return totvsModaRequest<T>(method, path, { token, operation, reporter: this.reporter, ...options });
     }
 
     async listBranches(): Promise<Array<Record<string, unknown>>> {
-        const payload = await this.request<{ items?: unknown }>("GET", BRANCHES_LIST_PATH);
+        const payload = await this.request<{ items?: unknown }>("GET", BRANCHES_LIST_PATH, "listBranches");
         const items = payload?.items;
         if (!Array.isArray(items)) {
             throw new TotvsModaResponseError("Lista de filiais em formato inválido.", { payload });
@@ -167,7 +174,9 @@ export class TotvsModaClient {
     // válido para uma busca por código/CNPJ, não uma falha do client.
     async getBranchByCode(branchIdOrCnpj: string): Promise<Record<string, unknown> | null> {
         try {
-            return await this.request<Record<string, unknown>>("GET", `${BRANCHES_PATH}/${encodeURIComponent(branchIdOrCnpj)}`);
+            return await this.request<Record<string, unknown>>(
+                "GET", `${BRANCHES_PATH}/${encodeURIComponent(branchIdOrCnpj)}`, "getBranchByCode",
+            );
         } catch (exc) {
             if (exc instanceof TotvsModaNotFoundError) return null;
             throw exc;
@@ -189,7 +198,7 @@ export class TotvsModaClient {
             pageSize: options.pageSize,
             expand: "classifications",
         };
-        return this.searchAndValidate(PRODUCTS_SEARCH_PATH, payload, "Busca de produtos retornou formato inválido.");
+        return this.searchAndValidate("searchProducts", PRODUCTS_SEARCH_PATH, payload, "Busca de produtos retornou formato inválido.");
     }
 
     // ProductPriceInDto: option.prices (PriceInfoModel[]) é obrigatório —
@@ -202,7 +211,7 @@ export class TotvsModaClient {
             page: 1,
             pageSize: 1000,
         };
-        return this.searchAndValidate(PRODUCT_PRICES_SEARCH_PATH, payload, "Busca de preços retornou formato inválido.");
+        return this.searchAndValidate("searchProductPrices", PRODUCT_PRICES_SEARCH_PATH, payload, "Busca de preços retornou formato inválido.");
     }
 
     // ProductBalanceInDto: option.balances (BalanceInfoModel[]) é obrigatório.
@@ -213,11 +222,11 @@ export class TotvsModaClient {
             page: 1,
             pageSize: 1000,
         };
-        return this.searchAndValidate(PRODUCT_BALANCES_SEARCH_PATH, payload, "Busca de saldos retornou formato inválido.");
+        return this.searchAndValidate("searchProductBalances", PRODUCT_BALANCES_SEARCH_PATH, payload, "Busca de saldos retornou formato inválido.");
     }
 
     async searchOrders(payload: TotvsModaSearchPayload): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
-        return this.searchAndValidate(SALES_ORDER_SEARCH_PATH, payload, "Busca de pedidos retornou formato inválido.");
+        return this.searchAndValidate("searchOrders", SALES_ORDER_SEARCH_PATH, payload, "Busca de pedidos retornou formato inválido.");
     }
 
     // IndividualSearchInDto: filter.cpfList busca pessoas físicas por CPF —
@@ -234,7 +243,7 @@ export class TotvsModaClient {
             pageSize: options.pageSize,
             expand: "addresses,emails",
         };
-        return this.searchAndValidate(INDIVIDUALS_SEARCH_PATH, payload, "Busca de pessoas físicas retornou formato inválido.", 25_000);
+        return this.searchAndValidate("searchIndividuals", INDIVIDUALS_SEARCH_PATH, payload, "Busca de pessoas físicas retornou formato inválido.", 25_000);
     }
 
     // LegalEntitySearchInDto: filter.cnpjList busca pessoas jurídicas por
@@ -249,7 +258,7 @@ export class TotvsModaClient {
             pageSize: options.pageSize,
             expand: "addresses,emails",
         };
-        return this.searchAndValidate(LEGAL_ENTITIES_SEARCH_PATH, payload, "Busca de pessoas jurídicas retornou formato inválido.", 25_000);
+        return this.searchAndValidate("searchLegalEntities", LEGAL_ENTITIES_SEARCH_PATH, payload, "Busca de pessoas jurídicas retornou formato inválido.", 25_000);
     }
 
     // RepresentativeSearchInDto — ainda não tem consumidor no provider (não
@@ -263,7 +272,7 @@ export class TotvsModaClient {
             page: options.page,
             pageSize: options.pageSize,
         };
-        return this.searchAndValidate(REPRESENTATIVES_SEARCH_PATH, payload, "Busca de representantes retornou formato inválido.");
+        return this.searchAndValidate("searchRepresentatives", REPRESENTATIVES_SEARCH_PATH, payload, "Busca de representantes retornou formato inválido.");
     }
 
     // ClassificationsResponseModel: tipos e valores de classificação
@@ -271,15 +280,15 @@ export class TotvsModaClient {
     // ClassificationModel.typeCode/typeName com precisão, hoje só usado por
     // heurística em mapper.ts:findClassification.
     async listClassifications(page = 1, pageSize = 1000): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
-        return this.getAndValidate(CLASSIFICATIONS_PATH, { Page: page, PageSize: pageSize }, "Consulta de classificações retornou formato inválido.");
+        return this.getAndValidate("listClassifications", CLASSIFICATIONS_PATH, { Page: page, PageSize: pageSize }, "Consulta de classificações retornou formato inválido.");
     }
 
     async listEmailTypes(page = 1, pageSize = 1000): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
-        return this.getAndValidate(EMAIL_TYPES_PATH, { Page: page, PageSize: pageSize }, "Consulta de tipos de e-mail retornou formato inválido.");
+        return this.getAndValidate("listEmailTypes", EMAIL_TYPES_PATH, { Page: page, PageSize: pageSize }, "Consulta de tipos de e-mail retornou formato inválido.");
     }
 
     async listPhoneTypes(page = 1, pageSize = 1000): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
-        return this.getAndValidate(PHONE_TYPES_PATH, { Page: page, PageSize: pageSize }, "Consulta de tipos de telefone retornou formato inválido.");
+        return this.getAndValidate("listPhoneTypes", PHONE_TYPES_PATH, { Page: page, PageSize: pageSize }, "Consulta de tipos de telefone retornou formato inválido.");
     }
 
     // PersonStatisticsResponseModel não segue o envelope items[] dos demais
@@ -287,27 +296,29 @@ export class TotvsModaClient {
     // (por código interno ou CPF/CNPJ), por isso não passa por
     // searchAndValidate/getAndValidate.
     async getPersonStatistics(params: { customerCpfCnpj?: string; customerCode?: number }): Promise<Record<string, unknown>> {
-        return this.request<Record<string, unknown>>("GET", PERSON_STATISTICS_PATH, {
+        return this.request<Record<string, unknown>>("GET", PERSON_STATISTICS_PATH, "getPersonStatistics", {
             params: { CustomerCpfCnpj: params.customerCpfCnpj, CustomerCode: params.customerCode },
         });
     }
 
     private async searchAndValidate(
+        operation: string,
         path: string,
         payload: unknown,
         invalidMessage: string,
         timeoutMs?: number,
     ): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
-        const result = await this.request<Record<string, unknown>>("POST", path, { jsonBody: payload, timeoutMs });
+        const result = await this.request<Record<string, unknown>>("POST", path, operation, { jsonBody: payload, timeoutMs });
         return this.toSearchResponse(result, invalidMessage);
     }
 
     private async getAndValidate(
+        operation: string,
         path: string,
         params: Record<string, string | number | undefined>,
         invalidMessage: string,
     ): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
-        const result = await this.request<Record<string, unknown>>("GET", path, { params });
+        const result = await this.request<Record<string, unknown>>("GET", path, operation, { params });
         return this.toSearchResponse(result, invalidMessage);
     }
 

@@ -14,5 +14,6 @@ export const WORKSPACE_NAV_ITEMS: WorkspaceNavItem[] = [
   { href: '/workspace/descontos', label: 'Descontos' },
   { href: '/workspace/relatorios', label: 'Relatórios' },
   { href: '/workspace/ferramentas', label: 'Ferramentas' },
+  { href: '/workspace/integracoes', label: 'Integrações' },
   { href: '/workspace/usuarios', label: 'Usuários' },
 ];

@@ -2,6 +2,7 @@ import type { ActorContext, Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import { withControlTransaction } from "@/lib/db/control";
 import { fetchVestiCatalogFeed, type VestiExternalVariant } from "@/catalog/vesti";
+import { createExternalApiCallReporter } from "@/services/erp/externalApiLogService";
 import { findTenantRow } from "@/models/platformModel";
 import { findVestiCatalogSlugRow, upsertVestiCatalogSlugRow } from "@/models/settingsModel";
 import { upsertProductByReferenceIdRow, upsertProductVariantRow, type ProductWriteRow } from "@/models/catalogModel";
@@ -56,7 +57,7 @@ export async function importVestiCatalog(tenantId: string): Promise<VestiImportS
     const slug = await withTenantTransaction(tenant, CONTROL_ACTOR, findVestiCatalogSlugRow);
     if (!slug) throw new Error("VESTI_SLUG_NOT_CONFIGURED");
 
-    const feed = await fetchVestiCatalogFeed(slug);
+    const feed = await fetchVestiCatalogFeed(slug, { reporter: createExternalApiCallReporter(tenant, CONTROL_ACTOR, "vesti") });
     const variantsByRef = new Map<string, VestiExternalVariant[]>();
     for (const variant of feed.variants) {
         const list = variantsByRef.get(variant.ref);

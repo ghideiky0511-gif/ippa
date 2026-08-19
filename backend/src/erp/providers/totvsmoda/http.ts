@@ -1,7 +1,11 @@
 // Único transporte HTTP permitido para a API TOTVS Moda — porta http.py e as
 // constantes de base.py. Camada pura: não conhece tenant nem banco, só sabe
-// falar com a API externa e traduzir a resposta em erros tipados.
+// falar com a API externa e traduzir a resposta em erros tipados. Reporta
+// cada requisição via ExternalApiCallReporter opcional (ver
+// docs/external-api-observability.md) sem depender de tenant/banco.
 
+import { logger } from "@/lib/logger";
+import type { ExternalApiCallReporter } from "@/lib/externalApiCall";
 import { TotvsModaAuthError, TotvsModaNotFoundError, TotvsModaResponseError, TotvsModaTransportError } from "./errors";
 
 export const TOTVS_MODA_BASE_URL = "https://apitotvsmoda.bhan.com.br";
@@ -40,6 +44,9 @@ export interface TotvsModaRequestOptions {
     formData?: Record<string, string>;
     params?: Record<string, string | number | undefined>;
     timeoutMs?: number;
+    /** Nome da operação de negócio (ex.: "searchProducts") para o log de observabilidade. */
+    operation?: string;
+    reporter?: ExternalApiCallReporter;
 }
 
 export async function totvsModaRequest<T = unknown>(
@@ -47,7 +54,7 @@ export async function totvsModaRequest<T = unknown>(
     path: string,
     options: TotvsModaRequestOptions = {},
 ): Promise<T> {
-    const { token, jsonBody, formData, params, timeoutMs = TOTVS_MODA_DEFAULT_TIMEOUT_MS } = options;
+    const { token, jsonBody, formData, params, timeoutMs = TOTVS_MODA_DEFAULT_TIMEOUT_MS, operation, reporter } = options;
     const methodNorm = (method || "GET").trim().toUpperCase();
     const pathNorm = "/" + (path || "").trim().replace(/^\/+/, "");
     const url = new URL(`${TOTVS_MODA_BASE_URL.replace(/\/+$/, "")}${pathNorm}`);
@@ -68,15 +75,41 @@ export async function totvsModaRequest<T = unknown>(
         if (jsonBody !== undefined) body = JSON.stringify(jsonBody);
     }
 
+    const startedAt = Date.now();
+    async function report(entry: {
+        statusCode: number | null; success: boolean; errorMessage?: string | null; errorClass?: string | null; responseBody?: string | null;
+    }): Promise<void> {
+        if (!reporter) return;
+        try {
+            await reporter({
+                operation: operation || pathNorm,
+                method: methodNorm,
+                endpoint: url.toString(),
+                endpointPath: pathNorm,
+                durationMs: Date.now() - startedAt,
+                requestPayload: jsonBody,
+                ...entry,
+            });
+        } catch (reportError) {
+            logger.warn("totvsmoda-http", "Falha ao reportar chamada externa para observabilidade", {
+                endpoint: pathNorm, error: (reportError as Error).message,
+            });
+        }
+    }
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     let response: Response;
     try {
         response = await fetch(url, { method: methodNorm, headers, body, signal: controller.signal });
     } catch (exc) {
-        throw new TotvsModaTransportError(`Falha de rede na API TOTVS Moda: ${(exc as Error).message}`, {
-            endpoint: url.toString(),
-        });
+        const isTimeout = exc instanceof Error && exc.name === "AbortError";
+        const errorClass = isTimeout ? "TimeoutError" : "ConnectionError";
+        const message = isTimeout
+            ? `Tempo limite excedido ao chamar a API TOTVS Moda (${timeoutMs}ms).`
+            : `Falha de rede na API TOTVS Moda: ${(exc as Error).message}`;
+        await report({ statusCode: null, success: false, errorMessage: message, errorClass });
+        throw new TotvsModaTransportError(message, { endpoint: url.toString() });
     } finally {
         clearTimeout(timer);
     }
@@ -91,6 +124,13 @@ export async function totvsModaRequest<T = unknown>(
     }
     const success = statusCode >= 200 && statusCode < 300;
     const errorMessage = success ? undefined : extractErrorMessage(payload, responseText);
+
+    await report({
+        statusCode, success,
+        errorMessage: errorMessage ?? null,
+        errorClass: success ? null : "TotvsModaResponseError",
+        responseBody: success ? null : responseText,
+    });
 
     if (statusCode === 401 || statusCode === 403) {
         throw new TotvsModaAuthError(errorMessage || "Credenciais recusadas pelo TOTVS Moda.", {
