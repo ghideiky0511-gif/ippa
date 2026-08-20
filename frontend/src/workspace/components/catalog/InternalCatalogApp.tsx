@@ -1,23 +1,27 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Check, ClipboardList, Copy, Minus, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { ArrowLeft, Check, ClipboardList, Copy, Minus, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatBRL } from '@/lib/format';
 import { ADDABLE_AVAILABILITY, buildVariantMatrix, deliveryLabel } from '@/lib/variants';
 import { resolveGallery, resolveImageForColor } from '@/lib/images';
 import { COLOR_MAP } from '@/lib/config';
 import { publicUi } from '@/lib/ui';
+import { enableImageCache } from '@/lib/image-cache';
 import type { Product, Variant } from '@/domain/products/types';
-import type { CartItem, OrderBook, OrderSession } from '@/domain/orders/types';
+import type { OrderBook, OrderSession } from '@/domain/orders/types';
 import { adminUi } from '@/workspace/lib/ui';
 import Link from '@/components/TenantLink';
 import { useTenant } from '@/components/TenantProvider';
 import { pedidoRealtimeEventMessage, usePedidoRealtime, type PedidoParticipant, type PedidoPresence } from '@/lib/realtime/usePedidoRealtime';
 import { OrderSessionPeople } from '@/components/OrderSessionPeople';
 import CatalogProductCard from '@/components/CatalogProductCard';
+import ProductImage from '@/components/ProductImage';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { Sheet, SheetContent, SheetHeader } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTrigger } from '@/components/ui/sheet';
+import { HubHeader } from '@/workspace/components/shared/HubHeader';
+import { OrderBookPanel } from './OrderBookPanel';
 import {
   activateOrderBook,
   cancelOrderBook,
@@ -28,18 +32,6 @@ import {
   updateOrderSession,
 } from '@/workspace/lib/ordersClient';
 import { CreateOrderModal } from '@/workspace/orders/OrderTalaoModal';
-
-function itemCount(items: CartItem[]) {
-  return items.reduce((total, item) => total + item.qty, 0);
-}
-
-function sessionTotal(session: OrderSession) {
-  return session.items.reduce((total, item) => total + item.price * item.qty, 0) + (session.shipping?.price || 0);
-}
-
-function SessionLabel({ session }: { session: OrderSession }) {
-  return <span>{session.clientId ? session.clientName : 'Pedido sem cliente'} · {itemCount(session.items)} peças</span>;
-}
 
 function CatalogCard({ product, onOpen }: { product: Product; onOpen: () => void }) {
   return <CatalogProductCard
@@ -74,6 +66,10 @@ export default function InternalCatalogApp({ products, initialBooks, initialSess
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [search, setSearch] = useState('');
   const [isCreatingOrder, setCreatingOrder] = useState(false);
+
+  useEffect(() => {
+    enableImageCache();
+  }, []);
   const [isCreatingBook, setCreatingBook] = useState(false);
   const [isSharing, setSharing] = useState(false);
   const [bookName, setBookName] = useState('');
@@ -83,6 +79,7 @@ export default function InternalCatalogApp({ products, initialBooks, initialSess
   const [participants, setParticipants] = useState<PedidoParticipant[]>([]);
   const [sessionToCancel, setSessionToCancel] = useState<OrderSession | null>(null);
   const [bookToCancel, setBookToCancel] = useState<OrderBook | null>(null);
+  const [isBookPanelOpen, setBookPanelOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     const [nextBooks, nextSessions] = await Promise.all([fetchOrderBooks(), fetchOrderSessions()]);
@@ -195,25 +192,48 @@ export default function InternalCatalogApp({ products, initialBooks, initialSess
     setSessionToCancel(session);
   }
 
+  const orderBookPanelProps = {
+    activeBook,
+    bookSessions,
+    cancelledSessions,
+    selectedSessionId,
+    onSelectSession: (id: string) => { setSelectedSessionId(id); setBookPanelOpen(false); },
+    saving,
+    onCreateOrder: () => { setCreatingOrder(true); setBookPanelOpen(false); },
+    onCancelBook: () => setBookToCancel(activeBook),
+    onCancelSession: cancelSession,
+    onReactivateSession: (session: OrderSession) => void setSessionStatus(session, 'aberto'),
+  };
+
   return <div className={adminUi.catalogPage}>
-    <header className={adminUi.topbar}>
-      <div className={adminUi.topbarLeft}><div><h1>Catálogo de atendimento</h1><p className="mt-1 text-sm text-brand-muted">Escolha uma peça para abrir a grade no painel lateral.</p></div></div>
-      <div className="flex flex-wrap items-center gap-2">
+    <HubHeader
+      title="Catálogo de atendimento"
+      description="Escolha uma peça para abrir a grade no painel lateral."
+      primaryAction={{ label: 'Criar pedido', icon: <Plus className="mr-1 size-4" />, disabled: !activeBook || activeBook.status !== 'aberto', onClick: () => setCreatingOrder(true) }}
+      secondaryActions={<>
         <Link href="/workspace" className={`${adminUi.button} inline-flex items-center gap-2`}><ArrowLeft className="size-4" />Voltar ao workspace</Link>
         <button type="button" className={`${adminUi.button} inline-flex items-center gap-2`} onClick={() => setSharing(true)}><Copy className="size-4" />Gerar link público</button>
         <select aria-label="Talão atual" value={selectedBookId} onChange={(event) => void selectBook(event.target.value)} className="min-h-10 rounded-control border border-border bg-white px-3 text-sm">{books.map((book) => <option key={book.id} value={book.id}>{book.name}{book.isActive ? ' · atual' : ''}{book.status === 'fechado' ? ' · fechado' : ''}</option>)}</select>
         <button type="button" className={adminUi.button} onClick={() => setCreatingBook(true)}>Novo talão</button>
-        <button type="button" className={adminUi.primaryButton} disabled={!activeBook || activeBook.status !== 'aberto'} onClick={() => setCreatingOrder(true)}><Plus className="mr-1 inline size-4" />Criar pedido</button>
-      </div>
-    </header>
+        <Sheet open={isBookPanelOpen} onOpenChange={setBookPanelOpen}>
+          <SheetTrigger asChild>
+            <button type="button" className={`${adminUi.button} inline-flex items-center gap-2 xl:hidden`}>
+              <ClipboardList className="size-4" />Talão{bookSessions.length > 0 ? ` · ${bookSessions.length}` : ''}
+            </button>
+          </SheetTrigger>
+          <SheetContent side="left" className="w-[min(100%,24rem)]">
+            <SheetHeader><h2 className="font-bold">Talão de atendimento</h2></SheetHeader>
+            <div className="flex-1 overflow-y-auto p-4">
+              <OrderBookPanel {...orderBookPanelProps} />
+            </div>
+          </SheetContent>
+        </Sheet>
+      </>}
+    />
 
     <main className="grid gap-6 px-4 py-5 xl:grid-cols-[18rem_minmax(0,1fr)] sm:px-5">
-      <aside className="h-fit rounded-brand border border-border bg-white p-4 xl:sticky xl:top-4">
-        <div className="flex items-center justify-between gap-2"><div><h2 className="font-bold">Talão atual</h2><p className="mt-1 text-xs text-brand-muted">{activeBook?.name || 'Carregando talão'}</p></div><ClipboardList className="size-5 text-brand-primary" /></div>
-        <button type="button" className={`${adminUi.primaryButton} mt-4 w-full`} disabled={!activeBook || activeBook.status !== 'aberto'} onClick={() => setCreatingOrder(true)}>+ Criar pedido</button>
-        {activeBook?.status === 'aberto' && <button type="button" className={`${adminUi.button} mt-2 w-full text-red-600 hover:border-red-200 hover:bg-red-50 hover:text-red-700`} disabled={saving} onClick={() => setBookToCancel(activeBook)}><Trash2 className="mr-1 inline size-4" />Cancelar talão</button>}
-        <div className="mt-4 border-t border-border pt-4"><div className="flex items-center justify-between"><h3 className="text-sm font-semibold">Continuar pedido</h3><span className="text-xs text-brand-muted">{bookSessions.length}</span></div><div className="mt-3 flex max-h-[55vh] flex-col gap-2 overflow-y-auto">{bookSessions.map((session) => <div key={session.id} className={`flex items-stretch rounded-control border transition ${selectedSessionId === session.id ? 'border-brand-primary bg-brand-background' : 'border-border hover:border-brand-primary/40'}`}><button type="button" onClick={() => setSelectedSessionId(session.id)} className="min-w-0 flex-1 p-3 text-left text-sm"><strong className="block truncate">{session.clientName || 'Sem cliente'}</strong><span className="mt-1 block text-xs text-brand-muted"><SessionLabel session={session} /></span><span className="mt-1 block text-xs font-semibold text-brand-primary">{formatBRL(sessionTotal(session))}</span></button><button type="button" aria-label={`Cancelar pedido de ${session.clientName || 'sem cliente'}`} title="Cancelar pedido" disabled={saving} onClick={() => cancelSession(session)} className="group m-1 flex w-9 shrink-0 items-center justify-center rounded-control text-red-500 transition-all duration-200 hover:scale-105 hover:bg-red-50 hover:text-red-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"><Trash2 className="size-4 transition-transform duration-200 group-hover:-rotate-6" /></button></div>)}{bookSessions.length === 0 && <p className="py-6 text-center text-sm text-brand-muted">Crie um pedido para começar.</p>}</div></div>
-        {cancelledSessions.length > 0 && <div className="mt-4 border-t border-border pt-4"><div className="flex items-center justify-between"><h3 className="text-sm font-semibold">Cancelados</h3><span className="text-xs text-brand-muted">{cancelledSessions.length}</span></div><div className="mt-3 flex flex-col gap-2">{cancelledSessions.map((session) => <div key={session.id} className="rounded-control border border-dashed border-border p-3 text-sm"><strong className="block truncate text-brand-muted">{session.clientName || 'Sem cliente'}</strong><span className="mt-1 block text-xs text-brand-muted"><SessionLabel session={session} /></span><button type="button" className={`${adminUi.button} mt-2 inline-flex items-center gap-2`} disabled={saving} onClick={() => void setSessionStatus(session, 'aberto')}><RotateCcw className="size-4" />Reativar no talão</button></div>)}</div></div>}
+      <aside className="hidden h-fit rounded-brand border border-border bg-white p-4 xl:sticky xl:top-4 xl:block">
+        <OrderBookPanel {...orderBookPanelProps} />
       </aside>
 
       <section className="min-w-0"><div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-lg font-bold">Peças</h2><p className="mt-1 text-sm text-brand-muted">{selectedSession ? `Adicionando em: ${selectedSession.clientName || 'pedido sem cliente'}` : 'Selecione ou crie um pedido para adicionar peças.'}</p>{selectedSession && presence.length > 0 && <p className="mt-1 text-xs text-brand-muted">{presence.length === 1 ? 'Somente você está neste pedido.' : `${presence.length} pessoas estão acompanhando este pedido agora.`}</p>}</div><input className={publicUi.search} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar peça, SKU ou categoria" /></div><div className={publicUi.grid}>{filteredProducts.map((product) => <CatalogCard key={product.id} product={product} onOpen={() => setSelectedProduct(product)} />)}</div>{filteredProducts.length === 0 && <p className="py-12 text-center text-sm text-brand-muted">Nenhuma peça encontrada.</p>}</section>
@@ -226,7 +246,7 @@ export default function InternalCatalogApp({ products, initialBooks, initialSess
     <ShareCatalogSheet open={isSharing} onOpenChange={setSharing} publicPath={href('/catalogo')} />
     {message && <div className="fixed right-5 bottom-5 z-[90] rounded-control bg-brand-text px-4 py-3 text-sm text-white shadow-lg">{message}</div>}
     {isCreatingOrder && activeBook && <CreateOrderModal orderBookId={activeBook.id} onClose={() => setCreatingOrder(false)} onCreated={(session) => { setSessions((current) => [session, ...current]); setSelectedSessionId(session.id); setCreatingOrder(false); }} />}
-    {isCreatingBook && <div className={adminUi.modalOverlay} role="dialog" aria-modal="true" aria-label="Novo talão"><section className={adminUi.modalPanel}><header className={adminUi.modalHeader}><h2 className="font-bold">Novo talão</h2><button type="button" className={adminUi.iconButton} onClick={() => setCreatingBook(false)}>×</button></header><div className={adminUi.modalBody}><label className={adminUi.field}>Nome do talão<input autoFocus value={bookName} onChange={(event) => setBookName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void createBook(); }} placeholder="Ex.: Atendimento feira agosto" /></label></div><footer className={adminUi.modalFooter}><button type="button" className={adminUi.button} onClick={() => setCreatingBook(false)}>Cancelar</button><button type="button" className={adminUi.primaryButton} disabled={!bookName.trim() || saving} onClick={() => void createBook()}>{saving ? 'Criando...' : 'Criar e ativar'}</button></footer></section></div>}
+    {isCreatingBook && <div className={adminUi.modalOverlay} role="dialog" aria-modal="true" aria-label="Novo talão"><section className={adminUi.modalPanel}><header className={adminUi.modalHeader}><h2 className="font-bold">Novo talão</h2><button type="button" className={adminUi.iconButton} onClick={() => setCreatingBook(false)} aria-label="Fechar"><X className="size-4" aria-hidden="true" /></button></header><div className={adminUi.modalBody}><label className={adminUi.field}>Nome do talão<input autoFocus value={bookName} onChange={(event) => setBookName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void createBook(); }} placeholder="Ex.: Atendimento feira agosto" /></label></div><footer className={adminUi.modalFooter}><button type="button" className={adminUi.button} onClick={() => setCreatingBook(false)}>Cancelar</button><button type="button" className={adminUi.primaryButton} disabled={!bookName.trim() || saving} onClick={() => void createBook()}>{saving ? 'Criando...' : 'Criar e ativar'}</button></footer></section></div>}
   </div>;
 }
 
@@ -239,5 +259,5 @@ function ProductSheet({ product, session, saving, onClose, onChange }: { product
   const gallery = resolveGallery(product);
   const image = resolveImageForColor(product, selectedColor) || gallery[0] || product.image;
   const qtyFor = (variant: Variant) => session?.items.find((item) => item.key === `${product.id}|${variant.color}|${variant.size}`)?.qty || 0;
-  return <Sheet open={!!product} onOpenChange={(open) => !open && onClose()}><SheetContent side="right" className="w-[min(100%,34rem)]"><SheetHeader><div className="min-w-0"><p className="text-xs font-semibold text-brand-primary">{product.category}</p><h2 className="truncate font-bold">{product.name}</h2></div></SheetHeader><div className="flex-1 overflow-y-auto p-5"><img className="aspect-[9/16] w-full rounded-brand bg-brand-background object-cover" src={image || 'https://via.placeholder.com/500x620?text=Sem+imagem'} alt={product.name} /><div className="mt-5 flex items-start justify-between gap-3"><div><h3 className="text-lg font-bold">{product.name}</h3>{product.referenceId && <p className="mt-1 text-xs text-brand-muted">{product.referenceId}</p>}</div><strong className="shrink-0 text-lg text-brand-primary">{formatBRL(product.price)}</strong></div>{product.description && <p className="mt-3 text-sm text-brand-muted">{product.description}</p>}<div className="mt-5"><p className="text-sm font-semibold">Cor {color ? `— ${color}` : ''}</p><div className="mt-2 flex flex-wrap gap-2">{matrix.colors.map((entry) => <button key={entry} type="button" aria-label={`Ver ${entry}`} onClick={() => setColor(entry)} className={`size-8 rounded-full border-2 ${color === entry ? 'border-brand-primary ring-2 ring-brand-primary/20' : 'border-white shadow-sm'}`} style={{ background: COLOR_MAP[entry] || '#ccc' }} />)}</div></div>{!session && <div className="mt-5 rounded-control border border-dashed border-brand-primary/40 bg-brand-background p-3 text-sm text-brand-primary">Selecione ou crie um pedido no talão para incluir estas peças.</div>}<div className="mt-5 overflow-x-auto"><table className="w-full min-w-[27rem] text-sm"><thead><tr className="border-b border-border"><th className="p-2 text-left text-xs text-brand-muted">Cor</th>{matrix.sizes.map((size) => <th key={size} className="p-2 text-center text-xs text-brand-muted">{size}</th>)}</tr></thead><tbody>{matrix.rows.filter((row) => !color || row.color === color).map((row) => <tr key={row.color} className="border-b border-border"><th className="p-2 text-left text-xs"><span className="mr-2 inline-block size-3 rounded-full border border-black/15 align-middle" style={{ background: COLOR_MAP[row.color] || '#ccc' }} />{row.color}</th>{row.cells.map((variant, index) => { const qty = variant ? qtyFor(variant) : 0; const disabled = !variant || !ADDABLE_AVAILABILITY.has(variant.availability) || !session || saving; return <td key={`${row.color}-${matrix.sizes[index]}`} className="p-1 text-center">{variant ? <div title={deliveryLabel(variant.availability)} className="inline-flex items-center rounded-control border border-border bg-white"><button type="button" className="flex size-8 items-center justify-center text-brand-muted disabled:opacity-30" disabled={disabled || qty === 0} onClick={() => void onChange(product, variant, -1)}><Minus className="size-3" /></button><span className="w-6 text-center text-xs font-semibold">{qty}</span><button type="button" className="flex size-8 items-center justify-center text-brand-primary disabled:opacity-30" disabled={disabled} onClick={() => void onChange(product, variant, 1)}><Plus className="size-3" /></button></div> : <span className="text-brand-muted">—</span>}</td>; })}</tr>)}</tbody></table></div><p className="mt-4 text-xs text-brand-muted">As alterações da grade são atualizadas em tempo real para quem estiver neste talão.</p></div></SheetContent></Sheet>;
+  return <Sheet open={!!product} onOpenChange={(open) => !open && onClose()}><SheetContent side="right" className="w-[min(100%,34rem)]"><SheetHeader><div className="min-w-0"><p className="text-xs font-semibold text-brand-primary">{product.category}</p><h2 className="truncate font-bold">{product.name}</h2></div></SheetHeader><div className="flex-1 overflow-y-auto p-5"><ProductImage className="aspect-[9/16] w-full rounded-brand bg-brand-background" src={image} alt={product.name} /><div className="mt-5 flex items-start justify-between gap-3"><div><h3 className="text-lg font-bold">{product.name}</h3>{product.referenceId && <p className="mt-1 text-xs text-brand-muted">{product.referenceId}</p>}</div><strong className="shrink-0 text-lg text-brand-primary">{formatBRL(product.price)}</strong></div>{product.description && <p className="mt-3 text-sm text-brand-muted">{product.description}</p>}<div className="mt-5"><p className="text-sm font-semibold">Cor {color ? `— ${color}` : ''}</p><div className="mt-2 flex flex-wrap gap-2">{matrix.colors.map((entry) => <button key={entry} type="button" aria-label={`Ver ${entry}`} onClick={() => setColor(entry)} className={`size-8 rounded-full border-2 ${color === entry ? 'border-brand-primary ring-2 ring-brand-primary/20' : 'border-white shadow-sm'}`} style={{ background: COLOR_MAP[entry] || '#ccc' }} />)}</div></div>{!session && <div className="mt-5 rounded-control border border-dashed border-brand-primary/40 bg-brand-background p-3 text-sm text-brand-primary">Selecione ou crie um pedido no talão para incluir estas peças.</div>}<div className="mt-5 overflow-x-auto"><table className="w-full min-w-[27rem] text-sm"><thead><tr className="border-b border-border"><th className="p-2 text-left text-xs text-brand-muted">Cor</th>{matrix.sizes.map((size) => <th key={size} className="p-2 text-center text-xs text-brand-muted">{size}</th>)}</tr></thead><tbody>{matrix.rows.filter((row) => !color || row.color === color).map((row) => <tr key={row.color} className="border-b border-border"><th className="p-2 text-left text-xs"><span className="mr-2 inline-block size-3 rounded-full border border-black/15 align-middle" style={{ background: COLOR_MAP[row.color] || '#ccc' }} />{row.color}</th>{row.cells.map((variant, index) => { const qty = variant ? qtyFor(variant) : 0; const disabled = !variant || !ADDABLE_AVAILABILITY.has(variant.availability) || !session || saving; return <td key={`${row.color}-${matrix.sizes[index]}`} className="p-1 text-center">{variant ? <div title={deliveryLabel(variant.availability)} className="inline-flex items-center rounded-control border border-border bg-white"><button type="button" className="flex size-8 items-center justify-center text-brand-muted disabled:opacity-30" disabled={disabled || qty === 0} onClick={() => void onChange(product, variant, -1)}><Minus className="size-3" /></button><span className="w-6 text-center text-xs font-semibold">{qty}</span><button type="button" className="flex size-8 items-center justify-center text-brand-primary disabled:opacity-30" disabled={disabled} onClick={() => void onChange(product, variant, 1)}><Plus className="size-3" /></button></div> : <span className="text-brand-muted">—</span>}</td>; })}</tr>)}</tbody></table></div><p className="mt-4 text-xs text-brand-muted">As alterações da grade são atualizadas em tempo real para quem estiver neste talão.</p></div></SheetContent></Sheet>;
 }

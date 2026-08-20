@@ -1,19 +1,12 @@
 'use client';
 
 import { useState } from 'react';
+import { X } from 'lucide-react';
 import { adminUi } from '@/workspace/lib/ui';
-import WorkspaceNav from '@/workspace/navigation/WorkspaceNav';
+import { HubHeader } from '@/workspace/components/shared/HubHeader';
+import { KpiCard } from '@/workspace/components/shared/KpiCard';
+import { ResponsiveDataTable } from '@/workspace/components/shared/ResponsiveDataTable';
 import { addClientByDocument, fetchClientsPage, type ClientsPage } from '@/workspace/lib/customersClient';
-
-function KpiCard({ label, value, hint }: { label: string; value: number; hint: string }) {
-  return (
-    <article className="rounded-brand border border-[#eee] bg-white p-4 shadow-[0_1px_4px_rgba(0,0,0,.05)]">
-      <p className="text-sm text-brand-muted">{label}</p>
-      <p className="mt-2 text-2xl font-bold text-brand-text">{value.toLocaleString('pt-BR')}</p>
-      <p className="mt-1 text-xs text-brand-muted">{hint}</p>
-    </article>
-  );
-}
 
 function AddClientByDocumentModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => Promise<void> }) {
   const [document, setDocument] = useState('');
@@ -55,7 +48,7 @@ function AddClientByDocumentModal({ onClose, onAdded }: { onClose: () => void; o
             <h2 className="font-bold">Adicionar cliente pelo documento</h2>
             <p className="mt-1 text-sm text-brand-muted">Localiza primeiro na sua base e, se necessário, importa do ERP ativo.</p>
           </div>
-          <button type="button" className={adminUi.iconButton} onClick={onClose} aria-label="Fechar">×</button>
+          <button type="button" className={adminUi.iconButton} onClick={onClose} aria-label="Fechar"><X className="size-4" aria-hidden="true" /></button>
         </header>
         <div className={`${adminUi.modalBody} flex flex-col gap-4`}>
           <div className={adminUi.field}>
@@ -112,27 +105,25 @@ export default function CustomersApp({ initialPage }: { initialPage: ClientsPage
   const { clients, pagination, kpis } = data;
   return (
     <div>
-      <div className={adminUi.topbar}>
-        <div className={adminUi.topbarLeft}>
-          <h1>Hub de clientes</h1>
-          <WorkspaceNav />
-        </div>
-        <button type="button" className={adminUi.primaryButton} onClick={() => setAdding(true)}>+ Adicionar pelo documento</button>
-      </div>
+      <HubHeader
+        title="Hub de clientes"
+        description="Consulte a base e importe novos cadastros pelo CPF ou CNPJ."
+        primaryAction={{ label: 'Adicionar pelo documento', onClick: () => setAdding(true) }}
+      />
 
       <main className={`${adminUi.productsEditor} flex flex-col gap-6`}>
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <KpiCard label="Clientes cadastrados" value={pagination.total} hint={query ? 'resultado da busca' : 'base total'} />
-          <KpiCard label="Novos este mês" value={kpis.newThisMonth} hint="no resultado atual" />
-          <KpiCard label="Com e-mail" value={kpis.withEmail} hint="cadastro com contato" />
-          <KpiCard label="Com cidade e UF" value={kpis.withAddress} hint="cadastro com endereço" />
+          <KpiCard label="Clientes cadastrados" value={pagination.total.toLocaleString('pt-BR')} hint={query ? 'resultado da busca' : 'base total'} />
+          <KpiCard label="Novos este mês" value={kpis.newThisMonth.toLocaleString('pt-BR')} hint="no resultado atual" />
+          <KpiCard label="Com e-mail" value={kpis.withEmail.toLocaleString('pt-BR')} hint="cadastro com contato" />
+          <KpiCard label="Com cidade e UF" value={kpis.withAddress.toLocaleString('pt-BR')} hint="cadastro com endereço" />
         </section>
 
-        <section className="rounded-brand border border-[#eee] bg-white p-4">
+        <section className="rounded-brand border border-border bg-surface p-4">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="font-bold">Clientes</h2>
-              <p className="mt-1 text-sm text-brand-muted">Consulte a base e importe novos cadastros pelo CPF ou CNPJ.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Consulte a base e importe novos cadastros pelo CPF ou CNPJ.</p>
             </div>
             <form className={`${adminUi.field} w-full sm:w-80`} onSubmit={(event) => void submitSearch(event)}>
               <label htmlFor="clients-search">Buscar clientes</label>
@@ -144,24 +135,29 @@ export default function CustomersApp({ initialPage }: { initialPage: ClientsPage
           </div>
 
           {error && <p className="mt-3 text-sm text-[#b00020]">{error}</p>}
-          <div className="mt-4 overflow-x-auto">
-            <table className={adminUi.table}>
-              <thead><tr><th>Nome</th><th>E-mail</th><th>CPF/CNPJ</th><th>Cidade/UF</th><th>Cadastro</th></tr></thead>
-              <tbody>
-                {clients.map((client) => (
-                  <tr key={client.id}>
-                    <td>{client.name}</td>
-                    <td>{client.email || '—'}</td>
-                    <td>{client.cpfCnpj || '—'}</td>
-                    <td>{client.city ? `${client.city}/${client.state || '—'}` : '—'}</td>
-                    <td>{new Date(client.createdAt).toLocaleDateString('pt-BR')}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {clients.length === 0 && !loading && <p className={`${adminUi.previewEmpty} mt-3`}>Nenhuma cliente encontrada.</p>}
-          <div className="mt-4 flex items-center justify-between gap-3 text-sm text-brand-muted">
+          <ResponsiveDataTable
+            rows={clients}
+            rowKey={(client) => client.id}
+            emptyMessage="Nenhuma cliente encontrada."
+            columns={[
+              { key: 'name', header: 'Nome', cell: (client) => client.name },
+              { key: 'email', header: 'E-mail', cell: (client) => client.email || '—' },
+              { key: 'doc', header: 'CPF/CNPJ', cell: (client) => client.cpfCnpj || '—' },
+              { key: 'city', header: 'Cidade/UF', cell: (client) => client.city ? `${client.city}/${client.state || '—'}` : '—' },
+              { key: 'createdAt', header: 'Cadastro', cell: (client) => new Date(client.createdAt).toLocaleDateString('pt-BR') },
+            ]}
+            mobileCard={(client) => (
+              <div className="rounded-brand border border-border bg-surface p-4">
+                <p className="font-semibold text-foreground">{client.name}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{client.email || 'Sem e-mail'} · {client.cpfCnpj || 'Sem documento'}</p>
+                <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{client.city ? `${client.city}/${client.state || '—'}` : 'Sem endereço'}</span>
+                  <span>Desde {new Date(client.createdAt).toLocaleDateString('pt-BR')}</span>
+                </div>
+              </div>
+            )}
+          />
+          <div className="mt-4 flex items-center justify-between gap-3 text-sm text-muted-foreground">
             <span>{pagination.total} {pagination.total === 1 ? 'cliente' : 'clientes'} · Página {pagination.page} de {pagination.totalPages}</span>
             <div className="flex gap-2">
               <button type="button" className={adminUi.button} disabled={loading || pagination.page <= 1} onClick={() => void load(pagination.page - 1)}>Anterior</button>

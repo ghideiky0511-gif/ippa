@@ -2,6 +2,7 @@
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
 import { useState } from 'react';
+import { Trash2 } from 'lucide-react';
 
 export default function CollectionsList({ collections, selectedId, onSelect, onAdd, onRemove }) {
   const [newLabel, setNewLabel] = useState('');
@@ -27,7 +28,7 @@ export default function CollectionsList({ collections, selectedId, onSelect, onA
               onClick={() => onRemove(c.id)}
               title="Excluir coleção"
             >
-              ✕
+              <Trash2 className="size-4" aria-hidden="true" />
             </button>
           </div>
         ))}

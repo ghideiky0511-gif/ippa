@@ -8,6 +8,8 @@ import {
   insertOrderSessionItemRow,
   insertOrderSessionRow,
 } from "@/models/ordersModel";
+import { getOrCreateOpenOrder, syncOrderItems } from "@/services/orders/orderItemSync";
+import { toOrderSession } from "@/services/orders/orderMapper";
 import { findActiveOrderBookRow, insertOrderBookRow } from "@/models/orderBooksModel";
 import { listOnlineSellerIds } from "@/models/usersModel";
 import { recordAuditEvent, ORDER_SESSION_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
@@ -40,8 +42,10 @@ async function createAssignedSession(
   const sellerId = pickSeller(sellerIds, openCounts, settings?.assignment_strategy ?? undefined);
   if (!sellerId) return undefined;
   const book = (await findActiveOrderBookRow(client, sellerId)) ?? await insertOrderBookRow(client, sellerId, "Atendimentos online");
+  const order = await getOrCreateOpenOrder(client, { clientId: registration.id, sellerId, clientName: registration.name, channel: "online" });
   const row = await insertOrderSessionRow(client, {
     orderBookId: book.id,
+    orderId: order?.id,
     clientName: registration.name,
     clientId: registration.id,
     sellerId,
@@ -49,6 +53,9 @@ async function createAssignedSession(
     status: "aberto",
   });
   for (const item of items) await insertOrderSessionItemRow(client, row.id, item);
+  if (order && items.length > 0) {
+    await syncOrderItems(client, { orderId: order.id, currentItems: [], nextItems: items, actorId: user.id, actorRole: user.role });
+  }
   await updateClientRow(client, registration.id, { ...registration, lastSellerId: sellerId });
   await recordAuditEvent(client, {
     action: ORDER_SESSION_AUDIT_ACTIONS.CREATED,
@@ -57,18 +64,7 @@ async function createAssignedSession(
     context,
     metadata: { channel: "online", hasClient: true, itemCount: items.length },
   });
-  return {
-    id: row.id,
-    orderBookId: row.order_book_id,
-    clientName: row.client_name,
-    clientId: row.client_id ?? undefined,
-    sellerId: row.seller_id,
-    channel: row.channel,
-    items,
-    status: row.status,
-    createdAt: row.created_at.toISOString(),
-    updatedAt: row.updated_at.toISOString(),
-  };
+  return toOrderSession(row, items);
 }
 
 export async function signupCustomer(

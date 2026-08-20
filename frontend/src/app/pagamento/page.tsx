@@ -4,6 +4,7 @@ import { publicUi } from '@/lib/ui';
 import { useState } from 'react';
 import Link from '@/components/TenantLink';
 import { useRouter } from 'next/navigation';
+import { ArrowLeft } from 'lucide-react';
 import { formatBRL } from '@/lib/format';
 import { useCart } from '@/components/CartProvider';
 import { useTalao } from '@/components/TalaoProvider';
@@ -186,7 +187,7 @@ export default function PagamentoPage() {
         <div className={publicUi.hint}>Simulação — nenhuma cobrança real é processada.</div>
       </div>
 
-      <Link href="/frete" className={publicUi.backLink}>← Voltar para o frete</Link>
+      <Link href="/frete" className={publicUi.backLink}><ArrowLeft className="size-4" aria-hidden="true" />Voltar para o frete</Link>
     </main>
   );
 }

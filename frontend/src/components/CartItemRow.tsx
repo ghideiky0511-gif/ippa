@@ -1,6 +1,7 @@
 'use client';
 import { publicUi } from '@/lib/ui';
 import { toast } from 'sonner';
+import ProductImage from './ProductImage';
 
 import type { CartItem } from '@/domain/orders/types';
 
@@ -16,7 +17,7 @@ export default function CartItemRow({
   const variantParts = [item.color, item.size].filter(Boolean);
   return (
     <div className={publicUi.cartItem}>
-      <img src={item.image || 'https://via.placeholder.com/100x120?text=Sem+imagem'} alt={item.name} />
+      <ProductImage src={item.image} alt={item.name} className={publicUi.cartItemImage} />
       <div className={publicUi.cartItemInfo}>
         <div className="contents">{item.name}</div>
         {variantParts.length > 0 && <div className="contents">{variantParts.join(' · ')}</div>}

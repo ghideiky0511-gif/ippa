@@ -8,7 +8,7 @@ import { insertProductRow, updateProductRow, type ProductWriteRow } from "@/mode
 import { insertClientRow, updateClientRow } from "@/models/clientsModel";
 import { findInternalIdByExternalId, upsertExternalReferenceRow, type ErpEntityType } from "@/models/erpExternalReferencesModel";
 import { findActiveErpIntegrationRow } from "@/models/erpIntegrationsModel";
-import { insertOrderItemRow, insertOrderRow } from "@/models/ordersModel";
+import { insertOrderRow, upsertOrderItemRow } from "@/models/ordersModel";
 
 export interface ErpSyncResultItem {
     externalId: string;
@@ -143,7 +143,7 @@ export async function syncTenantOrders(tenant: Tenant, actor: AuthUser): Promise
                 discount: data.discount,
                 createdAt: data.date,
             });
-            for (const item of data.items) await insertOrderItemRow(client, order.id, item);
+            for (const item of data.items) await upsertOrderItemRow(client, order.id, item);
             await upsertExternalReferenceRow(client, { integrationId: integration.id, entityType, internalId: order.id, externalId });
             results.push({ externalId, internalId: order.id, created: true });
         }

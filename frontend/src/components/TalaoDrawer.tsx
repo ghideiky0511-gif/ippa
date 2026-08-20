@@ -2,6 +2,7 @@
 import { publicUi } from '@/lib/ui';
 
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { ArrowRight, X } from 'lucide-react';
 import { useTalao } from './TalaoProvider';
 import { useCart } from './CartProvider';
 import { formatBRL } from '@/lib/format';
@@ -302,7 +303,7 @@ export default function TalaoDrawer() {
       <aside className={[publicUi.drawerRight, isTalaoOpen ? 'translate-x-0' : ''].join(' ')}>
         <div className={publicUi.drawerHeader}>
           <h2>talão de pedidos</h2>
-          <button aria-label="Fechar" onClick={closeTalao}>&times;</button>
+          <button className={publicUi.drawerIconButton} aria-label="Fechar" onClick={closeTalao}><X className="size-4" aria-hidden="true" /></button>
         </div>
 
         <div className={publicUi.drawerBody}>
@@ -333,7 +334,7 @@ export default function TalaoDrawer() {
                   <span>{itemCount(activeSession)} itens</span>
                   <span className="contents">{formatBRL(subtotal(activeSession))}</span>
                 </div>
-                <span className="contents">→</span>
+                <ArrowRight className="size-4 shrink-0" aria-hidden="true" />
               </button>
               <ClientCadastroSection key={`${activeSession.id}-cadastro`} session={activeSession} />
             </>
@@ -359,14 +360,14 @@ export default function TalaoDrawer() {
                       <span className="contents">{formatBRL(subtotal(s))}</span>
                     </div>
                     <button
-                      className="contents"
+                      className={publicUi.drawerIconButton}
                       aria-label="Fechar pedido"
                       onClick={(e) => {
                         e.stopPropagation();
                         closeSession(s.id);
                       }}
                     >
-                      &times;
+                      <X className="size-4" aria-hidden="true" />
                     </button>
                   </div>
                 ))}

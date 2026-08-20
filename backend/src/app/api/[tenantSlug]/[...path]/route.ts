@@ -23,6 +23,7 @@ import { NotFoundError, ServiceError } from "@/services/shared/errors";
 import * as users from "@/services/users";
 import * as pushNotifications from "@/services/notifications/pushNotificationService";
 import { mintRealtimeTicket } from "@/services/realtime/ticketService";
+import { errorMeta, logger } from "@/lib/logger";
 
 type RouteContext = { params: Promise<{ tenantSlug: string; path: string[] }> };
 
@@ -140,10 +141,15 @@ async function execute(
     status = 200,
 ): Promise<NextResponse> {
     try {
-        return NextResponse.json(await operation(), { status });
+        const result = await operation();
+        // Algumas operações representam apenas uma ação aceita. NextResponse.json
+        // não aceita undefined, portanto o contrato HTTP correto nesse caso é 204.
+        if (result === undefined) return new NextResponse(null, { status: status === 200 ? 204 : status });
+        return NextResponse.json(result, { status });
     } catch (error) {
         const response = serviceError(error);
         if (response) return response;
+        logger.error("tenant-api", "Erro inesperado ao executar operação", errorMeta(error));
         throw error;
     }
 }

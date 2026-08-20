@@ -1,6 +1,7 @@
 // @ts-nocheck
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
+import { cn } from '@/lib/cn';
 import Toolbox from './Toolbox';
 import { getBlockDefinition, CANVAS_WIDTH, MIN_SIZE } from '@/workspace/lib/blockRegistry';
 
@@ -60,7 +61,7 @@ function PositionFields({ section, onUpdate }) {
   );
 }
 
-export default function RightPanel({ selectedSection, products, onUpdate, onDeselect, onRemove }) {
+export default function RightPanel({ selectedSection, products, onUpdate, onDeselect, onRemove, className = '' }) {
   if (!selectedSection) {
     return <Toolbox />;
   }
@@ -69,7 +70,7 @@ export default function RightPanel({ selectedSection, products, onUpdate, onDese
   const Editor = def?.Editor;
 
   return (
-    <aside className={adminUi.toolbox}>
+    <aside className={cn(adminUi.toolbox, className)}>
       <div className={adminUi.panelHeader}>
         <h2>Editando</h2>
         <button className={adminUi.iconButton} onClick={onDeselect}>Fechar</button>

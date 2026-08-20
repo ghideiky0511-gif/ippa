@@ -1,6 +1,7 @@
 'use client';
 /* eslint-disable react-hooks/refs, react-hooks/set-state-in-effect -- stable cart row order and delayed color initialization are deliberately local to this legacy editor. */
 import { publicUi } from '@/lib/ui';
+import ProductImage from './ProductImage';
 
 import Link from '@/components/TenantLink';
 import { Trash2 } from 'lucide-react';
@@ -232,7 +233,7 @@ function ColorLine({
 
   return (
     <div className={publicUi.cartLine}>
-      <img src={image || 'https://via.placeholder.com/64x80?text=Sem+imagem'} alt={itemName} />
+      <ProductImage src={image} alt={itemName} className={publicUi.cartLineImage} />
 
       <div className={publicUi.cartLineField}>
         <label>Cor</label>

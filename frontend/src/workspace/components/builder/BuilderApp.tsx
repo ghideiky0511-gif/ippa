@@ -2,10 +2,13 @@
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
 import { useState, useCallback } from 'react';
+import { Save } from 'lucide-react';
 import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import Canvas from './Canvas';
 import RightPanel from './RightPanel';
-import WorkspaceNav from '@/workspace/navigation/WorkspaceNav';
+import BuilderMobileList from './BuilderMobileList';
+import { HubHeader } from '@/workspace/components/shared/HubHeader';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { BLOCK_REGISTRY, CANVAS_WIDTH } from '@/workspace/lib/blockRegistry';
 import { saveHomeSections, generateHomeSections, fetchHomeAiHistory } from '@/workspace/lib/homeSectionsClient';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -24,6 +27,7 @@ export default function BuilderApp({ initialSections, products }) {
   const [historyState, setHistoryState] = useState('idle'); // idle | loading | error
   const [historyError, setHistoryError] = useState('');
   const [pendingConfirmation, setPendingConfirmation] = useState(null);
+  const [mobileEditorOpen, setMobileEditorOpen] = useState(false);
 
   // Só usado pra soltar uma ferramenta nova da toolbox no canvas — mover ou
   // redimensionar um bloco já existente é um drag próprio (pointer events
@@ -56,6 +60,29 @@ export default function BuilderApp({ initialSections, products }) {
     setSelectedId((cur) => (cur === id ? null : cur));
     setDirty(true);
   }, []);
+
+  // Reordenação mobile troca só o `y` (posição vertical) entre vizinhos na
+  // ordem atual — mesma fonte de verdade que já decide a ordem de
+  // renderização no site (resolveHomeSections), sem precisar de um campo
+  // de ordem separado.
+  const swapNeighbors = useCallback((id, direction) => {
+    setSections((prev) => {
+      const sorted = [...prev].sort((a, b) => (a.y || 0) - (b.y || 0));
+      const index = sorted.findIndex((s) => s.id === id);
+      const neighborIndex = index + direction;
+      if (index === -1 || neighborIndex < 0 || neighborIndex >= sorted.length) return prev;
+      const current = sorted[index];
+      const neighbor = sorted[neighborIndex];
+      return prev.map((s) => {
+        if (s.id === current.id) return { ...s, y: neighbor.y || 0 };
+        if (s.id === neighbor.id) return { ...s, y: current.y || 0 };
+        return s;
+      });
+    });
+    setDirty(true);
+  }, []);
+  const moveSectionUp = useCallback((id) => swapNeighbors(id, -1), [swapNeighbors]);
+  const moveSectionDown = useCallback((id) => swapNeighbors(id, 1), [swapNeighbors]);
 
   function handleDragEnd(event) {
     const { active, over } = event;
@@ -159,20 +186,15 @@ export default function BuilderApp({ initialSections, products }) {
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
       <div className={adminUi.page}>
-        <div className={adminUi.topbar}>
-          <div className={adminUi.topbarLeft}>
-            <h1>Editor da home</h1>
-            <WorkspaceNav />
-          </div>
-          <div>
+        <HubHeader
+          title="Editor da home"
+          secondaryActions={<>
             {saveState === 'saved' && !dirty && <span className={adminUi.status}>Salvo</span>}
             {saveState === 'error' && <span className={adminUi.status}>Erro ao salvar</span>}
             {dirty && saveState !== 'saving' && <span className={adminUi.status}>Alterações não salvas</span>}
-            <button className={adminUi.primaryButton} onClick={handleSave} disabled={saveState === 'saving'}>
-              {saveState === 'saving' ? 'Salvando…' : 'Salvar'}
-            </button>
-          </div>
-        </div>
+          </>}
+          primaryAction={{ label: saveState === 'saving' ? 'Salvando…' : 'Salvar', onClick: handleSave, disabled: saveState === 'saving', icon: <Save className="size-5" aria-hidden="true" /> }}
+        />
 
         <form className="contents" onSubmit={handleGenerateAI}>
           <input
@@ -211,24 +233,51 @@ export default function BuilderApp({ initialSections, products }) {
           )}
         </form>
 
-        <Canvas
-          sections={sections}
-          products={products}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
-          onRemoveSection={removeSection}
-          onMoveSection={moveSection}
-          onResizeSection={resizeSection}
-          onUseTemplate={applyTemplate}
-        />
+        <div className="hidden lg:block">
+          <Canvas
+            sections={sections}
+            products={products}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            onRemoveSection={removeSection}
+            onMoveSection={moveSection}
+            onResizeSection={resizeSection}
+            onUseTemplate={applyTemplate}
+          />
 
-        <RightPanel
-          selectedSection={selectedSection}
-          products={products}
-          onUpdate={(updater) => updateSection(selectedId, updater)}
-          onDeselect={() => setSelectedId(null)}
-          onRemove={() => removeSection(selectedId)}
-        />
+          <RightPanel
+            selectedSection={selectedSection}
+            products={products}
+            onUpdate={(updater) => updateSection(selectedId, updater)}
+            onDeselect={() => setSelectedId(null)}
+            onRemove={() => removeSection(selectedId)}
+          />
+        </div>
+
+        <div className="lg:hidden">
+          <BuilderMobileList
+            sections={sections}
+            products={products}
+            onSelect={(id) => { setSelectedId(id); setMobileEditorOpen(true); }}
+            onMoveUp={moveSectionUp}
+            onMoveDown={moveSectionDown}
+            onRemove={removeSection}
+          />
+        </div>
+
+        <Sheet open={mobileEditorOpen && !!selectedSection} onOpenChange={(open) => { if (!open) { setMobileEditorOpen(false); setSelectedId(null); } }}>
+          <SheetContent side="right" className="w-[min(100%,25rem)]">
+            <RightPanel
+              className="w-full border-l-0"
+              selectedSection={selectedSection}
+              products={products}
+              onUpdate={(updater) => updateSection(selectedId, updater)}
+              onDeselect={() => { setMobileEditorOpen(false); setSelectedId(null); }}
+              onRemove={() => removeSection(selectedId)}
+            />
+          </SheetContent>
+        </Sheet>
+
         <ConfirmDialog open={!!pendingConfirmation} onOpenChange={(open) => !open && setPendingConfirmation(null)} title="Substituir blocos atuais?" description="Os blocos atuais do canvas serão substituídos pela nova estrutura." confirmLabel="Substituir" destructive onConfirm={() => pendingConfirmation ? pendingConfirmation() : undefined} />
       </div>
     </DndContext>

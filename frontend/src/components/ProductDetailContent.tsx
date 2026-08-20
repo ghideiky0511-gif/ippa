@@ -2,6 +2,7 @@
 import { publicUi } from '@/lib/ui';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Check, TrendingUp } from 'lucide-react';
 import Link from '@/components/TenantLink';
 import { COLOR_MAP, CONFIG } from '@/lib/config';
 import { formatBRL, formatMarkup, priceWithPercentOff } from '@/lib/format';
@@ -10,6 +11,7 @@ import { ADDABLE_AVAILABILITY, buildVariantMatrix, deliveryLabel, splitStockQty 
 import { resolveGallery, resolveImageForColor } from '@/lib/images';
 import { useCart } from './CartProvider';
 import { useAuthUser } from './AuthProvider';
+import ProductImage from './ProductImage';
 import type { Availability, Product } from '@/domain/products/types';
 
 type AvailabilityFilter = 'all' | 'in_stock' | 'preorder';
@@ -126,15 +128,15 @@ export default function ProductDetailContent({ product }: { product: Product }) 
   return (
     <div className={publicUi.productDetail}>
       <div className={publicUi.gallery}>
-        <img
+        <ProductImage
           className={publicUi.detailImage}
-          src={displayImage || 'https://via.placeholder.com/500x620?text=Sem+imagem'}
+          src={displayImage}
           alt={product.name}
         />
         {gallery.length > 1 && (
           <div className="contents">
             {gallery.map((src, i) => (
-              <img
+              <ProductImage
                 key={src + i}
                 src={src}
                 alt=""
@@ -172,8 +174,8 @@ export default function ProductDetailContent({ product }: { product: Product }) 
             {quantityTiers.length > 0 && (
               <div className="contents">
                 {quantityTiers.map((t) => (
-                  <div key={t.minQty} className={productCartQty >= t.minQty ? 'font-semibold text-[#2e8b57]' : ''}>
-                    {productCartQty >= t.minQty ? '✓ ' : ''}A partir de {t.minQty} unidades desta peça no carrinho: {t.percent}% de desconto
+                  <div key={t.minQty} className={`flex items-center gap-1.5 ${productCartQty >= t.minQty ? 'font-semibold text-[#2e8b57]' : ''}`}>
+                    {productCartQty >= t.minQty && <Check className="size-4 shrink-0" aria-hidden="true" />}A partir de {t.minQty} unidades desta peça no carrinho: {t.percent}% de desconto
                   </div>
                 ))}
               </div>
@@ -185,10 +187,7 @@ export default function ProductDetailContent({ product }: { product: Product }) 
                   <div className="contents">{formatBRL(product.suggestedRetailPrice!)}</div>
                   {markup && (
                     <span className="contents" title="Markup sugerido sobre o preço de atacado">
-                      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="7" y1="17" x2="17" y2="7" />
-                        <polyline points="7 7 17 7 17 17" />
-                      </svg>
+                      <TrendingUp className="inline size-3.5" aria-hidden="true" />
                       Markup {formatMarkup(markup)}
                     </span>
                   )}

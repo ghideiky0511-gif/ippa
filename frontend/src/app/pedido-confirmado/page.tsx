@@ -2,6 +2,7 @@
 import { publicUi } from '@/lib/ui';
 
 import Link from '@/components/TenantLink';
+import { ArrowLeft } from 'lucide-react';
 
 export default function PedidoConfirmadoPage() {
   return (
@@ -12,7 +13,7 @@ export default function PedidoConfirmadoPage() {
         <div className={publicUi.checkoutActions}>
           <Link href="/pedidos" className={publicUi.primaryButton}>Ver meus pedidos</Link>
         </div>
-        <Link href="/" className={publicUi.backLink}>← Voltar ao catálogo</Link>
+        <Link href="/" className={publicUi.backLink}><ArrowLeft className="size-4" aria-hidden="true" />Voltar ao catálogo</Link>
       </div>
     </main>
   );

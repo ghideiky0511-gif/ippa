@@ -3,6 +3,7 @@
 import { adminUi } from '@/workspace/lib/ui';
 import { useState } from 'react';
 import ProductPicker from '@/workspace/components/collections/ProductPicker';
+import { Trash2 } from 'lucide-react';
 
 // Curadoria manual de "produtos similares" (1 por 1), por produto e por
 // contexto (quick-view ou carrinho — ver web/src/lib/similarProducts.ts).
@@ -31,7 +32,7 @@ export default function SimilarProductsField({ label, productIds, allProducts, o
                     <span className={adminUi.productName}>{p?.name || id}</span>
                   </div>
                   <button className={adminUi.iconButton} onClick={() => onRemove(id)} title="Remover">
-                    ✕
+                    <Trash2 className="size-4" aria-hidden="true" />
                   </button>
                 </div>
               );

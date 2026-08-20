@@ -6,16 +6,18 @@ import {
     findOrderSessionRow,
     insertOrderSessionItemRow,
     insertOrderSessionRow,
-    insertOrderItemRow,
+    findOrderRowById,
+    listOrderItemRowsByOrder,
     listOrderSessionItemRowsBySession,
     listOrderSessionItemRows,
     listOrderSessionRowsBySeller,
     listTenantOrderSessionRows,
     replaceOrderSessionItemRows,
     updateOrderSessionRow,
+    updateOrderRow,
     closeOrderSessionRow,
-    insertOrderRow,
 } from "@/models/ordersModel";
+import { getOrCreateOpenOrder, syncOrderItems } from "./orderItemSync";
 import {
     listOrderSessionParticipantRows,
     markOrderSessionParticipantLeftRow,
@@ -147,18 +149,28 @@ export async function createOrderSession(
             ? await findClientRow(client, requestedClientId)
             : null;
         if (requestedClientId && !registration) throw new NotFoundError("CLIENT_NOT_FOUND");
+        const clientName = registration?.name ?? (typeof body.clientName === "string" && body.clientName.trim()
+            ? body.clientName.trim() : "Sem cliente");
+        const channel = body.channel === "whatsapp" || body.channel === "online" ? body.channel : "presencial";
+        // Upsell: cliente com pedido em aberto pra essa mesma vendedora
+        // reaproveita o pedido; sem clientId (registro "Sem cliente"), não
+        // há como localizar um pedido depois, então cada sessão fica solta.
+        const order = await getOrCreateOpenOrder(client, { clientId: registration?.id, sellerId: user.id, clientName, channel });
         const row = await insertOrderSessionRow(client, {
             orderBookId: book.id,
-            clientName: registration?.name ?? (typeof body.clientName === "string" && body.clientName.trim()
-                ? body.clientName.trim() : "Sem cliente"),
+            orderId: order?.id,
+            clientName,
             clientId: registration?.id,
             sellerId: user.id,
-            channel: body.channel === "whatsapp" || body.channel === "online" ? body.channel : "presencial",
+            channel,
             status: "aberto",
             shipping: undefined,
             notes: body.notes,
         });
         for (const item of items) await insertOrderSessionItemRow(client, row.id, item);
+        if (order && items.length > 0) {
+            await syncOrderItems(client, { orderId: order.id, currentItems: [], nextItems: items, actorId: user.id, actorRole: user.role });
+        }
         const created = toOrderSession(row, items);
         await recordAuditEvent(client, {
             action: ORDER_SESSION_AUDIT_ACTIONS.CREATED,
@@ -244,8 +256,41 @@ export async function updateSession(
             typeof (body.shipping as { price?: unknown }).price === "number") shipping = body.shipping as OrderSession["shipping"];
         const items = Array.isArray(body.items) ? body.items : currentItems;
         if (Array.isArray(body.items)) await replaceOrderSessionItemRows(client, id, items);
+
+        // order_id só falta numa sessão que nunca teve cliente vinculado.
+        // Se esta chamada é o momento em que o cliente passa a existir
+        // (ex. vendedora identifica quem é depois de já ter lançado peças),
+        // anexa/cria o pedido agora e sincroniza TUDO que a sessão já tinha
+        // -- não só o delta desta chamada, já que nada foi sincronizado
+        // antes por não haver pedido pra receber.
+        let orderId = currentRow.order_id ?? undefined;
+        const justAttached = !orderId && Boolean(clientId);
+        if (justAttached) {
+            orderId = (await getOrCreateOpenOrder(client, {
+                clientId: clientId!, sellerId: currentRow.seller_id, clientName, channel: currentRow.channel,
+            }))?.id;
+        }
+        if (orderId) {
+            const order = await findOrderRowById(client, orderId);
+            // Pedido já pago/cancelado não aceita mais upsell -- é
+            // exatamente o limite de "mutável até pago".
+            if (order && (order.status === "pago" || order.status === "cancelado")) {
+                throw new ValidationError("ORDER_ALREADY_FINALIZED");
+            }
+            if (justAttached) {
+                await syncOrderItems(client, { orderId, currentItems: [], nextItems: items, actorId: user.id, actorRole: user.role });
+            } else if (Array.isArray(body.items)) {
+                // Diff é (itens ANTES desta MESMA sessão -> itens depois),
+                // não (todo o pedido -> body). Com upsell, o pedido pode ter
+                // itens vindos de outra sessão (ex. atendimento fechado
+                // antes) que essa sessão nunca viu -- diffar contra o
+                // pedido inteiro os interpretaria como "removidos" só por
+                // não estarem no body desta chamada.
+                await syncOrderItems(client, { orderId, currentItems, nextItems: items, actorId: user.id, actorRole: user.role });
+            }
+        }
         const row = await updateOrderSessionRow(client, id, {
-            clientName, clientId, notes, status, shipping,
+            clientName, clientId, notes, status, shipping, orderId,
             // Links de pagamento nao sobrevivem a cancelamento nem a uma
             // reativacao: a proxima cobranca precisa gerar um token novo.
             clearPaymentToken: (status === "aberto" && currentRow.status !== "aberto") || status === "cancelado",
@@ -296,25 +341,37 @@ export async function finalizeOrderSession(
         if (session.status === "cancelado") throw new ValidationError("SESSION_CANCELLED");
         if (!session.client_id) throw new ValidationError("CLIENT_REQUIRED");
 
-        const items = (await listOrderSessionItemRowsBySession(client, id))
-            .map((item) => item.snapshot)
-            .filter((item) => item.qty > 0);
+        // order_id só falta aqui se a sessão nunca teve como anexar um
+        // pedido no momento em que foi criada (não deveria acontecer já
+        // que client_id está garantido acima) -- self-healing em vez de
+        // travar o fechamento da venda por um gap de dado.
+        const orderId = session.order_id ?? (await getOrCreateOpenOrder(client, {
+            clientId: session.client_id, sellerId: session.seller_id,
+            clientName: session.client_name, channel: session.channel,
+        }))!.id;
+
+        // Upsell: mais de uma sessão pode apontar pro mesmo pedido. Se
+        // outra já pagou, não reprocessa (evita recomputar total/duplicar
+        // notificação de "pedido confirmado").
+        const existingOrder = await findOrderRowById(client, orderId);
+        if (existingOrder && (existingOrder.status === "pago" || existingOrder.status === "cancelado")) {
+            throw new ValidationError("ORDER_ALREADY_FINALIZED");
+        }
+
+        const items = (await listOrderItemRowsByOrder(client, orderId)).map((item) => item.snapshot);
         if (items.length === 0) throw new ValidationError("EMPTY_ORDER");
 
         const total = items.reduce((sum, item) => sum + item.price * item.qty, 0)
             + (session.shipping?.price ?? 0);
-        const row = await insertOrderRow(client, {
-            clientId: session.client_id,
-            sellerId: session.seller_id,
-            clientName: session.client_name,
-            channel: session.channel,
+        const row = await updateOrderRow(client, orderId, {
+            status: "pago",
             total,
             shipping: session.shipping ?? undefined,
             paymentMethod: typeof body.paymentMethod === "string"
                 ? body.paymentMethod
                 : undefined,
         });
-        for (const item of items) await insertOrderItemRow(client, row.id, item);
+        if (!row) throw new NotFoundError("ORDER_NOT_FOUND");
         const closed = await closeOrderSessionRow(client, session.id);
         if (closed) changedSession = toOrderSession(closed, items);
         changes.book = (await closeOrderBookWhenFinished(client, session.order_book_id)) ?? undefined;

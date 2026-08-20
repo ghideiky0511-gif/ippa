@@ -2,11 +2,12 @@
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
 import { useState } from 'react';
+import { Save } from 'lucide-react';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import CollectionsList from './CollectionsList';
 import CollectionEditor from './CollectionEditor';
-import WorkspaceNav from '@/workspace/navigation/WorkspaceNav';
+import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import { saveHighlights } from '@/workspace/lib/highlightsClient';
 
 function newId() {
@@ -66,44 +67,41 @@ export default function CollectionsApp({ initialHighlights, products }) {
 
   return (
     <div className={adminUi.collectionsPage}>
-      <div className={adminUi.topbar}>
-        <div className={adminUi.topbarLeft}>
-          <h1>Coleções</h1>
-          <WorkspaceNav />
-        </div>
-        <div>
+      <HubHeader
+        title="Coleções"
+        secondaryActions={<>
           {saveState === 'saved' && !dirty && <span className={adminUi.status}>Salvo</span>}
           {saveState === 'error' && <span className={adminUi.status}>Erro ao salvar</span>}
           {dirty && saveState !== 'saving' && <span className={adminUi.status}>Alterações não salvas</span>}
-          <button className={adminUi.primaryButton} onClick={handleSave} disabled={saveState === 'saving'}>
-            {saveState === 'saving' ? 'Salvando…' : 'Salvar'}
-          </button>
-        </div>
-      </div>
-
-      <CollectionsList
-        collections={highlights}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
-        onAdd={addCollection}
-        onRemove={removeCollection}
+        </>}
+        primaryAction={{ label: saveState === 'saving' ? 'Salvando…' : 'Salvar', onClick: handleSave, disabled: saveState === 'saving', icon: <Save className="size-5" aria-hidden="true" /> }}
       />
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        {selected ? (
-          <SortableContext items={selected.productIds} strategy={verticalListSortingStrategy}>
-            <CollectionEditor
-              collection={selected}
-              products={products}
-              onUpdate={(updater) => updateCollection(selected.id, updater)}
-            />
-          </SortableContext>
-        ) : (
-          <main className={adminUi.collectionsEditor}>
-            <p className={adminUi.previewEmpty}>Selecione uma coleção à esquerda ou crie uma nova.</p>
-          </main>
-        )}
-      </DndContext>
+      <div className="flex flex-col md:flex-row">
+        <CollectionsList
+          collections={highlights}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          onAdd={addCollection}
+          onRemove={removeCollection}
+        />
+
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          {selected ? (
+            <SortableContext items={selected.productIds} strategy={verticalListSortingStrategy}>
+              <CollectionEditor
+                collection={selected}
+                products={products}
+                onUpdate={(updater) => updateCollection(selected.id, updater)}
+              />
+            </SortableContext>
+          ) : (
+            <main className={adminUi.collectionsEditor}>
+              <p className={adminUi.previewEmpty}>Selecione uma coleção à esquerda ou crie uma nova.</p>
+            </main>
+          )}
+        </DndContext>
+      </div>
     </div>
   );
 }

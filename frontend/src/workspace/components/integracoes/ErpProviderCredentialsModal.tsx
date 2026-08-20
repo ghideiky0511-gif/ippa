@@ -2,6 +2,7 @@
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
 import { useState } from 'react';
+import { X } from 'lucide-react';
 import { saveErpIntegrationCredentials } from '@/workspace/lib/erpIntegrationClient';
 
 // Formulário genérico: os campos vêm de option.credentialFields (catálogo
@@ -48,8 +49,8 @@ export default function ErpProviderCredentialsModal({ option, onClose, onSaved }
       <div className={adminUi.modalPanel} onClick={(e) => e.stopPropagation()}>
         <div className={adminUi.modalHeader}>
           <h2>{option.label}</h2>
-          <button type="button" className="contents" onClick={onClose}>
-            &times;
+          <button type="button" className={adminUi.iconButton} onClick={onClose} aria-label="Fechar">
+            <X className="size-4" aria-hidden="true" />
           </button>
         </div>
 

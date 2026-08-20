@@ -1,6 +1,6 @@
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
-import WorkspaceNav from '@/workspace/navigation/WorkspaceNav';
+import { HubHeader } from '@/workspace/components/shared/HubHeader';
 
 // Reservado: relatórios (vendas, pedidos, clientes, produtos, receita,
 // performance) dependem de métricas que ainda não existem no backend. Este
@@ -8,12 +8,7 @@ import WorkspaceNav from '@/workspace/navigation/WorkspaceNav';
 export default function ReportsApp() {
   return (
     <div>
-      <div className={adminUi.topbar}>
-        <div className={adminUi.topbarLeft}>
-          <h1>Relatórios</h1>
-          <WorkspaceNav />
-        </div>
-      </div>
+      <HubHeader title="Relatórios" />
 
       <main className={adminUi.productsEditor}>
         <p className={adminUi.previewEmpty}>

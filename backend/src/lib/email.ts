@@ -1,4 +1,5 @@
 import { formatBRL } from './format';
+import { errorMeta, logger } from "@/lib/logger";
 
 // E-mails transacionais (cadastro confirmado, link de pagamento, pedido
 // confirmado, ...) via Resend (https://resend.com/docs/api-reference/emails/send-email)
@@ -25,10 +26,12 @@ interface SendEmailParams {
   storeName: string;
 }
 
-async function sendEmail({ to, subject, html, storeName }: SendEmailParams): Promise<void> {
+export type EmailDeliveryStatus = "sent" | "not_configured" | "failed";
+
+async function sendEmail({ to, subject, html, storeName }: SendEmailParams): Promise<EmailDeliveryStatus> {
   if (!RESEND_API_KEY) {
-    console.log(`[email] (desligado — sem RESEND_API_KEY) enviaria "${subject}" pra ${to}`);
-    return;
+    logger.warn("email", "Envio não realizado: RESEND_API_KEY não configurada", { subject, storeName });
+    return "not_configured";
   }
   const from = process.env.EMAIL_FROM || `${storeName} <onboarding@resend.dev>`;
   try {
@@ -41,13 +44,17 @@ async function sendEmail({ to, subject, html, storeName }: SendEmailParams): Pro
       body: JSON.stringify({ from, to, subject, html }),
     });
     if (!res.ok) {
-      console.error(`[email] Resend recusou o envio pra ${to} (${res.status}):`, await res.text());
+      logger.error("email", "Resend recusou o envio", { statusCode: res.status, subject, storeName });
+      return "failed";
     }
+    logger.info("email", "E-mail enviado ao provedor", { subject, storeName, statusCode: res.status });
+    return "sent";
   } catch (err) {
     // Nunca deixa um problema de e-mail derrubar o fluxo que disparou o
     // envio (cadastro, link, pedido) — mesmo espírito "fire-and-forget"
     // já usado pros outros fetches não-críticos deste projeto.
-    console.error(`[email] erro ao enviar pra ${to}:`, err);
+    logger.error("email", "Falha ao chamar o provedor de e-mail", { subject, storeName, ...errorMeta(err) });
+    return "failed";
   }
 }
 
@@ -86,9 +93,9 @@ export async function sendSignupConfirmationEmail(params: { to: string; name: st
 /** Primeiro acesso: a conta só é criada depois do clique neste link. */
 export async function sendFirstAccessConfirmationEmail(params: {
   to: string; name: string; link: string; storeName?: string;
-}): Promise<void> {
+}): Promise<EmailDeliveryStatus> {
   const storeName = params.storeName || DEFAULT_STORE_NAME;
-  await sendEmail({
+  return sendEmail({
     to: params.to,
     storeName,
     subject: `Confirme sua conta — ${storeName}`,

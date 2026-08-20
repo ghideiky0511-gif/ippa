@@ -1,4 +1,5 @@
 import { publicUi } from '@/lib/ui';
+import ProductImage from '@/components/ProductImage';
 import { getProductsByIds } from '@/lib/catalogFacets';
 import { backendJson } from '@/lib/backend';
 import { formatBRL } from '@/lib/format';
@@ -36,7 +37,7 @@ export default async function CatalogoPdfPage({
         <div className={publicUi.pdfGrid}>
           {products.map((p) => (
             <div key={p.id} className={publicUi.pdfItem}>
-              <img src={p.image || ''} alt={p.name} />
+              <ProductImage src={p.image} alt={p.name} className="aspect-[9/16] w-full rounded-md bg-[#eee]" />
               <div className="contents">{p.name}</div>
               <div className="contents">{formatBRL(p.price)}</div>
             </div>

@@ -1,6 +1,7 @@
 import { publicUi } from '@/lib/ui';
 import Link from '@/components/TenantLink';
 import { notFound } from 'next/navigation';
+import { ArrowLeft } from 'lucide-react';
 import { backendJson } from '@/lib/backend';
 import type { Product } from '@/domain/products/types';
 import ProductDetailContent from '@/components/ProductDetailContent';
@@ -27,7 +28,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
 
   return (
     <main className="contents">
-      <Link href="/" className={publicUi.backLink}>← Voltar ao catálogo</Link>
+      <Link href="/" className={publicUi.backLink}><ArrowLeft className="size-4" aria-hidden="true" />Voltar ao catálogo</Link>
       <ProductDetailContent product={product} />
       <SimilarProducts products={similar} />
     </main>

@@ -1,19 +1,61 @@
+import {
+  BarChart3,
+  ClipboardList,
+  FolderKanban,
+  LayoutDashboard,
+  LayoutTemplate,
+  Percent,
+  Plug,
+  Settings2,
+  Shirt,
+  ShoppingBag,
+  UserCog,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
+
 export interface WorkspaceNavItem {
   href: string;
   label: string;
+  icon: LucideIcon;
 }
 
-export const WORKSPACE_NAV_ITEMS: WorkspaceNavItem[] = [
-  { href: '/workspace', label: 'Visão geral' },
-  { href: '/workspace/pedidos', label: 'Pedidos' },
-  { href: '/workspace/clientes', label: 'Clientes' },
-  { href: '/workspace/builder', label: 'Home' },
-  { href: '/workspace/catalogo', label: 'Catálogo' },
-  { href: '/workspace/colecoes', label: 'Coleções' },
-  { href: '/workspace/produtos', label: 'Produtos' },
-  { href: '/workspace/descontos', label: 'Descontos' },
-  { href: '/workspace/relatorios', label: 'Relatórios' },
-  { href: '/workspace/ferramentas', label: 'Ferramentas' },
-  { href: '/workspace/integracoes', label: 'Integrações' },
-  { href: '/workspace/usuarios', label: 'Usuários' },
+export interface WorkspaceNavGroup {
+  label: string;
+  items: WorkspaceNavItem[];
+}
+
+export const WORKSPACE_NAV_GROUPS: WorkspaceNavGroup[] = [
+  {
+    label: 'Início',
+    items: [{ href: '/workspace', label: 'Visão geral', icon: LayoutDashboard }],
+  },
+  {
+    label: 'Vendas',
+    items: [
+      { href: '/workspace/pedidos', label: 'Pedidos', icon: ShoppingBag },
+      { href: '/workspace/clientes', label: 'Clientes', icon: Users },
+      { href: '/workspace/catalogo', label: 'Catálogo', icon: ClipboardList },
+    ],
+  },
+  {
+    label: 'Conteúdo',
+    items: [
+      { href: '/workspace/builder', label: 'Home', icon: LayoutTemplate },
+      { href: '/workspace/colecoes', label: 'Coleções', icon: FolderKanban },
+      { href: '/workspace/produtos', label: 'Produtos', icon: Shirt },
+      { href: '/workspace/descontos', label: 'Descontos', icon: Percent },
+    ],
+  },
+  {
+    label: 'Sistema',
+    items: [
+      { href: '/workspace/relatorios', label: 'Relatórios', icon: BarChart3 },
+      { href: '/workspace/ferramentas', label: 'Ferramentas', icon: Settings2 },
+      { href: '/workspace/integracoes', label: 'Integrações', icon: Plug },
+      { href: '/workspace/usuarios', label: 'Usuários', icon: UserCog },
+    ],
+  },
 ];
+
+export const WORKSPACE_NAV_ITEMS: WorkspaceNavItem[] = WORKSPACE_NAV_GROUPS.flatMap((group) => group.items);

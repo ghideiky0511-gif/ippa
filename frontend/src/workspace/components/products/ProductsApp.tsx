@@ -3,7 +3,7 @@
 import { adminUi } from '@/workspace/lib/ui';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import WorkspaceNav from '@/workspace/navigation/WorkspaceNav';
+import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import SimilarProductsField from './SimilarProductsField';
 import { formatBRL, formatMarkup } from '@/workspace/lib/format';
 import { saveProductOverrides } from '@/workspace/lib/productOverridesClient';
@@ -155,12 +155,7 @@ export default function ProductsApp({ products, initialOverrides, initialSetting
 
   return (
     <div className="products-page">
-      <div className={adminUi.topbar}>
-        <div className={adminUi.topbarLeft}>
-          <h1>Produtos</h1>
-          <WorkspaceNav />
-        </div>
-      </div>
+      <HubHeader title="Produtos" description="Cadastre peças e ajuste código, preço sugerido e markup." />
 
       <main className={adminUi.productsEditor}>
         <form className={`${adminUi.defaultMarkup} grid gap-3`} onSubmit={handleCreateProduct}>

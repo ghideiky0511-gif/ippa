@@ -110,7 +110,8 @@ CREATE TYPE public."platform_plan_code" AS ENUM (
 CREATE TYPE public."session_status" AS ENUM (
 	'aberto',
 	'fechado',
-	'aguardando_pagamento');
+	'aguardando_pagamento',
+	'cancelado');
 
 -- DROP TYPE public."tenant_contract_billing_cycle";
 
@@ -1006,6 +1007,27 @@ CREATE INDEX audit_events_tenant_entity_idx ON public.audit_events USING btree (
 CREATE INDEX audit_events_tenant_request_idx ON public.audit_events USING btree (tenant_id, request_id, occurred_at DESC);
 
 
+-- public.client_account_confirmations definição
+
+-- Drop table
+
+-- DROP TABLE public.client_account_confirmations;
+
+CREATE TABLE public.client_account_confirmations (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NOT NULL,
+	client_id uuid NOT NULL,
+	password_hash text NOT NULL,
+	token_hash text NOT NULL,
+	expires_at timestamptz NOT NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT client_account_confirmations_pkey PRIMARY KEY (id),
+	CONSTRAINT client_account_confirmations_tenant_id_client_id_key UNIQUE (tenant_id, client_id),
+	CONSTRAINT client_account_confirmations_token_hash_key UNIQUE (token_hash)
+);
+CREATE INDEX client_account_confirmations_token_idx ON public.client_account_confirmations USING btree (token_hash);
+
+
 -- public.client_cart_items definição
 
 -- Drop table
@@ -1177,6 +1199,28 @@ CREATE TABLE public.order_session_items (
 );
 
 
+-- public.order_session_participants definição
+
+-- Drop table
+
+-- DROP TABLE public.order_session_participants;
+
+CREATE TABLE public.order_session_participants (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NOT NULL,
+	order_session_id uuid NOT NULL,
+	user_id uuid NOT NULL,
+	first_joined_at timestamptz DEFAULT now() NOT NULL,
+	last_joined_at timestamptz DEFAULT now() NOT NULL,
+	last_left_at timestamptz NULL,
+	join_count int4 DEFAULT 1 NOT NULL,
+	CONSTRAINT order_session_participants_join_count_check CHECK ((join_count > 0)),
+	CONSTRAINT order_session_participants_pkey PRIMARY KEY (id),
+	CONSTRAINT order_session_participants_tenant_id_order_session_id_user__key UNIQUE (tenant_id, order_session_id, user_id)
+);
+CREATE INDEX order_session_participants_session_idx ON public.order_session_participants USING btree (tenant_id, order_session_id, last_joined_at DESC);
+
+
 -- public.order_sessions definição
 
 -- Drop table
@@ -1202,28 +1246,6 @@ CREATE TABLE public.order_sessions (
 	CONSTRAINT order_sessions_pkey PRIMARY KEY (id)
 );
 CREATE INDEX order_sessions_tenant_book_status_idx ON public.order_sessions USING btree (tenant_id, order_book_id, status, updated_at DESC);
-
-
--- public.order_session_participants definiÃ§Ã£o
-
--- Drop table
-
--- DROP TABLE public.order_session_participants;
-
-CREATE TABLE public.order_session_participants (
-	id uuid DEFAULT gen_random_uuid() NOT NULL,
-	tenant_id uuid NOT NULL,
-	order_session_id uuid NOT NULL,
-	user_id uuid NOT NULL,
-	first_joined_at timestamptz DEFAULT now() NOT NULL,
-	last_joined_at timestamptz DEFAULT now() NOT NULL,
-	last_left_at timestamptz NULL,
-	join_count int4 DEFAULT 1 NOT NULL,
-	CONSTRAINT order_session_participants_join_count_check CHECK ((join_count > 0)),
-	CONSTRAINT order_session_participants_pkey PRIMARY KEY (id),
-	CONSTRAINT order_session_participants_tenant_id_order_session_id_user_id_key UNIQUE (tenant_id, order_session_id, user_id)
-);
-CREATE INDEX order_session_participants_session_idx ON public.order_session_participants USING btree (tenant_id, order_session_id, last_joined_at DESC);
 CREATE INDEX order_sessions_tenant_seller_status_idx ON public.order_sessions USING btree (tenant_id, seller_id, status);
 
 
@@ -1324,6 +1346,12 @@ ALTER TABLE public.audit_events ADD CONSTRAINT audit_events_session_id_fkey FORE
 ALTER TABLE public.audit_events ADD CONSTRAINT audit_events_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
 
 
+-- public.client_account_confirmations chaves estrangeiras
+
+ALTER TABLE public.client_account_confirmations ADD CONSTRAINT client_account_confirmations_client_id_fkey FOREIGN KEY (client_id) REFERENCES public.clients(id) ON DELETE CASCADE;
+ALTER TABLE public.client_account_confirmations ADD CONSTRAINT client_account_confirmations_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
 -- public.client_cart_items chaves estrangeiras
 
 ALTER TABLE public.client_cart_items ADD CONSTRAINT client_cart_items_client_id_fkey FOREIGN KEY (client_id) REFERENCES public.clients(id) ON DELETE CASCADE;
@@ -1366,18 +1394,18 @@ ALTER TABLE public.order_session_items ADD CONSTRAINT order_session_items_sessio
 ALTER TABLE public.order_session_items ADD CONSTRAINT order_session_items_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
 
 
+-- public.order_session_participants chaves estrangeiras
+
+ALTER TABLE public.order_session_participants ADD CONSTRAINT order_session_participants_order_session_id_fkey FOREIGN KEY (order_session_id) REFERENCES public.order_sessions(id) ON DELETE CASCADE;
+ALTER TABLE public.order_session_participants ADD CONSTRAINT order_session_participants_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
 -- public.order_sessions chaves estrangeiras
 
 ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_client_id_fkey FOREIGN KEY (client_id) REFERENCES public.clients(id) ON DELETE SET NULL;
 ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_order_book_id_fkey FOREIGN KEY (order_book_id) REFERENCES public.order_books(id) ON DELETE RESTRICT;
 ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id) ON DELETE RESTRICT;
 ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
-
-
--- public.order_session_participants chaves estrangeiras
-
-ALTER TABLE public.order_session_participants ADD CONSTRAINT order_session_participants_order_session_id_fkey FOREIGN KEY (order_session_id) REFERENCES public.order_sessions(id) ON DELETE CASCADE;
-ALTER TABLE public.order_session_participants ADD CONSTRAINT order_session_participants_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
 
 
 -- public.orders chaves estrangeiras

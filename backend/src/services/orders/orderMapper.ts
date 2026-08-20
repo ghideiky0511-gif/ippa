@@ -5,6 +5,7 @@ export function toOrderSession(row: OrderSessionRow, items: CartItem[]): OrderSe
     return {
         id: row.id,
         orderBookId: row.order_book_id,
+        orderId: row.order_id ?? undefined,
         clientName: row.client_name,
         clientId: row.client_id ?? undefined,
         sellerId: row.seller_id,
@@ -23,6 +24,8 @@ export function toOrder(row: OrderRow, items: CartItem[]): Order {
     return {
         id: row.id,
         date: row.created_at.toISOString(),
+        updatedAt: row.updated_at?.toISOString(),
+        status: row.status as Order["status"],
         items,
         total: Number(row.total),
         channel: row.channel,

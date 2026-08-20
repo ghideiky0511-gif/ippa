@@ -2,6 +2,7 @@
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
 import ProductPicker from '@/workspace/components/collections/ProductPicker';
+import { Trash2 } from 'lucide-react';
 
 const TYPE_OPTIONS = [
   { value: 'quantity', label: 'Por quantidade de peças' },
@@ -119,7 +120,7 @@ export default function DiscountEditor({ discount, products, onUpdate }) {
                 />
                 <span>%</span>
                 <button className={adminUi.iconButton} onClick={() => removeTier(i)} title="Remover faixa">
-                  ✕
+                  <Trash2 className="size-4" aria-hidden="true" />
                 </button>
               </div>
             ))}
@@ -147,7 +148,7 @@ export default function DiscountEditor({ discount, products, onUpdate }) {
                     <span className={adminUi.productName}>{p?.name || id}</span>
                   </div>
                   <button className={adminUi.iconButton} onClick={() => removeProduct(id)} title="Remover">
-                    ✕
+                    <Trash2 className="size-4" aria-hidden="true" />
                   </button>
                 </div>
               );

@@ -4,6 +4,7 @@ import { publicUi } from '@/lib/ui';
 import Link from '@/components/TenantLink';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatBRL } from '@/lib/format';
 import { CONFIG } from '@/lib/config';
@@ -166,7 +167,7 @@ export default function CarrinhoPage() {
 
       <SimilarProducts products={similar} />
 
-      <Link href="/" className={publicUi.backLink}>← Voltar ao catálogo</Link>
+      <Link href="/" className={publicUi.backLink}><ArrowLeft className="size-4" aria-hidden="true" />Voltar ao catálogo</Link>
 
       {pendingAction && (
         <UnselectedItemsModal

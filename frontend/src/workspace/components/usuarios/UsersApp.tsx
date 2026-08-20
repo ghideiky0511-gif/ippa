@@ -2,10 +2,11 @@
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
 import { Fragment, useMemo, useState } from 'react';
-import WorkspaceNav from '@/workspace/navigation/WorkspaceNav';
+import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import { fetchUsers, deleteUser } from '@/workspace/lib/usersClient';
 import UserFormModal from './UserFormModal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Trash2 } from 'lucide-react';
 
 const TABS = [
   { id: 'vendedoras', label: 'Vendedoras' },
@@ -126,12 +127,10 @@ export default function UsersApp({ initialUsers }) {
 
   return (
     <div className="products-page">
-      <div className={adminUi.topbar}>
-        <div className={adminUi.topbarLeft}>
-          <h1>Usuários</h1>
-          <WorkspaceNav />
-        </div>
-      </div>
+      <HubHeader
+        title="Usuários"
+        primaryAction={{ label: `Criar ${activeTab === 'clientes' ? 'cliente' : 'vendedora'}`, onClick: () => setModal({ mode: 'create' }) }}
+      />
 
       <main className={adminUi.productsEditor}>
         <div className="contents">
@@ -160,69 +159,100 @@ export default function UsersApp({ initialUsers }) {
               placeholder={activeTab === 'clientes' ? 'Nome, e-mail ou CPF/CNPJ...' : 'Nome ou e-mail...'}
             />
           </div>
-          <button type="button" className={adminUi.primaryButton} onClick={() => setModal({ mode: 'create' })}>
-            + Criar {activeTab === 'clientes' ? 'cliente' : 'vendedora'}
-          </button>
         </div>
 
-        <table className={adminUi.table}>
-          <thead>
-            <tr>
-              <th>Nome</th>
-              <th>E-mail</th>
-              {activeTab === 'clientes' && <th>CPF/CNPJ</th>}
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {results.map((u) => (
-              <Fragment key={u.id}>
-                <tr>
-                  <td>{u.name}</td>
-                  <td>{u.email}</td>
-                  {activeTab === 'clientes' && <td>{u.cpfCnpj || '—'}</td>}
-                  <td>
-                    <div className="contents">
-                      <button
-                        type="button"
-                        className={adminUi.iconButton}
-                        onClick={() => setExpandedId(expandedId === u.id ? null : u.id)}
-                      >
-                        {expandedId === u.id ? 'Ver menos' : 'Ver mais'}
-                      </button>
-                      <button type="button" className={adminUi.iconButton} title="Editar" onClick={() => setModal({ mode: 'edit', user: u })}>
-                        ✎
-                      </button>
-                      <button
-                        type="button"
-                        className={adminUi.iconButton}
-                        title="Excluir usuário"
-                        disabled={deletingId === u.id}
-                        onClick={() => setUserToDelete(u)}
-                      >
-                        &times;
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-                {expandedId === u.id && (
-                  <tr className="contents">
-                    <td colSpan={activeTab === 'clientes' ? 4 : 3}>
-                      <dl className="contents">
-                        {detailsFor(activeTab).map(([key, label]) => (
-                          <div className="contents" key={key}>
-                            <dt>{label}</dt>
-                            <dd>{formatValue(key, valueFor(u, key))}</dd>
-                          </div>
-                        ))}
-                      </dl>
+        <div className="hidden overflow-x-auto md:block">
+          <table className={adminUi.table}>
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>E-mail</th>
+                {activeTab === 'clientes' && <th>CPF/CNPJ</th>}
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {results.map((u) => (
+                <Fragment key={u.id}>
+                  <tr>
+                    <td>{u.name}</td>
+                    <td>{u.email}</td>
+                    {activeTab === 'clientes' && <td>{u.cpfCnpj || '—'}</td>}
+                    <td>
+                      <div className="contents">
+                        <button
+                          type="button"
+                          className={adminUi.iconButton}
+                          onClick={() => setExpandedId(expandedId === u.id ? null : u.id)}
+                        >
+                          {expandedId === u.id ? 'Ver menos' : 'Ver mais'}
+                        </button>
+                        <button type="button" className={adminUi.iconButton} title="Editar" onClick={() => setModal({ mode: 'edit', user: u })}>
+                          ✎
+                        </button>
+                        <button
+                          type="button"
+                          className={adminUi.iconButton}
+                          title="Excluir usuário"
+                          disabled={deletingId === u.id}
+                          onClick={() => setUserToDelete(u)}
+                        >
+                          <Trash2 className="size-4" aria-hidden="true" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
+                  {expandedId === u.id && (
+                    <tr className="contents">
+                      <td colSpan={activeTab === 'clientes' ? 4 : 3}>
+                        <dl className="contents">
+                          {detailsFor(activeTab).map(([key, label]) => (
+                            <div className="contents" key={key}>
+                              <dt>{label}</dt>
+                              <dd>{formatValue(key, valueFor(u, key))}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="flex flex-col gap-3 md:hidden">
+          {results.map((u) => {
+            const isExpanded = expandedId === u.id;
+            return (
+              <div key={u.id} className="rounded-brand border border-border bg-surface p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-foreground">{u.name}</p>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{u.email}{activeTab === 'clientes' ? ` · ${u.cpfCnpj || 'sem documento'}` : ''}</p>
+                  </div>
+                  <div className="flex shrink-0 gap-1">
+                    <button type="button" className={adminUi.iconButton} title="Editar" onClick={() => setModal({ mode: 'edit', user: u })}>✎</button>
+                    <button type="button" className={adminUi.iconButton} title="Excluir usuário" disabled={deletingId === u.id} onClick={() => setUserToDelete(u)}><Trash2 className="size-4" aria-hidden="true" /></button>
+                  </div>
+                </div>
+                <button type="button" className={`${adminUi.button} mt-3`} onClick={() => setExpandedId(isExpanded ? null : u.id)}>{isExpanded ? 'Ver menos' : 'Ver mais'}</button>
+                {isExpanded && (
+                  <dl className="mt-3 flex flex-col gap-1 border-t border-border pt-3 text-sm">
+                    {detailsFor(activeTab).map(([key, label]) => (
+                      <div className="flex items-baseline justify-between gap-3" key={key}>
+                        <dt className="text-muted-foreground">{label}</dt>
+                        <dd className="text-right">{formatValue(key, valueFor(u, key))}</dd>
+                      </div>
+                    ))}
+                  </dl>
                 )}
-              </Fragment>
-            ))}
-          </tbody>
-        </table>
+              </div>
+            );
+          })}
+        </div>
+
         {results.length === 0 && <p className={adminUi.previewEmpty}>Nenhum usuário encontrado.</p>}
       </main>
 

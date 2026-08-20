@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Order, OrderSession } from '@/domain/orders/types';
 import { adminUi } from '@/workspace/lib/ui';
 import { fetchOrders, fetchOrderSessions } from '@/workspace/lib/ordersClient';
-import WorkspaceNav from '@/workspace/navigation/WorkspaceNav';
+import { HubHeader } from '@/workspace/components/shared/HubHeader';
+import { KpiCard } from '@/workspace/components/shared/KpiCard';
+import { ResponsiveDataTable } from '@/workspace/components/shared/ResponsiveDataTable';
 import { CreateOrderModal } from './OrderTalaoModal';
 import Link from '@/components/TenantLink';
 import { apiEventSource } from '@/lib/api-client';
@@ -27,16 +29,6 @@ const STATUS_LABELS: Record<OrderSession['status'], string> = {
   fechado: 'Finalizado',
   cancelado: 'Cancelado',
 };
-
-function KpiCard({ label, count, value, hint }: { label: string; count: number; value: string; hint?: string }) {
-  return (
-    <article className="rounded-brand border border-[#eee] bg-white p-4 shadow-[0_1px_4px_rgba(0,0,0,.05)]">
-      <p className="text-sm text-brand-muted">{label}</p>
-      <p className="mt-2 text-2xl font-bold text-brand-text">{value}</p>
-      <p className="mt-1 text-xs text-brand-muted">{count} {count === 1 ? 'pedido' : 'pedidos'}{hint ? ` · ${hint}` : ''}</p>
-    </article>
-  );
-}
 
 export default function OrdersApp({
   initialOrders,
@@ -99,85 +91,113 @@ export default function OrdersApp({
 
   return (
     <div>
-      <div className={adminUi.topbar}>
-        <div className={adminUi.topbarLeft}>
-          <h1>Hub de pedidos</h1>
-          <WorkspaceNav />
-        </div>
-        <button type="button" className={adminUi.primaryButton} onClick={() => setCreating(true)}>+ Criar pedido</button>
-      </div>
+      <HubHeader
+        title="Hub de pedidos"
+        description="Acompanhe talões em atendimento e o histórico de vendas."
+        primaryAction={{ label: 'Criar pedido', onClick: () => setCreating(true) }}
+      />
 
       <main className={`${adminUi.productsEditor} flex flex-col gap-6`}>
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <KpiCard label="Em montagem" count={kpis.open.length} value={formatCurrency(kpis.open.reduce((sum, session) => sum + sessionTotal(session), 0))} />
-          <KpiCard label="Aguardando pagamento" count={kpis.awaiting.length} value={formatCurrency(kpis.awaiting.reduce((sum, session) => sum + sessionTotal(session), 0))} />
-          <KpiCard label="Concluídos" count={orders.length} value={formatCurrency(kpis.sold)} hint="histórico" />
-          <KpiCard label="Ticket médio" count={orders.length} value={formatCurrency(kpis.average)} hint="concluídos" />
-          <KpiCard label="Em atendimento" count={activeSessions.length} value={formatCurrency(activeSessions.reduce((sum, session) => sum + sessionTotal(session), 0))} hint="valor potencial" />
+          <KpiCard label="Em montagem" value={formatCurrency(kpis.open.reduce((sum, session) => sum + sessionTotal(session), 0))} hint={`${kpis.open.length} pedidos`} />
+          <KpiCard label="Aguardando pagamento" value={formatCurrency(kpis.awaiting.reduce((sum, session) => sum + sessionTotal(session), 0))} hint={`${kpis.awaiting.length} pedidos`} />
+          <KpiCard label="Concluídos" value={formatCurrency(kpis.sold)} hint={`${orders.length} pedidos · histórico`} />
+          <KpiCard label="Ticket médio" value={formatCurrency(kpis.average)} hint={`${orders.length} pedidos · concluídos`} />
+          <KpiCard label="Em atendimento" value={formatCurrency(activeSessions.reduce((sum, session) => sum + sessionTotal(session), 0))} hint={`${activeSessions.length} pedidos · valor potencial`} />
         </section>
 
-        <section className="rounded-brand border border-[#eee] bg-white p-4">
+        <section className="rounded-brand border border-border bg-surface p-4">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="font-bold">Pedidos em andamento</h2>
-              <p className="mt-1 text-sm text-brand-muted">Abra o talão para vincular cliente, adicionar peças ou finalizar.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Abra o talão para vincular cliente, adicionar peças ou finalizar.</p>
             </div>
             <div className={`${adminUi.field} w-full sm:w-80`}>
               <label>Buscar pedidos</label>
               <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cliente, status, canal ou ID..." />
             </div>
           </div>
-          <div className="mt-4 overflow-x-auto">
-            <table className={adminUi.table}>
-              <thead><tr><th>Atualização</th><th>Cliente</th><th>Status</th><th>Canal</th><th>Peças</th><th>Total</th><th /></tr></thead>
-              <tbody>
-                {filteredSessions.map((session) => (
-                  <tr key={session.id}>
-                    <td>{new Date(session.updatedAt).toLocaleString('pt-BR')}</td>
-                    <td>{session.clientId ? session.clientName : <span className="text-brand-muted">Sem cliente</span>}</td>
-                    <td><span className="rounded-full bg-brand-background px-2 py-1 text-xs font-semibold text-brand-primary">{STATUS_LABELS[session.status]}</span></td>
-                    <td>{session.channel}</td>
-                    <td>{itemCount(session.items)}</td>
-                    <td>{formatCurrency(sessionTotal(session))}</td>
-                    <td><Link href="/workspace/catalogo" className={adminUi.button}>Abrir no catálogo</Link></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {filteredSessions.length === 0 && <p className={`${adminUi.previewEmpty} mt-3`}>Nenhum pedido em andamento.</p>}
+          <ResponsiveDataTable
+            rows={filteredSessions}
+            rowKey={(session) => session.id}
+            emptyMessage="Nenhum pedido em andamento."
+            columns={[
+              { key: 'updatedAt', header: 'Atualização', cell: (session) => new Date(session.updatedAt).toLocaleString('pt-BR') },
+              { key: 'client', header: 'Cliente', cell: (session) => session.clientId ? session.clientName : <span className="text-muted-foreground">Sem cliente</span> },
+              { key: 'status', header: 'Status', cell: (session) => <span className="rounded-full bg-brand-background px-2 py-1 text-xs font-semibold text-brand-primary">{STATUS_LABELS[session.status]}</span> },
+              { key: 'channel', header: 'Canal', cell: (session) => session.channel },
+              { key: 'items', header: 'Peças', cell: (session) => itemCount(session.items) },
+              { key: 'total', header: 'Total', cell: (session) => formatCurrency(sessionTotal(session)) },
+              { key: 'actions', header: '', cell: () => <Link href="/workspace/catalogo" className={adminUi.button}>Abrir no catálogo</Link> },
+            ]}
+            mobileCard={(session) => (
+              <Link href="/workspace/catalogo" className="block rounded-brand border border-border bg-surface p-4 active:scale-[.99]">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-foreground">{session.clientId ? session.clientName : 'Sem cliente'}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{new Date(session.updatedAt).toLocaleString('pt-BR')} · {session.channel}</p>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-brand-background px-2 py-1 text-xs font-semibold text-brand-primary">{STATUS_LABELS[session.status]}</span>
+                </div>
+                <div className="mt-3 flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">{itemCount(session.items)} peças</span>
+                  <span className="font-bold text-foreground">{formatCurrency(sessionTotal(session))}</span>
+                </div>
+              </Link>
+            )}
+          />
         </section>
 
-        <section className="rounded-brand border border-[#eee] bg-white p-4">
+        <section className="rounded-brand border border-border bg-surface p-4">
           <div>
             <h2 className="font-bold">Pedidos concluídos</h2>
-            <p className="mt-1 text-sm text-brand-muted">Histórico financeiro já finalizado.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Histórico financeiro já finalizado.</p>
           </div>
-          <div className="mt-4 overflow-x-auto">
-            <table className={adminUi.table}>
-              <thead><tr><th>Data</th><th>Cliente</th><th>Canal</th><th>Pagamento</th><th>Peças</th><th>Total</th><th /></tr></thead>
-              <tbody>
-                {filteredOrders.map((order) => {
+          <ResponsiveDataTable
+            rows={filteredOrders}
+            rowKey={(order) => order.id}
+            emptyMessage="Nenhum pedido concluído."
+            columns={[
+              { key: 'date', header: 'Data', cell: (order) => new Date(order.date).toLocaleString('pt-BR') },
+              { key: 'client', header: 'Cliente', cell: (order) => order.clientName || '—' },
+              { key: 'channel', header: 'Canal', cell: (order) => order.channel },
+              { key: 'payment', header: 'Pagamento', cell: (order) => order.paymentMethod || '—' },
+              { key: 'items', header: 'Peças', cell: (order) => itemCount(order.items) },
+              { key: 'total', header: 'Total', cell: (order) => formatCurrency(order.total) },
+              {
+                key: 'actions',
+                header: '',
+                cell: (order) => {
                   const isExpanded = expandedId === order.id;
                   return (
-                    <tr key={order.id}>
-                      <td>{new Date(order.date).toLocaleString('pt-BR')}</td>
-                      <td>{order.clientName || '—'}</td>
-                      <td>{order.channel}</td>
-                      <td>{order.paymentMethod || '—'}</td>
-                      <td>{itemCount(order.items)}</td>
-                      <td>{formatCurrency(order.total)}</td>
-                      <td>
-                        <button type="button" className={adminUi.button} onClick={() => setExpandedId(isExpanded ? null : order.id)}>{isExpanded ? 'Ocultar itens' : 'Ver itens'}</button>
-                        {isExpanded && <div className="mt-2 min-w-56 text-xs text-brand-muted">{order.items.map((item) => <div key={item.key}>{item.qty}× {item.name}{item.color ? ` · ${item.color}` : ''}{item.size ? ` · ${item.size}` : ''}</div>)}</div>}
-                      </td>
-                    </tr>
+                    <>
+                      <button type="button" className={adminUi.button} onClick={() => setExpandedId(isExpanded ? null : order.id)}>{isExpanded ? 'Ocultar itens' : 'Ver itens'}</button>
+                      {isExpanded && <div className="mt-2 min-w-56 text-xs text-muted-foreground">{order.items.map((item) => <div key={item.key}>{item.qty}× {item.name}{item.color ? ` · ${item.color}` : ''}{item.size ? ` · ${item.size}` : ''}</div>)}</div>}
+                    </>
                   );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {filteredOrders.length === 0 && <p className={`${adminUi.previewEmpty} mt-3`}>Nenhum pedido concluído.</p>}
+                },
+              },
+            ]}
+            mobileCard={(order) => {
+              const isExpanded = expandedId === order.id;
+              return (
+                <div className="rounded-brand border border-border bg-surface p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-foreground">{order.clientName || '—'}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">{new Date(order.date).toLocaleString('pt-BR')} · {order.channel}</p>
+                    </div>
+                    <span className="shrink-0 font-bold text-foreground">{formatCurrency(order.total)}</span>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">{itemCount(order.items)} peças · {order.paymentMethod || '—'}</span>
+                    <button type="button" className={adminUi.button} onClick={() => setExpandedId(isExpanded ? null : order.id)}>{isExpanded ? 'Ocultar' : 'Ver itens'}</button>
+                  </div>
+                  {isExpanded && <div className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">{order.items.map((item) => <div key={item.key}>{item.qty}× {item.name}{item.color ? ` · ${item.color}` : ''}{item.size ? ` · ${item.size}` : ''}</div>)}</div>}
+                </div>
+              );
+            }}
+          />
         </section>
       </main>
 

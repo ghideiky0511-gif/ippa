@@ -264,6 +264,12 @@ export interface OrderSession {
   // Pedido atual dentro de um talão. O talão é o agrupador operacional,
   // enquanto esta sessão pertence a uma cliente/atendimento específico.
   orderBookId: string;
+  // Pedido (orders) que este atendimento alimenta -- upsell é isso: um
+  // segundo atendimento pra mesma cliente/vendedora anexa nesse mesmo
+  // pedido em vez de criar um novo (ver findOpenOrderRowForAttachment).
+  // Ausente só em sessão sem cliente vinculado ("Sem cliente"), que não
+  // tem como ser localizada de novo pra receber upsell.
+  orderId?: string;
   clientName: string;
   clientId?: string;
   sellerId: string;
@@ -323,9 +329,18 @@ export interface OrderBook {
   updatedAt: string;
 }
 
+export type OrderStatus = 'aberto' | 'aguardando_pagamento' | 'pago' | 'cancelado';
+
 export interface Order {
   id: string;
   date: string;
+  updatedAt?: string;
+  // 'aberto'/'aguardando_pagamento': pedido ainda pode ganhar upsell (mais
+  // itens, de um atendimento novo da mesma vendedora ou de um checkout
+  // seguinte da própria cliente) — ver order_id em OrderSession. 'pago' é
+  // o que "pedido" sempre significou até aqui: só existe status explícito
+  // porque agora a linha pode nascer antes do pagamento.
+  status: OrderStatus;
   items: CartItem[];
   total: number; // já líquido de desconto (ver getCartDiscount em web/src/lib/discounts.ts)
   channel: string;

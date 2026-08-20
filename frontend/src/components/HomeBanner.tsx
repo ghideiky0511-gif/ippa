@@ -1,5 +1,7 @@
 'use client';
 import { useState, type CSSProperties } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { publicUi } from '@/lib/ui';
 import type { Banner } from '@/domain/catalog/types';
 
 // `headingLevel` existe porque HomeApp pode renderizar vários banners na
@@ -59,13 +61,13 @@ export default function HomeBanner({
 
       {banners.length > 1 && (
         <>
-          <button className="absolute top-1/2 left-3.5 flex size-9 -translate-y-1/2 items-center justify-center rounded-full border-0 bg-black/35 text-[22px] leading-none text-white hover:bg-black/55 active:-translate-y-1/2 active:scale-90" aria-label="Banner anterior" onClick={prev}>‹</button>
-          <button className="absolute top-1/2 right-3.5 flex size-9 -translate-y-1/2 items-center justify-center rounded-full border-0 bg-black/35 text-[22px] leading-none text-white hover:bg-black/55 active:-translate-y-1/2 active:scale-90" aria-label="Próximo banner" onClick={next}>›</button>
+          <button className={`${publicUi.carouselControl} absolute top-1/2 left-3.5 -translate-y-1/2`} aria-label="Banner anterior" onClick={prev}><ChevronLeft className="size-5" aria-hidden="true" /></button>
+          <button className={`${publicUi.carouselControl} absolute top-1/2 right-3.5 -translate-y-1/2`} aria-label="Próximo banner" onClick={next}><ChevronRight className="size-5" aria-hidden="true" /></button>
           <div className="absolute right-0 bottom-3.5 left-0 flex justify-center gap-2">
             {banners.map((b, i) => (
               <button
                 key={b.id}
-                className={`size-2 cursor-pointer rounded-full border-0 p-0 ${i === index ? 'bg-white' : 'bg-white/50'}`}
+                className={`h-2 cursor-pointer rounded-full border-0 p-0 transition-[width,background-color] duration-300 ${i === index ? 'w-6 bg-white' : 'w-2 bg-white/50 hover:bg-white/75'}`}
                 aria-label={`Ir para o banner ${i + 1}`}
                 onClick={() => setIndex(i)}
               />

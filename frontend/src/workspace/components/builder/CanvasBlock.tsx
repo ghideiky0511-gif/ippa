@@ -107,7 +107,7 @@ function CanvasBlock({ section, products, selected, onSelect, onRemove, onMove, 
   return (
     <div
       style={{ position: 'absolute', left: x, top: y, width, height, zIndex: selected || live ? 5 : 1 }}
-      className={[adminUi.blockCard, selected ? 'border-brand-primary shadow-[0_4px_16px_rgba(194,24,91,.18)]' : '', live ? 'opacity-90 shadow-[0_8px_24px_rgba(0,0,0,.18)]' : ''].join(' ')}
+      className={[adminUi.blockCard, selected ? 'border-brand-primary shadow-[0_4px_16px_rgba(24,24,27,.18)]' : '', live ? 'opacity-90 shadow-[0_8px_24px_rgba(0,0,0,.18)]' : ''].join(' ')}
       onClick={() => onSelect(section.id)}
     >
       <div className={adminUi.blockHeader}>

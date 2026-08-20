@@ -3,7 +3,7 @@
 import { adminUi } from '@/workspace/lib/ui';
 import { useState } from 'react';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import WorkspaceNav from '@/workspace/navigation/WorkspaceNav';
+import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import {
   activateErpIntegration,
   deactivateErpIntegration,
@@ -82,12 +82,7 @@ export default function IntegracoesApp({ initialOptions }) {
 
   return (
     <div className={adminUi.page}>
-      <div className={adminUi.topbar}>
-        <div className={adminUi.topbarLeft}>
-          <h1>Integrações</h1>
-          <WorkspaceNav />
-        </div>
-      </div>
+      <HubHeader title="Integrações" />
 
       <main className={adminUi.productsEditor}>
         <h2>Sistema ERP</h2>

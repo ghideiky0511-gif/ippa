@@ -6,10 +6,10 @@ import type { AuthUser, CartItem, Discount, Order, OrderSession } from "@/lib/ty
 import {
   closeOrderSessionRow,
   findOrderSessionRowByPaymentTokenHash,
-  insertOrderItemRow,
-  insertOrderRow,
-  listOrderSessionItemRowsBySession,
+  listOrderItemRowsByOrder,
+  updateOrderRow,
 } from "@/models/ordersModel";
+import { getOrCreateOpenOrder } from "./orderItemSync";
 import {
   findStoreSettingsRow,
   listDiscountProductRows,
@@ -52,12 +52,19 @@ async function paymentContext(client: PoolClient, token: string, lock = false) {
   const settings = await findStoreSettingsRow(client);
   const expiration = settings?.payment_link_expiration_minutes ?? PAYMENT_LINK_EXPIRATION_DEFAULT_MINUTES;
   if (expired(session.payment_token_created_at, expiration)) throw new GoneError("PAYMENT_LINK_EXPIRED");
-  const items = (await listOrderSessionItemRowsBySession(client, session.id)).map((item) => item.snapshot)
-    .filter((item) => item.qty > 0);
+  // Self-healing igual finalizeOrderSession: só falta order_id se a sessão
+  // nunca teve como anexar pedido (sem cliente vinculado) -- nesse caso
+  // não há como cobrar mesmo, o link não deveria ter sido gerado.
+  const orderId = session.order_id ?? (await getOrCreateOpenOrder(client, {
+    clientId: session.client_id ?? undefined, sellerId: session.seller_id,
+    clientName: session.client_name, channel: session.channel,
+  }))?.id;
+  if (!orderId) throw new NotFoundError("INVALID_PAYMENT_LINK");
+  const items = (await listOrderItemRowsByOrder(client, orderId)).map((item) => item.snapshot);
   const subtotal = items.reduce((sum, item) => sum + item.price * item.qty, 0);
   const discount = getCartDiscount(items, await discounts(client));
   const cartTotal = subtotal - discount.totalAmount;
-  return { session, items, subtotal, discount, cartTotal };
+  return { session, orderId, items, subtotal, discount, cartTotal };
 }
 
 export interface PaymentSummary {
@@ -99,11 +106,8 @@ export async function confirmPayment(
   const order = await withTenantTransaction(tenant, {}, async (client) => {
     const context = await paymentContext(client, token, true);
     const total = context.cartTotal + (context.session.shipping?.price ?? 0);
-    const row = await insertOrderRow(client, {
-      clientId: context.session.client_id ?? undefined,
-      sellerId: context.session.seller_id,
-      clientName: context.session.client_name,
-      channel: context.session.channel,
+    const row = await updateOrderRow(client, context.orderId, {
+      status: "pago",
       total,
       shipping: context.session.shipping ?? undefined,
       paymentMethod,
@@ -111,7 +115,7 @@ export async function confirmPayment(
         ? { label: context.discount.label!, amount: context.discount.totalAmount }
         : undefined,
     });
-    for (const item of context.items) await insertOrderItemRow(client, row.id, item);
+    if (!row) throw new NotFoundError("ORDER_NOT_FOUND");
     const seller = await findUserRowById(client, context.session.seller_id);
     if (seller) sellerRecipient = { id: seller.id, role: seller.role };
     const closed = await closeOrderSessionRow(client, context.session.id);

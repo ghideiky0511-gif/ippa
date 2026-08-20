@@ -1,18 +1,18 @@
 @import 'tailwindcss';
 
 @theme inline {
-  --color-brand-primary: #c2185b;
-  --color-brand-primary-dark: #8c1046;
-  --color-brand-background: #f7f5f6;
+  --color-brand-primary: #18181b;
+  --color-brand-primary-dark: #09090b;
+  --color-brand-background: #f4f4f5;
   --color-brand-card: #ffffff;
   --color-brand-text: #2a2a2a;
   --color-brand-muted: #767676;
   --color-surface: #ffffff;
-  --color-surface-muted: #f7f5f6;
-  --color-surface-raised: #fffdfd;
-  --color-foreground: #242022;
-  --color-muted-foreground: #746c70;
-  --color-border: #e9e3e6;
+  --color-surface-muted: #f4f4f5;
+  --color-surface-raised: #fafafa;
+  --color-foreground: #18181b;
+  --color-muted-foreground: #71717a;
+  --color-border: #e4e4e7;
   --color-success: #1d7a51;
   --color-danger: #b4233d;
   --color-warning: #9a6200;
@@ -20,8 +20,8 @@
   --font-editorial: var(--font-cormorant);
   --radius-brand: 12px;
   --radius-control: 10px;
-  --shadow-card: 0 1px 3px rgb(44 28 36 / 0.05), 0 10px 28px rgb(44 28 36 / 0.06);
-  --shadow-float: 0 18px 48px rgb(44 28 36 / 0.18);
+  --shadow-card: 0 1px 3px rgb(24 24 27 / 0.05), 0 10px 28px rgb(24 24 27 / 0.06);
+  --shadow-float: 0 18px 48px rgb(24 24 27 / 0.18);
   --animate-card-plus: card-plus-pop .25s ease;
   @keyframes card-plus-pop {
     0%, 100% { transform: scale(1); }

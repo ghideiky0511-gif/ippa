@@ -2,9 +2,10 @@
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
 import { useState } from 'react';
+import { Save } from 'lucide-react';
 import DiscountsList from './DiscountsList';
 import DiscountEditor from './DiscountEditor';
-import WorkspaceNav from '@/workspace/navigation/WorkspaceNav';
+import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import { saveDiscounts } from '@/workspace/lib/discountsClient';
 
 function newId() {
@@ -67,40 +68,37 @@ export default function DiscountsApp({ initialDiscounts, products }) {
 
   return (
     <div className={adminUi.collectionsPage}>
-      <div className={adminUi.topbar}>
-        <div className={adminUi.topbarLeft}>
-          <h1>Descontos</h1>
-          <WorkspaceNav />
-        </div>
-        <div>
+      <HubHeader
+        title="Descontos"
+        secondaryActions={<>
           {saveState === 'saved' && !dirty && <span className={adminUi.status}>Salvo</span>}
           {saveState === 'error' && <span className={adminUi.status}>Erro ao salvar</span>}
           {dirty && saveState !== 'saving' && <span className={adminUi.status}>Alterações não salvas</span>}
-          <button className={adminUi.primaryButton} onClick={handleSave} disabled={saveState === 'saving'}>
-            {saveState === 'saving' ? 'Salvando…' : 'Salvar'}
-          </button>
-        </div>
-      </div>
-
-      <DiscountsList
-        discounts={discounts}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
-        onAdd={addDiscount}
-        onRemove={removeDiscount}
+        </>}
+        primaryAction={{ label: saveState === 'saving' ? 'Salvando…' : 'Salvar', onClick: handleSave, disabled: saveState === 'saving', icon: <Save className="size-5" aria-hidden="true" /> }}
       />
 
-      {selected ? (
-        <DiscountEditor
-          discount={selected}
-          products={products}
-          onUpdate={(updater) => updateDiscount(selected.id, updater)}
+      <div className="flex flex-col md:flex-row">
+        <DiscountsList
+          discounts={discounts}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          onAdd={addDiscount}
+          onRemove={removeDiscount}
         />
-      ) : (
-        <main className={adminUi.collectionsEditor}>
-          <p className={adminUi.previewEmpty}>Selecione um desconto à esquerda ou crie um novo.</p>
-        </main>
-      )}
+
+        {selected ? (
+          <DiscountEditor
+            discount={selected}
+            products={products}
+            onUpdate={(updater) => updateDiscount(selected.id, updater)}
+          />
+        ) : (
+          <main className={adminUi.collectionsEditor}>
+            <p className={adminUi.previewEmpty}>Selecione um desconto à esquerda ou crie um novo.</p>
+          </main>
+        )}
+      </div>
     </div>
   );
 }

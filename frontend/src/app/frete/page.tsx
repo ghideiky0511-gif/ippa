@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import Link from '@/components/TenantLink';
 import { useRouter } from 'next/navigation';
+import { ArrowLeft, Check } from 'lucide-react';
 import { formatBRL } from '@/lib/format';
 import { calculateShipping } from '@/lib/shipping';
 import { useCart } from '@/components/CartProvider';
@@ -154,10 +155,10 @@ export default function FretePage() {
         <CheckoutSteps current="/frete" reachable={3} />
         <h1>Frete</h1>
         <div className="contents">
-          <span className="contents" aria-hidden="true">✓</span>
+          <Check className="size-5 text-success" aria-hidden="true" />
           <p>Pagamento confirmado! O pedido de {activeSession.clientName} foi fechado.</p>
         </div>
-        <Link href="/catalogo" className={publicUi.backLink}>← Voltar ao catálogo</Link>
+        <Link href="/catalogo" className={publicUi.backLink}><ArrowLeft className="size-4" aria-hidden="true" />Voltar ao catálogo</Link>
       </main>
     );
   }
@@ -257,7 +258,7 @@ export default function FretePage() {
         </div>
       )}
 
-      <Link href="/carrinho" className={publicUi.backLink}>← Voltar ao carrinho</Link>
+      <Link href="/carrinho" className={publicUi.backLink}><ArrowLeft className="size-4" aria-hidden="true" />Voltar ao carrinho</Link>
     </main>
   );
 }

@@ -2,6 +2,7 @@
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
 import { useState } from 'react';
+import { X } from 'lucide-react';
 import { createVendedora, createCliente, updateUser, updateClient } from '@/workspace/lib/usersClient';
 
 // Ferramentas do catálogo que dá pra liberar/bloquear por conta (ver
@@ -121,7 +122,7 @@ export default function UserFormModal({ role, mode, user, onClose, onSaved }) {
           <h2>
             {isEdit ? 'Editar' : 'Criar'} {isCliente ? 'cliente' : 'vendedora'}
           </h2>
-          <button type="button" className="contents" onClick={onClose}>&times;</button>
+          <button type="button" className={adminUi.iconButton} onClick={onClose} aria-label="Fechar"><X className="size-4" aria-hidden="true" /></button>
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'contents' }}>

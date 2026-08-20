@@ -5,6 +5,7 @@ import { use, useEffect, useState } from 'react';
 import { formatBRL } from '@/lib/format';
 import { CONFIG } from '@/lib/config';
 import { useTenant } from '@/components/TenantProvider';
+import ProductImage from '@/components/ProductImage';
 import type { CartItem } from '@/domain/orders/types';
 
 const PAYMENT_METHODS = [
@@ -92,7 +93,7 @@ export default function PagarPage({ params }: { params: Promise<{ token: string 
             <div className={publicUi.orderItems}>
               {summary.items.map((item) => (
                 <div className={publicUi.orderItem} key={item.key}>
-                  <img src={item.image || 'https://via.placeholder.com/80x100?text=Sem+imagem'} alt={item.name} />
+                  <ProductImage src={item.image} alt={item.name} className={publicUi.orderItemImage} />
                   <div>
                     <div className="contents">{item.name}</div>
                     <div className="contents">

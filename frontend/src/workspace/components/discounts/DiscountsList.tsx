@@ -2,6 +2,7 @@
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
 import { useState } from 'react';
+import { Trash2 } from 'lucide-react';
 
 export default function DiscountsList({ discounts, selectedId, onSelect, onAdd, onRemove }) {
   const [newLabel, setNewLabel] = useState('');
@@ -23,7 +24,7 @@ export default function DiscountsList({ discounts, selectedId, onSelect, onAdd, 
               <span className={adminUi.collectionCount}>{d.active ? 'ativo' : 'inativo'}</span>
             </button>
             <button className={adminUi.iconButton} onClick={() => onRemove(d.id)} title="Excluir desconto">
-              ✕
+              <Trash2 className="size-4" aria-hidden="true" />
             </button>
           </div>
         ))}

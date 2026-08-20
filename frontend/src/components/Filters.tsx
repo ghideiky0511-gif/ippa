@@ -1,11 +1,12 @@
 'use client';
 
-import { SlidersHorizontal, X } from 'lucide-react';
+import { Search, SlidersHorizontal, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader } from '@/components/ui/sheet';
+import { publicUi } from '@/lib/ui';
 import type { CatalogFilters } from './CatalogApp';
 
 interface FilterOptions {
@@ -45,14 +46,17 @@ export default function Filters({ options, filters, onChange, onClear }: {
   );
 
   return (
-    <div className="sticky top-0 z-10 -mx-4 mb-5 border-b border-border bg-surface-muted/95 px-4 py-3 backdrop-blur md:static md:mx-0 md:border-0 md:bg-transparent md:px-0 md:py-5">
+    <div className={publicUi.catalogToolbar}>
       <div className="flex gap-2 md:items-center">
-        <Input
-          className="min-w-0 flex-1 md:max-w-md"
+        <div className="relative min-w-0 flex-1 md:max-w-md">
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+          <Input
+          className="min-w-0 pl-9 shadow-sm transition-[border-color,box-shadow] focus-visible:shadow-[0_0_0_4px_rgba(24,24,27,.10)]"
           placeholder="Buscar por nome ou código..."
           value={filters.term}
           onChange={(e) => onChange({ ...filters, term: e.target.value })}
-        />
+          />
+        </div>
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <Button type="button" variant="outline" className="shrink-0 md:hidden" onClick={() => setMobileOpen(true)}>
             <SlidersHorizontal className="size-4" aria-hidden="true" />

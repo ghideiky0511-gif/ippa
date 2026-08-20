@@ -16,8 +16,8 @@ const WorkspaceAuthContext = createContext<WorkspaceAuthContextValue>({
 });
 
 // Quem está logada no workspace interno — só pra exibir (nome/perfil no
-// WorkspaceNav) e oferecer "Sair". O bloqueio de verdade é feito pelo
-// proxy.ts (antes da página nem renderizar); este provider não protege
+// WorkspaceSidebar/WorkspaceMobileNav) e oferecer "Sair". O bloqueio de
+// verdade é feito pelo proxy.ts (antes da página nem renderizar); este provider não protege
 // nada sozinho.
 export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
   const { href } = useTenant();

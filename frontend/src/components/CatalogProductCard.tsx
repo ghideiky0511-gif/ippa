@@ -2,7 +2,9 @@ import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { COLOR_MAP } from '@/lib/config';
+import { publicUi } from '@/lib/ui';
 import type { Product } from '@/domain/products/types';
+import ProductImage from './ProductImage';
 
 const MAX_COLOR_DOTS = 6;
 
@@ -23,13 +25,13 @@ export default function CatalogProductCard({ product, onOpen, imageAction, title
   const extraColors = colors.length - shownColors.length;
 
   return (
-    <Card className="group flex min-w-0 flex-col overflow-hidden transition-[box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(44,28,36,.12)]">
-      <div className="relative aspect-[9/16] overflow-hidden">
+    <Card className={publicUi.catalogCard}>
+      <div className={publicUi.catalogCardMedia}>
         <button type="button" className="block size-full cursor-pointer border-0 bg-transparent p-0" aria-label={`Ver cores e tamanhos de ${product.name}`} onClick={onOpen}>
           {product.videoUrl ? (
             <video className="block size-full bg-brand-background object-cover transition-transform duration-[250ms] group-hover:scale-[1.04]" src={product.videoUrl} autoPlay loop muted playsInline disablePictureInPicture />
           ) : (
-            <img src={product.image || 'https://via.placeholder.com/400x500?text=Sem+imagem'} alt={product.name} className="block size-full bg-brand-background object-cover transition-transform duration-[250ms] group-hover:scale-[1.04]" />
+            <ProductImage src={product.image} alt={product.name} className="size-full bg-brand-background transition-transform duration-[250ms] group-hover:scale-[1.04]" />
           )}
         </button>
         {imageAction}
@@ -40,7 +42,7 @@ export default function CatalogProductCard({ product, onOpen, imageAction, title
           </div>
         )}
       </div>
-      <div className="flex flex-1 flex-col gap-2 p-3.5">
+      <div className={publicUi.catalogCardContent}>
         {product.category && <Badge>{product.category}</Badge>}
         <h3 className="min-h-[2.7em] text-[15px] font-semibold leading-[1.35]">{title}</h3>
         {product.referenceId && <div className="-mt-1 text-[11px] text-brand-muted">{product.referenceId}</div>}

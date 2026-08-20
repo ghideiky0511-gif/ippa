@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { X } from 'lucide-react';
 import type { Client } from '@/domain/clients/types';
 import type { CartItem, Order, OrderChannel, OrderSession } from '@/domain/orders/types';
 import type { Product } from '@/domain/products/types';
@@ -73,7 +74,7 @@ function ClientLookup({
   }
 
   return (
-    <div className="rounded-lg border border-[#eee] bg-[#fcfbfc] p-3">
+    <div className="rounded-lg border border-[#eee] bg-[#fafafa] p-3">
       <div className="flex flex-wrap gap-2">
         <div className={`${adminUi.field} min-w-[190px] flex-1`}>
           <label>CPF/CNPJ da cliente (opcional)</label>
@@ -158,7 +159,7 @@ export function CreateOrderModal({
             <h2 className="font-bold">Criar pedido</h2>
             <p className="mt-1 text-sm text-brand-muted">O cliente pode ser vinculado depois; ele será obrigatório apenas para finalizar.</p>
           </div>
-          <button type="button" className={adminUi.iconButton} onClick={onClose} aria-label="Fechar">×</button>
+          <button type="button" className={adminUi.iconButton} onClick={onClose} aria-label="Fechar"><X className="size-4" aria-hidden="true" /></button>
         </header>
         <div className={`${adminUi.modalBody} flex flex-col gap-4`}>
           <ClientLookup selected={client} onSelect={setClient} />
@@ -301,7 +302,7 @@ export function OrderTalaoModal({
             <h2 className="font-bold">Talão de pedido</h2>
             <p className="mt-1 text-sm text-brand-muted">{session.status === 'fechado' ? 'Pedido finalizado' : 'Sincronizado em tempo real'} · {session.channel}</p>
           </div>
-          <button type="button" className={adminUi.iconButton} onClick={onClose} aria-label="Fechar">×</button>
+          <button type="button" className={adminUi.iconButton} onClick={onClose} aria-label="Fechar"><X className="size-4" aria-hidden="true" /></button>
         </header>
         <div className={`${adminUi.modalBody} flex flex-col gap-5`}>
           {session.status !== 'fechado' && <ClientLookup selected={client} onSelect={(nextClient) => void linkClient(nextClient)} />}

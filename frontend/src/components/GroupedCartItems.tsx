@@ -3,6 +3,7 @@ import { publicUi } from '@/lib/ui';
 
 import { useState } from 'react';
 import CartItemRow from './CartItemRow';
+import ProductImage from './ProductImage';
 import { useCart } from './CartProvider';
 import { useQuickView } from './QuickViewProvider';
 import { useAuthUser } from './AuthProvider';
@@ -44,7 +45,7 @@ function CartProductGroup({ productId, items }: { productId: string; items: Cart
   return (
     <div className={publicUi.cartGroup}>
       <div className={publicUi.cartGroupSummary}>
-        <img src={first.image || 'https://via.placeholder.com/100x120?text=Sem+imagem'} alt={first.name} />
+        <ProductImage src={first.image} alt={first.name} className={publicUi.cartGroupImage} />
         <div className={publicUi.cartGroupInfo}>
           <div className="contents">{first.name}</div>
           {isDraftOnly ? (

@@ -1,8 +1,9 @@
 'use client';
 import { publicUi } from '@/lib/ui';
+import ProductImage from '@/components/ProductImage';
 
 import { useEffect, useState } from 'react';
-import { UserRound } from 'lucide-react';
+import { ArrowLeft, UserRound } from 'lucide-react';
 import Link from '@/components/TenantLink';
 import { formatBRL } from '@/lib/format';
 import { useAuthUser } from '@/components/AuthProvider';
@@ -107,7 +108,7 @@ export default function PedidosPage() {
             </div>
           }
         />
-        <Link href="/" className={publicUi.backLink}>← Voltar ao catálogo</Link>
+        <Link href="/" className={publicUi.backLink}><ArrowLeft className="size-4" aria-hidden="true" />Voltar ao catálogo</Link>
       </main>
     );
   }
@@ -175,7 +176,7 @@ export default function PedidosPage() {
                 <div className={publicUi.orderItems}>
                   {order.items.map((item) => (
                     <div className={publicUi.orderItem} key={item.key}>
-                      <img src={item.image || 'https://via.placeholder.com/80x100?text=Sem+imagem'} alt={item.name} />
+                      <ProductImage src={item.image} alt={item.name} className={publicUi.orderItemImage} />
                       <div>
                         <div className="contents">{item.name}</div>
                         <div className="contents">
@@ -191,7 +192,7 @@ export default function PedidosPage() {
         })}
       </div>
 
-      <Link href="/" className={publicUi.backLink}>← Voltar ao catálogo</Link>
+      <Link href="/" className={publicUi.backLink}><ArrowLeft className="size-4" aria-hidden="true" />Voltar ao catálogo</Link>
     </main>
   );
 }

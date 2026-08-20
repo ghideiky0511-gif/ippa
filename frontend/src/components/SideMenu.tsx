@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import Link from '@/components/TenantLink';
 import { CONFIG } from '@/lib/config';
 import { formatBRL } from '@/lib/format';
+import ProductImage from './ProductImage';
 import { getSearchSuggestions } from '@/lib/search';
 import { Input } from '@/components/ui/input';
 import type { CategoryTreeEntry, Highlight } from '@/domain/catalog/types';
@@ -70,7 +71,7 @@ export default function SideMenu({ categoryTree }: { categoryTree: CategoryTreeE
                 {loadingCatalog && <p className="text-sm text-muted-foreground">Carregando produtos...</p>}
                 {!loadingCatalog && query.trim() && suggestions.length === 0 && <p className="text-sm text-muted-foreground">Nada encontrado.</p>}
                 {suggestions.map((p) => <Link key={p.id} href={`/produto/${p.id}`} className="flex items-center gap-3 rounded-control p-2 hover:bg-brand-background" onClick={closeMenu}>
-                  <img src={p.image || 'https://via.placeholder.com/72x90?text=Sem+imagem'} alt="" className="h-12 w-10 rounded-md bg-brand-background object-cover" />
+                  <ProductImage src={p.image} alt="" className="h-12 w-10 shrink-0 rounded-md bg-brand-background" />
                   <span className="min-w-0"><span className="block truncate text-sm font-semibold">{p.name}</span><span className="text-xs text-muted-foreground">{formatBRL(p.price)}</span></span>
                 </Link>)}
               </div>

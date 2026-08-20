@@ -1,5 +1,6 @@
 'use client';
 import { useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import ProductCard from './ProductCard';
 import type { Product } from '@/domain/products/types';
 
@@ -31,33 +32,33 @@ export default function SimilarProducts({ products }: { products: Product[] }) {
   if (products.length === 0) return null;
 
   return (
-    <section className="contents">
-      <div className="contents">
+    <section className="mt-8 min-w-0">
+      <div className="mb-3 flex items-center justify-between gap-3 [&>h2]:text-lg [&>h2]:font-bold">
         <h2 className="contents">Você também pode gostar</h2>
-        <div className="contents">
+        <div className="flex shrink-0 gap-1">
           <button
             type="button"
-            className="contents"
+            className="inline-flex size-9 items-center justify-center rounded-control border border-border transition-[border-color,color,transform] hover:border-brand-primary hover:text-brand-primary hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
             onClick={() => scrollByCard(-1)}
             disabled={atStart}
             aria-label="Ver anteriores"
           >
-            ‹
+            <ChevronLeft className="size-4" aria-hidden="true" />
           </button>
           <button
             type="button"
-            className="contents"
+            className="inline-flex size-9 items-center justify-center rounded-control border border-border transition-[border-color,color,transform] hover:border-brand-primary hover:text-brand-primary hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
             onClick={() => scrollByCard(1)}
             disabled={atEnd}
             aria-label="Ver mais"
           >
-            ›
+            <ChevronRight className="size-4" aria-hidden="true" />
           </button>
         </div>
       </div>
-      <div className="contents" ref={trackRef} onScroll={updateEdges}>
+      <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2" ref={trackRef} onScroll={updateEdges}>
         {products.map((p) => (
-          <div key={p.id} className="contents">
+          <div key={p.id} className="w-32 shrink-0 snap-start sm:w-40">
             <ProductCard product={p} />
           </div>
         ))}

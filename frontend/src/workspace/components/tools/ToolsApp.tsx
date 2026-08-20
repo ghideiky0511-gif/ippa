@@ -2,10 +2,11 @@
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
 import { useMemo, useState } from 'react';
-import WorkspaceNav from '@/workspace/navigation/WorkspaceNav';
+import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import { saveStoreSettings } from '@/workspace/lib/storeSettingsClient';
 import { saveSimilarProductsSettings } from '@/workspace/lib/similarProductsSettingsClient';
 import { setClassificationActive } from '@/workspace/lib/classificationsClient';
+import { Trash2 } from 'lucide-react';
 
 // Lista de ferramentas opcionais do catálogo — cada uma tem um id (chave em
 // storeSettings.json `features`), um rótulo e uma descrição curta. Adicionar
@@ -253,12 +254,7 @@ export default function ToolsApp({ initialSettings, initialSimilarProductsSettin
 
   return (
     <div className="products-page">
-      <div className={adminUi.topbar}>
-        <div className={adminUi.topbarLeft}>
-          <h1>Ferramentas</h1>
-          <WorkspaceNav />
-        </div>
-      </div>
+      <HubHeader title="Ferramentas" />
 
       <main className={adminUi.productsEditor}>
         <p className={adminUi.previewEmpty}>
@@ -431,7 +427,7 @@ export default function ToolsApp({ initialSettings, initialSimilarProductsSettin
                   <span key={t} className="contents">
                     {t}
                     <button type="button" onClick={() => removeComplementaryTarget(category, t)} aria-label={`Remover ${t}`}>
-                      ✕
+                      <Trash2 className="size-4" aria-hidden="true" />
                     </button>
                   </span>
                 ))}
@@ -449,7 +445,7 @@ export default function ToolsApp({ initialSettings, initialSimilarProductsSettin
                 onClick={() => removeComplementaryCategoryRow(category)}
                 title="Remover linha"
               >
-                ✕
+                <Trash2 className="size-4" aria-hidden="true" />
               </button>
             </div>
           ))}

@@ -9,6 +9,7 @@ import {
     sendFirstAccessConfirmationEmail,
     sendSignupConfirmationEmail,
 } from "@/lib/email";
+import { errorMeta, logger } from "@/lib/logger";
 
 export function notifySignup(
     tenant: Tenant,
@@ -21,17 +22,31 @@ export function notifySignup(
     });
 }
 
-export function notifyFirstAccessConfirmation(
+export async function notifyFirstAccessConfirmation(
     tenant: Tenant,
     user: { email: string; name: string },
     link: string,
-): void {
-    void sendFirstAccessConfirmationEmail({
-        to: user.email,
-        name: user.name,
-        link,
-        storeName: tenant.name,
-    });
+): Promise<void> {
+    try {
+        const delivery = await sendFirstAccessConfirmationEmail({
+            to: user.email,
+            name: user.name,
+            link,
+            storeName: tenant.name,
+        });
+        const log = delivery === "sent" ? logger.info : logger.warn;
+        log("first-access-email", "Processamento do e-mail de confirmação concluído", {
+            tenantId: tenant.id,
+            delivery,
+        });
+    } catch (error) {
+        // Não propaga para não desfazer a solicitação persistida no banco.
+        // O próximo envio substitui o token pendente com segurança.
+        logger.error("first-access-email", "Falha inesperada ao processar e-mail de confirmação", {
+            tenantId: tenant.id,
+            ...errorMeta(error),
+        });
+    }
 }
 
 export function notifyPaymentLink(
