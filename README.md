@@ -46,8 +46,9 @@ Endereços:
 ## Control plane
 
 O acesso de plataforma fica em `/control`, fora de qualquer tenant. Em um ambiente novo,
-o bootstrap cria o usuário definido por `PLATFORM_ADMIN_EMAIL`,
-`PLATFORM_ADMIN_NAME` e `PLATFORM_ADMIN_PASSWORD`.
+o bootstrap não cria dados fictícios. Para criar o primeiro acesso, configure
+`PLATFORM_ADMIN_EMAIL`, `PLATFORM_ADMIN_NAME` e `PLATFORM_ADMIN_PASSWORD`; para
+criar também um tenant inicial, configure todos os quatro valores `INITIAL_*`.
 
 O control plane cria tenants com administrador inicial e depósito padrão, além de permitir
 ativar, inativar e arquivar tenants. Altere as senhas de exemplo antes de usar qualquer

@@ -15,7 +15,7 @@ import {
     replaceOrderSessionItemRows,
     updateOrderSessionRow,
     updateOrderRow,
-    closeOrderSessionRow,
+    closeOpenOrderSessionRowsByOrder,
     countOpenOrderSessionRowsBySeller,
 } from "@/models/ordersModel";
 import { getOrCreateOpenOrder, syncOrderItems } from "./orderItemSync";
@@ -423,8 +423,8 @@ export async function finalizeOrderSession(
     body: { paymentMethod?: unknown },
 ): Promise<Order> {
     if (user.role === "cliente") throw new ForbiddenError();
-    let changedSession: OrderSession | undefined;
-    const changes: { book?: OrderBookRow } = {};
+    let changedSessions: OrderSession[] = [];
+    let changedBooks: OrderBookRow[] = [];
     const order = await withTenantTransaction(tenant, user, async (client) => {
         const session = await findOrderSessionRow(client, id);
         if (!session) throw new NotFoundError("SESSION_NOT_FOUND");
@@ -464,16 +464,22 @@ export async function finalizeOrderSession(
                 : undefined,
         });
         if (!row) throw new NotFoundError("ORDER_NOT_FOUND");
-        const closed = await closeOrderSessionRow(client, session.id);
-        if (closed) changedSession = toOrderSession(closed, items);
-        changes.book = (await closeOrderBookWhenFinished(client, session.order_book_id)) ?? undefined;
+        // Fecha TODA sessão irmã ainda aberta que aponte pro mesmo pedido
+        // (upsell entre talões), não só a que disparou o fechamento --
+        // senão ela fica presa "aberta" apontando pra um pedido já pago.
+        const closedRows = await closeOpenOrderSessionRowsByOrder(client, orderId);
+        changedSessions = closedRows.map((closedRow) => toOrderSession(closedRow, items));
+        const bookIds = new Set(closedRows.map((closedRow) => closedRow.order_book_id));
+        changedBooks = (await Promise.all(
+            [...bookIds].map((bookId) => closeOrderBookWhenFinished(client, bookId)),
+        )).filter((book): book is OrderBookRow => Boolean(book));
         return toOrder(row, items);
     });
-    if (changedSession) {
+    for (const changedSession of changedSessions) {
         notifySession(tenant.id, changedSession);
         scheduleSessionBroadcast(changedSession);
     }
-    if (changes.book) notifyOrderBook(tenant.id, { sellerId: changes.book.seller_id });
+    for (const book of changedBooks) notifyOrderBook(tenant.id, { sellerId: book.seller_id });
     notifyOrder(tenant.id, order);
     return order;
 }

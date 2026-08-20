@@ -2,7 +2,7 @@ import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser, CartItem, Order, OrderChannel, OrderSession } from "@/lib/types";
 import {
-    closeOrderSessionRow,
+    closeOpenOrderSessionRowsByOrder,
     findOrderSessionRow,
     listOrderItemRows,
     listOrderItemRowsByOrder,
@@ -66,8 +66,8 @@ export async function createCustomerOrder(
         throw new ValidationError();
     const items = body.items as CartItem[];
     const requestedChannel = body.channel;
-    let changedSession: OrderSession | undefined;
-    const changes: { book?: OrderBookRow } = {};
+    let changedSessions: OrderSession[] = [];
+    let changedBooks: OrderBookRow[] = [];
     let sellerRecipient: Pick<AuthUser, "id" | "role"> | undefined;
     const order = await withTenantTransaction(tenant, user, async (client) => {
         let sellerId: string | undefined;
@@ -91,9 +91,6 @@ export async function createCustomerOrder(
                 sellerId = session.seller_id;
                 orderId = session.order_id ?? undefined;
                 itemsFromSession = Boolean(orderId);
-                const closed = await closeOrderSessionRow(client, session.id);
-                if (closed) changedSession = toOrderSession(closed, items);
-                changes.book = (await closeOrderBookWhenFinished(client, session.order_book_id)) ?? undefined;
             }
         }
         const allowedChannels = new Set(["presencial", "whatsapp", "online"]);
@@ -126,11 +123,20 @@ export async function createCustomerOrder(
             const seller = await findUserRowById(client, sellerId);
             if (seller) sellerRecipient = { id: seller.id, role: seller.role };
         }
+        // Fecha toda sessão ainda aberta apontando pro pedido pago --
+        // inclui a sessão do checkout e qualquer irmã de upsell em outro
+        // talão, senão ela fica presa "aberta" num pedido já finalizado.
+        const closedRows = await closeOpenOrderSessionRowsByOrder(client, orderId);
+        changedSessions = closedRows.map((closedRow) => toOrderSession(closedRow, orderItems));
+        const bookIds = new Set(closedRows.map((closedRow) => closedRow.order_book_id));
+        changedBooks = (await Promise.all(
+            [...bookIds].map((bookId) => closeOrderBookWhenFinished(client, bookId)),
+        )).filter((book): book is OrderBookRow => Boolean(book));
         await deleteClientCartRows(client, user.clientId!);
         return toOrder(row, orderItems);
     });
-    if (changedSession) notifySession(tenant.id, changedSession);
-    if (changes.book) notifyOrderBook(tenant.id, { sellerId: changes.book.seller_id });
+    for (const changedSession of changedSessions) notifySession(tenant.id, changedSession);
+    for (const book of changedBooks) notifyOrderBook(tenant.id, { sellerId: book.seller_id });
     notifyOrder(tenant.id, order);
     notifyOrderConfirmed(tenant, user, order);
     if (sellerRecipient) notifyNewOrderForSeller(tenant, sellerRecipient, order);

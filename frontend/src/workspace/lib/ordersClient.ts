@@ -10,8 +10,9 @@ export function fetchOrderSessions(): Promise<OrderSession[]> {
   return adminJson('/api/sessions', {}, 'Não foi possível carregar os talões.');
 }
 
-export function fetchOrderBooks(): Promise<OrderBook[]> {
-  return adminJson('/api/order-books', {}, 'Não foi possível carregar os talões.');
+export function fetchOrderBooks(status?: OrderBook['status']): Promise<OrderBook[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : '';
+  return adminJson(`/api/order-books${query}`, {}, 'Não foi possível carregar os talões.');
 }
 
 export function fetchActiveOrderBook(): Promise<OrderBook> {

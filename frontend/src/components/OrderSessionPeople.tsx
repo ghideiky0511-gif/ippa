@@ -25,10 +25,12 @@ export function OrderSessionPeople({
   presence,
   participants,
   className = '',
+  onMinimize,
 }: {
   presence: PedidoPresence[];
   participants: PedidoParticipant[];
   className?: string;
+  onMinimize?: () => void;
 }) {
   const onlineIds = new Set(presence.map((person) => person.userId));
   const people = new Map(participants.map((participant) => [participant.userId, participant]));
@@ -49,30 +51,42 @@ export function OrderSessionPeople({
   });
 
   return (
-    <section className={`rounded-brand border border-border bg-white p-3 shadow-sm ${className}`} aria-label="Pessoas neste pedido">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold">Pessoas neste pedido</h2>
-          <p className="mt-0.5 text-xs text-brand-muted">
+    <section className={`rounded-brand border border-border bg-white p-2.5 shadow-md ${className}`} aria-label="Pessoas neste pedido">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <h2 className="text-xs font-semibold">Pessoas neste pedido</h2>
+          <p className="mt-0.5 text-[11px] text-brand-muted">
             {presence.length === 1 ? '1 pessoa online agora' : `${presence.length} pessoas online agora`}
           </p>
         </div>
-        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
-          <span className="size-2 rounded-full bg-emerald-500" aria-hidden="true" />Ao vivo
-        </span>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+            <span className="size-1.5 rounded-full bg-emerald-500" aria-hidden="true" />Ao vivo
+          </span>
+          {onMinimize && (
+            <button
+              type="button"
+              onClick={onMinimize}
+              className="text-[11px] text-brand-muted hover:text-brand-text"
+              aria-label="Minimizar pessoas neste pedido"
+            >
+              Minimizar
+            </button>
+          )}
+        </div>
       </div>
       {rows.length > 0 ? (
-        <ul className="mt-3 space-y-2" aria-live="polite">
+        <ul className="mt-2 max-h-40 space-y-1.5 overflow-y-auto" aria-live="polite">
           {rows.map((participant) => {
             const online = onlineIds.has(participant.userId);
-            return <li key={participant.userId} className="flex items-center gap-2 text-sm">
-              <span className={`size-2 shrink-0 rounded-full ${online ? 'bg-emerald-500' : 'bg-brand-muted/45'}`} aria-label={online ? 'Online' : 'Offline'} />
+            return <li key={participant.userId} className="flex items-center gap-2 text-xs">
+              <span className={`size-1.5 shrink-0 rounded-full ${online ? 'bg-emerald-500' : 'bg-brand-muted/45'}`} aria-label={online ? 'Online' : 'Offline'} />
               <span className="min-w-0 flex-1 truncate font-medium">{participant.user.name}</span>
-              <span className="shrink-0 text-xs text-brand-muted">{online ? roleLabel(participant.user.role) : lastSeenLabel(participant.lastLeftAt)}</span>
+              <span className="shrink-0 text-[11px] text-brand-muted">{online ? roleLabel(participant.user.role) : lastSeenLabel(participant.lastLeftAt)}</span>
             </li>;
           })}
         </ul>
-      ) : <p className="mt-3 text-xs text-brand-muted">Conectando pessoas deste pedido…</p>}
+      ) : <p className="mt-2 text-[11px] text-brand-muted">Conectando pessoas deste pedido…</p>}
     </section>
   );
 }

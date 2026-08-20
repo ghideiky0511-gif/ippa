@@ -32,10 +32,10 @@ function requireInternal(user: AuthUser) {
     if (user.role === "cliente") throw new ForbiddenError();
 }
 
-export async function orderBooks(tenant: Tenant, user: AuthUser): Promise<OrderBook[]> {
+export async function orderBooks(tenant: Tenant, user: AuthUser, status?: OrderBook["status"]): Promise<OrderBook[]> {
     requireInternal(user);
     return withTenantTransaction(tenant, user, async (client) =>
-        (await listOrderBookRowsBySeller(client, user.id)).map(toOrderBook),
+        (await listOrderBookRowsBySeller(client, user.id, status)).map(toOrderBook),
     );
 }
 

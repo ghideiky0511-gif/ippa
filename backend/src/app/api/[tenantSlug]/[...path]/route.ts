@@ -299,8 +299,11 @@ export async function GET(
             return execute(() =>
                 orders.orderSessions(route.tenant, session.user),
             );
-        case "order-books":
-            return execute(() => orders.orderBooks(route.tenant, session.user));
+        case "order-books": {
+            const statusParam = request.nextUrl.searchParams.get("status");
+            const status = statusParam === "aberto" || statusParam === "fechado" ? statusParam : undefined;
+            return execute(() => orders.orderBooks(route.tenant, session.user, status));
+        }
         case "sessions/mine":
             return execute(() =>
                 orders.customerActiveSession(route.tenant, session.user),

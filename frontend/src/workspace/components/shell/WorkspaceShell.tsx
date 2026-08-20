@@ -1,14 +1,17 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
+import { ChevronRight } from 'lucide-react';
 import { useTenant } from '@/components/TenantProvider';
+import { Button } from '@/components/ui/button';
 import WorkspaceSidebar from './WorkspaceSidebar';
 import WorkspaceTopBar from './WorkspaceTopBar';
 
 export default function WorkspaceShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { tenant } = useTenant();
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const tenantPath = pathname?.startsWith(`/${tenant.slug}`) ? pathname.slice(tenant.slug.length + 1) || '/' : pathname;
   const isLogin = tenantPath?.startsWith('/workspace/login');
 
@@ -16,9 +19,20 @@ export default function WorkspaceShell({ children }: { children: ReactNode }) {
 
   return (
     <>
-      <WorkspaceSidebar />
+      {sidebarOpen && <WorkspaceSidebar onClose={() => setSidebarOpen(false)} />}
+      {!sidebarOpen && (
+        <Button
+          variant="ghost"
+          size="md"
+          className="fixed left-0 top-1/2 z-20 hidden min-h-0 -translate-y-1/2 rounded-r-full rounded-l-none border border-l-0 border-border bg-surface px-2 shadow-sm lg:flex"
+          aria-label="Abrir menu"
+          onClick={() => setSidebarOpen(true)}
+        >
+          <ChevronRight className="size-5" aria-hidden="true" />
+        </Button>
+      )}
       <WorkspaceTopBar />
-      <main className="lg:pl-64">{children}</main>
+      <main className={sidebarOpen ? 'lg:pl-64' : ''}>{children}</main>
     </>
   );
 }

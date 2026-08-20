@@ -64,22 +64,34 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
     if (!activeSession) return;
     const id = activeSession.id;
     setActiveSession((prev) => (prev && prev.id === id ? { ...prev, items } : prev));
-    await apiFetch(`/api/sessions/${id}`, {
+    const response = await apiFetch(`/api/sessions/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ items }),
     });
+    // Sem isso, um pedido já pago/cancelado (ex.: a vendedora finalizou
+    // enquanto a cliente ainda editava o carrinho) rejeita o PUT em
+    // silêncio: o item some da tela mas nunca é salvo, e a cliente não
+    // percebe. `refetch()` traz o estado real (a sessão fechada) de volta.
+    if (!response.ok) {
+      toast.error('Este pedido já foi fechado. Atualizando...');
+      await refetch();
+    }
   }
 
   async function updateActiveShipping(shipping: ShippingOption | null) {
     if (!activeSession) return;
     const id = activeSession.id;
     setActiveSession((prev) => (prev && prev.id === id ? { ...prev, shipping: shipping || undefined } : prev));
-    await apiFetch(`/api/sessions/${id}`, {
+    const response = await apiFetch(`/api/sessions/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ shipping }),
     });
+    if (!response.ok) {
+      toast.error('Este pedido já foi fechado. Atualizando...');
+      await refetch();
+    }
   }
 
   function adoptSession(session: OrderSession) {

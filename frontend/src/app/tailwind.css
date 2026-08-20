@@ -44,6 +44,10 @@
     from { transform: translateY(8px); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }
   }
+  @keyframes presence-pop {
+    0% { transform: scale(.94); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
 }
 
 @layer base {

@@ -17,7 +17,7 @@ import { useTenant } from '@/components/TenantProvider';
 import { useSearchParams } from 'next/navigation';
 import { pedidoRealtimeEventMessage, usePedidoRealtime, type PedidoParticipant, type PedidoPresence } from '@/lib/realtime/usePedidoRealtime';
 import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
-import { OrderSessionPeople } from '@/components/OrderSessionPeople';
+import { OrderSessionPeopleWidget } from '@/components/OrderSessionPeopleWidget';
 import CatalogProductCard from '@/components/CatalogProductCard';
 import ProductImage from '@/components/ProductImage';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -87,10 +87,20 @@ export default function InternalCatalogApp({ products, initialBooks, initialSess
   const [isBookPanelOpen, setBookPanelOpen] = useState(false);
 
   const refresh = useCallback(async () => {
-    const [nextBooks, nextSessions] = await Promise.all([fetchOrderBooks(), fetchOrderSessions()]);
+    const [nextBooks, nextSessions] = await Promise.all([fetchOrderBooks('aberto'), fetchOrderSessions()]);
     setBooks(nextBooks);
     setSessions(nextSessions);
-    setSelectedBookId((current) => current || nextBooks.find((book) => book.isActive)?.id || '');
+    setSelectedBookId((current) => {
+      // Um talão só pode ficar selecionado enquanto está aberto — não dá pra
+      // reativá-lo depois de fechado (activateOrderBook rejeita). Se o talão
+      // selecionado fechou (ex.: "Atendimentos online" some assim que a
+      // última sessão dele termina), segue automaticamente pro novo talão
+      // ativo da vendedora, senão o próximo atendimento online cai num talão
+      // que nunca aparece na tela.
+      const currentBook = nextBooks.find((book) => book.id === current);
+      if (currentBook?.status === 'aberto') return current;
+      return nextBooks.find((book) => book.isActive)?.id || current || '';
+    });
   }, []);
 
   useEffect(() => {
@@ -149,7 +159,18 @@ export default function InternalCatalogApp({ products, initialBooks, initialSess
     try {
       const updated = await updateOrderSession(selectedSession.id, { items: nextItems });
       setSessions((current) => current.map((session) => session.id === updated.id ? updated : session));
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Não foi possível atualizar o pedido.'); } finally { setSaving(false); }
+    } catch (error) {
+      // Sessão de upsell num pedido que já foi pago/cancelado em outro
+      // talão (ver closeOpenOrderSessionRowsByOrder no backend): não
+      // deveria mais acontecer, mas se acontecer o refresh() traz a lista
+      // real de volta em vez de deixar a vendedora presa numa sessão morta.
+      if (error instanceof Error && error.message === 'ORDER_ALREADY_FINALIZED') {
+        setMessage('Este pedido já foi finalizado em outro talão. Atualizando a lista...');
+        void refresh();
+      } else {
+        setMessage(error instanceof Error ? error.message : 'Não foi possível atualizar o pedido.');
+      }
+    } finally { setSaving(false); }
   }
 
   async function cancelBook(book: OrderBook) {
@@ -214,7 +235,7 @@ export default function InternalCatalogApp({ products, initialBooks, initialSess
       secondaryActions={<>
         <Link href="/workspace" className={`${adminUi.button} inline-flex items-center gap-2`}><ArrowLeft className="size-4" />Voltar ao workspace</Link>
         <button type="button" className={`${adminUi.button} inline-flex items-center gap-2`} onClick={() => setSharing(true)}><Copy className="size-4" />Gerar link público</button>
-        <select aria-label="Talão atual" value={selectedBookId} onChange={(event) => void selectBook(event.target.value)} className="min-h-10 rounded-control border border-border bg-white px-3 text-sm">{books.map((book) => <option key={book.id} value={book.id}>{book.name}{book.isActive ? ' · atual' : ''}{book.status === 'fechado' ? ' · fechado' : ''}</option>)}</select>
+        <select aria-label="Talão atual" value={selectedBookId} onChange={(event) => void selectBook(event.target.value)} className="min-h-10 rounded-control border border-border bg-white px-3 text-sm">{books.map((book) => <option key={book.id} value={book.id}>{book.name}{book.isActive ? ' · atual' : ''}</option>)}</select>
         <button type="button" className={adminUi.button} onClick={() => setCreatingBook(true)}>Novo talão</button>
         <Sheet open={isBookPanelOpen} onOpenChange={setBookPanelOpen}>
           <SheetTrigger asChild>
@@ -239,7 +260,7 @@ export default function InternalCatalogApp({ products, initialBooks, initialSess
 
       <section className="min-w-0"><div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-lg font-bold">Peças</h2><p className="mt-1 text-sm text-brand-muted">{selectedSession ? `Adicionando em: ${selectedSession.clientName || 'pedido sem cliente'}` : 'Selecione ou crie um pedido para adicionar peças.'}</p>{selectedSession && presence.length > 0 && <p className="mt-1 text-xs text-brand-muted">{presence.length === 1 ? 'Somente você está neste pedido.' : `${presence.length} pessoas estão acompanhando este pedido agora.`}</p>}</div><input className={publicUi.search} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar peça, SKU ou categoria" /></div><div className={publicUi.grid}>{filteredProducts.map((product) => <CatalogCard key={product.id} product={product} onOpen={() => setSelectedProduct(product)} />)}</div>{filteredProducts.length === 0 && <p className="py-12 text-center text-sm text-brand-muted">Nenhuma peça encontrada.</p>}</section>
     </main>
-    {selectedSession && <OrderSessionPeople presence={presence} participants={participants} className="fixed top-20 right-5 z-50 w-[min(22rem,calc(100vw-2.5rem))]" />}
+    {selectedSession && <OrderSessionPeopleWidget presence={presence} participants={participants} className="fixed top-20 right-5 z-50" />}
 
     <ProductSheet product={selectedProduct} session={selectedSession} saving={saving} onClose={() => setSelectedProduct(null)} onChange={changeVariant} />
     <ConfirmDialog open={!!sessionToCancel} onOpenChange={(open) => !open && setSessionToCancel(null)} title="Cancelar pedido?" description={`O pedido de ${sessionToCancel?.clientName || 'sem cliente'} continuará disponível para reativação.`} confirmLabel="Cancelar pedido" destructive onConfirm={() => sessionToCancel ? setSessionStatus(sessionToCancel, 'cancelado') : undefined} />

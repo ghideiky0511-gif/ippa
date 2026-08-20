@@ -73,6 +73,14 @@ export async function proxy(request: NextRequest) {
 
   if (pathname.startsWith('/api/control-session/')) return NextResponse.next();
 
+  // A raiz pertence ao site institucional. Ela não deve escolher nem expor
+  // um tenant de demonstração (ou qualquer tenant da plataforma).
+  if (pathname === '/') {
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set('x-ippa-institutional', '1');
+    return NextResponse.next({ request: { headers: requestHeaders } });
+  }
+
   if (pathname === '/control' || pathname.startsWith('/control/')) {
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set('x-ippa-control', '1');
@@ -97,7 +105,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.rewrite(target);
   }
 
-  if (!slugFromPath) return NextResponse.redirect(new URL('/demo/', request.url));
+  if (!slugFromPath) return NextResponse.redirect(new URL('/', request.url));
   const tenantPrefix = `/${slugFromPath}`;
   const tenantPath = pathname.slice(tenantPrefix.length) || '/';
 

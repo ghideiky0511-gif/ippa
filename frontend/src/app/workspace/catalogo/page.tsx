@@ -12,7 +12,7 @@ export default async function CatalogoPage() {
   let loadError: string | null = null;
 
   try {
-    [products, books, sessions] = await Promise.all([fetchCatalog(), fetchOrderBooks(), fetchOrderSessions()]);
+    [products, books, sessions] = await Promise.all([fetchCatalog(), fetchOrderBooks('aberto'), fetchOrderSessions()]);
   } catch (err) {
     loadError = err instanceof Error ? err.message : 'Erro desconhecido';
   }

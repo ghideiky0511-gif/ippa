@@ -13,12 +13,16 @@ export interface OrderBookRow {
 
 const fields = "id, seller_id, name, status, is_active, created_at, updated_at";
 
-export async function listOrderBookRowsBySeller(client: PoolClient, sellerId: string): Promise<OrderBookRow[]> {
+export async function listOrderBookRowsBySeller(
+    client: PoolClient,
+    sellerId: string,
+    status?: OrderBookRow["status"],
+): Promise<OrderBookRow[]> {
     const result = await client.query<OrderBookRow>(
         `SELECT ${fields} FROM order_books
-         WHERE tenant_id = app_tenant_id() AND seller_id = $1
+         WHERE tenant_id = app_tenant_id() AND seller_id = $1 AND ($2::text IS NULL OR status = $2)
          ORDER BY is_active DESC, updated_at DESC`,
-        [sellerId],
+        [sellerId, status ?? null],
     );
     return result.rows;
 }

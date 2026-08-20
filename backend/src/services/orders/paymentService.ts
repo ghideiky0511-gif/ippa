@@ -4,7 +4,7 @@ import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser, CartItem, Discount, Order, OrderSession } from "@/lib/types";
 import {
-  closeOrderSessionRow,
+  closeOpenOrderSessionRowsByOrder,
   findOrderSessionRowByPaymentTokenHash,
   listOrderItemRowsByOrder,
   updateOrderRow,
@@ -99,8 +99,8 @@ export async function confirmPayment(
   token: string,
   paymentMethod?: string,
 ): Promise<{ ok: true; order: Order }> {
-  let changedSession: OrderSession | undefined;
-  const changes: { book?: OrderBookRow } = {};
+  let changedSessions: OrderSession[] = [];
+  let changedBooks: OrderBookRow[] = [];
   let recipient: Pick<AuthUser, "id" | "role" | "email" | "name"> | undefined;
   let sellerRecipient: Pick<AuthUser, "id" | "role"> | undefined;
   const order = await withTenantTransaction(tenant, {}, async (client) => {
@@ -118,17 +118,22 @@ export async function confirmPayment(
     if (!row) throw new NotFoundError("ORDER_NOT_FOUND");
     const seller = await findUserRowById(client, context.session.seller_id);
     if (seller) sellerRecipient = { id: seller.id, role: seller.role };
-    const closed = await closeOrderSessionRow(client, context.session.id);
-    if (closed) changedSession = toOrderSession(closed, context.items);
-    changes.book = (await closeOrderBookWhenFinished(client, context.session.order_book_id)) ?? undefined;
+    // Fecha toda sessão irmã ainda aberta apontando pro mesmo pedido
+    // (upsell entre talões) -- ver mesmo ajuste em finalizeOrderSession.
+    const closedRows = await closeOpenOrderSessionRowsByOrder(client, context.orderId);
+    changedSessions = closedRows.map((closedRow) => toOrderSession(closedRow, context.items));
+    const bookIds = new Set(closedRows.map((closedRow) => closedRow.order_book_id));
+    changedBooks = (await Promise.all(
+      [...bookIds].map((bookId) => closeOrderBookWhenFinished(client, bookId)),
+    )).filter((book): book is OrderBookRow => Boolean(book));
     if (context.session.client_id) {
       const user = await findUserRowByClientId(client, context.session.client_id);
       if (user) recipient = { id: user.id, role: user.role, email: user.email, name: user.name };
     }
     return toOrder(row, context.items);
   });
-  if (changedSession) notifySession(tenant.id, changedSession);
-  if (changes.book) notifyOrderBook(tenant.id, { sellerId: changes.book.seller_id });
+  for (const changedSession of changedSessions) notifySession(tenant.id, changedSession);
+  for (const book of changedBooks) notifyOrderBook(tenant.id, { sellerId: book.seller_id });
   notifyOrder(tenant.id, order);
   if (recipient) notifyOrderConfirmed(tenant, recipient, order);
   if (sellerRecipient) notifyNewOrderForSeller(tenant, sellerRecipient, order);

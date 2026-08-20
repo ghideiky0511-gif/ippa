@@ -31,6 +31,9 @@ export const dynamic = 'force-dynamic';
 
 export async function generateMetadata(): Promise<Metadata> {
   const incomingHeaders = await headers();
+  if (incomingHeaders.get('x-ippa-institutional') === '1') {
+    return { title: 'IPPA', description: 'Site institucional da IPPA' };
+  }
   if (incomingHeaders.get('x-ippa-control') === '1') {
     return { title: 'Control IPPA', description: 'Gestão de tenants da plataforma IPPA' };
   }
@@ -40,6 +43,13 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const incomingHeaders = await headers();
+  if (incomingHeaders.get('x-ippa-institutional') === '1') {
+    return (
+      <html lang="pt-BR" className={`${manrope.variable} ${cormorant.variable}`}>
+        <body className="min-h-screen bg-surface-muted font-sans text-foreground">{children}</body>
+      </html>
+    );
+  }
   if (incomingHeaders.get('x-ippa-control') === '1') {
     return (
       <html lang="pt-BR" className={`${manrope.variable} ${cormorant.variable}`}>

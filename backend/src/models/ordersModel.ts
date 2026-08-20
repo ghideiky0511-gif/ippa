@@ -172,15 +172,21 @@ export async function setOrderSessionPaymentTokenRow(
     return result.rows[0] ?? null;
 }
 
-export async function closeOrderSessionRow(client: PoolClient, id: string): Promise<OrderSessionRow | null> {
+// Upsell reaproveita o mesmo order_id entre sessões de talões diferentes
+// (ver createOrderSession/ensureCustomerOrderSession). Pagar uma delas fecha
+// o pedido inteiro, então toda sessão irmã ainda aberta precisa fechar junto
+// -- senão ela fica "aberta" na tela apontando pra um pedido já finalizado,
+// e qualquer edição nela quebra com ORDER_ALREADY_FINALIZED.
+export async function closeOpenOrderSessionRowsByOrder(client: PoolClient, orderId: string): Promise<OrderSessionRow[]> {
     const result = await client.query<OrderSessionRow>(
         `UPDATE order_sessions SET status = 'fechado', payment_token_hash = NULL,
            payment_token_created_at = NULL, updated_at = now()
-         WHERE tenant_id = app_tenant_id() AND id = $1
+         WHERE tenant_id = app_tenant_id() AND order_id = $1
+           AND status IN ('aberto', 'aguardando_pagamento')
          RETURNING ${sessionFields}`,
-        [id],
+        [orderId],
     );
-    return result.rows[0] ?? null;
+    return result.rows;
 }
 
 export async function cancelOpenOrderSessionRowsByBook(client: PoolClient, orderBookId: string): Promise<OrderSessionRow[]> {

@@ -1,31 +1,45 @@
 # Plano — próximos passos
 
 > Nota de estrutura: código fica em `backend/` (API) e `frontend/` (site
-> público + workspace interno em `frontend/src/app/workspace`). As rotas
+> público + workspace interno em `frontend/src/app/workspace` + painel de
+> plataforma em `frontend/src/app/control`, acima dos tenants). As rotas
 > antigas `web/`/`admin/` não existem mais. Este documento foi limpo em
-> 2026-08-19: tudo que já estava implementado (carrinho, quick-view,
-> talão de pedidos, login/cadastro de cliente e vendedora, SSE em tempo
-> real, roteamento automático de cliente pra vendedora, cadastro de
-> cliente pelo talão, descontos, coleções, editor de home/catálogo,
-> preço sugerido + markup, produtos similares, liga/desliga de
-> ferramentas) foi removido — só ficou o que falta.
+> 2026-08-19 e reverificado em 2026-08-20: tudo que já estava implementado
+> (carrinho, quick-view, talão de pedidos, login/cadastro de cliente e
+> vendedora, SSE em tempo real, roteamento automático de cliente pra
+> vendedora, cadastro de cliente pelo talão, descontos, coleções, editor
+> de home/catálogo, preço sugerido + markup, produtos similares,
+> liga/desliga de ferramentas, painel de plataforma `/control` com
+> import de catálogo via Vesti) foi removido — só ficou o que falta.
 
-## Pendências reais (verificado contra o código em 2026-08-19)
+## Pendências reais (verificado contra o código em 2026-08-20)
 
 ### Integração ERP / dado real
-- **ERP real parcialmente ligado**: existe provider `totvsmoda` de
-  verdade (`backend/src/erp/providers/totvsmoda/`, cliente HTTP +
-  mapper) ao lado do `mock`, com ativação/teste por tenant
-  (`erp-integration/activate|test|deactivate`,
-  `backend/src/services/erp/erpSyncService.ts`). Falta confirmar/garantir
-  que o catálogo público de cada tenant configurado usa o provider real
-  por padrão, não o mock.
-- **Pedido não é enviado ao ERP**: `orderService.createCustomerOrder`
-  grava só no Postgres (`insertOrderRow`/`insertOrderItemRow`) e dispara
-  SSE/notificação — não chama nenhum provider de ERP. Falta decidir e
-  implementar esse envio (ex. criação de pedido no TOTVS Moda).
+
+- **Sync do ERP (TOTVS Moda) é código morto**: `erpSyncService.ts`
+  (`syncTenantProducts`, `syncTenantClients`, `syncTenantCompanies`,
+  `syncTenantOrders`) implementa a importação real de produtos, clientes,
+  empresas e pedidos do TOTVS Moda pro Postgres — mas nenhuma dessas
+  funções é chamada por rota, cron ou script nenhum hoje. O provider
+  `totvsmoda` (`backend/src/erp/providers/totvsmoda/`) só é usado hoje
+  pra **ativar/testar credenciais** (`erp-integration/activate|test`),
+  não pra popular dado nenhum. `catalogService.listCatalog` lê só a
+  tabela local `products` — nunca reflete o TOTVS Moda automaticamente.
+  Falta ligar esse sync a algo (rota manual, webhook ou cron).
+- **Existe um segundo pipeline de catálogo que funciona de verdade**:
+  o painel de plataforma `/control/[tenant]/detail` importa catálogo via
+  **Vesti** (`vestiCatalogService.importVestiCatalog`, grava direto em
+  `products`/`product_variants`) — diferente do ERP, esse caminho está
+  conectado e é usado. Vale decidir se o plano é migrar tenants do Vesti
+  pro TOTVS Moda, manter os dois, ou terminar de ligar o sync do TOTVS.
+- **Pedido não é enviado a nenhum ERP**: `orderService.createCustomerOrder`
+  (`backend/src/services/orders/orderService.ts`) grava só no Postgres e
+  dispara SSE/notificação — não chama nenhum provider. O único código que
+  liga pedido↔ERP é `syncTenantOrders`, no sentido contrário (puxar pedido
+  do ERP pra cá), e está com o mesmo problema: implementado, não chamado.
 
 ### Frete e pagamento (hoje mock)
+
 - **Frete continua mockado**: `frontend/src/lib/shipping.ts` retorna
   uma lista fixa de opções; CEP não influencia o cálculo. Falta cotação
   real de transportadora.
@@ -34,6 +48,7 @@
   reais). Falta integração de pagamento de verdade.
 
 ### Ferramentas do catálogo ainda sem UI
+
 - **Assinatura digital**: nunca foi implementada (nem tipo, nem toggle,
   nem UI) — era pra ser liga/desliga por cliente, não por loja inteira,
   diferente do padrão das outras ferramentas em `/ferramentas`.
@@ -52,17 +67,20 @@
   sozinho) — é um paradigma novo, não extensão do que existe.
 
 ### Multi-tenant
+
 - Multi-tenant funcional hoje é **por path** (`tenantSlug` na URL,
   `backend/src/lib/http/tenantRoute.ts`). Falta (se for necessário)
   resolução por domínio/subdomínio próprio por loja — hoje não existe
   lookup de tenant por `host`.
 
 ## Fase 3 — IA (não iniciado)
+
 Geração de imagem↔descrição e montagem de carrinho a partir de texto
 livre do WhatsApp — depende do ERP real e do fluxo de pedido→ERP acima
 estarem no ar antes de valer a pena investir.
 
 ## Estratégia de tempo real — decisão já aplicada
+
 SSE por sessão (não WebSocket) foi a escolha para talão/pedido, e já
 está implementado (`backend/src/lib/sseHub.ts`,
 `backend/src/realtime/`, `frontend/src/lib/realtime/usePedidoRealtime.ts`).
@@ -77,6 +95,7 @@ complementar (Bippa), não este projeto. Se algum dia entrar aqui, é o
 caso que justificaria WebSocket de verdade (bidirecional).
 
 ## Fora de escopo por enquanto
+
 - Cobrança real (gateway de pagamento) e cotação real de frete — mock,
   ver acima.
 - Separação de pedidos no depósito (escopo do Bippa, produto
