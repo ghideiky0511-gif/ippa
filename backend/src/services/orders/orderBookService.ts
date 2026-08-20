@@ -12,7 +12,7 @@ import {
 } from "@/models/orderBooksModel";
 import { cancelOpenOrderSessionRowsByBook } from "@/models/ordersModel";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
-import { notifyOrderBook, notifySession } from "@/lib/sseHub";
+import { notifyOrderBook, notifySession } from "@/services/realtime/updateBroadcast";
 import { toOrderSession } from "./orderMapper";
 import { getOrderBookSessionState } from "./orderBookLifecycle";
 

@@ -2,14 +2,6 @@ import { randomUUID } from "node:crypto";
 import { isIP } from "node:net";
 import { NextRequest, NextResponse } from "next/server";
 import { resolveTenantRoute, isTenantRouteError } from "@/lib/http/tenantRoute";
-import {
-    clientSubject,
-    ordersSubject,
-    sellerSubject,
-    sessionSubject,
-    subscribe,
-    unsubscribe,
-} from "@/lib/sseHub";
 import * as authentication from "@/services/auth";
 import type { AuditRequestContext } from "@/services/audit";
 import * as catalog from "@/services/catalog";
@@ -22,7 +14,7 @@ import * as settings from "@/services/settings";
 import { NotFoundError, ServiceError } from "@/services/shared/errors";
 import * as users from "@/services/users";
 import * as pushNotifications from "@/services/notifications/pushNotificationService";
-import { mintRealtimeTicket } from "@/services/realtime/ticketService";
+import { mintRealtimeTicket, mintUpdatesRealtimeTicket } from "@/services/realtime/ticketService";
 import { errorMeta, logger } from "@/lib/logger";
 
 type RouteContext = { params: Promise<{ tenantSlug: string; path: string[] }> };
@@ -152,58 +144,6 @@ async function execute(
         logger.error("tenant-api", "Erro inesperado ao executar operação", errorMeta(error));
         throw error;
     }
-}
-
-function eventStream(
-    request: NextRequest,
-    user: import("@/lib/types").AuthUser,
-    tenantId: string,
-    subjectOverride?: string,
-): Response {
-    const subject =
-        subjectOverride ??
-        (user.role === "administrador" && user.permissions?.adminAccess === true
-            ? ordersSubject(tenantId)
-            : user.role === "vendedora"
-              ? sellerSubject(user.id)
-              : user.role === "cliente" && user.clientId
-                ? clientSubject(user.clientId)
-                : user.role !== "cliente"
-                  ? ordersSubject(tenantId)
-                  : null);
-    if (!subject) return new Response("Não autenticado.", { status: 401 });
-    let controllerRef: ReadableStreamDefaultController<Uint8Array> | null =
-        null;
-    let heartbeat: ReturnType<typeof setInterval>;
-    const stream = new ReadableStream<Uint8Array>({
-        start(controller) {
-            controllerRef = controller;
-            subscribe(subject, controller);
-            controller.enqueue(new TextEncoder().encode(": conectado\n\n"));
-            heartbeat = setInterval(() => {
-                try {
-                    controller.enqueue(new TextEncoder().encode(": ping\n\n"));
-                } catch {
-                    clearInterval(heartbeat);
-                }
-            }, 25_000);
-        },
-        cancel() {
-            clearInterval(heartbeat);
-            if (controllerRef) unsubscribe(subject, controllerRef);
-        },
-    });
-    request.signal.addEventListener("abort", () => {
-        clearInterval(heartbeat);
-        if (controllerRef) unsubscribe(subject, controllerRef);
-    });
-    return new Response(stream, {
-        headers: {
-            "Content-Type": "text/event-stream",
-            "Cache-Control": "no-cache, no-transform",
-            Connection: "keep-alive",
-        },
-    });
 }
 
 export async function OPTIONS() {
@@ -346,24 +286,6 @@ export async function GET(
                 request.nextUrl.searchParams.get("endpoint") ?? undefined,
             ),
         );
-    if (path[0] === "sessions" && path[1] && path[2] === "stream") {
-        const allowed = await orders.canAccessOrderSession(
-            route.tenant,
-            session.user,
-            path[1],
-        );
-        if (!allowed)
-            return NextResponse.json(
-                { error: "Sem permissÃ£o." },
-                { status: 403 },
-            );
-        return eventStream(
-            request,
-            session.user,
-            route.tenant.id,
-            sessionSubject(path[1]),
-        );
-    }
     switch (endpoint) {
         case "clients":
             return execute(() =>
@@ -383,8 +305,6 @@ export async function GET(
             return execute(() =>
                 orders.customerActiveSession(route.tenant, session.user),
             );
-        case "sessions/stream":
-            return eventStream(request, session.user, route.tenant.id);
         case "orders":
             return execute(() => orders.userOrders(route.tenant, session.user));
         case "admin/orders":
@@ -682,6 +602,17 @@ export async function POST(
                 ),
             201,
         );
+    if (endpoint === "sessions/mine")
+        return execute(() =>
+            orders.ensureCustomerOrderSession(
+                route.tenant,
+                authenticated.user,
+                body,
+                mutationContext,
+            ),
+        );
+    if (endpoint === "realtime-ticket")
+        return execute(async () => mintUpdatesRealtimeTicket(route.tenant, authenticated.user));
     if (endpoint === "order-books")
         return execute(
             () =>

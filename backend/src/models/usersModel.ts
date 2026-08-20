@@ -122,6 +122,19 @@ export async function listOnlineSellerIds(client: PoolClient): Promise<string[]>
     return result.rows.map((row) => row.id);
 }
 
+/** Administradoras ativas formam a fila de cobertura quando não há vendedora. */
+export async function listOnlineAdministratorIds(client: PoolClient): Promise<string[]> {
+    const result = await client.query<{ id: string }>(
+        `SELECT DISTINCT users.id FROM users
+         JOIN user_sessions ON user_sessions.user_id = users.id
+         WHERE users.tenant_id = app_tenant_id() AND users.role = 'administrador'
+           AND users.deleted_at IS NULL AND user_sessions.revoked_at IS NULL
+           AND user_sessions.expires_at > now()
+         ORDER BY users.id`,
+    );
+    return result.rows.map((row) => row.id);
+}
+
 export async function revokeUserSessionRows(client: PoolClient, userId: string): Promise<void> {
     await client.query(
         `UPDATE user_sessions SET revoked_at = now()

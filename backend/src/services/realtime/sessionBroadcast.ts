@@ -1,7 +1,7 @@
 import type { Namespace } from "socket.io";
 import type { OrderSession } from "@/lib/types";
 
-// Igual ao motivo documentado em lib/sseHub.ts: este módulo é importado tanto
+// Este módulo é importado tanto
 // pelo server.js (processo único, plano) quanto por orderSessionService.ts
 // (carregado pelas rotas Next, que em dev pode acabar em instâncias de
 // módulo separadas) — globalThis garante uma referência só pro processo

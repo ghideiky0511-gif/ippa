@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { Order, OrderSession } from '@/domain/orders/types';
 import { adminUi } from '@/workspace/lib/ui';
 import { fetchOrders, fetchOrderSessions } from '@/workspace/lib/ordersClient';
@@ -9,7 +9,7 @@ import { KpiCard } from '@/workspace/components/shared/KpiCard';
 import { ResponsiveDataTable } from '@/workspace/components/shared/ResponsiveDataTable';
 import { CreateOrderModal } from './OrderTalaoModal';
 import Link from '@/components/TenantLink';
-import { apiEventSource } from '@/lib/api-client';
+import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -53,12 +53,9 @@ export default function OrdersApp({
     }
   }, []);
 
-  useEffect(() => {
-    const source = apiEventSource('/api/sessions/stream');
-    source.addEventListener('sessions-updated', refresh);
-    source.addEventListener('orders-updated', refresh);
-    return () => source.close();
-  }, [refresh]);
+  useUpdatesRealtime((update) => {
+    if (update === 'sessions_updated' || update === 'orders_updated') void refresh();
+  });
 
   const normalizedQuery = query.trim().toLowerCase();
   const activeSessions = useMemo(() => sessions.filter((session) => session.status === 'aberto' || session.status === 'aguardando_pagamento'), [sessions]);
@@ -128,10 +125,10 @@ export default function OrdersApp({
               { key: 'channel', header: 'Canal', cell: (session) => session.channel },
               { key: 'items', header: 'Peças', cell: (session) => itemCount(session.items) },
               { key: 'total', header: 'Total', cell: (session) => formatCurrency(sessionTotal(session)) },
-              { key: 'actions', header: '', cell: () => <Link href="/workspace/catalogo" className={adminUi.button}>Abrir no catálogo</Link> },
+              { key: 'actions', header: '', cell: (session) => <Link href={`/workspace/catalogo?session=${encodeURIComponent(session.id)}`} className={adminUi.button}>Entrar no atendimento</Link> },
             ]}
             mobileCard={(session) => (
-              <Link href="/workspace/catalogo" className="block rounded-brand border border-border bg-surface p-4 active:scale-[.99]">
+              <Link href={`/workspace/catalogo?session=${encodeURIComponent(session.id)}`} className="block rounded-brand border border-border bg-surface p-4 active:scale-[.99]">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="truncate font-semibold text-foreground">{session.clientId ? session.clientName : 'Sem cliente'}</p>

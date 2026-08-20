@@ -1,6 +1,7 @@
 'use client';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { CartItem, OrderSession, ShippingOption } from '@/domain/orders/types';
+import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
 
 interface TalaoContextValue {
   sessions: OrderSession[]; // todas (aberta + fechada) — usado por "buscar existentes"
@@ -55,19 +56,9 @@ export function TalaoProvider({ children }: { children: ReactNode }) {
       .catch(() => {});
   }, []);
 
-  // Tempo real: se a cliente pagar um pedido de talão pelo link (outro
-  // navegador, sem essa vendedora fazer nada) enquanto o talão está aberto
-  // aqui, a sessão vira 'fechado' sozinha sem precisar de F5 — ver
-  // web/src/lib/sseHub.ts e POST /api/pay/[token]/route.ts (quem dispara o
-  // evento). Refetch simples em vez de tentar aplicar um diff — o volume de
-  // eventos é baixo (só na confirmação de pagamento).
-  useEffect(() => {
-    const source = new EventSource('/api/sessions/stream');
-    source.addEventListener('sessions-updated', () => {
-      refetchSessions();
-    });
-    return () => source.close();
-  }, []);
+  useUpdatesRealtime((update) => {
+    if (update === 'sessions_updated' || update === 'order_books_updated') void refetchSessions();
+  });
 
   const openSessions = sessions.filter((s) => s.status === 'aberto' || s.status === 'aguardando_pagamento');
   const activeSession = sessions.find((s) => s.id === activeSessionId) || null;

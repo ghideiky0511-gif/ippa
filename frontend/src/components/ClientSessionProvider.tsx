@@ -3,7 +3,8 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { toast } from 'sonner';
 import type { CartItem, OrderSession, ShippingOption } from '@/domain/orders/types';
 import { pedidoRealtimeEventMessage, usePedidoRealtime, type PedidoParticipant, type PedidoPresence } from '@/lib/realtime/usePedidoRealtime';
-import { apiEventSource, apiFetch } from '@/lib/api-client';
+import { apiFetch } from '@/lib/api-client';
+import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
 
 // Contrato mínimo que CartProvider.tsx precisa pra escrever num pedido
 // compartilhado — mesmo formato que TalaoProvider.tsx expõe (ver
@@ -15,6 +16,7 @@ interface ClientSessionContextValue {
   participants: PedidoParticipant[];
   updateActiveItems: (items: CartItem[]) => Promise<void>;
   updateActiveShipping: (shipping: ShippingOption | null) => Promise<void>;
+  adoptSession: (session: OrderSession) => void;
 }
 
 const ClientSessionContext = createContext<ClientSessionContextValue | null>(null);
@@ -54,11 +56,9 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
     onEvent: (event) => toast.info(pedidoRealtimeEventMessage(event)),
   });
 
-  useEffect(() => {
-    const source = apiEventSource('/api/sessions/stream');
-    source.addEventListener('sessions-updated', () => refetch());
-    return () => source.close();
-  }, []);
+  useUpdatesRealtime((update) => {
+    if (update === 'sessions_updated') void refetch();
+  });
 
   async function updateActiveItems(items: CartItem[]) {
     if (!activeSession) return;
@@ -82,8 +82,12 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
     });
   }
 
+  function adoptSession(session: OrderSession) {
+    setActiveSession(session);
+  }
+
   const value = useMemo<ClientSessionContextValue>(
-    () => ({ activeSession, presence, participants, updateActiveItems, updateActiveShipping }),
+    () => ({ activeSession, presence, participants, updateActiveItems, updateActiveShipping, adoptSession }),
     [activeSession, participants, presence]
   );
 

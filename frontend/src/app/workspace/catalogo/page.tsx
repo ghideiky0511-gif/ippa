@@ -1,4 +1,5 @@
 import InternalCatalogApp from '@/workspace/components/catalog/InternalCatalogApp';
+import { Suspense } from 'react';
 import { fetchCatalog } from '@/workspace/lib/catalogClient.server';
 import { fetchOrderBooks, fetchOrderSessions } from '@/workspace/lib/ordersClient.server';
 
@@ -28,5 +29,9 @@ export default async function CatalogoPage() {
   // fetchCatalog() já vem na ordem salva (GET /api/catalog aplica
   // applyCatalogOrder em web/src/lib/catalog.ts) — o estado inicial do
   // editor é só isso, sem precisar buscar a ordem separadamente.
-  return <InternalCatalogApp products={products} initialBooks={books} initialSessions={sessions} />;
+  return (
+    <Suspense>
+      <InternalCatalogApp products={products} initialBooks={books} initialSessions={sessions} />
+    </Suspense>
+  );
 }

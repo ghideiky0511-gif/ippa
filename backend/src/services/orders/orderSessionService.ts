@@ -1,6 +1,6 @@
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
-import type { AuthUser, Order, OrderSession, OrderSessionParticipant } from "@/lib/types";
+import type { AuthUser, CartItem, Order, OrderSession, OrderSessionParticipant } from "@/lib/types";
 import {
     findLatestOpenOrderSessionRowByClient,
     findOrderSessionRow,
@@ -16,6 +16,7 @@ import {
     updateOrderSessionRow,
     updateOrderRow,
     closeOrderSessionRow,
+    countOpenOrderSessionRowsBySeller,
 } from "@/models/ordersModel";
 import { getOrCreateOpenOrder, syncOrderItems } from "./orderItemSync";
 import {
@@ -24,15 +25,17 @@ import {
     upsertOrderSessionParticipantRow,
 } from "@/models/orderSessionParticipantsModel";
 import { findClientRow, updateClientRow } from "@/models/clientsModel";
-import { findUserRowById } from "@/models/usersModel";
+import { findUserRowById, listOnlineAdministratorIds, listOnlineSellerIds } from "@/models/usersModel";
+import { findStoreSettingsRow } from "@/models/settingsModel";
 import { listUsersByIds } from "@/services/users";
 import { recordAuditEvent, ORDER_SESSION_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
-import { notifyOrder, notifyOrderBook, notifySession } from "@/lib/sseHub";
+import { notifyOrder, notifyOrderBook, notifySession } from "@/services/realtime/updateBroadcast";
 import { scheduleSessionBroadcast } from "@/services/realtime/sessionBroadcast";
 import { findActiveOrderBookRow, findOrderBookRow, insertOrderBookRow, reopenOrderBookRow, type OrderBookRow } from "@/models/orderBooksModel";
 import { closeOrderBookWhenFinished } from "./orderBookLifecycle";
 import { toOrder, toOrderSession } from "./orderMapper";
+import { pickSeller } from "./sellerAssignmentService";
 
 function canManageSession(user: AuthUser, sellerId: string): boolean {
     return user.role !== "cliente" && (user.role !== "vendedora" || sellerId === user.id);
@@ -123,6 +126,95 @@ export async function customerActiveSession(tenant: Tenant, user: AuthUser): Pro
         ]);
         return { ...toOrderSession(row, items.map((item) => item.snapshot)), sellerName: seller?.name };
     });
+}
+
+/** Cria uma sessão online para a cliente somente quando ela tem peças no carrinho. */
+export async function ensureCustomerOrderSession(
+    tenant: Tenant,
+    user: AuthUser,
+    body: { items?: unknown },
+    context: AuditRequestContext,
+): Promise<OrderSession | null> {
+    if (user.role !== "cliente" || !user.clientId) throw new ForbiddenError();
+    const requestedItems = Array.isArray(body.items) ? body.items as CartItem[] : [];
+    if (!requestedItems.some((item) => item && typeof item === "object" && item.qty > 0)) return null;
+
+    const result = await withTenantTransaction(tenant, user, async (client) => {
+        const registration = await findClientRow(client, user.clientId!);
+        if (!registration) throw new NotFoundError("CLIENT_NOT_FOUND");
+        // Duas abas podem promover o mesmo localStorage ao mesmo tempo. O
+        // lock transacional serializa essa passagem e mantém a idempotência
+        // também fora do controle do React.
+        await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`customer-session:${registration.id}`]);
+
+        // Idempotência na hidratação/retries do browser: uma cliente só tem
+        // uma sessão aberta e novas peças serão gravadas pelo PUT normal.
+        const existing = await findLatestOpenOrderSessionRowByClient(client, registration.id);
+        if (existing) {
+            const items = (await listOrderSessionItemRowsBySession(client, existing.id)).map((item) => item.snapshot);
+            return { session: toOrderSession(existing, items), created: false };
+        }
+
+        // A cliente volta para a última vendedora que a atendeu. Sem esse
+        // vínculo, aplica a estratégia configurada entre vendedoras online.
+        const [sellerIds, administratorIds, openCounts, settings] = await Promise.all([
+            listOnlineSellerIds(client),
+            listOnlineAdministratorIds(client),
+            countOpenOrderSessionRowsBySeller(client),
+            findStoreSettingsRow(client),
+        ]);
+        // A vendedora recebe apenas sua carteira e somente enquanto estiver
+        // ativa. Sem vendedora disponível, a administradora ativa cobre a fila.
+        let sellerId = registration.last_seller_id && sellerIds.includes(registration.last_seller_id)
+            ? registration.last_seller_id
+            : pickSeller(sellerIds, openCounts, settings?.assignment_strategy ?? undefined);
+        if (!sellerId) sellerId = administratorIds[0] ?? null;
+        if (!sellerId) return { session: null, created: false };
+
+        const book = (await findActiveOrderBookRow(client, sellerId))
+            ?? await insertOrderBookRow(client, sellerId, "Atendimentos online");
+        const order = await getOrCreateOpenOrder(client, {
+            clientId: registration.id,
+            sellerId,
+            clientName: registration.name,
+            channel: "online",
+        });
+        const row = await insertOrderSessionRow(client, {
+            orderBookId: book.id,
+            orderId: order?.id,
+            clientName: registration.name,
+            clientId: registration.id,
+            sellerId,
+            channel: "online",
+            status: "aberto",
+        });
+        for (const item of requestedItems) await insertOrderSessionItemRow(client, row.id, item);
+        if (order) {
+            await syncOrderItems(client, {
+                orderId: order.id,
+                currentItems: [],
+                nextItems: requestedItems,
+                actorId: user.id,
+                actorRole: user.role,
+            });
+        }
+        await updateClientRow(client, registration.id, { name: registration.name, lastSellerId: sellerId });
+        const session = toOrderSession(row, requestedItems);
+        await recordAuditEvent(client, {
+            action: ORDER_SESSION_AUDIT_ACTIONS.CREATED,
+            entityId: session.id,
+            actor: user,
+            context,
+            metadata: { channel: "online", hasClient: true, itemCount: requestedItems.length },
+        });
+        return { session, created: true };
+    });
+
+    if (result.session && result.created) {
+        notifySession(tenant.id, result.session);
+        scheduleSessionBroadcast(result.session);
+    }
+    return result.session;
 }
 
 export async function createOrderSession(

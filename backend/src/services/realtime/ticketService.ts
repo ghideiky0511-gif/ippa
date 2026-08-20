@@ -10,6 +10,18 @@ import { ForbiddenError, NotFoundError } from "@/services/shared/errors";
 
 const TICKET_TTL_MS = 60_000;
 
+interface UpdatesRealtimeTicket {
+    tenant: Tenant;
+    user: AuthUser;
+    expiresAt: number;
+}
+
+const globalForRealtimeTickets = globalThis as unknown as {
+    __updatesRealtimeTickets?: Map<string, UpdatesRealtimeTicket>;
+};
+const updatesRealtimeTickets = globalForRealtimeTickets.__updatesRealtimeTickets
+    ?? (globalForRealtimeTickets.__updatesRealtimeTickets = new Map());
+
 function digest(token: string): string {
     return createHash("sha256").update(token).digest("hex");
 }
@@ -22,6 +34,20 @@ export async function mintRealtimeTicket(tenant: Tenant, actor: AuthUser, sessio
         await insertRealtimeTicketRow(client, sessionId, actor.id, actor.role, digest(token), new Date(Date.now() + TICKET_TTL_MS));
     });
     return { token };
+}
+
+/** Ticket de uso único para o socket de atualizações de fila. */
+export function mintUpdatesRealtimeTicket(tenant: Tenant, user: AuthUser): { token: string } {
+    const token = randomBytes(24).toString("hex");
+    updatesRealtimeTickets.set(token, { tenant, user, expiresAt: Date.now() + TICKET_TTL_MS });
+    return { token };
+}
+
+export function consumeUpdatesRealtimeTicket(tenantSlug: string, token: string): UpdatesRealtimeTicket | null {
+    const ticket = updatesRealtimeTickets.get(token);
+    updatesRealtimeTickets.delete(token);
+    if (!ticket || ticket.expiresAt < Date.now() || ticket.tenant.slug !== tenantSlug) return null;
+    return ticket;
 }
 
 export interface ConsumedRealtimeTicket {

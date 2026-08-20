@@ -14,7 +14,9 @@ import type { OrderBook, OrderSession } from '@/domain/orders/types';
 import { adminUi } from '@/workspace/lib/ui';
 import Link from '@/components/TenantLink';
 import { useTenant } from '@/components/TenantProvider';
+import { useSearchParams } from 'next/navigation';
 import { pedidoRealtimeEventMessage, usePedidoRealtime, type PedidoParticipant, type PedidoPresence } from '@/lib/realtime/usePedidoRealtime';
+import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
 import { OrderSessionPeople } from '@/components/OrderSessionPeople';
 import CatalogProductCard from '@/components/CatalogProductCard';
 import ProductImage from '@/components/ProductImage';
@@ -59,10 +61,13 @@ function ShareCatalogSheet({ open, onOpenChange, publicPath }: { open: boolean; 
 
 export default function InternalCatalogApp({ products, initialBooks, initialSessions }: { products: Product[]; initialBooks: OrderBook[]; initialSessions: OrderSession[] }) {
   const { href } = useTenant();
+  const searchParams = useSearchParams();
+  const requestedSessionId = searchParams.get('session');
+  const initialRequestedSession = initialSessions.find((item) => item.id === requestedSessionId);
   const [books, setBooks] = useState(initialBooks);
   const [sessions, setSessions] = useState(initialSessions);
-  const [selectedBookId, setSelectedBookId] = useState(initialBooks.find((book) => book.isActive)?.id || '');
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [selectedBookId, setSelectedBookId] = useState(initialRequestedSession?.orderBookId || initialBooks.find((book) => book.isActive)?.id || '');
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(initialRequestedSession?.id || null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [search, setSearch] = useState('');
   const [isCreatingOrder, setCreatingOrder] = useState(false);
@@ -93,13 +98,9 @@ export default function InternalCatalogApp({ products, initialBooks, initialSess
     fetchActiveOrderBook().then((book) => { setBooks((current) => [book, ...current]); setSelectedBookId(book.id); }).catch(() => setMessage('Não foi possível abrir um talão agora.'));
   }, [books.length, selectedBookId]);
 
-  useEffect(() => {
-    const source = new EventSource('/api/sessions/stream');
-    const sync = () => { void refresh().catch(() => {}); };
-    source.addEventListener('sessions-updated', sync);
-    source.addEventListener('order-books-updated', sync);
-    return () => source.close();
-  }, [refresh]);
+  useUpdatesRealtime((update) => {
+    if (update === 'sessions_updated' || update === 'order_books_updated') void refresh().catch(() => {});
+  });
 
   const activeBook = books.find((book) => book.id === selectedBookId) || null;
   const bookSessions = useMemo(() => sessions.filter((session) => session.orderBookId === selectedBookId && (session.status === 'aberto' || session.status === 'aguardando_pagamento')), [sessions, selectedBookId]);

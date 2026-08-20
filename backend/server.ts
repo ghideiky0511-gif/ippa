@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import next from "next";
 import { Server } from "socket.io";
 import { setupPedidosNamespace } from "@/realtime/pedidosNamespace";
+import { setupUpdatesNamespace } from "@/realtime/updatesNamespace";
 
 // Custom server: só existe pra pendurar o WebSocket (Socket.IO) no mesmo
 // http.Server que atende as rotas Next — `next start` sozinho não expõe
@@ -48,6 +49,7 @@ app.prepare().then(() => {
         cors: { origin: allowedOrigins, credentials: false },
     });
     setupPedidosNamespace(io);
+    setupUpdatesNamespace(io);
 
     httpServer.listen(port, hostname, () => {
         console.log(`> Backend pronto em http://${hostname}:${port} (${dev ? "dev" : "production"})`);

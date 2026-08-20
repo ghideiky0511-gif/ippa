@@ -11,14 +11,14 @@ import {
 import { getOrCreateOpenOrder, syncOrderItems } from "@/services/orders/orderItemSync";
 import { toOrderSession } from "@/services/orders/orderMapper";
 import { findActiveOrderBookRow, insertOrderBookRow } from "@/models/orderBooksModel";
-import { listOnlineSellerIds } from "@/models/usersModel";
+import { listOnlineAdministratorIds, listOnlineSellerIds } from "@/models/usersModel";
 import { recordAuditEvent, ORDER_SESSION_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
 import { notifySignup } from "@/services/notifications";
 import { pickSeller } from "@/services/orders";
 import { ConflictError, ValidationError } from "@/services/shared/errors";
 import { findStoreSettingsRow } from "@/models/settingsModel";
 import { createUserRecord } from "@/services/users/userService";
-import { notifySession } from "@/lib/sseHub";
+import { notifySession } from "@/services/realtime/updateBroadcast";
 import { issueSession } from "./authenticationService";
 
 interface SignupResult { user: AuthUser; orderSession?: OrderSession }
@@ -34,12 +34,14 @@ async function createAssignedSession(
   items: CartItem[],
   context: AuditRequestContext,
 ): Promise<OrderSession | undefined> {
-  const [sellerIds, openCounts, settings] = await Promise.all([
+  const [sellerIds, administratorIds, openCounts, settings] = await Promise.all([
     listOnlineSellerIds(client),
+    listOnlineAdministratorIds(client),
     countOpenOrderSessionRowsBySeller(client),
     findStoreSettingsRow(client),
   ]);
-  const sellerId = pickSeller(sellerIds, openCounts, settings?.assignment_strategy ?? undefined);
+  const sellerId = pickSeller(sellerIds, openCounts, settings?.assignment_strategy ?? undefined)
+    ?? administratorIds[0];
   if (!sellerId) return undefined;
   const book = (await findActiveOrderBookRow(client, sellerId)) ?? await insertOrderBookRow(client, sellerId, "Atendimentos online");
   const order = await getOrCreateOpenOrder(client, { clientId: registration.id, sellerId, clientName: registration.name, channel: "online" });

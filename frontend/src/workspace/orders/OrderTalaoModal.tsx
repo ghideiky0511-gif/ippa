@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import type { Client } from '@/domain/clients/types';
 import type { CartItem, Order, OrderChannel, OrderSession } from '@/domain/orders/types';
@@ -13,7 +13,7 @@ import {
   searchOrderClients,
   updateOrderSession,
 } from '@/workspace/lib/ordersClient';
-import { apiEventSource } from '@/lib/api-client';
+import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -211,11 +211,9 @@ export function OrderTalaoModal({
   const [finalizing, setFinalizing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    const source = apiEventSource(`/api/sessions/${session.id}/stream`);
-    source.addEventListener('session-updated', onRefresh);
-    return () => source.close();
-  }, [onRefresh, session.id]);
+  useUpdatesRealtime((update) => {
+    if (update === 'sessions_updated') onRefresh();
+  });
 
   const productResults = useMemo(() => {
     const query = productQuery.trim().toLowerCase();

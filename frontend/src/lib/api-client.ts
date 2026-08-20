@@ -21,7 +21,3 @@ export function apiUrl(path: string): string {
 export function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   return fetch(apiUrl(path), { ...init, credentials: init.credentials ?? 'include' });
 }
-
-export function apiEventSource(path: string): EventSource {
-  return new EventSource(apiUrl(path), { withCredentials: true });
-}

@@ -145,7 +145,7 @@ export default function FretePage() {
   }
 
   // A cliente pagou pelo link (outra aba/dispositivo, sem a vendedora fazer
-  // nada aqui) — SSE já atualizou activeSession.status sozinho (ver
+  // nada aqui) — o Socket.IO já atualizou activeSession.status sozinho (ver
   // TalaoProvider.tsx), só faltava esta tela reagir em vez de continuar
   // mostrando "gerar link" como se nada tivesse acontecido (achado
   // reportado pelo usuário).

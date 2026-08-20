@@ -10,7 +10,7 @@ O fluxo do backend é `route -> service -> model`.
 Domínios atuais: `audit`, `auth`, `catalog`, `clients`, `companies`, `erp`, `home`,
 `notifications`, `orders`, `platform`, `recommendations`, `settings` e `users`.
 
-Integrações técnicas reutilizáveis, como o transporte de e-mail e o hub SSE,
+Integrações técnicas reutilizáveis, como o transporte de e-mail e o hub Socket.IO,
 permanecem em `lib`; a decisão de quando acioná-las pertence aos services.
 
 Ao crescer um domínio, crie serviços específicos dentro da pasta da entidade,

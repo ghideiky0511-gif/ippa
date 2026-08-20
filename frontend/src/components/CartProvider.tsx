@@ -4,7 +4,8 @@ import { useTalao } from './TalaoProvider';
 import { useClientSession } from './ClientSessionProvider';
 import { useAuthUser } from './AuthProvider';
 import { getCartDiscount, type AppliedDiscount } from '@/lib/discounts';
-import type { CartItem, Order, ShippingOption } from '@/domain/orders/types';
+import { apiFetch } from '@/lib/api-client';
+import type { CartItem, Order, OrderSession, ShippingOption } from '@/domain/orders/types';
 import type { Discount } from '@/domain/catalog/types';
 import type { Product } from '@/domain/products/types';
 
@@ -158,6 +159,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const clientOpen = clientSession?.activeSession && clientSession.activeSession.status !== 'fechado' && clientSession.activeSession.status !== 'cancelado' ? clientSession : null;
   const sessionActions = talaoOpen || clientOpen;
   const activeSession = sessionActions?.activeSession ?? null;
+  const latestCartRef = useRef<CartItem[]>(cart);
+
+  useEffect(() => {
+    latestCartRef.current = cart;
+  }, [cart]);
 
   // Hidrata o frete local a partir do que já estava salvo na sessão (ex.:
   // vendedora saiu de /frete e voltou, ou trocou de sessão ativa no talão)
@@ -230,20 +236,39 @@ export function CartProvider({ children }: { children: ReactNode }) {
     if (hydrated) window.localStorage.setItem(cartKeyRef.current, JSON.stringify(cart));
   }, [cart, hydrated]);
 
-  // Espelha o carrinho pessoal no cadastro da cliente logada — só captura
-  // de dado (Client.cart em types.ts), não afeta o que aparece na tela (a
-  // exibição continua vindo do localStorage acima). Fire-and-forget, mesmo
-  // espírito dos outros syncs deste arquivo.
+  // Promove o carrinho pessoal da cliente autenticada a um atendimento online.
+  const sessionBootstrapRef = useRef(false);
   useEffect(() => {
     if (!hydrated) return;
-    const clientId = authUserCtx.authUser?.role === 'cliente' ? authUserCtx.authUser.clientId : undefined;
-    if (!clientId) return;
-    fetch(`/api/clients/${clientId}/cart`, {
-      method: 'PUT',
+    if (authUserCtx.authUser?.role !== 'cliente' || !authUserCtx.authUser.clientId) return;
+    if (clientSession?.activeSession || sessionBootstrapRef.current) return;
+    if (!cart.some((item) => item.qty > 0)) return;
+
+    // A primeira peça promove o rascunho local a um atendimento online. A
+    // resposta entra no ClientSessionProvider e o Socket.IO passa a manter
+    // cliente e vendedora dentro da mesma sessão.
+    sessionBootstrapRef.current = true;
+    apiFetch('/api/sessions/mine', {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cart }),
-    }).catch(() => {});
-  }, [cart, hydrated, authUserCtx.authUser]);
+      body: JSON.stringify({ items: latestCartRef.current }),
+    })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const session = await response.json() as OrderSession | null;
+        if (!session) return null;
+        // Captura uma alteração feita enquanto a criação estava em voo.
+        const synced = await apiFetch(`/api/sessions/${session.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: latestCartRef.current }),
+        });
+        return synced.ok ? await synced.json() as OrderSession : session;
+      })
+      .then((session) => { if (session) clientSession?.adoptSession(session); })
+      .catch(() => {})
+      .finally(() => { sessionBootstrapRef.current = false; });
+  }, [cart, hydrated, authUserCtx.authUser?.clientId, authUserCtx.authUser?.role, clientSession]);
 
   function addToCart(
     product: Product,

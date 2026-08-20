@@ -14,7 +14,7 @@ import { getOrCreateOpenOrder, syncOrderItems } from "./orderItemSync";
 import { deleteClientCartRows } from "@/models/clientsModel";
 import { findUserRowById } from "@/models/usersModel";
 import { findStoreSettingsRow } from "@/models/settingsModel";
-import { notifyOrder, notifyOrderBook, notifySession } from "@/lib/sseHub";
+import { notifyOrder, notifyOrderBook, notifySession } from "@/services/realtime/updateBroadcast";
 import { notifyNewOrderForSeller, notifyOrderConfirmed } from "@/services/notifications";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
 import { toOrder, toOrderSession } from "./orderMapper";

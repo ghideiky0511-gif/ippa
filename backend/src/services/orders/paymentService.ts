@@ -17,7 +17,7 @@ import {
   listDiscountTierRows,
 } from "@/models/settingsModel";
 import { findUserRowByClientId, findUserRowById } from "@/models/usersModel";
-import { notifyOrder, notifyOrderBook, notifySession } from "@/lib/sseHub";
+import { notifyOrder, notifyOrderBook, notifySession } from "@/services/realtime/updateBroadcast";
 import { notifyNewOrderForSeller, notifyOrderConfirmed } from "@/services/notifications";
 import { GoneError, NotFoundError } from "@/services/shared/errors";
 import { getCartDiscount } from "@/services/settings";

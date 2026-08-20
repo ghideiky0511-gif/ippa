@@ -73,7 +73,7 @@ function sessionEvents(previous: OrderSession, current: OrderSession): PedidoRea
   return events;
 }
 
-function realtimeUrl(): string {
+export function realtimeUrl(): string {
   // O backend de WebSocket pode ficar em outra origem do frontend. Em
   // desenvolvimento o fallback acompanha a porta exposta pelo compose.
   return process.env.NEXT_PUBLIC_REALTIME_URL || 'http://localhost:3011';

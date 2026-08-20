@@ -6,7 +6,7 @@ import { findClientRow } from "@/models/clientsModel";
 import { findOrderSessionRow, listOrderSessionItemRowsBySession, setOrderSessionPaymentTokenRow } from "@/models/ordersModel";
 import { findUserRowByClientId } from "@/models/usersModel";
 import { notifyPaymentLink } from "@/services/notifications";
-import { notifySession } from "@/lib/sseHub";
+import { notifySession } from "@/services/realtime/updateBroadcast";
 import { scheduleSessionBroadcast } from "@/services/realtime/sessionBroadcast";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
 import { toOrderSession } from "./orderMapper";
