@@ -5,6 +5,7 @@ import { Fragment, useMemo, useState } from 'react';
 import WorkspaceNav from '@/workspace/navigation/WorkspaceNav';
 import { fetchUsers, deleteUser } from '@/workspace/lib/usersClient';
 import UserFormModal from './UserFormModal';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 const TABS = [
   { id: 'vendedoras', label: 'Vendedoras' },
@@ -76,6 +77,7 @@ export default function UsersApp({ initialUsers }) {
   const [expandedId, setExpandedId] = useState(null);
   const [modal, setModal] = useState(null); // { mode: 'create'|'edit', user? }
   const [deletingId, setDeletingId] = useState(null);
+  const [userToDelete, setUserToDelete] = useState(null);
 
   const byTab = useMemo(
     () => ({
@@ -106,8 +108,6 @@ export default function UsersApp({ initialUsers }) {
   }
 
   async function handleDelete(u) {
-    const label = u.role === 'cliente' ? 'esta cliente (login + cadastro)' : 'esta vendedora';
-    if (!window.confirm(`Excluir ${label} — ${u.name} (${u.email})? Não dá pra desfazer.`)) return;
     setDeletingId(u.id);
     try {
       await deleteUser(u.id);
@@ -198,7 +198,7 @@ export default function UsersApp({ initialUsers }) {
                         className={adminUi.iconButton}
                         title="Excluir usuário"
                         disabled={deletingId === u.id}
-                        onClick={() => handleDelete(u)}
+                        onClick={() => setUserToDelete(u)}
                       >
                         &times;
                       </button>
@@ -235,6 +235,7 @@ export default function UsersApp({ initialUsers }) {
           onSaved={handleSaved}
         />
       )}
+      <ConfirmDialog open={!!userToDelete} onOpenChange={(open) => !open && setUserToDelete(null)} title="Excluir usuário?" description={`Excluir ${userToDelete?.role === 'cliente' ? 'esta cliente e seu cadastro' : 'esta vendedora'} — ${userToDelete?.name || ''} (${userToDelete?.email || ''})? Esta ação não pode ser desfeita.`} confirmLabel="Excluir" destructive onConfirm={() => userToDelete ? handleDelete(userToDelete) : undefined} />
     </div>
   );
 }

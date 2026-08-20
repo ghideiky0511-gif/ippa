@@ -7,6 +7,7 @@ import { findOrderSessionRow, listOrderSessionItemRowsBySession, setOrderSession
 import { findUserRowByClientId } from "@/models/usersModel";
 import { notifyPaymentLink } from "@/services/notifications";
 import { notifySession } from "@/lib/sseHub";
+import { scheduleSessionBroadcast } from "@/services/realtime/sessionBroadcast";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
 import { toOrderSession } from "./orderMapper";
 
@@ -27,6 +28,7 @@ export async function createPaymentLink(
     const session = await findOrderSessionRow(client, sessionId);
     if (!session) throw new NotFoundError("SESSION_NOT_FOUND");
     if (session.seller_id !== actor.id) throw new ForbiddenError();
+    if (session.status === "cancelado") throw new ValidationError("SESSION_CANCELLED");
     const items = (await listOrderSessionItemRowsBySession(client, sessionId)).map((item) => item.snapshot)
       .filter((item) => item.qty > 0);
     if (items.length === 0) throw new ValidationError("EMPTY_ORDER");
@@ -42,7 +44,10 @@ export async function createPaymentLink(
     changedSession = toOrderSession(updated, items);
     return { id: user.id, role: user.role, email: user.email, name: user.name };
   });
-  if (changedSession) notifySession(tenant.id, changedSession);
+  if (changedSession) {
+    notifySession(tenant.id, changedSession);
+    scheduleSessionBroadcast(changedSession);
+  }
   notifyPaymentLink(tenant, recipient, `${publicOrigin}/${tenant.slug}/pagar/${token}`);
   return { token };
 }

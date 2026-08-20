@@ -835,6 +835,28 @@ CREATE INDEX order_sessions_tenant_seller_status_idx ON public.order_sessions US
 CREATE INDEX order_sessions_tenant_book_status_idx ON public.order_sessions USING btree (tenant_id, order_book_id, status, updated_at DESC);
 
 
+-- public.order_session_participants definiÃ§Ã£o
+
+-- Drop table
+
+-- DROP TABLE public.order_session_participants;
+
+CREATE TABLE public.order_session_participants (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NOT NULL,
+	order_session_id uuid NOT NULL,
+	user_id uuid NOT NULL,
+	first_joined_at timestamptz DEFAULT now() NOT NULL,
+	last_joined_at timestamptz DEFAULT now() NOT NULL,
+	last_left_at timestamptz NULL,
+	join_count int4 DEFAULT 1 NOT NULL,
+	CONSTRAINT order_session_participants_join_count_check CHECK ((join_count > 0)),
+	CONSTRAINT order_session_participants_pkey PRIMARY KEY (id),
+	CONSTRAINT order_session_participants_tenant_id_order_session_id_user_id_key UNIQUE (tenant_id, order_session_id, user_id)
+);
+CREATE INDEX order_session_participants_session_idx ON public.order_session_participants USING btree (tenant_id, order_session_id, last_joined_at DESC);
+
+
 -- public.order_books definição
 
 CREATE TABLE public.order_books (
@@ -958,6 +980,12 @@ ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_client_id_fkey F
 ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_order_book_id_fkey FOREIGN KEY (order_book_id) REFERENCES public.order_books(id) ON DELETE RESTRICT;
 ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id) ON DELETE RESTRICT;
 ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+-- public.order_session_participants chaves estrangeiras
+
+ALTER TABLE public.order_session_participants ADD CONSTRAINT order_session_participants_order_session_id_fkey FOREIGN KEY (order_session_id) REFERENCES public.order_sessions(id) ON DELETE CASCADE;
+ALTER TABLE public.order_session_participants ADD CONSTRAINT order_session_participants_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
 
 
 -- public.orders chaves estrangeiras

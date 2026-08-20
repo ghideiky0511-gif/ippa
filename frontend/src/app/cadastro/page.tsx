@@ -47,8 +47,25 @@ export default function CadastroPage() {
   const [neighborhood, setNeighborhood] = useState('');
   const [city, setCity] = useState('');
   const [state, setState] = useState('');
+  // Só exibe o campo depois de resolver a regra do tenant, evitando que CPF
+  // pareça aceito em uma loja que permite apenas CNPJ.
+  const [allowCpfSignup, setAllowCpfSignup] = useState<boolean | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/store-settings')
+      .then((response) => (response.ok ? response.json() : null))
+      .then((settings) => {
+        if (!cancelled) setAllowCpfSignup(settings?.features?.allowCpfSignup !== false);
+      })
+      // Mantém o comportamento atual se o carregamento falhar.
+      .catch(() => {
+        if (!cancelled) setAllowCpfSignup(true);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   // Busca automática por CEP (ViaCEP, serviço público sem chave) — dispara
   // só quando o CEP tem 8 dígitos, evitando bater a API a cada tecla.
@@ -77,6 +94,10 @@ export default function CadastroPage() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (allowCpfSignup === false && getDocumentType(cpfCnpj) !== 'cnpj') {
+      setError('Informe um CNPJ com 14 dígitos.');
+      return;
+    }
     setLoading(true);
     setError('');
     try {
@@ -122,6 +143,9 @@ export default function CadastroPage() {
     <div className={publicUi.loginPage}>
       <form className={publicUi.loginForm} onSubmit={handleSubmit}>
         <h1>Criar conta</h1>
+        {allowCpfSignup === null ? (
+          <p>Carregando opções de cadastro…</p>
+        ) : <>
         <div className={publicUi.field}>
           <label>Nome</label>
           <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus required />
@@ -135,8 +159,8 @@ export default function CadastroPage() {
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
         </div>
         <div className={publicUi.field}>
-          <label>CPF/CNPJ</label>
-          <input type="text" value={cpfCnpj} onChange={(e) => setCpfCnpj(e.target.value)} required />
+          <label>{allowCpfSignup ? 'CPF/CNPJ' : 'CNPJ'}</label>
+          <input type="text" inputMode="numeric" value={cpfCnpj} onChange={(e) => setCpfCnpj(e.target.value)} placeholder={allowCpfSignup ? 'CPF ou CNPJ' : 'Informe seu CNPJ'} required />
         </div>
         {docType === 'cnpj' && (
           <div className={publicUi.field}>
@@ -183,13 +207,14 @@ export default function CadastroPage() {
           </div>
         </div>
         {error && <p className={publicUi.error}>{error}</p>}
-        <button className={publicUi.primaryButton} type="submit" disabled={loading}>
+        <button className={`${publicUi.primaryButton} w-full`} type="submit" disabled={loading}>
           {loading ? 'Criando conta…' : 'Criar conta'}
         </button>
         <p className={publicUi.authSwitch}>
           Já tem conta?{' '}
           <Link href={redirect ? `/login?redirect=${encodeURIComponent(redirect)}` : '/login'}>Entrar</Link>
         </p>
+        </>}
       </form>
     </div>
   );

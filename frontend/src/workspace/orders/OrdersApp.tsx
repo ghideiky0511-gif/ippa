@@ -24,6 +24,7 @@ const STATUS_LABELS: Record<OrderSession['status'], string> = {
   aberto: 'Em montagem',
   aguardando_pagamento: 'Aguardando pagamento',
   fechado: 'Finalizado',
+  cancelado: 'Cancelado',
 };
 
 function KpiCard({ label, count, value, hint }: { label: string; count: number; value: string; hint?: string }) {
@@ -67,7 +68,7 @@ export default function OrdersApp({
   }, [refresh]);
 
   const normalizedQuery = query.trim().toLowerCase();
-  const activeSessions = useMemo(() => sessions.filter((session) => session.status !== 'fechado'), [sessions]);
+  const activeSessions = useMemo(() => sessions.filter((session) => session.status === 'aberto' || session.status === 'aguardando_pagamento'), [sessions]);
   const filteredSessions = useMemo(() => {
     if (!normalizedQuery) return activeSessions;
     return activeSessions.filter((session) =>

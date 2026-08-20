@@ -288,7 +288,7 @@ export default function TalaoDrawer() {
   }
 
   function handlePickExisting(session: OrderSession) {
-    if (session.status === 'fechado') {
+    if (session.status === 'fechado' || session.status === 'cancelado') {
       reopenSession(session.id);
     } else {
       selectSession(session.id);

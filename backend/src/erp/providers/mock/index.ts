@@ -28,5 +28,11 @@ export function createMockErpProvider(_credentials: ErpProviderCredentials): Erp
         async testConnection() {
             return { ok: true };
         },
+
+        async lookupClientByDocument(document) {
+            const digits = document.replace(/\D/g, "");
+            const found = MOCK_RAW_CLIENTS.find(({ raw }) => raw.documento.replace(/\D/g, "") === digits);
+            return found ? { externalId: found.externalId, data: mapMockClient(found.raw) } : null;
+        },
     };
 }

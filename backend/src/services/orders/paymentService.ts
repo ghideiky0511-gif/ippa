@@ -17,12 +17,14 @@ import {
   listDiscountTierRows,
 } from "@/models/settingsModel";
 import { findUserRowByClientId, findUserRowById } from "@/models/usersModel";
-import { notifyOrder, notifySession } from "@/lib/sseHub";
+import { notifyOrder, notifyOrderBook, notifySession } from "@/lib/sseHub";
 import { notifyNewOrderForSeller, notifyOrderConfirmed } from "@/services/notifications";
 import { GoneError, NotFoundError } from "@/services/shared/errors";
 import { getCartDiscount } from "@/services/settings";
 import { PAYMENT_LINK_EXPIRATION_DEFAULT_MINUTES } from "@/services/settings";
 import { toOrder, toOrderSession } from "./orderMapper";
+import { closeOrderBookWhenFinished } from "./orderBookLifecycle";
+import type { OrderBookRow } from "@/models/orderBooksModel";
 
 function digest(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -91,6 +93,7 @@ export async function confirmPayment(
   paymentMethod?: string,
 ): Promise<{ ok: true; order: Order }> {
   let changedSession: OrderSession | undefined;
+  const changes: { book?: OrderBookRow } = {};
   let recipient: Pick<AuthUser, "id" | "role" | "email" | "name"> | undefined;
   let sellerRecipient: Pick<AuthUser, "id" | "role"> | undefined;
   const order = await withTenantTransaction(tenant, {}, async (client) => {
@@ -113,6 +116,7 @@ export async function confirmPayment(
     if (seller) sellerRecipient = { id: seller.id, role: seller.role };
     const closed = await closeOrderSessionRow(client, context.session.id);
     if (closed) changedSession = toOrderSession(closed, context.items);
+    changes.book = (await closeOrderBookWhenFinished(client, context.session.order_book_id)) ?? undefined;
     if (context.session.client_id) {
       const user = await findUserRowByClientId(client, context.session.client_id);
       if (user) recipient = { id: user.id, role: user.role, email: user.email, name: user.name };
@@ -120,6 +124,7 @@ export async function confirmPayment(
     return toOrder(row, context.items);
   });
   if (changedSession) notifySession(tenant.id, changedSession);
+  if (changes.book) notifyOrderBook(tenant.id, { sellerId: changes.book.seller_id });
   notifyOrder(tenant.id, order);
   if (recipient) notifyOrderConfirmed(tenant, recipient, order);
   if (sellerRecipient) notifyNewOrderForSeller(tenant, sellerRecipient, order);

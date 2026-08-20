@@ -1,16 +1,20 @@
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
-import type { AuthUser, OrderBook } from "@/lib/types";
+import type { AuthUser, OrderBook, OrderSession } from "@/lib/types";
 import {
     activateOrderBookRow,
+    closeOrderBookRow,
     findActiveOrderBookRow,
     findOrderBookRow,
     insertOrderBookRow,
     listOrderBookRowsBySeller,
     type OrderBookRow,
 } from "@/models/orderBooksModel";
+import { cancelOpenOrderSessionRowsByBook } from "@/models/ordersModel";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
-import { notifyOrderBook } from "@/lib/sseHub";
+import { notifyOrderBook, notifySession } from "@/lib/sseHub";
+import { toOrderSession } from "./orderMapper";
+import { getOrderBookSessionState } from "./orderBookLifecycle";
 
 function toOrderBook(row: OrderBookRow): OrderBook {
     return {
@@ -66,6 +70,30 @@ export async function activateOrderBook(tenant: Tenant, user: AuthUser, id: stri
         if (!activated) throw new NotFoundError("ORDER_BOOK_NOT_FOUND");
         return activated;
     });
+    const result = toOrderBook(book);
+    notifyOrderBook(tenant.id, result);
+    return result;
+}
+
+export async function cancelOrderBook(tenant: Tenant, user: AuthUser, id: string): Promise<OrderBook> {
+    requireInternal(user);
+    let cancelledSessions: OrderSession[] = [];
+    const book = await withTenantTransaction(tenant, user, async (client) => {
+        const existing = await findOrderBookRow(client, id);
+        if (!existing) throw new NotFoundError("ORDER_BOOK_NOT_FOUND");
+        if (existing.seller_id !== user.id) throw new ForbiddenError();
+        if (existing.status !== "aberto") throw new ValidationError("ORDER_BOOK_ALREADY_CLOSED");
+
+        const state = await getOrderBookSessionState(client, id);
+        if (!state.allCancellableSessionsEmpty) throw new ValidationError("ORDER_BOOK_NOT_EMPTY");
+
+        const rows = await cancelOpenOrderSessionRowsByBook(client, id);
+        cancelledSessions = rows.map((row) => toOrderSession(row, state.itemsBySession.get(row.id) ?? []));
+        const closed = await closeOrderBookRow(client, id);
+        if (!closed) throw new NotFoundError("ORDER_BOOK_NOT_FOUND");
+        return closed;
+    });
+    for (const session of cancelledSessions) notifySession(tenant.id, session);
     const result = toOrderBook(book);
     notifyOrderBook(tenant.id, result);
     return result;

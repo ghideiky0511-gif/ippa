@@ -1,6 +1,6 @@
 /** Itens de venda, sessões de talão, frete e pedidos fechados. */
 export type OrderChannel = 'presencial' | 'whatsapp' | 'online';
-export type OrderSessionStatus = 'aberto' | 'fechado' | 'aguardando_pagamento';
+export type OrderSessionStatus = 'aberto' | 'fechado' | 'aguardando_pagamento' | 'cancelado';
 export interface CartItem { key: string; id: string; name: string; image?: string; color?: string; size?: string; price: number; qty: number; stockQty?: number; backorderDate?: string; }
 export interface ShippingOption { id: string; label: string; price: number; prazo: string; }
 export interface OrderSession {

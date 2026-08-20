@@ -2,7 +2,11 @@ import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser } from "@/lib/types";
 import { createErpProvider } from "@/erp/registry";
-import { listVisibleErpProviderCatalog, type ErpProviderCatalogEntry, type ErpProviderCredentialField } from "@/erp/providerCatalog";
+import {
+    listVisibleErpProviderCatalog,
+    type ErpProviderCatalogEntry,
+    type ErpProviderCredentialField,
+} from "@/erp/providerCatalog";
 import {
     activateErpIntegrationRow,
     deactivateErpIntegrationRow,
@@ -11,10 +15,15 @@ import {
     upsertErpIntegrationCredentialsRow,
     type ErpIntegrationRow,
 } from "@/models/erpIntegrationsModel";
-import { recordAuditEvent, ERP_INTEGRATION_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
+import {
+    recordAuditEvent,
+    ERP_INTEGRATION_AUDIT_ACTIONS,
+    type AuditRequestContext,
+} from "@/services/audit";
 import { requireSettingsAdministrator } from "@/services/settings/settingsAuthorization";
 import { createExternalApiCallReporter } from "@/services/erp/externalApiLogService";
 import { NotFoundError, ValidationError } from "@/services/shared/errors";
+import { errorMeta, logger } from "@/lib/logger";
 
 // Uma opção por provider visível no catálogo, com o estado do tenant
 // mesclado por cima. `credentials` só carrega campos não-secretos (ver
@@ -33,12 +42,21 @@ export interface TenantErpIntegrationOption {
 }
 
 function findVisibleCatalogEntry(provider: string): ErpProviderCatalogEntry {
-    const entry = listVisibleErpProviderCatalog().find((candidate) => candidate.code === provider);
-    if (!entry) throw new ValidationError("INVALID_INPUT", `Provider de ERP desconhecido: ${provider}.`);
+    const entry = listVisibleErpProviderCatalog().find(
+        (candidate) => candidate.code === provider,
+    );
+    if (!entry)
+        throw new ValidationError(
+            "INVALID_INPUT",
+            `Provider de ERP desconhecido: ${provider}.`,
+        );
     return entry;
 }
 
-function redactedCredentials(entry: ErpProviderCatalogEntry, stored: Record<string, unknown>): Record<string, unknown> {
+function redactedCredentials(
+    entry: ErpProviderCatalogEntry,
+    stored: Record<string, unknown>,
+): Record<string, unknown> {
     const result: Record<string, unknown> = {};
     for (const field of entry.credentialFields) {
         if (field.type === "password") continue;
@@ -47,7 +65,10 @@ function redactedCredentials(entry: ErpProviderCatalogEntry, stored: Record<stri
     return result;
 }
 
-function toOption(entry: ErpProviderCatalogEntry, row?: ErpIntegrationRow | null): TenantErpIntegrationOption {
+function toOption(
+    entry: ErpProviderCatalogEntry,
+    row?: ErpIntegrationRow | null,
+): TenantErpIntegrationOption {
     return {
         provider: entry.code,
         label: entry.label,
@@ -64,7 +85,10 @@ function toOption(entry: ErpProviderCatalogEntry, row?: ErpIntegrationRow | null
 // Valida o rascunho de credenciais contra o catálogo (obrigatórios
 // preenchidos, "number"/"number-list" parseáveis) e já devolve no formato
 // que os providers esperam (branchCode: number, priceCodeList: number[]...).
-function parseCredentials(entry: ErpProviderCatalogEntry, raw: Record<string, unknown>): Record<string, unknown> {
+function parseCredentials(
+    entry: ErpProviderCatalogEntry,
+    raw: Record<string, unknown>,
+): Record<string, unknown> {
     const credentials: Record<string, unknown> = {};
     const errors: string[] = [];
 
@@ -82,9 +106,14 @@ function parseCredentials(entry: ErpProviderCatalogEntry, raw: Record<string, un
             }
             credentials[field.key] = value;
         } else if (field.type === "number-list") {
-            const values = text.split(",").map((part) => Number(part.trim())).filter((value) => Number.isFinite(value));
+            const values = text
+                .split(",")
+                .map((part) => Number(part.trim()))
+                .filter((value) => Number.isFinite(value));
             if (values.length === 0) {
-                errors.push(`${field.label} deve conter números separados por vírgula.`);
+                errors.push(
+                    `${field.label} deve conter números separados por vírgula.`,
+                );
                 continue;
             }
             credentials[field.key] = values;
@@ -93,16 +122,22 @@ function parseCredentials(entry: ErpProviderCatalogEntry, raw: Record<string, un
         }
     }
 
-    if (errors.length > 0) throw new ValidationError("INVALID_INPUT", errors.join(" "));
+    if (errors.length > 0)
+        throw new ValidationError("INVALID_INPUT", errors.join(" "));
     return credentials;
 }
 
-export async function listTenantErpIntegrations(tenant: Tenant, user: AuthUser): Promise<{ options: TenantErpIntegrationOption[] }> {
+export async function listTenantErpIntegrations(
+    tenant: Tenant,
+    user: AuthUser,
+): Promise<{ options: TenantErpIntegrationOption[] }> {
     requireSettingsAdministrator(user);
     return withTenantTransaction(tenant, user, async (client) => {
         const rows = await listErpIntegrationRows(client);
         const rowByProvider = new Map(rows.map((row) => [row.provider, row]));
-        const options = listVisibleErpProviderCatalog().map((entry) => toOption(entry, rowByProvider.get(entry.code)));
+        const options = listVisibleErpProviderCatalog().map((entry) =>
+            toOption(entry, rowByProvider.get(entry.code)),
+        );
         return { options };
     });
 }
@@ -122,7 +157,10 @@ export async function saveTenantErpIntegrationCredentials(
     const entry = findVisibleCatalogEntry(provider);
     const credentials = parseCredentials(entry, rawCredentials ?? {});
     return withTenantTransaction(tenant, user, async (client) => {
-        const row = await upsertErpIntegrationCredentialsRow(client, { provider, credentials });
+        const row = await upsertErpIntegrationCredentialsRow(client, {
+            provider,
+            credentials,
+        });
         await recordAuditEvent(client, {
             action: ERP_INTEGRATION_AUDIT_ACTIONS.CONFIGURED,
             entityId: row.id,
@@ -144,7 +182,11 @@ export async function activateTenantErpIntegration(
     const entry = findVisibleCatalogEntry(provider);
     return withTenantTransaction(tenant, user, async (client) => {
         const row = await activateErpIntegrationRow(client, provider);
-        if (!row) throw new ValidationError("ERP_INTEGRATION_NOT_CONFIGURED", "Salve as credenciais deste provider antes de ativá-lo.");
+        if (!row)
+            throw new ValidationError(
+                "ERP_INTEGRATION_NOT_CONFIGURED",
+                "Salve as credenciais deste provider antes de ativá-lo.",
+            );
         await recordAuditEvent(client, {
             action: ERP_INTEGRATION_AUDIT_ACTIONS.ACTIVATED,
             entityId: row.id,
@@ -197,16 +239,41 @@ export async function testTenantErpIntegrationConnection(
     if (rawCredentials) {
         credentials = parseCredentials(entry, rawCredentials);
     } else {
-        const stored = await withTenantTransaction(tenant, user, (client) => findErpIntegrationRowByProvider(client, provider));
+        const stored = await withTenantTransaction(tenant, user, (client) =>
+            findErpIntegrationRowByProvider(client, provider),
+        );
         if (!stored) throw new NotFoundError("ERP_INTEGRATION_NOT_CONFIGURED");
         credentials = stored.credentials;
     }
 
     try {
-        const erpProvider = createErpProvider(provider, credentials, createExternalApiCallReporter(tenant, user, provider));
+        const erpProvider = createErpProvider(
+            provider,
+            credentials,
+            createExternalApiCallReporter(tenant, user, provider),
+        );
         if (!erpProvider.testConnection) return { ok: true };
-        return await erpProvider.testConnection();
+        const result = await erpProvider.testConnection();
+        if (!result.ok) {
+            logger.warn(
+                "erp-integration-test",
+                "Teste de conexão retornou falha",
+                { tenantId: tenant.id, provider, message: result.message },
+            );
+        }
+        return result;
     } catch (exc) {
-        return { ok: false, message: exc instanceof Error ? exc.message : "Falha desconhecida ao testar a conexão." };
+        logger.error(
+            "erp-integration-test",
+            "Teste de conexão lançou exceção",
+            { tenantId: tenant.id, provider, ...errorMeta(exc) },
+        );
+        return {
+            ok: false,
+            message:
+                exc instanceof Error
+                    ? exc.message
+                    : "Falha desconhecida ao testar a conexão.",
+        };
     }
 }

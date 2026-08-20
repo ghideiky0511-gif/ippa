@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState, type FormEvent } from 'react';
 import type { ControlTenant, ControlTenantUser, TenantStatus } from '@/lib/control/types';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 const emptyAdminForm = { name: '', email: '', password: '' };
 
@@ -24,6 +25,7 @@ export default function TenantDetailPage({ params }: { params: Promise<{ tenant:
   const [adminError, setAdminError] = useState('');
   const [creatingAdmin, setCreatingAdmin] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState('');
+  const [userToDelete, setUserToDelete] = useState<ControlTenantUser | null>(null);
   const [vestiSlug, setVestiSlug] = useState('');
   const [vestiSlugInput, setVestiSlugInput] = useState('');
   const [savingVestiSlug, setSavingVestiSlug] = useState(false);
@@ -102,7 +104,6 @@ export default function TenantDetailPage({ params }: { params: Promise<{ tenant:
 
   async function deleteUser(user: ControlTenantUser) {
     if (!tenant) return;
-    if (!window.confirm(`Excluir o usuario ${user.name}?`)) return;
     setDeletingUserId(user.id); setAdminError('');
     try {
       const response = await fetch(`/api/control-session/tenants/${tenant.id}/users/${user.id}`, { method: 'DELETE' });
@@ -145,8 +146,9 @@ export default function TenantDetailPage({ params }: { params: Promise<{ tenant:
           <button className="rounded-lg bg-brand-primary px-4 py-2 font-semibold text-white disabled:opacity-60 md:col-span-3" disabled={creatingAdmin}>{creatingAdmin ? 'Criando...' : 'Criar administrador'}</button>
         </form>}
         {adminError && <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{adminError}</p>}
-        {users.length === 0 ? <p className="text-sm text-brand-muted">Nenhum usuario.</p> : <ul className="space-y-2 text-sm">{users.map((user) => <li key={user.id} className="flex items-center justify-between gap-3 rounded-lg bg-brand-background p-3"><div><p className="font-medium">{user.name}</p><p className="text-brand-muted">{user.email} - {user.role} - {user.active ? 'ativo' : 'inativo'}</p></div><button className="shrink-0 rounded border border-red-200 px-3 py-1.5 text-sm text-red-700 disabled:opacity-60" onClick={() => deleteUser(user)} disabled={deletingUserId === user.id}>{deletingUserId === user.id ? 'Excluindo...' : 'Excluir'}</button></li>)}</ul>}
+        {users.length === 0 ? <p className="text-sm text-brand-muted">Nenhum usuario.</p> : <ul className="space-y-2 text-sm">{users.map((user) => <li key={user.id} className="flex items-center justify-between gap-3 rounded-lg bg-brand-background p-3"><div><p className="font-medium">{user.name}</p><p className="text-brand-muted">{user.email} - {user.role} - {user.active ? 'ativo' : 'inativo'}</p></div><button className="shrink-0 rounded border border-red-200 px-3 py-1.5 text-sm text-red-700 disabled:opacity-60" onClick={() => setUserToDelete(user)} disabled={deletingUserId === user.id}>{deletingUserId === user.id ? 'Excluindo...' : 'Excluir'}</button></li>)}</ul>}
       </section>
+      <ConfirmDialog open={!!userToDelete} onOpenChange={(open) => !open && setUserToDelete(null)} title="Excluir usuário?" description={`Excluir ${userToDelete?.name || 'este usuário'}? Esta ação não pode ser desfeita.`} confirmLabel="Excluir" destructive onConfirm={() => userToDelete ? deleteUser(userToDelete) : undefined} />
     </>}
   </main>;
 }

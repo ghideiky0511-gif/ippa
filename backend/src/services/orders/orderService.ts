@@ -13,10 +13,12 @@ import {
 import { deleteClientCartRows } from "@/models/clientsModel";
 import { findUserRowById } from "@/models/usersModel";
 import { findStoreSettingsRow } from "@/models/settingsModel";
-import { notifyOrder, notifySession } from "@/lib/sseHub";
+import { notifyOrder, notifyOrderBook, notifySession } from "@/lib/sseHub";
 import { notifyNewOrderForSeller, notifyOrderConfirmed } from "@/services/notifications";
 import { ForbiddenError, ValidationError } from "@/services/shared/errors";
 import { toOrder } from "./orderMapper";
+import { closeOrderBookWhenFinished } from "./orderBookLifecycle";
+import type { OrderBookRow } from "@/models/orderBooksModel";
 
 function isAdministrator(user: AuthUser): boolean {
     return user.role === "administrador" && user.permissions?.adminAccess === true;
@@ -64,6 +66,7 @@ export async function createCustomerOrder(
     const items = body.items as CartItem[];
     const requestedChannel = body.channel;
     let changedSession: OrderSession | undefined;
+    const changes: { book?: OrderBookRow } = {};
     let sellerRecipient: Pick<AuthUser, "id" | "role"> | undefined;
     const order = await withTenantTransaction(tenant, user, async (client) => {
         let sellerId: string | undefined;
@@ -90,6 +93,7 @@ export async function createCustomerOrder(
                         createdAt: closed.created_at.toISOString(),
                         updatedAt: closed.updated_at.toISOString(),
                     };
+                changes.book = (await closeOrderBookWhenFinished(client, session.order_book_id)) ?? undefined;
             }
         }
         const allowedChannels = new Set(["presencial", "whatsapp", "online"]);
@@ -119,6 +123,7 @@ export async function createCustomerOrder(
         return toOrder(row, items);
     });
     if (changedSession) notifySession(tenant.id, changedSession);
+    if (changes.book) notifyOrderBook(tenant.id, { sellerId: changes.book.seller_id });
     notifyOrder(tenant.id, order);
     notifyOrderConfirmed(tenant, user, order);
     if (sellerRecipient) notifyNewOrderForSeller(tenant, sellerRecipient, order);

@@ -34,6 +34,12 @@ const TOOLS = [
       'Visitante sem cadastro/login vê só foto, nome e cores — o preço vira um link pra entrar/criar conta. Desligada por padrão (diferente das outras ferramentas acima, aqui a peça começa sempre com preço à mostra em storeSettings.json até a loja ligar).',
   },
   {
+    id: 'allowCpfSignup',
+    label: 'Permitir cadastro com CPF',
+    description:
+      'Define o documento aceito no autocadastro público. Ligada aceita CPF ou CNPJ; desligada aceita somente CNPJ.',
+  },
+  {
     id: 'clientSelfCheckout',
     label: 'Cliente finaliza sozinha (talão)',
     description:

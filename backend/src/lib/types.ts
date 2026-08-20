@@ -281,7 +281,7 @@ export interface OrderSession {
   // contando como "aberto" no painel do talão (ver openSessions em
   // TalaoProvider.tsx), com um badge próprio pra não confundir com pedido
   // ainda em montagem.
-  status: 'aberto' | 'fechado' | 'aguardando_pagamento';
+  status: 'aberto' | 'fechado' | 'aguardando_pagamento' | 'cancelado';
   // Token do link de pagamento ativo (web/src/app/pagar/[token]/page.tsx) —
   // é a própria autenticação desse link (sem exigir login da cliente).
   // Limpo quando a sessão fecha (POST /api/pay/[token]) ou reabre
@@ -300,6 +300,17 @@ export interface OrderSession {
   // (PresenceBadge.tsx). Ausente em qualquer outro lugar que devolve
   // OrderSession (talão da vendedora não precisa disso, ela já sabe quem é).
   sellerName?: string;
+}
+
+// ParticipaÃ§Ã£o persistida na sessÃ£o: identidade e papel sÃ£o resolvidos
+// sempre da conta atual do usuÃ¡rio, sem duplicÃ¡-los nesta relaÃ§Ã£o.
+export interface OrderSessionParticipant {
+  userId: string;
+  firstJoinedAt: string;
+  lastJoinedAt: string;
+  lastLeftAt?: string;
+  joinCount: number;
+  user: Pick<AuthUser, 'id' | 'name' | 'role'>;
 }
 
 export interface OrderBook {

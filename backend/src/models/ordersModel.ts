@@ -86,6 +86,18 @@ export async function listOrderSessionItemRowsBySession(client: PoolClient, sess
     return result.rows;
 }
 
+export async function listOrderSessionItemRowsByBook(client: PoolClient, orderBookId: string): Promise<OrderSessionItemRow[]> {
+    const result = await client.query<OrderSessionItemRow>(
+        `SELECT item.session_id, item.snapshot
+         FROM order_session_items AS item
+         INNER JOIN order_sessions AS session ON session.id = item.session_id
+         WHERE item.tenant_id = app_tenant_id() AND session.tenant_id = app_tenant_id()
+           AND session.order_book_id = $1`,
+        [orderBookId],
+    );
+    return result.rows;
+}
+
 export async function countOpenOrderSessionRowsBySeller(client: PoolClient): Promise<Record<string, number>> {
     const result = await client.query<{ seller_id: string; count: string }>(
         `SELECT seller_id, count(*)::text AS count FROM order_sessions
@@ -168,6 +180,18 @@ export async function closeOrderSessionRow(client: PoolClient, id: string): Prom
         [id],
     );
     return result.rows[0] ?? null;
+}
+
+export async function cancelOpenOrderSessionRowsByBook(client: PoolClient, orderBookId: string): Promise<OrderSessionRow[]> {
+    const result = await client.query<OrderSessionRow>(
+        `UPDATE order_sessions SET status = 'cancelado', payment_token_hash = NULL,
+           payment_token_created_at = NULL, updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND order_book_id = $1
+           AND status IN ('aberto', 'aguardando_pagamento')
+         RETURNING ${sessionFields}`,
+        [orderBookId],
+    );
+    return result.rows;
 }
 
 export async function listOrderRowsBy(client: PoolClient, field: "client_id" | "seller_id", id: string): Promise<OrderRow[]> {

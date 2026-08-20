@@ -16,7 +16,12 @@
 // isso tem seu próprio método (getPersonStatistics) fora de searchAndValidate.
 
 import type { ExternalApiCallReporter } from "@/lib/externalApiCall";
-import { TotvsModaAuthError, TotvsModaNotFoundError, TotvsModaResponseError } from "./errors";
+import { logger } from "@/lib/logger";
+import {
+    TotvsModaAuthError,
+    TotvsModaNotFoundError,
+    TotvsModaResponseError,
+} from "./errors";
 import {
     AUTH_TOKEN_PATH,
     BRANCHES_LIST_PATH,
@@ -113,9 +118,16 @@ export class TotvsModaClient {
     private async authenticate(force = false): Promise<string> {
         const { clientId, clientSecret, username, password } = this.credentials;
         if (!clientId || !clientSecret || !username || !password) {
-            throw new TotvsModaAuthError("Credenciais do TOTVS Moda não estão totalmente configuradas.");
+            throw new TotvsModaAuthError(
+                "Credenciais do TOTVS Moda não estão totalmente configuradas.",
+            );
         }
-        if (!force && this.accessToken && this.tokenExpiresAt !== null && Date.now() + TOKEN_SAFETY_MS < this.tokenExpiresAt) {
+        if (
+            !force &&
+            this.accessToken &&
+            this.tokenExpiresAt !== null &&
+            Date.now() + TOKEN_SAFETY_MS < this.tokenExpiresAt
+        ) {
             return this.accessToken;
         }
         if (!force && this.accessToken && this.tokenExpiresAt === null) {
@@ -124,28 +136,59 @@ export class TotvsModaClient {
 
         let payload: TotvsModaTokenResponse;
         try {
-            payload = await totvsModaRequest<TotvsModaTokenResponse>("POST", AUTH_TOKEN_PATH, {
-                formData: { grant_type: "password", clientId, clientSecret, username, password },
-                timeoutMs: 10_000,
-                operation: "authenticate",
-                reporter: this.reporter,
-            });
+            payload = await totvsModaRequest<TotvsModaTokenResponse>(
+                "POST",
+                AUTH_TOKEN_PATH,
+                {
+                    formData: {
+                        grant_type: "password",
+                        client_id: clientId,
+                        client_secret: clientSecret,
+                        username,
+                        password,
+                    },
+                    timeoutMs: 10_000,
+                    operation: "authenticate",
+                    reporter: this.reporter,
+                },
+            );
         } catch (exc) {
             if (exc instanceof TotvsModaResponseError) {
-                throw new TotvsModaAuthError("TOTVS Moda recusou as credenciais configuradas.", {
-                    statusCode: exc.statusCode,
-                    endpoint: exc.endpoint,
-                    payload: exc.payload,
-                });
+                logger.error(
+                    "totvsmoda-client",
+                    "Autenticação recusada pelo TOTVS Moda",
+                    {
+                        statusCode: exc.statusCode,
+                        endpoint: exc.endpoint,
+                        payload: JSON.stringify(exc.payload),
+                        clientId: clientId
+                            ? `${clientId.slice(0, 4)}…`
+                            : undefined,
+                        username,
+                    },
+                );
+                throw new TotvsModaAuthError(
+                    "TOTVS Moda recusou as credenciais configuradas.",
+                    {
+                        statusCode: exc.statusCode,
+                        endpoint: exc.endpoint,
+                        payload: exc.payload,
+                    },
+                );
             }
             throw exc;
         }
         const accessToken = trim(payload?.access_token);
         if (!accessToken) {
-            throw new TotvsModaAuthError("TOTVS Moda não retornou um access_token válido.", { payload });
+            throw new TotvsModaAuthError(
+                "TOTVS Moda não retornou um access_token válido.",
+                { payload },
+            );
         }
         this.accessToken = accessToken;
-        this.tokenExpiresAt = payload.expires_in ? Date.now() + payload.expires_in * 1000 : null;
+        this.tokenExpiresAt = payload.expires_in
+            ? Date.now() + payload.expires_in * 1000
+            : null;
         return this.accessToken;
     }
 
@@ -153,29 +196,52 @@ export class TotvsModaClient {
         method: string,
         path: string,
         operation: string,
-        options: { jsonBody?: unknown; params?: Record<string, string | number | undefined>; timeoutMs?: number } = {},
+        options: {
+            jsonBody?: unknown;
+            params?: Record<string, string | number | undefined>;
+            timeoutMs?: number;
+        } = {},
     ): Promise<T> {
         const token = await this.authenticate();
-        return totvsModaRequest<T>(method, path, { token, operation, reporter: this.reporter, ...options });
+        return totvsModaRequest<T>(method, path, {
+            token,
+            operation,
+            reporter: this.reporter,
+            ...options,
+        });
     }
 
     async listBranches(): Promise<Array<Record<string, unknown>>> {
-        const payload = await this.request<{ items?: unknown }>("GET", BRANCHES_LIST_PATH, "listBranches");
+        const payload = await this.request<{ items?: unknown }>(
+            "GET",
+            BRANCHES_LIST_PATH,
+            "listBranches",
+        );
         const items = payload?.items;
         if (!Array.isArray(items)) {
-            throw new TotvsModaResponseError("Lista de filiais em formato inválido.", { payload });
+            throw new TotvsModaResponseError(
+                "Lista de filiais em formato inválido.",
+                { payload },
+            );
         }
-        return items.filter((item): item is Record<string, unknown> => !!item && typeof item === "object");
+        return items.filter(
+            (item): item is Record<string, unknown> =>
+                !!item && typeof item === "object",
+        );
     }
 
     // BranchOutDto: dados de uma única empresa por código interno ou CNPJ
     // (parâmetro de rota "branchId" aceita os dois). Devolve null em vez de
     // lançar quando a API responde 404 — "não encontrado" é um resultado
     // válido para uma busca por código/CNPJ, não uma falha do client.
-    async getBranchByCode(branchIdOrCnpj: string): Promise<Record<string, unknown> | null> {
+    async getBranchByCode(
+        branchIdOrCnpj: string,
+    ): Promise<Record<string, unknown> | null> {
         try {
             return await this.request<Record<string, unknown>>(
-                "GET", `${BRANCHES_PATH}/${encodeURIComponent(branchIdOrCnpj)}`, "getBranchByCode",
+                "GET",
+                `${BRANCHES_PATH}/${encodeURIComponent(branchIdOrCnpj)}`,
+                "getBranchByCode",
             );
         } catch (exc) {
             if (exc instanceof TotvsModaNotFoundError) return null;
@@ -187,10 +253,14 @@ export class TotvsModaClient {
     // branchInfoCode obrigatório) — cada item devolvido é uma linha por SKU
     // (produto+cor+tamanho), não por referência; agrupar por ReferenceCode é
     // responsabilidade do mapper (ver groupTotvsModaProducts).
-    async searchProducts(options: TotvsModaProductSearchOptions): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
+    async searchProducts(
+        options: TotvsModaProductSearchOptions,
+    ): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
         const payload = {
             filter: {
-                change: options.updatedSince ? { startDate: options.updatedSince } : undefined,
+                change: options.updatedSince
+                    ? { startDate: options.updatedSince }
+                    : undefined,
                 productCodeList: options.productCodeList,
             },
             option: { branchInfoCode: this.credentials.branchCode },
@@ -198,67 +268,127 @@ export class TotvsModaClient {
             pageSize: options.pageSize,
             expand: "classifications",
         };
-        return this.searchAndValidate("searchProducts", PRODUCTS_SEARCH_PATH, payload, "Busca de produtos retornou formato inválido.");
+        return this.searchAndValidate(
+            "searchProducts",
+            PRODUCTS_SEARCH_PATH,
+            payload,
+            "Busca de produtos retornou formato inválido.",
+        );
     }
 
     // ProductPriceInDto: option.prices (PriceInfoModel[]) é obrigatório —
     // sempre escopado por filter.productCodeList para casar com a página de
     // produtos já buscada (evita paginar preço/saldo por conta própria).
-    async searchProductPrices(productCodeList: number[]): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
+    async searchProductPrices(
+        productCodeList: number[],
+    ): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
         const payload = {
             filter: { productCodeList },
-            option: { prices: [{ branchCode: this.credentials.branchCode, priceCodeList: this.credentials.priceCodeList }] },
+            option: {
+                prices: [
+                    {
+                        branchCode: this.credentials.branchCode,
+                        priceCodeList: this.credentials.priceCodeList,
+                    },
+                ],
+            },
             page: 1,
             pageSize: 1000,
         };
-        return this.searchAndValidate("searchProductPrices", PRODUCT_PRICES_SEARCH_PATH, payload, "Busca de preços retornou formato inválido.");
+        return this.searchAndValidate(
+            "searchProductPrices",
+            PRODUCT_PRICES_SEARCH_PATH,
+            payload,
+            "Busca de preços retornou formato inválido.",
+        );
     }
 
     // ProductBalanceInDto: option.balances (BalanceInfoModel[]) é obrigatório.
-    async searchProductBalances(productCodeList: number[]): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
+    async searchProductBalances(
+        productCodeList: number[],
+    ): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
         const payload = {
             filter: { productCodeList },
-            option: { balances: [{ branchCode: this.credentials.branchCode, stockCodeList: this.credentials.stockCodeList }] },
+            option: {
+                balances: [
+                    {
+                        branchCode: this.credentials.branchCode,
+                        stockCodeList: this.credentials.stockCodeList,
+                    },
+                ],
+            },
             page: 1,
             pageSize: 1000,
         };
-        return this.searchAndValidate("searchProductBalances", PRODUCT_BALANCES_SEARCH_PATH, payload, "Busca de saldos retornou formato inválido.");
+        return this.searchAndValidate(
+            "searchProductBalances",
+            PRODUCT_BALANCES_SEARCH_PATH,
+            payload,
+            "Busca de saldos retornou formato inválido.",
+        );
     }
 
-    async searchOrders(payload: TotvsModaSearchPayload): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
-        return this.searchAndValidate("searchOrders", SALES_ORDER_SEARCH_PATH, payload, "Busca de pedidos retornou formato inválido.");
+    async searchOrders(
+        payload: TotvsModaSearchPayload,
+    ): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
+        return this.searchAndValidate(
+            "searchOrders",
+            SALES_ORDER_SEARCH_PATH,
+            payload,
+            "Busca de pedidos retornou formato inválido.",
+        );
     }
 
     // IndividualSearchInDto: filter.cpfList busca pessoas físicas por CPF —
     // é o que sustenta a busca de cliente por documento (ver
     // index.ts:findTotvsModaClientByDocument). expand "addresses,emails" traz
     // o que o mapper precisa para preencher Client (ver mapper.ts).
-    async searchIndividuals(options: TotvsModaIndividualSearchOptions): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
+    async searchIndividuals(
+        options: TotvsModaIndividualSearchOptions,
+    ): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
         const payload = {
             filter: {
-                change: options.updatedSince ? { startDate: options.updatedSince } : undefined,
+                change: options.updatedSince
+                    ? { startDate: options.updatedSince }
+                    : undefined,
                 cpfList: options.cpfList,
             },
             page: options.page,
             pageSize: options.pageSize,
             expand: "addresses,emails",
         };
-        return this.searchAndValidate("searchIndividuals", INDIVIDUALS_SEARCH_PATH, payload, "Busca de pessoas físicas retornou formato inválido.", 25_000);
+        return this.searchAndValidate(
+            "searchIndividuals",
+            INDIVIDUALS_SEARCH_PATH,
+            payload,
+            "Busca de pessoas físicas retornou formato inválido.",
+            25_000,
+        );
     }
 
     // LegalEntitySearchInDto: filter.cnpjList busca pessoas jurídicas por
     // CNPJ, mesmo papel de searchIndividuals só que para PJ.
-    async searchLegalEntities(options: TotvsModaLegalEntitySearchOptions): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
+    async searchLegalEntities(
+        options: TotvsModaLegalEntitySearchOptions,
+    ): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
         const payload = {
             filter: {
-                change: options.updatedSince ? { startDate: options.updatedSince } : undefined,
+                change: options.updatedSince
+                    ? { startDate: options.updatedSince }
+                    : undefined,
                 cnpjList: options.cnpjList,
             },
             page: options.page,
             pageSize: options.pageSize,
             expand: "addresses,emails",
         };
-        return this.searchAndValidate("searchLegalEntities", LEGAL_ENTITIES_SEARCH_PATH, payload, "Busca de pessoas jurídicas retornou formato inválido.", 25_000);
+        return this.searchAndValidate(
+            "searchLegalEntities",
+            LEGAL_ENTITIES_SEARCH_PATH,
+            payload,
+            "Busca de pessoas jurídicas retornou formato inválido.",
+            25_000,
+        );
     }
 
     // RepresentativeSearchInDto — ainda não tem consumidor no provider (não
@@ -272,33 +402,73 @@ export class TotvsModaClient {
             page: options.page,
             pageSize: options.pageSize,
         };
-        return this.searchAndValidate("searchRepresentatives", REPRESENTATIVES_SEARCH_PATH, payload, "Busca de representantes retornou formato inválido.");
+        return this.searchAndValidate(
+            "searchRepresentatives",
+            REPRESENTATIVES_SEARCH_PATH,
+            payload,
+            "Busca de representantes retornou formato inválido.",
+        );
     }
 
     // ClassificationsResponseModel: tipos e valores de classificação
     // configurados no tenant (PESFL031) — referência para resolver
     // ClassificationModel.typeCode/typeName com precisão, hoje só usado por
     // heurística em mapper.ts:findClassification.
-    async listClassifications(page = 1, pageSize = 1000): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
-        return this.getAndValidate("listClassifications", CLASSIFICATIONS_PATH, { Page: page, PageSize: pageSize }, "Consulta de classificações retornou formato inválido.");
+    async listClassifications(
+        page = 1,
+        pageSize = 1000,
+    ): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
+        return this.getAndValidate(
+            "listClassifications",
+            CLASSIFICATIONS_PATH,
+            { Page: page, PageSize: pageSize },
+            "Consulta de classificações retornou formato inválido.",
+        );
     }
 
-    async listEmailTypes(page = 1, pageSize = 1000): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
-        return this.getAndValidate("listEmailTypes", EMAIL_TYPES_PATH, { Page: page, PageSize: pageSize }, "Consulta de tipos de e-mail retornou formato inválido.");
+    async listEmailTypes(
+        page = 1,
+        pageSize = 1000,
+    ): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
+        return this.getAndValidate(
+            "listEmailTypes",
+            EMAIL_TYPES_PATH,
+            { Page: page, PageSize: pageSize },
+            "Consulta de tipos de e-mail retornou formato inválido.",
+        );
     }
 
-    async listPhoneTypes(page = 1, pageSize = 1000): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
-        return this.getAndValidate("listPhoneTypes", PHONE_TYPES_PATH, { Page: page, PageSize: pageSize }, "Consulta de tipos de telefone retornou formato inválido.");
+    async listPhoneTypes(
+        page = 1,
+        pageSize = 1000,
+    ): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
+        return this.getAndValidate(
+            "listPhoneTypes",
+            PHONE_TYPES_PATH,
+            { Page: page, PageSize: pageSize },
+            "Consulta de tipos de telefone retornou formato inválido.",
+        );
     }
 
     // PersonStatisticsResponseModel não segue o envelope items[] dos demais
     // endpoints — é um objeto único de estatísticas para o cliente informado
     // (por código interno ou CPF/CNPJ), por isso não passa por
     // searchAndValidate/getAndValidate.
-    async getPersonStatistics(params: { customerCpfCnpj?: string; customerCode?: number }): Promise<Record<string, unknown>> {
-        return this.request<Record<string, unknown>>("GET", PERSON_STATISTICS_PATH, "getPersonStatistics", {
-            params: { CustomerCpfCnpj: params.customerCpfCnpj, CustomerCode: params.customerCode },
-        });
+    async getPersonStatistics(params: {
+        customerCpfCnpj?: string;
+        customerCode?: number;
+    }): Promise<Record<string, unknown>> {
+        return this.request<Record<string, unknown>>(
+            "GET",
+            PERSON_STATISTICS_PATH,
+            "getPersonStatistics",
+            {
+                params: {
+                    CustomerCpfCnpj: params.customerCpfCnpj,
+                    CustomerCode: params.customerCode,
+                },
+            },
+        );
     }
 
     private async searchAndValidate(
@@ -308,7 +478,12 @@ export class TotvsModaClient {
         invalidMessage: string,
         timeoutMs?: number,
     ): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
-        const result = await this.request<Record<string, unknown>>("POST", path, operation, { jsonBody: payload, timeoutMs });
+        const result = await this.request<Record<string, unknown>>(
+            "POST",
+            path,
+            operation,
+            { jsonBody: payload, timeoutMs },
+        );
         return this.toSearchResponse(result, invalidMessage);
     }
 
@@ -318,19 +493,38 @@ export class TotvsModaClient {
         params: Record<string, string | number | undefined>,
         invalidMessage: string,
     ): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
-        const result = await this.request<Record<string, unknown>>("GET", path, operation, { params });
+        const result = await this.request<Record<string, unknown>>(
+            "GET",
+            path,
+            operation,
+            { params },
+        );
         return this.toSearchResponse(result, invalidMessage);
     }
 
-    private toSearchResponse(result: Record<string, unknown>, invalidMessage: string): TotvsModaSearchResponse<Record<string, unknown>> {
+    private toSearchResponse(
+        result: Record<string, unknown>,
+        invalidMessage: string,
+    ): TotvsModaSearchResponse<Record<string, unknown>> {
         const items = result?.items;
         if (!result || typeof result !== "object" || !Array.isArray(items)) {
-            throw new TotvsModaResponseError(invalidMessage, { payload: result });
+            throw new TotvsModaResponseError(invalidMessage, {
+                payload: result,
+            });
         }
         return {
-            items: items.filter((item): item is Record<string, unknown> => !!item && typeof item === "object"),
-            hasNext: typeof result.hasNext === "boolean" ? result.hasNext : undefined,
-            totalItems: typeof result.totalItems === "number" ? result.totalItems : undefined,
+            items: items.filter(
+                (item): item is Record<string, unknown> =>
+                    !!item && typeof item === "object",
+            ),
+            hasNext:
+                typeof result.hasNext === "boolean"
+                    ? result.hasNext
+                    : undefined,
+            totalItems:
+                typeof result.totalItems === "number"
+                    ? result.totalItems
+                    : undefined,
         };
     }
 }

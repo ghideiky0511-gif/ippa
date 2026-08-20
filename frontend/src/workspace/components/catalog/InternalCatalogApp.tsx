@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Check, ClipboardList, Copy, Minus, Plus } from 'lucide-react';
+import { ArrowLeft, Check, ClipboardList, Copy, Minus, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { formatBRL } from '@/lib/format';
 import { ADDABLE_AVAILABILITY, buildVariantMatrix, deliveryLabel } from '@/lib/variants';
 import { resolveGallery, resolveImageForColor } from '@/lib/images';
@@ -12,10 +13,14 @@ import type { CartItem, OrderBook, OrderSession } from '@/domain/orders/types';
 import { adminUi } from '@/workspace/lib/ui';
 import Link from '@/components/TenantLink';
 import { useTenant } from '@/components/TenantProvider';
+import { pedidoRealtimeEventMessage, usePedidoRealtime, type PedidoParticipant, type PedidoPresence } from '@/lib/realtime/usePedidoRealtime';
+import { OrderSessionPeople } from '@/components/OrderSessionPeople';
 import { Card } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Sheet, SheetContent, SheetHeader } from '@/components/ui/sheet';
 import {
   activateOrderBook,
+  cancelOrderBook,
   createOrderBook,
   fetchActiveOrderBook,
   fetchOrderBooks,
@@ -94,6 +99,10 @@ export default function InternalCatalogApp({ products, initialBooks, initialSess
   const [bookName, setBookName] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [presence, setPresence] = useState<PedidoPresence[]>([]);
+  const [participants, setParticipants] = useState<PedidoParticipant[]>([]);
+  const [sessionToCancel, setSessionToCancel] = useState<OrderSession | null>(null);
+  const [bookToCancel, setBookToCancel] = useState<OrderBook | null>(null);
 
   const refresh = useCallback(async () => {
     const [nextBooks, nextSessions] = await Promise.all([fetchOrderBooks(), fetchOrderSessions()]);
@@ -116,8 +125,16 @@ export default function InternalCatalogApp({ products, initialBooks, initialSess
   }, [refresh]);
 
   const activeBook = books.find((book) => book.id === selectedBookId) || null;
-  const bookSessions = useMemo(() => sessions.filter((session) => session.orderBookId === selectedBookId && session.status !== 'fechado'), [sessions, selectedBookId]);
+  const bookSessions = useMemo(() => sessions.filter((session) => session.orderBookId === selectedBookId && (session.status === 'aberto' || session.status === 'aguardando_pagamento')), [sessions, selectedBookId]);
+  const cancelledSessions = useMemo(() => sessions.filter((session) => session.orderBookId === selectedBookId && session.status === 'cancelado'), [sessions, selectedBookId]);
   const selectedSession = bookSessions.find((session) => session.id === selectedSessionId) || null;
+  usePedidoRealtime({
+    sessionId: selectedSession?.id,
+    onSession: (updated) => setSessions((current) => current.map((session) => session.id === updated.id ? updated : session)),
+    onPresence: setPresence,
+    onParticipants: setParticipants,
+    onEvent: (event) => toast.info(pedidoRealtimeEventMessage(event)),
+  });
   const filteredProducts = useMemo(() => {
     const term = search.trim().toLocaleLowerCase('pt-BR');
     if (!term) return products;
@@ -157,29 +174,75 @@ export default function InternalCatalogApp({ products, initialBooks, initialSess
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Não foi possível atualizar o pedido.'); } finally { setSaving(false); }
   }
 
+  async function cancelBook(book: OrderBook) {
+    setSaving(true);
+    setMessage(null);
+    try {
+      const cancelled = await cancelOrderBook(book.id);
+      setBooks((current) => current.map((item) => item.id === cancelled.id ? cancelled : item));
+      setSelectedSessionId(null);
+      setSelectedProduct(null);
+      setMessage('Talão cancelado. Os pedidos vazios foram cancelados.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Não foi possível cancelar o talão.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function setSessionStatus(session: OrderSession, status: 'aberto' | 'cancelado') {
+    setSaving(true);
+    setMessage(null);
+    try {
+      const updated = await updateOrderSession(session.id, { status });
+      setSessions((current) => current.map((item) => item.id === updated.id ? updated : item));
+      if (status === 'aberto') {
+        setSelectedSessionId(updated.id);
+        setMessage('Pedido reativado e devolvido ao talão.');
+      } else {
+        setSelectedSessionId((current) => current === updated.id ? null : current);
+        setSelectedProduct(null);
+        setMessage('Pedido cancelado. Ele foi preservado e pode ser reativado.');
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Não foi possível atualizar o pedido.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function cancelSession(session: OrderSession) {
+    setSessionToCancel(session);
+  }
+
   return <div className={adminUi.catalogPage}>
     <header className={adminUi.topbar}>
       <div className={adminUi.topbarLeft}><div><h1>Catálogo de atendimento</h1><p className="mt-1 text-sm text-brand-muted">Escolha uma peça para abrir a grade no painel lateral.</p></div></div>
       <div className="flex flex-wrap items-center gap-2">
         <Link href="/workspace" className={`${adminUi.button} inline-flex items-center gap-2`}><ArrowLeft className="size-4" />Voltar ao workspace</Link>
         <button type="button" className={`${adminUi.button} inline-flex items-center gap-2`} onClick={() => setSharing(true)}><Copy className="size-4" />Gerar link público</button>
-        <select aria-label="Talão atual" value={selectedBookId} onChange={(event) => void selectBook(event.target.value)} className="min-h-10 rounded-control border border-border bg-white px-3 text-sm">{books.map((book) => <option key={book.id} value={book.id}>{book.name}{book.isActive ? ' · atual' : ''}</option>)}</select>
+        <select aria-label="Talão atual" value={selectedBookId} onChange={(event) => void selectBook(event.target.value)} className="min-h-10 rounded-control border border-border bg-white px-3 text-sm">{books.map((book) => <option key={book.id} value={book.id}>{book.name}{book.isActive ? ' · atual' : ''}{book.status === 'fechado' ? ' · fechado' : ''}</option>)}</select>
         <button type="button" className={adminUi.button} onClick={() => setCreatingBook(true)}>Novo talão</button>
-        <button type="button" className={adminUi.primaryButton} disabled={!activeBook} onClick={() => setCreatingOrder(true)}><Plus className="mr-1 inline size-4" />Criar pedido</button>
+        <button type="button" className={adminUi.primaryButton} disabled={!activeBook || activeBook.status !== 'aberto'} onClick={() => setCreatingOrder(true)}><Plus className="mr-1 inline size-4" />Criar pedido</button>
       </div>
     </header>
 
     <main className="grid gap-6 px-4 py-5 xl:grid-cols-[18rem_minmax(0,1fr)] sm:px-5">
       <aside className="h-fit rounded-brand border border-border bg-white p-4 xl:sticky xl:top-4">
         <div className="flex items-center justify-between gap-2"><div><h2 className="font-bold">Talão atual</h2><p className="mt-1 text-xs text-brand-muted">{activeBook?.name || 'Carregando talão'}</p></div><ClipboardList className="size-5 text-brand-primary" /></div>
-        <button type="button" className={`${adminUi.primaryButton} mt-4 w-full`} disabled={!activeBook} onClick={() => setCreatingOrder(true)}>+ Criar pedido</button>
-        <div className="mt-4 border-t border-border pt-4"><div className="flex items-center justify-between"><h3 className="text-sm font-semibold">Continuar pedido</h3><span className="text-xs text-brand-muted">{bookSessions.length}</span></div><div className="mt-3 flex max-h-[55vh] flex-col gap-2 overflow-y-auto">{bookSessions.map((session) => <button key={session.id} type="button" onClick={() => setSelectedSessionId(session.id)} className={`rounded-control border p-3 text-left text-sm transition ${selectedSessionId === session.id ? 'border-brand-primary bg-brand-background' : 'border-border hover:border-brand-primary/40'}`}><strong className="block truncate">{session.clientName || 'Sem cliente'}</strong><span className="mt-1 block text-xs text-brand-muted"><SessionLabel session={session} /></span><span className="mt-1 block text-xs font-semibold text-brand-primary">{formatBRL(sessionTotal(session))}</span></button>)}{bookSessions.length === 0 && <p className="py-6 text-center text-sm text-brand-muted">Crie um pedido para começar.</p>}</div></div>
+        <button type="button" className={`${adminUi.primaryButton} mt-4 w-full`} disabled={!activeBook || activeBook.status !== 'aberto'} onClick={() => setCreatingOrder(true)}>+ Criar pedido</button>
+        {activeBook?.status === 'aberto' && <button type="button" className={`${adminUi.button} mt-2 w-full text-red-600 hover:border-red-200 hover:bg-red-50 hover:text-red-700`} disabled={saving} onClick={() => setBookToCancel(activeBook)}><Trash2 className="mr-1 inline size-4" />Cancelar talão</button>}
+        <div className="mt-4 border-t border-border pt-4"><div className="flex items-center justify-between"><h3 className="text-sm font-semibold">Continuar pedido</h3><span className="text-xs text-brand-muted">{bookSessions.length}</span></div><div className="mt-3 flex max-h-[55vh] flex-col gap-2 overflow-y-auto">{bookSessions.map((session) => <div key={session.id} className={`flex items-stretch rounded-control border transition ${selectedSessionId === session.id ? 'border-brand-primary bg-brand-background' : 'border-border hover:border-brand-primary/40'}`}><button type="button" onClick={() => setSelectedSessionId(session.id)} className="min-w-0 flex-1 p-3 text-left text-sm"><strong className="block truncate">{session.clientName || 'Sem cliente'}</strong><span className="mt-1 block text-xs text-brand-muted"><SessionLabel session={session} /></span><span className="mt-1 block text-xs font-semibold text-brand-primary">{formatBRL(sessionTotal(session))}</span></button><button type="button" aria-label={`Cancelar pedido de ${session.clientName || 'sem cliente'}`} title="Cancelar pedido" disabled={saving} onClick={() => cancelSession(session)} className="group m-1 flex w-9 shrink-0 items-center justify-center rounded-control text-red-500 transition-all duration-200 hover:scale-105 hover:bg-red-50 hover:text-red-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"><Trash2 className="size-4 transition-transform duration-200 group-hover:-rotate-6" /></button></div>)}{bookSessions.length === 0 && <p className="py-6 text-center text-sm text-brand-muted">Crie um pedido para começar.</p>}</div></div>
+        {cancelledSessions.length > 0 && <div className="mt-4 border-t border-border pt-4"><div className="flex items-center justify-between"><h3 className="text-sm font-semibold">Cancelados</h3><span className="text-xs text-brand-muted">{cancelledSessions.length}</span></div><div className="mt-3 flex flex-col gap-2">{cancelledSessions.map((session) => <div key={session.id} className="rounded-control border border-dashed border-border p-3 text-sm"><strong className="block truncate text-brand-muted">{session.clientName || 'Sem cliente'}</strong><span className="mt-1 block text-xs text-brand-muted"><SessionLabel session={session} /></span><button type="button" className={`${adminUi.button} mt-2 inline-flex items-center gap-2`} disabled={saving} onClick={() => void setSessionStatus(session, 'aberto')}><RotateCcw className="size-4" />Reativar no talão</button></div>)}</div></div>}
       </aside>
 
-      <section className="min-w-0"><div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-lg font-bold">Peças</h2><p className="mt-1 text-sm text-brand-muted">{selectedSession ? `Adicionando em: ${selectedSession.clientName || 'pedido sem cliente'}` : 'Selecione ou crie um pedido para adicionar peças.'}</p></div><input className={publicUi.search} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar peça, SKU ou categoria" /></div><div className={publicUi.grid}>{filteredProducts.map((product) => <CatalogCard key={product.id} product={product} onOpen={() => setSelectedProduct(product)} />)}</div>{filteredProducts.length === 0 && <p className="py-12 text-center text-sm text-brand-muted">Nenhuma peça encontrada.</p>}</section>
+      <section className="min-w-0"><div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-lg font-bold">Peças</h2><p className="mt-1 text-sm text-brand-muted">{selectedSession ? `Adicionando em: ${selectedSession.clientName || 'pedido sem cliente'}` : 'Selecione ou crie um pedido para adicionar peças.'}</p>{selectedSession && presence.length > 0 && <p className="mt-1 text-xs text-brand-muted">{presence.length === 1 ? 'Somente você está neste pedido.' : `${presence.length} pessoas estão acompanhando este pedido agora.`}</p>}</div><input className={publicUi.search} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar peça, SKU ou categoria" /></div><div className={publicUi.grid}>{filteredProducts.map((product) => <CatalogCard key={product.id} product={product} onOpen={() => setSelectedProduct(product)} />)}</div>{filteredProducts.length === 0 && <p className="py-12 text-center text-sm text-brand-muted">Nenhuma peça encontrada.</p>}</section>
     </main>
+    {selectedSession && <OrderSessionPeople presence={presence} participants={participants} className="fixed top-20 right-5 z-50 w-[min(22rem,calc(100vw-2.5rem))]" />}
 
     <ProductSheet product={selectedProduct} session={selectedSession} saving={saving} onClose={() => setSelectedProduct(null)} onChange={changeVariant} />
+    <ConfirmDialog open={!!sessionToCancel} onOpenChange={(open) => !open && setSessionToCancel(null)} title="Cancelar pedido?" description={`O pedido de ${sessionToCancel?.clientName || 'sem cliente'} continuará disponível para reativação.`} confirmLabel="Cancelar pedido" destructive onConfirm={() => sessionToCancel ? setSessionStatus(sessionToCancel, 'cancelado') : undefined} />
+    <ConfirmDialog open={!!bookToCancel} onOpenChange={(open) => !open && setBookToCancel(null)} title="Cancelar talão?" description="Os pedidos pendentes e vazios deste talão serão cancelados. Pedidos já finalizados permanecem no histórico. Se algum pedido pendente tiver peças, o cancelamento não será permitido." confirmLabel="Cancelar talão" destructive onConfirm={() => bookToCancel ? cancelBook(bookToCancel) : undefined} />
     <ShareCatalogSheet open={isSharing} onOpenChange={setSharing} publicPath={href('/catalogo')} />
     {message && <div className="fixed right-5 bottom-5 z-[90] rounded-control bg-brand-text px-4 py-3 text-sm text-white shadow-lg">{message}</div>}
     {isCreatingOrder && activeBook && <CreateOrderModal orderBookId={activeBook.id} onClose={() => setCreatingOrder(false)} onCreated={(session) => { setSessions((current) => [session, ...current]); setSelectedSessionId(session.id); setCreatingOrder(false); }} />}

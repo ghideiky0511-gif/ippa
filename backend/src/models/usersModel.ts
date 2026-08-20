@@ -54,6 +54,29 @@ export async function listUserRows(client: PoolClient): Promise<UserRow[]> {
     return result.rows;
 }
 
+/** Localiza somente a conta da cliente vinculada ao CPF/CNPJ informado. */
+export async function findCustomerUserRowByDocumentDigits(client: PoolClient, documentDigits: string): Promise<UserRow | null> {
+    const result = await client.query<UserRow>(
+        `SELECT users.id, users.email, users.name, users.role, users.client_id, users.permissions, users.password_hash
+         FROM users
+         JOIN clients ON clients.id = users.client_id AND clients.tenant_id = app_tenant_id()
+         WHERE users.tenant_id = app_tenant_id() AND users.deleted_at IS NULL AND users.role = 'cliente'
+           AND regexp_replace(coalesce(clients.cpf_cnpj, ''), '\\D', '', 'g') = $1`,
+        [documentDigits],
+    );
+    return result.rows[0] ?? null;
+}
+
+export async function listUserRowsByIds(client: PoolClient, ids: string[]): Promise<UserRow[]> {
+    if (ids.length === 0) return [];
+    const result = await client.query<UserRow>(
+        `SELECT ${userFields} FROM users
+         WHERE tenant_id = app_tenant_id() AND id = ANY($1::uuid[]) AND deleted_at IS NULL`,
+        [ids],
+    );
+    return result.rows;
+}
+
 
 export async function updateUserRow(client: PoolClient, id: string, value: {
     name?: string; email?: string; passwordHash?: string; permissions?: AuthUser["permissions"];

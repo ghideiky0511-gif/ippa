@@ -22,6 +22,7 @@ import * as settings from "@/services/settings";
 import { NotFoundError, ServiceError } from "@/services/shared/errors";
 import * as users from "@/services/users";
 import * as pushNotifications from "@/services/notifications/pushNotificationService";
+import { mintRealtimeTicket } from "@/services/realtime/ticketService";
 
 type RouteContext = { params: Promise<{ tenantSlug: string; path: string[] }> };
 
@@ -32,6 +33,7 @@ const ERROR_MESSAGES: Record<string, string> = {
     INCOMPLETE_SIGNUP:
         "Preencha nome, e-mail, senha, CPF/CNPJ, CEP, Rua, Número, Bairro, Cidade e Estado.",
     WEAK_PASSWORD: "A senha precisa ter pelo menos 6 caracteres.",
+    CNPJ_REQUIRED: "Informe um CNPJ com 14 dígitos.",
     EMAIL_TAKEN: "Já existe uma conta com esse e-mail.",
     DOCUMENT_TAKEN: "Já existe um cadastro com esse CPF/CNPJ.",
     CLIENT_ALREADY_HAS_LOGIN: "Essa cliente já tem login.",
@@ -59,6 +61,10 @@ const ERROR_MESSAGES: Record<string, string> = {
     HOME_AI_PROVIDER_ERROR: "Falha ao gerar a home.",
     HOME_AI_INVALID_RESPONSE: "Não foi possível interpretar a resposta da IA.",
     SESSION_ALREADY_FINALIZED: "This order was already finalized.",
+    SESSION_CANCELLED: "This order is cancelled. Reactivate it before changing or finalizing it.",
+    ORDER_BOOK_NOT_FOUND: "Talão não encontrado.",
+    ORDER_BOOK_NOT_EMPTY: "Só é possível cancelar um talão quando todos os pedidos pendentes estão vazios.",
+    ORDER_BOOK_ALREADY_CLOSED: "Este talão já está fechado.",
     ERP_INTEGRATION_NOT_CONFIGURED:
         "Configure e salve as credenciais deste provider antes de ativá-lo.",
 };
@@ -144,15 +150,16 @@ function eventStream(
     subjectOverride?: string,
 ): Response {
     const subject =
-        subjectOverride ?? (user.role === "administrador" && user.permissions?.adminAccess === true
+        subjectOverride ??
+        (user.role === "administrador" && user.permissions?.adminAccess === true
             ? ordersSubject(tenantId)
             : user.role === "vendedora"
-            ? sellerSubject(user.id)
-            : user.role === "cliente" && user.clientId
-              ? clientSubject(user.clientId)
-              : user.role !== "cliente"
-                ? ordersSubject(tenantId)
-                : null);
+              ? sellerSubject(user.id)
+              : user.role === "cliente" && user.clientId
+                ? clientSubject(user.clientId)
+                : user.role !== "cliente"
+                  ? ordersSubject(tenantId)
+                  : null);
     if (!subject) return new Response("Não autenticado.", { status: 401 });
     let controllerRef: ReadableStreamDefaultController<Uint8Array> | null =
         null;
@@ -206,6 +213,22 @@ export async function GET(
 
     if (path[0] === "pay" && path[1])
         return execute(() => orders.paymentSummary(route.tenant, path[1]));
+    if (endpoint === "clients/lookup") {
+        const session = await authenticated();
+        if (!session)
+            return NextResponse.json(
+                { error: "Não autenticado." },
+                { status: 401 },
+            );
+        return execute(() =>
+            clients.findOrImportTenantClientByDocument(
+                route.tenant,
+                session.user,
+                request.nextUrl.searchParams.get("document") ?? "",
+                { ...auditContext(request), sessionId: session.sessionId },
+            ),
+        );
+    }
     if (path[0] === "clients" && path[1]) {
         const session = await authenticated();
         if (!session)
@@ -281,22 +304,54 @@ export async function GET(
         );
     if (endpoint === "notifications") {
         const filtro = request.nextUrl.searchParams.get("filtro");
-        return execute(() => pushNotifications.inbox(route.tenant, session.user, filtro !== "todas", Number(request.nextUrl.searchParams.get("limite") ?? 20)));
+        return execute(() =>
+            pushNotifications.inbox(
+                route.tenant,
+                session.user,
+                filtro !== "todas",
+                Number(request.nextUrl.searchParams.get("limite") ?? 20),
+            ),
+        );
     }
     if (endpoint === "notifications/summary") {
         return execute(async () => {
-            const result = await pushNotifications.inbox(route.tenant, session.user, false, 1);
+            const result = await pushNotifications.inbox(
+                route.tenant,
+                session.user,
+                false,
+                1,
+            );
             return { total: result.total, unread: result.unread };
         });
     }
-    if (endpoint === "push/config") return NextResponse.json(await pushNotifications.pushConfig());
-    if (endpoint === "push/status") return execute(() => pushNotifications.pushStatus(route.tenant, session.user,
-        request.nextUrl.searchParams.get("installationId") ?? undefined,
-        request.nextUrl.searchParams.get("endpoint") ?? undefined));
+    if (endpoint === "push/config")
+        return NextResponse.json(await pushNotifications.pushConfig());
+    if (endpoint === "push/status")
+        return execute(() =>
+            pushNotifications.pushStatus(
+                route.tenant,
+                session.user,
+                request.nextUrl.searchParams.get("installationId") ?? undefined,
+                request.nextUrl.searchParams.get("endpoint") ?? undefined,
+            ),
+        );
     if (path[0] === "sessions" && path[1] && path[2] === "stream") {
-        const allowed = await orders.canAccessOrderSession(route.tenant, session.user, path[1]);
-        if (!allowed) return NextResponse.json({ error: "Sem permissÃ£o." }, { status: 403 });
-        return eventStream(request, session.user, route.tenant.id, sessionSubject(path[1]));
+        const allowed = await orders.canAccessOrderSession(
+            route.tenant,
+            session.user,
+            path[1],
+        );
+        if (!allowed)
+            return NextResponse.json(
+                { error: "Sem permissÃ£o." },
+                { status: 403 },
+            );
+        return eventStream(
+            request,
+            session.user,
+            route.tenant.id,
+            sessionSubject(path[1]),
+        );
     }
     switch (endpoint) {
         case "clients":
@@ -331,7 +386,13 @@ export async function GET(
             );
         case "admin/clients":
             return execute(() =>
-                clients.searchTenantClients(route.tenant, session.user),
+                clients.searchAdministrativeClients(
+                    route.tenant,
+                    session.user,
+                    request.nextUrl.searchParams.get("q") ?? undefined,
+                    Number(request.nextUrl.searchParams.get("page")) || undefined,
+                    Number(request.nextUrl.searchParams.get("pageSize")) || undefined,
+                ),
             );
         case "catalog-order":
             return execute(() =>
@@ -376,43 +437,53 @@ export async function POST(
         endpoint === "admin/auth/login" ||
         endpoint === "workspace/auth/login"
     ) {
-        if (
-            typeof body.email !== "string" ||
-            typeof body.password !== "string"
-        ) {
+        const usesDocumentLogin = endpoint === "auth/login" && typeof body.document === "string";
+        if (typeof body.password !== "string" || (!usesDocumentLogin && typeof body.email !== "string")) {
             return NextResponse.json(
-                { error: "Informe e-mail e senha." },
+                { error: usesDocumentLogin ? "Informe documento e senha." : "Informe e-mail e senha." },
                 { status: 400 },
             );
         }
+        const password = body.password as string;
+        const email = body.email as string;
         const result =
             endpoint === "admin/auth/login"
                 ? await authentication.loginAdministrator(
                       route.tenant,
-                      body.email,
-                      body.password,
+                      email,
+                      password,
                       contextData,
                   )
                 : endpoint === "workspace/auth/login"
                   ? await authentication.loginInternalUser(
                         route.tenant,
-                        body.email,
-                        body.password,
+                        email,
+                        password,
                         contextData,
                     )
-                : await authentication.login(
-                      route.tenant,
-                      body.email,
-                      body.password,
-                      contextData,
-                  );
+                  : usesDocumentLogin
+                    ? await authentication.loginByDocument(
+                        route.tenant,
+                        body.document as string,
+                        password,
+                        contextData,
+                      )
+                    : await authentication.login(
+                        route.tenant,
+                        email,
+                        password,
+                        contextData,
+                    );
         if (!result) {
             return NextResponse.json(
-                { error: "E-mail, senha ou permissão inválidos." },
+                { error: "Dados de acesso ou permissão inválidos." },
                 { status: 401 },
             );
         }
-        if (endpoint === "admin/auth/login" || endpoint === "workspace/auth/login")
+        if (
+            endpoint === "admin/auth/login" ||
+            endpoint === "workspace/auth/login"
+        )
             return NextResponse.json(result);
         const response = NextResponse.json({ user: result.user });
         response.cookies.set(
@@ -472,9 +543,21 @@ export async function POST(
     }
     if (endpoint === "notifications/dispatch") {
         const secret = request.headers.get("x-notification-dispatch-secret");
-        if (!process.env.NOTIFICATION_DISPATCH_SECRET || secret !== process.env.NOTIFICATION_DISPATCH_SECRET)
-            return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
-        return execute(() => pushNotifications.dispatchNotifications(route.tenant, { id: "", role: "administrador" }, 100));
+        if (
+            !process.env.NOTIFICATION_DISPATCH_SECRET ||
+            secret !== process.env.NOTIFICATION_DISPATCH_SECRET
+        )
+            return NextResponse.json(
+                { error: "Sem permissão." },
+                { status: 403 },
+            );
+        return execute(() =>
+            pushNotifications.dispatchNotifications(
+                route.tenant,
+                { id: "", role: "administrador" },
+                100,
+            ),
+        );
     }
 
     const authenticated = await authentication.getAuthenticatedSession(
@@ -552,11 +635,14 @@ export async function POST(
         );
     if (endpoint === "order-books")
         return execute(
-            () => orders.createOrderBook(route.tenant, authenticated.user, body),
+            () =>
+                orders.createOrderBook(route.tenant, authenticated.user, body),
             201,
         );
     if (endpoint === "order-books/active")
-        return execute(() => orders.activeOrderBook(route.tenant, authenticated.user));
+        return execute(() =>
+            orders.activeOrderBook(route.tenant, authenticated.user),
+        );
     if (path[0] === "sessions" && path[1] && path[2] === "payment-link") {
         return execute(() =>
             orders.createPaymentLink(
@@ -565,6 +651,11 @@ export async function POST(
                 path[1],
                 publicOrigin(request),
             ),
+        );
+    }
+    if (path[0] === "sessions" && path[1] && path[2] === "realtime-ticket") {
+        return execute(() =>
+            mintRealtimeTicket(route.tenant, authenticated.user, path[1]),
         );
     }
     if (path[0] === "sessions" && path[1] && path[2] === "finalize") {
@@ -583,7 +674,11 @@ export async function POST(
         );
     if (endpoint === "push/subscriptions")
         return execute(async () => {
-            await pushNotifications.registerPushSubscription(route.tenant, authenticated.user, body);
+            await pushNotifications.registerPushSubscription(
+                route.tenant,
+                authenticated.user,
+                body,
+            );
             return { ok: true };
         }, 201);
     if (endpoint === "admin/home-ai")
@@ -781,6 +876,11 @@ export async function PUT(
             orders.activateOrderBook(route.tenant, authenticated.user, path[1]),
         );
     }
+    if (path[0] === "order-books" && path[1] && path[2] === "cancel") {
+        return execute(() =>
+            orders.cancelOrderBook(route.tenant, authenticated.user, path[1]),
+        );
+    }
     return NextResponse.json(
         { error: "Rota não encontrada." },
         { status: 404 },
@@ -822,13 +922,34 @@ export async function PATCH(
     const route = await resolveTenantRoute(request, context.params);
     if (isTenantRouteError(route)) return route;
     const path = route.params.path;
-    const authenticated = await authentication.getAuthenticatedSession(route.tenant, requestToken(request, route.tenant.slug));
-    if (!authenticated) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+    const authenticated = await authentication.getAuthenticatedSession(
+        route.tenant,
+        requestToken(request, route.tenant.slug),
+    );
+    if (!authenticated)
+        return NextResponse.json(
+            { error: "Não autenticado." },
+            { status: 401 },
+        );
     if (path[0] === "notifications" && path[1] === "read-all") {
-        return execute(async () => ({ marked: await pushNotifications.readAllNotifications(route.tenant, authenticated.user) }));
+        return execute(async () => ({
+            marked: await pushNotifications.readAllNotifications(
+                route.tenant,
+                authenticated.user,
+            ),
+        }));
     }
     if (path[0] === "notifications" && path[1] && path[2] === "read") {
-        return execute(async () => ({ ok: await pushNotifications.readNotification(route.tenant, authenticated.user, path[1]) }));
+        return execute(async () => ({
+            ok: await pushNotifications.readNotification(
+                route.tenant,
+                authenticated.user,
+                path[1],
+            ),
+        }));
     }
-    return NextResponse.json({ error: "Rota não encontrada." }, { status: 404 });
+    return NextResponse.json(
+        { error: "Rota não encontrada." },
+        { status: 404 },
+    );
 }

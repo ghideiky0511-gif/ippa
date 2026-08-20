@@ -8,6 +8,7 @@ import { adminUi } from '@/workspace/lib/ui';
 import {
   createOrderSession,
   finalizeOrderSession,
+  lookupOrderClientByDocument,
   searchOrderClients,
   updateOrderSession,
 } from '@/workspace/lib/ordersClient';
@@ -53,7 +54,16 @@ function ClientLookup({
     setLoading(true);
     setError(null);
     try {
-      setResults(await searchOrderClients(value));
+      const digits = value.replace(/\D/g, '');
+      if (digits.length === 11 || digits.length === 14) {
+        // CPF/CNPJ exato: local primeiro, e se não existir o backend tenta
+        // importar do ERP ativo antes de dizer que não encontrou.
+        const result = await lookupOrderClientByDocument(digits);
+        setResults(result.client ? [result.client] : []);
+        if (!result.client) setError('Cliente não encontrada — cadastre manualmente.');
+      } else {
+        setResults(await searchOrderClients(value));
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível buscar a cliente.');
     } finally {

@@ -1,6 +1,6 @@
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
-import type { AuthUser, Order, OrderSession } from "@/lib/types";
+import type { AuthUser, Order, OrderSession, OrderSessionParticipant } from "@/lib/types";
 import {
     findLatestOpenOrderSessionRowByClient,
     findOrderSessionRow,
@@ -16,17 +16,79 @@ import {
     closeOrderSessionRow,
     insertOrderRow,
 } from "@/models/ordersModel";
+import {
+    listOrderSessionParticipantRows,
+    markOrderSessionParticipantLeftRow,
+    upsertOrderSessionParticipantRow,
+} from "@/models/orderSessionParticipantsModel";
 import { findClientRow, updateClientRow } from "@/models/clientsModel";
 import { findUserRowById } from "@/models/usersModel";
+import { listUsersByIds } from "@/services/users";
 import { recordAuditEvent, ORDER_SESSION_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
-import { notifySession } from "@/lib/sseHub";
-import { notifyOrder } from "@/lib/sseHub";
-import { findActiveOrderBookRow, findOrderBookRow, insertOrderBookRow } from "@/models/orderBooksModel";
+import { notifyOrder, notifyOrderBook, notifySession } from "@/lib/sseHub";
+import { scheduleSessionBroadcast } from "@/services/realtime/sessionBroadcast";
+import { findActiveOrderBookRow, findOrderBookRow, insertOrderBookRow, reopenOrderBookRow, type OrderBookRow } from "@/models/orderBooksModel";
+import { closeOrderBookWhenFinished } from "./orderBookLifecycle";
 import { toOrder, toOrderSession } from "./orderMapper";
 
 function canManageSession(user: AuthUser, sellerId: string): boolean {
     return user.role !== "cliente" && (user.role !== "vendedora" || sellerId === user.id);
+}
+
+function toParticipant(
+    row: Awaited<ReturnType<typeof listOrderSessionParticipantRows>>[number],
+    usersById: Map<string, AuthUser>,
+): OrderSessionParticipant | null {
+    const user = usersById.get(row.user_id);
+    if (!user) return null;
+    return {
+        userId: row.user_id,
+        firstJoinedAt: row.first_joined_at.toISOString(),
+        lastJoinedAt: row.last_joined_at.toISOString(),
+        lastLeftAt: row.last_left_at?.toISOString(),
+        joinCount: row.join_count,
+        user: { id: user.id, name: user.name, role: user.role },
+    };
+}
+
+export async function sessionParticipants(
+    tenant: Tenant,
+    actor: AuthUser,
+    sessionId: string,
+): Promise<OrderSessionParticipant[]> {
+    return withTenantTransaction(tenant, actor, async (client) => {
+        const session = await findOrderSessionRow(client, sessionId);
+        if (!session) throw new NotFoundError("SESSION_NOT_FOUND");
+        const allowed = actor.role === "cliente"
+            ? session.client_id === actor.clientId
+            : canManageSession(actor, session.seller_id);
+        if (!allowed) throw new ForbiddenError();
+        const rows = await listOrderSessionParticipantRows(client, sessionId);
+        const usersById = new Map((await listUsersByIds(client, rows.map((row) => row.user_id)))
+            .map((user) => [user.id, user]));
+        return rows.map((row) => toParticipant(row, usersById)).filter((row): row is OrderSessionParticipant => Boolean(row));
+    });
+}
+
+export async function registerSessionParticipant(
+    tenant: Tenant,
+    actor: AuthUser,
+    sessionId: string,
+): Promise<void> {
+    await withTenantTransaction(tenant, actor, async (client) => {
+        await upsertOrderSessionParticipantRow(client, sessionId, actor.id);
+    });
+}
+
+export async function leaveSessionParticipant(
+    tenant: Tenant,
+    actor: AuthUser,
+    sessionId: string,
+): Promise<void> {
+    await withTenantTransaction(tenant, actor, async (client) => {
+        await markOrderSessionParticipantLeftRow(client, sessionId, actor.id);
+    });
 }
 
 export async function orderSessions(tenant: Tenant, user: AuthUser): Promise<OrderSession[]> {
@@ -113,6 +175,7 @@ export async function createOrderSession(
         return created;
     });
     notifySession(tenant.id, created);
+    scheduleSessionBroadcast(created);
     return created;
 }
 
@@ -125,6 +188,7 @@ export async function updateSession(
     id: string,
     body: Partial<OrderSession> & { shipping?: unknown },
 ): Promise<OrderSession> {
+    const changes: { book?: OrderBookRow } = {};
     const updated = await withTenantTransaction(tenant, user, async (client) => {
         const currentRow = await findOrderSessionRow(client, id);
         if (!currentRow) throw new NotFoundError("SESSION_NOT_FOUND");
@@ -132,6 +196,13 @@ export async function updateSession(
         const isSeller = canManageSession(user, currentRow.seller_id);
         const isClient = user.role === "cliente" && Boolean(currentRow.client_id) && currentRow.client_id === user.clientId;
         if (!isSeller && !isClient) throw new ForbiddenError();
+        // Um pedido cancelado fica preservado para consulta, mas nao pode
+        // continuar recebendo alteracoes. Somente quem o gerencia pode
+        // devolve-lo ao talão, explicitamente como "aberto".
+        if (currentRow.status === "cancelado" &&
+            (!isSeller || body.status !== "aberto")) {
+            throw new ValidationError("SESSION_CANCELLED");
+        }
 
         let clientId = currentRow.client_id ?? undefined;
         let clientName = currentRow.client_name;
@@ -161,7 +232,7 @@ export async function updateSession(
             }
             if (typeof body.notes === "string") notes = body.notes;
             if (body.status !== undefined) {
-                if (!(["aberto", "fechado", "aguardando_pagamento"] as unknown[]).includes(body.status)) {
+                if (!(["aberto", "fechado", "aguardando_pagamento", "cancelado"] as unknown[]).includes(body.status)) {
                     throw new ValidationError();
                 }
                 status = body.status;
@@ -175,12 +246,23 @@ export async function updateSession(
         if (Array.isArray(body.items)) await replaceOrderSessionItemRows(client, id, items);
         const row = await updateOrderSessionRow(client, id, {
             clientName, clientId, notes, status, shipping,
-            clearPaymentToken: status === "aberto" && currentRow.status !== "aberto",
+            // Links de pagamento nao sobrevivem a cancelamento nem a uma
+            // reativacao: a proxima cobranca precisa gerar um token novo.
+            clearPaymentToken: (status === "aberto" && currentRow.status !== "aberto") || status === "cancelado",
         });
         if (!row) throw new NotFoundError("SESSION_NOT_FOUND");
+        if (status === "aberto" && currentRow.status !== "aberto") {
+            changes.book = (await reopenOrderBookRow(client, row.order_book_id)) ?? undefined;
+        } else {
+            changes.book = (await closeOrderBookWhenFinished(client, row.order_book_id)) ?? undefined;
+        }
         return toOrderSession(row, items);
     });
     notifySession(tenant.id, updated);
+    scheduleSessionBroadcast(updated);
+    if (changes.book) notifyOrderBook(tenant.id, {
+        sellerId: changes.book.seller_id,
+    });
     return updated;
 }
 
@@ -205,11 +287,13 @@ export async function finalizeOrderSession(
 ): Promise<Order> {
     if (user.role === "cliente") throw new ForbiddenError();
     let changedSession: OrderSession | undefined;
+    const changes: { book?: OrderBookRow } = {};
     const order = await withTenantTransaction(tenant, user, async (client) => {
         const session = await findOrderSessionRow(client, id);
         if (!session) throw new NotFoundError("SESSION_NOT_FOUND");
         if (!canManageSession(user, session.seller_id)) throw new ForbiddenError();
         if (session.status === "fechado") throw new ValidationError("SESSION_ALREADY_FINALIZED");
+        if (session.status === "cancelado") throw new ValidationError("SESSION_CANCELLED");
         if (!session.client_id) throw new ValidationError("CLIENT_REQUIRED");
 
         const items = (await listOrderSessionItemRowsBySession(client, id))
@@ -233,9 +317,14 @@ export async function finalizeOrderSession(
         for (const item of items) await insertOrderItemRow(client, row.id, item);
         const closed = await closeOrderSessionRow(client, session.id);
         if (closed) changedSession = toOrderSession(closed, items);
+        changes.book = (await closeOrderBookWhenFinished(client, session.order_book_id)) ?? undefined;
         return toOrder(row, items);
     });
-    if (changedSession) notifySession(tenant.id, changedSession);
+    if (changedSession) {
+        notifySession(tenant.id, changedSession);
+        scheduleSessionBroadcast(changedSession);
+    }
+    if (changes.book) notifyOrderBook(tenant.id, { sellerId: changes.book.seller_id });
     notifyOrder(tenant.id, order);
     return order;
 }

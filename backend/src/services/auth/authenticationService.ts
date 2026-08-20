@@ -4,7 +4,8 @@ import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser } from "@/lib/types";
 import { findActiveSessionRow, insertSessionRow, revokeSessionRow } from "@/models/sessionsModel";
-import { findUserRowByEmail, findUserRowById, type UserRow } from "@/models/usersModel";
+import { findCustomerUserRowByDocumentDigits, findUserRowByEmail, findUserRowById, type UserRow } from "@/models/usersModel";
+import { findStoreSettingsRow } from "@/models/settingsModel";
 import { recordAuditEvent, AUTHENTICATION_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
 import { isAdministrator } from "@/services/users/userService";
 
@@ -46,6 +47,23 @@ export async function login(
     context: AuditRequestContext,
 ): Promise<{ user: AuthUser; token: string } | null> {
     const user = await authenticate(tenant, email, password);
+    return user ? { user, token: await issueSession(tenant, user, context) } : null;
+}
+
+/** Login público pelo documento vinculado ao cadastro da cliente. */
+export async function loginByDocument(
+    tenant: Tenant,
+    document: string,
+    password: string,
+    context: AuditRequestContext,
+): Promise<{ user: AuthUser; token: string } | null> {
+    const user = await withTenantTransaction(tenant, {}, async (client) => {
+        const digits = document.replace(/\D/g, "");
+        const settings = await findStoreSettingsRow(client);
+        if (settings?.features?.allowCpfSignup === false && digits.length !== 14) return null;
+        const row = await findCustomerUserRowByDocumentDigits(client, digits);
+        return row && await verify(row.password_hash, password) ? toAuthUser(row) : null;
+    });
     return user ? { user, token: await issueSession(tenant, user, context) } : null;
 }
 

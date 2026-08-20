@@ -1,6 +1,8 @@
 'use client';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { toast } from 'sonner';
 import type { CartItem, OrderSession, ShippingOption } from '@/domain/orders/types';
+import { pedidoRealtimeEventMessage, usePedidoRealtime, type PedidoParticipant, type PedidoPresence } from '@/lib/realtime/usePedidoRealtime';
 
 // Contrato mínimo que CartProvider.tsx precisa pra escrever num pedido
 // compartilhado — mesmo formato que TalaoProvider.tsx expõe (ver
@@ -8,6 +10,8 @@ import type { CartItem, OrderSession, ShippingOption } from '@/domain/orders/typ
 // sessões nem vincula cadastro, essas são ações da vendedora.
 interface ClientSessionContextValue {
   activeSession: OrderSession | null;
+  presence: PedidoPresence[];
+  participants: PedidoParticipant[];
   updateActiveItems: (items: CartItem[]) => Promise<void>;
   updateActiveShipping: (shipping: ShippingOption | null) => Promise<void>;
 }
@@ -25,6 +29,8 @@ const ClientSessionContext = createContext<ClientSessionContextValue | null>(nul
 // ClientSessionProvider pra role 'cliente').
 export function ClientSessionProvider({ children }: { children: ReactNode }) {
   const [activeSession, setActiveSession] = useState<OrderSession | null>(null);
+  const [presence, setPresence] = useState<PedidoPresence[]>([]);
+  const [participants, setParticipants] = useState<PedidoParticipant[]>([]);
 
   function refetch() {
     return fetch('/api/sessions/mine', { cache: 'no-store' })
@@ -37,9 +43,16 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
     refetch();
   }, []);
 
-  // Tempo real: a vendedora mexendo no mesmo pedido (outra aba/dispositivo)
-  // reflete aqui sem F5 — mesmo hub que TalaoProvider.tsx usa pro lado
-  // dela, ver web/src/lib/sseHub.ts (canal client:<clientId> aqui).
+  // O socket aplica o snapshot da sessão sem F5: itens, frete e status;
+  // a lista de presença informa quando a vendedora entra ou sai do pedido.
+  usePedidoRealtime({
+    sessionId: activeSession?.id,
+    onSession: setActiveSession,
+    onPresence: setPresence,
+    onParticipants: setParticipants,
+    onEvent: (event) => toast.info(pedidoRealtimeEventMessage(event)),
+  });
+
   useEffect(() => {
     const source = new EventSource('/api/sessions/stream');
     source.addEventListener('sessions-updated', () => refetch());
@@ -69,8 +82,8 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
   }
 
   const value = useMemo<ClientSessionContextValue>(
-    () => ({ activeSession, updateActiveItems, updateActiveShipping }),
-    [activeSession]
+    () => ({ activeSession, presence, participants, updateActiveItems, updateActiveShipping }),
+    [activeSession, participants, presence]
   );
 
   return <ClientSessionContext.Provider value={value}>{children}</ClientSessionContext.Provider>;

@@ -5,7 +5,7 @@ import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser, UserRole } from "@/lib/types";
 import { deleteClientRow, listClientRows } from "@/models/clientsModel";
 import {
-    findUserRowByEmail, findUserRowById, insertUserRow, listUserRows,
+    findUserRowByEmail, findUserRowById, insertUserRow, listUserRows, listUserRowsByIds,
     revokeUserSessionRows, softDeleteUserRow, updateUserRow, type UserRow,
 } from "@/models/usersModel";
 import { recordAuditEvent, USER_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
@@ -22,6 +22,13 @@ export function toAuthUser(row: UserRow): AuthUser {
         id: row.id, email: row.email, name: row.name, role: row.role,
         clientId: row.client_id ?? undefined, permissions: row.permissions,
     };
+}
+
+// Leitura reutilizÃ¡vel para recursos que guardam apenas user_id e precisam
+// exibir a identidade/papel atual da conta sem duplicar esses campos.
+export async function listUsersByIds(client: PoolClient, ids: string[]): Promise<AuthUser[]> {
+    const uniqueIds = [...new Set(ids)];
+    return (await listUserRowsByIds(client, uniqueIds)).map(toAuthUser);
 }
 
 export function isAdministrator(user: AuthUser | null): boolean {

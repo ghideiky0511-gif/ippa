@@ -1,7 +1,15 @@
-import type { Client } from "@/lib/types";
 import type { ExternalApiCallReporter } from "@/lib/externalApiCall";
-import type { ErpFetchOptions, ErpFetchResult, ErpProvider, ErpProviderCredentials } from "../../types";
-import { TotvsModaClient, type TotvsModaCredentials, type TotvsModaSearchPayload } from "./client";
+import type {
+    ErpFetchOptions,
+    ErpFetchResult,
+    ErpProvider,
+    ErpProviderCredentials,
+} from "../../types";
+import {
+    TotvsModaClient,
+    type TotvsModaCredentials,
+    type TotvsModaSearchPayload,
+} from "./client";
 import { TotvsModaAuthError } from "./errors";
 import {
     groupTotvsModaProducts,
@@ -26,26 +34,52 @@ function trim(value: unknown): string {
 
 function toNumberArray(value: unknown): number[] {
     if (!Array.isArray(value)) return [];
-    return value.map((item) => Number(item)).filter((item) => Number.isFinite(item));
+    return value
+        .map((item) => Number(item))
+        .filter((item) => Number.isFinite(item));
 }
 
-function normalizeCredentials(credentials: ErpProviderCredentials): TotvsModaCredentials {
+function normalizeCredentials(
+    credentials: ErpProviderCredentials,
+): TotvsModaCredentials {
     const clientId = trim(credentials.clientId ?? credentials.client_id);
-    const clientSecret = trim(credentials.clientSecret ?? credentials.client_secret);
+    const clientSecret = trim(
+        credentials.clientSecret ?? credentials.client_secret,
+    );
     const username = trim(credentials.username);
     const password = trim(credentials.password);
-    const branchCode = Number(credentials.branchCode ?? credentials.branch_code);
-    const priceCodeList = toNumberArray(credentials.priceCodeList ?? credentials.price_code_list);
-    const stockCodeList = toNumberArray(credentials.stockCodeList ?? credentials.stock_code_list);
+    const branchCode = Number(
+        credentials.branchCode ?? credentials.branch_code,
+    );
+    const priceCodeList = toNumberArray(
+        credentials.priceCodeList ?? credentials.price_code_list,
+    );
+    const stockCodeList = toNumberArray(
+        credentials.stockCodeList ?? credentials.stock_code_list,
+    );
     if (!clientId || !clientSecret || !username || !password) {
-        throw new TotvsModaAuthError("Credenciais do TOTVS Moda não estão totalmente configuradas.");
+        throw new TotvsModaAuthError(
+            "Credenciais do TOTVS Moda não estão totalmente configuradas.",
+        );
     }
-    if (!Number.isFinite(branchCode) || priceCodeList.length === 0 || stockCodeList.length === 0) {
+    if (
+        !Number.isFinite(branchCode) ||
+        priceCodeList.length === 0 ||
+        stockCodeList.length === 0
+    ) {
         throw new TotvsModaAuthError(
             "Configuração do TOTVS Moda incompleta: branchCode, priceCodeList e stockCodeList são obrigatórios para consultar produtos.",
         );
     }
-    return { clientId, clientSecret, username, password, branchCode, priceCodeList, stockCodeList };
+    return {
+        clientId,
+        clientSecret,
+        username,
+        password,
+        branchCode,
+        priceCodeList,
+        stockCodeList,
+    };
 }
 
 function pageFromCursor(cursor: string | undefined): number {
@@ -53,7 +87,10 @@ function pageFromCursor(cursor: string | undefined): number {
     return Number.isFinite(page) && page > 0 ? page : 1;
 }
 
-function searchPayload(options: ErpFetchOptions | undefined, page: number): TotvsModaSearchPayload {
+function searchPayload(
+    options: ErpFetchOptions | undefined,
+    page: number,
+): TotvsModaSearchPayload {
     return {
         page,
         pageSize: PAGE_SIZE,
@@ -68,7 +105,10 @@ function searchPayload(options: ErpFetchOptions | undefined, page: number): Totv
 // páginas de pessoa física antes de passar para pessoa jurídica.
 type ClientSearchPhase = "individuals" | "legalEntities";
 
-function parseClientCursor(cursor: string | undefined): { phase: ClientSearchPhase; page: number } {
+function parseClientCursor(cursor: string | undefined): {
+    phase: ClientSearchPhase;
+    page: number;
+} {
     const [phase, pageStr] = (cursor ?? "").split(":");
     const page = Number(pageStr);
     return {
@@ -88,13 +128,25 @@ function onlyDigits(value: string): string {
 // Provider real: autentica e consome a API do TOTVS Moda via TotvsModaClient,
 // devolvendo os dados já adequados ao formato interno (ver mapper.ts) — o
 // mesmo contrato ErpProvider que providers/mock implementa com fixtures.
-export function createTotvsModaErpProvider(credentials: ErpProviderCredentials, reporter?: ExternalApiCallReporter): ErpProvider {
-    const client = new TotvsModaClient(normalizeCredentials(credentials), reporter);
+export function createTotvsModaErpProvider(
+    credentials: ErpProviderCredentials,
+    reporter?: ExternalApiCallReporter,
+): ErpProvider {
+    const client = new TotvsModaClient(
+        normalizeCredentials(credentials),
+        reporter,
+    );
 
     return {
         code: "totvsmoda",
 
-        async getProducts(options?: ErpFetchOptions): Promise<ErpFetchResult<ReturnType<typeof groupTotvsModaProducts>[number]["data"]>> {
+        async getProducts(
+            options?: ErpFetchOptions,
+        ): Promise<
+            ErpFetchResult<
+                ReturnType<typeof groupTotvsModaProducts>[number]["data"]
+            >
+        > {
             const page = pageFromCursor(options?.cursor);
             const result = await client.searchProducts({
                 page,
@@ -103,7 +155,11 @@ export function createTotvsModaErpProvider(credentials: ErpProviderCredentials, 
             });
             const rows = result.items as TotvsModaProductRow[];
             const productCodeList = Array.from(
-                new Set(rows.map((row) => row.productCode).filter((code): code is number => code !== undefined)),
+                new Set(
+                    rows
+                        .map((row) => row.productCode)
+                        .filter((code): code is number => code !== undefined),
+                ),
             );
 
             let priceRows: TotvsModaPriceRow[] = [];
@@ -123,9 +179,13 @@ export function createTotvsModaErpProvider(credentials: ErpProviderCredentials, 
             };
         },
 
-        async getOrders(options?: ErpFetchOptions): Promise<ErpFetchResult<ReturnType<typeof mapTotvsModaOrder>>> {
+        async getOrders(
+            options?: ErpFetchOptions,
+        ): Promise<ErpFetchResult<ReturnType<typeof mapTotvsModaOrder>>> {
             const page = pageFromCursor(options?.cursor);
-            const result = await client.searchOrders(searchPayload(options, page));
+            const result = await client.searchOrders(
+                searchPayload(options, page),
+            );
             return {
                 items: result.items.map((raw) => ({
                     externalId: trim(raw.orderNumber),
@@ -137,32 +197,57 @@ export function createTotvsModaErpProvider(credentials: ErpProviderCredentials, 
 
         async getClients(
             options?: ErpFetchOptions,
-        ): Promise<ErpFetchResult<ReturnType<typeof mapTotvsModaIndividualClient> | ReturnType<typeof mapTotvsModaLegalEntityClient>>> {
+        ): Promise<
+            ErpFetchResult<
+                | ReturnType<typeof mapTotvsModaIndividualClient>
+                | ReturnType<typeof mapTotvsModaLegalEntityClient>
+            >
+        > {
             const { phase, page } = parseClientCursor(options?.cursor);
             const updatedSince = options?.updatedSince?.toISOString();
 
             if (phase === "individuals") {
-                const result = await client.searchIndividuals({ page, pageSize: PAGE_SIZE, updatedSince });
+                const result = await client.searchIndividuals({
+                    page,
+                    pageSize: PAGE_SIZE,
+                    updatedSince,
+                });
                 return {
                     items: result.items.map((raw) => {
                         const individual = raw as TotvsModaIndividual;
-                        return { externalId: trim(individual.cpf ?? individual.code), data: mapTotvsModaIndividualClient(individual) };
+                        return {
+                            externalId: trim(individual.cpf ?? individual.code),
+                            data: mapTotvsModaIndividualClient(individual),
+                        };
                     }),
-                    nextCursor: result.hasNext ? buildClientCursor("individuals", page + 1) : buildClientCursor("legalEntities", 1),
+                    nextCursor: result.hasNext
+                        ? buildClientCursor("individuals", page + 1)
+                        : buildClientCursor("legalEntities", 1),
                 };
             }
 
-            const result = await client.searchLegalEntities({ page, pageSize: PAGE_SIZE, updatedSince });
+            const result = await client.searchLegalEntities({
+                page,
+                pageSize: PAGE_SIZE,
+                updatedSince,
+            });
             return {
                 items: result.items.map((raw) => {
                     const legalEntity = raw as TotvsModaLegalEntity;
-                    return { externalId: trim(legalEntity.cnpj ?? legalEntity.code), data: mapTotvsModaLegalEntityClient(legalEntity) };
+                    return {
+                        externalId: trim(legalEntity.cnpj ?? legalEntity.code),
+                        data: mapTotvsModaLegalEntityClient(legalEntity),
+                    };
                 }),
-                nextCursor: result.hasNext ? buildClientCursor("legalEntities", page + 1) : undefined,
+                nextCursor: result.hasNext
+                    ? buildClientCursor("legalEntities", page + 1)
+                    : undefined,
             };
         },
 
-        async getCompanies(): Promise<ErpFetchResult<ReturnType<typeof mapTotvsModaCompany>>> {
+        async getCompanies(): Promise<
+            ErpFetchResult<ReturnType<typeof mapTotvsModaCompany>>
+        > {
             const branches = await client.listBranches();
             return {
                 items: branches.map((raw) => ({
@@ -180,36 +265,57 @@ export function createTotvsModaErpProvider(credentials: ErpProviderCredentials, 
                 await client.listBranches();
                 return { ok: true };
             } catch (exc) {
-                return { ok: false, message: exc instanceof Error ? exc.message : "Falha ao conectar ao TOTVS Moda." };
+                return {
+                    ok: false,
+                    message:
+                        exc instanceof Error
+                            ? exc.message
+                            : "Falha ao conectar ao TOTVS Moda.",
+                };
             }
         },
+
+        // Busca pontual por CPF ou CNPJ exato (individuals/search ou
+        // legal-entities/search com filter de um único documento, conforme o
+        // tamanho) — sem paginar a base inteira como getClients faz para sync
+        // em lote. externalId usa o mesmo campo (cpf/cnpj cru da API) que
+        // getClients usaria para essa mesma pessoa, para que um sync em lote
+        // posterior reconheça o registro já importado em vez de duplicar.
+        async lookupClientByDocument(document) {
+            const digits = onlyDigits(document);
+            if (digits.length !== 11 && digits.length !== 14) {
+                throw new Error(
+                    "Documento inválido: informe um CPF (11 dígitos) ou CNPJ (14 dígitos).",
+                );
+            }
+
+            if (digits.length === 11) {
+                const result = await client.searchIndividuals({
+                    page: 1,
+                    pageSize: 1,
+                    cpfList: [digits],
+                });
+                const raw = result.items[0] as TotvsModaIndividual | undefined;
+                return raw
+                    ? {
+                          externalId: trim(raw.cpf ?? raw.code),
+                          data: mapTotvsModaIndividualClient(raw),
+                      }
+                    : null;
+            }
+
+            const result = await client.searchLegalEntities({
+                page: 1,
+                pageSize: 1,
+                cnpjList: [digits],
+            });
+            const raw = result.items[0] as TotvsModaLegalEntity | undefined;
+            return raw
+                ? {
+                      externalId: trim(raw.cnpj ?? raw.code),
+                      data: mapTotvsModaLegalEntityClient(raw),
+                  }
+                : null;
+        },
     };
-}
-
-// Busca pontual de um cliente por CPF ou CNPJ (individuals/search ou
-// legal-entities/search com filter de um único documento, conforme o
-// tamanho), sem paginar a base inteira como getClients faz para sync em
-// lote. Não faz parte do contrato ErpProvider — é um ponto de entrada extra
-// do provider, pensado para consulta direta (ex.: localizar um cadastro
-// existente antes de abrir um talão novo).
-export async function findTotvsModaClientByDocument(
-    credentials: ErpProviderCredentials,
-    document: string,
-    reporter?: ExternalApiCallReporter,
-): Promise<Omit<Client, "id" | "createdAt" | "updatedAt"> | null> {
-    const digits = onlyDigits(document);
-    if (digits.length !== 11 && digits.length !== 14) {
-        throw new Error("Documento inválido: informe um CPF (11 dígitos) ou CNPJ (14 dígitos).");
-    }
-
-    const client = new TotvsModaClient(normalizeCredentials(credentials), reporter);
-    if (digits.length === 11) {
-        const result = await client.searchIndividuals({ page: 1, pageSize: 1, cpfList: [digits] });
-        const raw = result.items[0] as TotvsModaIndividual | undefined;
-        return raw ? mapTotvsModaIndividualClient(raw) : null;
-    }
-
-    const result = await client.searchLegalEntities({ page: 1, pageSize: 1, cnpjList: [digits] });
-    const raw = result.items[0] as TotvsModaLegalEntity | undefined;
-    return raw ? mapTotvsModaLegalEntityClient(raw) : null;
 }

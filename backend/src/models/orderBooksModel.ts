@@ -72,3 +72,25 @@ export async function activateOrderBookRow(client: PoolClient, id: string, selle
     );
     return result.rows[0] ?? null;
 }
+
+export async function closeOrderBookRow(client: PoolClient, id: string): Promise<OrderBookRow | null> {
+    const result = await client.query<OrderBookRow>(
+        `UPDATE order_books SET status = 'fechado', is_active = false, updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND id = $1 AND status = 'aberto'
+         RETURNING ${fields}`,
+        [id],
+    );
+    return result.rows[0] ?? null;
+}
+
+// Reativar um pedido devolve o respectivo talão à lista de talões utilizáveis,
+// mas não toma o lugar do talão ativo atual da vendedora.
+export async function reopenOrderBookRow(client: PoolClient, id: string): Promise<OrderBookRow | null> {
+    const result = await client.query<OrderBookRow>(
+        `UPDATE order_books SET status = 'aberto', updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND id = $1 AND status = 'fechado'
+         RETURNING ${fields}`,
+        [id],
+    );
+    return result.rows[0] ?? null;
+}

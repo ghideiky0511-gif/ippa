@@ -93,6 +93,11 @@ export async function signupCustomer(
   const items = Array.isArray(body.cart) ? body.cart as CartItem[] : [];
   const result = await withTenantTransaction(tenant, {}, async (client): Promise<SignupResult> => {
     const digits = fields.cpfCnpj.replace(/\D/g, "");
+    const storeSettings = await findStoreSettingsRow(client);
+    // Ausência da chave preserva o comportamento histórico: CPF e CNPJ.
+    if (storeSettings?.features?.allowCpfSignup === false && digits.length !== 14) {
+      throw new ValidationError("CNPJ_REQUIRED");
+    }
     if (await findClientRowByDocumentDigits(client, digits)) throw new ConflictError("DOCUMENT_TAKEN");
     const row = await insertClientRow(client, {
       name: fields.name, cpfCnpj: fields.cpfCnpj, email: fields.email, cep: fields.cep,

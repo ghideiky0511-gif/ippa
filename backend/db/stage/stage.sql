@@ -14,7 +14,9 @@ CREATE TYPE public."audit_action" AS ENUM (
 	'user.created',
 	'company.created',
 	'company.updated',
-	'erp_integration.configured');
+	'erp_integration.configured',
+	'erp_integration.activated',
+	'erp_integration.deactivated');
 
 -- DROP TYPE public."audit_entity_type";
 
@@ -152,6 +154,15 @@ CREATE TYPE public."variant_availability_mode" AS ENUM (
 	'backorder',
 	'out_of_stock');
 
+-- DROP SEQUENCE public.external_api_request_log_id_seq;
+
+CREATE SEQUENCE public.external_api_request_log_id_seq
+	INCREMENT BY 1
+	MINVALUE 1
+	MAXVALUE 9223372036854775807
+	START 1
+	CACHE 1
+	NO CYCLE;
 -- DROP SEQUENCE public.session_events_id_seq;
 
 CREATE SEQUENCE public.session_events_id_seq
@@ -333,6 +344,39 @@ CREATE TABLE public.discounts (
 );
 
 
+-- public.external_api_request_log definição
+
+-- Drop table
+
+-- DROP TABLE public.external_api_request_log;
+
+CREATE TABLE public.external_api_request_log (
+	id bigserial NOT NULL,
+	tenant_id uuid NOT NULL,
+	provider text NOT NULL,
+	operation text NOT NULL,
+	"method" text NOT NULL,
+	endpoint text NOT NULL,
+	endpoint_path text NULL,
+	status_code int4 NULL,
+	success bool NOT NULL,
+	attempt_count int4 DEFAULT 1 NOT NULL,
+	wait_ms int4 DEFAULT 0 NOT NULL,
+	duration_ms int4 DEFAULT 0 NOT NULL,
+	request_payload jsonb NULL,
+	response_body text NULL,
+	error_message text NULL,
+	error_class text NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT external_api_request_log_attempt_count_check CHECK ((attempt_count >= 1)),
+	CONSTRAINT external_api_request_log_duration_ms_check CHECK ((duration_ms >= 0)),
+	CONSTRAINT external_api_request_log_pkey PRIMARY KEY (id),
+	CONSTRAINT external_api_request_log_wait_ms_check CHECK ((wait_ms >= 0)),
+	CONSTRAINT external_api_request_log_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
+);
+CREATE INDEX external_api_request_log_tenant_provider_idx ON public.external_api_request_log USING btree (tenant_id, provider, created_at DESC);
+
+
 -- public.highlights definição
 
 -- Drop table
@@ -449,7 +493,7 @@ CREATE TABLE public.products (
 	subcategory text NULL,
 	collection text NULL,
 	brand text NULL,
-	sku text NULL,
+	reference_id text NULL,
 	price numeric(12, 2) NOT NULL,
 	suggested_retail_price numeric(12, 2) NULL,
 	markup numeric(8, 3) NULL,
@@ -461,7 +505,7 @@ CREATE TABLE public.products (
 	CONSTRAINT products_pkey PRIMARY KEY (id),
 	CONSTRAINT products_price_check CHECK ((price >= (0)::numeric)),
 	CONSTRAINT products_tenant_id_id_key UNIQUE (tenant_id, id),
-	CONSTRAINT products_tenant_id_sku_key UNIQUE (tenant_id, sku),
+	CONSTRAINT products_tenant_id_reference_id_key UNIQUE (tenant_id, reference_id),
 	CONSTRAINT products_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
 CREATE INDEX products_tenant_position_idx ON public.products USING btree (tenant_id, display_position);
@@ -533,6 +577,7 @@ CREATE TABLE public.tenant_erp_integrations (
 	CONSTRAINT tenant_erp_integrations_pkey PRIMARY KEY (id),
 	CONSTRAINT tenant_erp_integrations_provider_check CHECK ((provider ~ '^[a-z0-9][a-z0-9_-]{0,62}$'::text)),
 	CONSTRAINT tenant_erp_integrations_tenant_id_id_key UNIQUE (tenant_id, id),
+	CONSTRAINT tenant_erp_integrations_tenant_provider_key UNIQUE (tenant_id, provider),
 	CONSTRAINT tenant_erp_integrations_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
 CREATE UNIQUE INDEX tenant_erp_integrations_one_active_idx ON public.tenant_erp_integrations USING btree (tenant_id) WHERE active;
@@ -599,6 +644,34 @@ CREATE TABLE public.erp_external_references (
 	CONSTRAINT erp_external_references_tenant_id_integration_id_entity_typ_key UNIQUE (tenant_id, integration_id, entity_type, external_id),
 	CONSTRAINT erp_external_references_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE,
 	CONSTRAINT erp_external_references_tenant_id_integration_id_fkey FOREIGN KEY (tenant_id,integration_id) REFERENCES public.tenant_erp_integrations(tenant_id,id) ON DELETE CASCADE
+);
+
+
+-- public.external_api_provider_status definição
+
+-- Drop table
+
+-- DROP TABLE public.external_api_provider_status;
+
+CREATE TABLE public.external_api_provider_status (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NOT NULL,
+	provider text NOT NULL,
+	status text DEFAULT 'desconhecido'::text NOT NULL,
+	last_success_at timestamptz NULL,
+	last_error_at timestamptz NULL,
+	last_error_code text NULL,
+	last_error_summary text NULL,
+	last_request_log_id int8 NULL,
+	expected_back_online_at timestamptz NULL,
+	public_message text NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	updated_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT external_api_provider_status_pkey PRIMARY KEY (id),
+	CONSTRAINT external_api_provider_status_status_check CHECK ((status = ANY (ARRAY['operacional'::text, 'degradado'::text, 'indisponivel'::text, 'manutencao'::text, 'desconhecido'::text]))),
+	CONSTRAINT external_api_provider_status_tenant_id_provider_key UNIQUE (tenant_id, provider),
+	CONSTRAINT external_api_provider_status_last_request_log_id_fkey FOREIGN KEY (last_request_log_id) REFERENCES public.external_api_request_log(id) ON DELETE SET NULL,
+	CONSTRAINT external_api_provider_status_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
 
 
@@ -752,6 +825,7 @@ CREATE TABLE public.store_settings (
 	similar_products_settings jsonb DEFAULT '{}'::jsonb NOT NULL,
 	updated_at timestamptz DEFAULT now() NOT NULL,
 	default_inventory_location_id uuid NULL,
+	vesti_catalog_slug text NULL,
 	CONSTRAINT store_settings_payment_link_expiration_minutes_check CHECK ((payment_link_expiration_minutes > 0)),
 	CONSTRAINT store_settings_pkey PRIMARY KEY (tenant_id),
 	CONSTRAINT store_settings_default_inventory_location_fk FOREIGN KEY (tenant_id,default_inventory_location_id) REFERENCES public.inventory_locations(tenant_id,id) ON DELETE RESTRICT,
@@ -1128,6 +1202,28 @@ CREATE TABLE public.order_sessions (
 	CONSTRAINT order_sessions_pkey PRIMARY KEY (id)
 );
 CREATE INDEX order_sessions_tenant_book_status_idx ON public.order_sessions USING btree (tenant_id, order_book_id, status, updated_at DESC);
+
+
+-- public.order_session_participants definiÃ§Ã£o
+
+-- Drop table
+
+-- DROP TABLE public.order_session_participants;
+
+CREATE TABLE public.order_session_participants (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NOT NULL,
+	order_session_id uuid NOT NULL,
+	user_id uuid NOT NULL,
+	first_joined_at timestamptz DEFAULT now() NOT NULL,
+	last_joined_at timestamptz DEFAULT now() NOT NULL,
+	last_left_at timestamptz NULL,
+	join_count int4 DEFAULT 1 NOT NULL,
+	CONSTRAINT order_session_participants_join_count_check CHECK ((join_count > 0)),
+	CONSTRAINT order_session_participants_pkey PRIMARY KEY (id),
+	CONSTRAINT order_session_participants_tenant_id_order_session_id_user_id_key UNIQUE (tenant_id, order_session_id, user_id)
+);
+CREATE INDEX order_session_participants_session_idx ON public.order_session_participants USING btree (tenant_id, order_session_id, last_joined_at DESC);
 CREATE INDEX order_sessions_tenant_seller_status_idx ON public.order_sessions USING btree (tenant_id, seller_id, status);
 
 
@@ -1154,6 +1250,28 @@ CREATE TABLE public.orders (
 );
 CREATE INDEX orders_tenant_client_idx ON public.orders USING btree (tenant_id, client_id, created_at DESC);
 CREATE INDEX orders_tenant_seller_idx ON public.orders USING btree (tenant_id, seller_id, created_at DESC);
+
+
+-- public.realtime_tickets definição
+
+-- Drop table
+
+-- DROP TABLE public.realtime_tickets;
+
+CREATE TABLE public.realtime_tickets (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NOT NULL,
+	order_session_id uuid NOT NULL,
+	user_id uuid NOT NULL,
+	"role" text NOT NULL,
+	token_hash text NOT NULL,
+	expires_at timestamptz NOT NULL,
+	used_at timestamptz NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT realtime_tickets_pkey PRIMARY KEY (id)
+);
+CREATE INDEX realtime_tickets_session_idx ON public.realtime_tickets USING btree (order_session_id);
+CREATE UNIQUE INDEX realtime_tickets_token_hash_idx ON public.realtime_tickets USING btree (token_hash);
 
 
 -- public.user_sessions definição
@@ -1256,11 +1374,24 @@ ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_seller_id_fkey F
 ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
 
 
+-- public.order_session_participants chaves estrangeiras
+
+ALTER TABLE public.order_session_participants ADD CONSTRAINT order_session_participants_order_session_id_fkey FOREIGN KEY (order_session_id) REFERENCES public.order_sessions(id) ON DELETE CASCADE;
+ALTER TABLE public.order_session_participants ADD CONSTRAINT order_session_participants_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
 -- public.orders chaves estrangeiras
 
 ALTER TABLE public.orders ADD CONSTRAINT orders_client_id_fkey FOREIGN KEY (client_id) REFERENCES public.clients(id) ON DELETE SET NULL;
 ALTER TABLE public.orders ADD CONSTRAINT orders_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id) ON DELETE SET NULL;
 ALTER TABLE public.orders ADD CONSTRAINT orders_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+-- public.realtime_tickets chaves estrangeiras
+
+ALTER TABLE public.realtime_tickets ADD CONSTRAINT realtime_tickets_order_session_id_fkey FOREIGN KEY (order_session_id) REFERENCES public.order_sessions(id) ON DELETE CASCADE;
+ALTER TABLE public.realtime_tickets ADD CONSTRAINT realtime_tickets_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.realtime_tickets ADD CONSTRAINT realtime_tickets_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 
 -- public.user_sessions chaves estrangeiras

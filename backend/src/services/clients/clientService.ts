@@ -6,9 +6,14 @@ import {
     findClientRowByDocumentDigits,
     insertClientRow,
     searchClientRows,
+    searchClientRowsPage,
     updateClientRow,
 } from "@/models/clientsModel";
 import { findUserRowByClientId } from "@/models/usersModel";
+import { findActiveErpIntegrationRow } from "@/models/erpIntegrationsModel";
+import { upsertExternalReferenceRow } from "@/models/erpExternalReferencesModel";
+import { createErpProvider } from "@/erp/registry";
+import { createExternalApiCallReporter } from "@/services/erp/externalApiLogService";
 import { recordAuditEvent, CLIENT_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
 import { ConflictError, ForbiddenError, ValidationError } from "@/services/shared/errors";
 import { toClient } from "./clientMapper";
@@ -31,6 +36,26 @@ export async function searchTenantClients(tenant: Tenant, user: AuthUser, query?
     return withTenantTransaction(tenant, user, async (client) =>
         (await searchClientRows(client, query?.trim() || null)).map(toClient),
     );
+}
+
+export interface AdministrativeClientsPage {
+    clients: Client[];
+    pagination: { page: number; pageSize: number; total: number; totalPages: number };
+    kpis: { newThisMonth: number; withEmail: number; withAddress: number };
+}
+
+export async function searchAdministrativeClients(tenant: Tenant, user: AuthUser, query?: string, requestedPage?: number, requestedPageSize?: number): Promise<AdministrativeClientsPage> {
+    if (!canManageClients(user)) throw new ForbiddenError();
+    const pageSize = Math.min(Math.max(requestedPageSize || 20, 10), 100);
+    const page = Math.max(requestedPage || 1, 1);
+    return withTenantTransaction(tenant, user, async (client) => {
+        const result = await searchClientRowsPage(client, query?.trim() || null, page, pageSize);
+        return {
+            clients: result.rows.map(toClient),
+            pagination: { page, pageSize, total: result.total, totalPages: Math.max(Math.ceil(result.total / pageSize), 1) },
+            kpis: { newThisMonth: result.newThisMonth, withEmail: result.withEmail, withAddress: result.withAddress },
+        };
+    });
 }
 
 export async function getTenantClient(tenant: Tenant, user: AuthUser, id: string): Promise<(Client & { hasLogin: boolean }) | null> {
@@ -104,5 +129,69 @@ export async function updateTenantClient(
             metadata: { changedFields },
         });
         return toClient(row);
+    });
+}
+
+export interface ClientLookupResult {
+    client: Client | null;
+    source: "local" | "erp" | "not_found";
+}
+
+// Fluxo do talão: vendedor busca por CPF/CNPJ exato. Cadastro local do
+// tenant tem prioridade; só se não existir é que tenta importar do ERP
+// ativo (se houver um configurado). Não encontrar em nenhum dos dois não é
+// erro — o vendedor cadastra manualmente, como sempre foi. Cadastro
+// completo de cliente diretamente no ERP (quando também não existe lá)
+// fica fora de escopo por ora.
+export async function findOrImportTenantClientByDocument(
+    tenant: Tenant,
+    user: AuthUser,
+    document: string,
+    context: AuditRequestContext,
+): Promise<ClientLookupResult> {
+    if (!canManageClients(user)) throw new ForbiddenError();
+    const digits = documentDigits(document);
+    if (digits.length !== 11 && digits.length !== 14) {
+        throw new ValidationError("INVALID_DOCUMENT", "Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.");
+    }
+
+    return withTenantTransaction(tenant, user, async (client) => {
+        const localRow = await findClientRowByDocumentDigits(client, digits);
+        if (localRow) return { client: toClient(localRow), source: "local" };
+
+        const integration = await findActiveErpIntegrationRow(client);
+        if (!integration) return { client: null, source: "not_found" };
+
+        const provider = createErpProvider(
+            integration.provider, integration.credentials,
+            createExternalApiCallReporter(tenant, user, integration.provider),
+        );
+        if (!provider.lookupClientByDocument) return { client: null, source: "not_found" };
+
+        const found = await provider.lookupClientByDocument(document);
+        if (!found) return { client: null, source: "not_found" };
+
+        // Corrida: duas buscas quase simultâneas pelo mesmo documento ainda
+        // não importado podem tentar inserir a mesma linha — a segunda perde
+        // a corrida no índice único (tenant_id, cpf_cnpj) e reaproveita o que
+        // a primeira acabou de criar, em vez de falhar pro vendedor.
+        let row;
+        try {
+            row = await insertClientRow(client, { ...found.data, lastSellerId: user.id });
+        } catch (error) {
+            if ((error as { code?: string }).code !== "23505") throw error;
+            row = await findClientRowByDocumentDigits(client, digits);
+            if (!row) throw error;
+        }
+
+        await upsertExternalReferenceRow(client, {
+            integrationId: integration.id, entityType: "client", internalId: row.id, externalId: found.externalId,
+        });
+        await recordAuditEvent(client, {
+            action: CLIENT_AUDIT_ACTIONS.CREATED,
+            entityId: row.id, actor: user, context,
+            metadata: { source: "erp", provider: integration.provider },
+        });
+        return { client: toClient(row), source: "erp" };
     });
 }

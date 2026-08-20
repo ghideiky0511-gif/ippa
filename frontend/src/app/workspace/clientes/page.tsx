@@ -1,10 +1,10 @@
 import CustomersApp from '@/workspace/customers/CustomersApp';
-import { fetchClients } from '@/workspace/lib/customersClient';
+import { fetchClients } from '@/workspace/lib/customersClient.server';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ClientesPage() {
-  let clients: Awaited<ReturnType<typeof fetchClients>> = [];
+  let clients: Awaited<ReturnType<typeof fetchClients>> | null = null;
   let loadError: string | null = null;
 
   try {
@@ -22,5 +22,5 @@ export default async function ClientesPage() {
     );
   }
 
-  return <CustomersApp initialClients={clients} />;
+  return <CustomersApp initialPage={clients!} />;
 }

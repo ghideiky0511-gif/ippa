@@ -154,8 +154,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
   // que tem no pedido enquanto espera a cliente pagar). /frete continua
   // lendo useTalao() direto (sem esse filtro) pra mostrar a confirmação de
   // pagamento mesmo depois de fechar — só o carrinho exposto aqui muda.
-  const talaoOpen = talao?.activeSession && talao.activeSession.status !== 'fechado' ? talao : null;
-  const clientOpen = clientSession?.activeSession && clientSession.activeSession.status !== 'fechado' ? clientSession : null;
+  const talaoOpen = talao?.activeSession && talao.activeSession.status !== 'fechado' && talao.activeSession.status !== 'cancelado' ? talao : null;
+  const clientOpen = clientSession?.activeSession && clientSession.activeSession.status !== 'fechado' && clientSession.activeSession.status !== 'cancelado' ? clientSession : null;
   const sessionActions = talaoOpen || clientOpen;
   const activeSession = sessionActions?.activeSession ?? null;
 

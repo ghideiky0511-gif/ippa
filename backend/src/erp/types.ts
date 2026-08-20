@@ -27,17 +27,38 @@ export type ErpProviderCredentials = Record<string, unknown>;
 
 export interface ErpProvider {
     readonly code: string;
-    getProducts(options?: ErpFetchOptions): Promise<ErpFetchResult<Omit<Product, "id">>>;
-    getOrders(options?: ErpFetchOptions): Promise<ErpFetchResult<Omit<Order, "id">>>;
-    getClients(options?: ErpFetchOptions): Promise<ErpFetchResult<Omit<Client, "id" | "createdAt" | "updatedAt">>>;
-    getCompanies(options?: ErpFetchOptions): Promise<ErpFetchResult<Omit<Company, "id" | "createdAt" | "updatedAt">>>;
+    getProducts(
+        options?: ErpFetchOptions,
+    ): Promise<ErpFetchResult<Omit<Product, "id">>>;
+    getOrders(
+        options?: ErpFetchOptions,
+    ): Promise<ErpFetchResult<Omit<Order, "id">>>;
+    getClients(
+        options?: ErpFetchOptions,
+    ): Promise<ErpFetchResult<Omit<Client, "id" | "createdAt" | "updatedAt">>>;
+    getCompanies(
+        options?: ErpFetchOptions,
+    ): Promise<ErpFetchResult<Omit<Company, "id" | "createdAt" | "updatedAt">>>;
     // Opcional: providers sem uma checagem barata própria simplesmente não
     // implementam — quem chama trata a ausência como "sem teste disponível",
     // nunca como falha.
     testConnection?(): Promise<{ ok: boolean; message?: string }>;
+    // Busca pontual por CPF/CNPJ exato (sem paginar a base inteira como
+    // getClients faz para sync em lote) — usada quando um cliente é buscado
+    // localmente e não existe ainda, para importar sob demanda (ver
+    // services/clients/clientService.ts). Opcional pelo mesmo motivo de
+    // testConnection: ausência não é falha, é "sem lookup disponível".
+    lookupClientByDocument?(
+        document: string,
+    ): Promise<ErpRecord<
+        Omit<Client, "id" | "createdAt" | "updatedAt">
+    > | null>;
 }
 
 // reporter é opcional e não carrega tenant/banco (ver lib/externalApiCall.ts)
 // — quem resolve o tenant (erpSyncService) fecha o reporter sobre ele antes
 // de chamar a fábrica.
-export type ErpProviderFactory = (credentials: ErpProviderCredentials, reporter?: ExternalApiCallReporter) => ErpProvider;
+export type ErpProviderFactory = (
+    credentials: ErpProviderCredentials,
+    reporter?: ExternalApiCallReporter,
+) => ErpProvider;

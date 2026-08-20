@@ -26,4 +26,6 @@ export interface ExternalApiCallReport {
     errorClass?: string | null;
 }
 
-export type ExternalApiCallReporter = (report: ExternalApiCallReport) => void | Promise<void>;
+export type ExternalApiCallReporter = (
+    report: ExternalApiCallReport,
+) => void | Promise<void>;

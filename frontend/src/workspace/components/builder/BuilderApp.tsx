@@ -8,6 +8,7 @@ import RightPanel from './RightPanel';
 import WorkspaceNav from '@/workspace/navigation/WorkspaceNav';
 import { BLOCK_REGISTRY, CANVAS_WIDTH } from '@/workspace/lib/blockRegistry';
 import { saveHomeSections, generateHomeSections, fetchHomeAiHistory } from '@/workspace/lib/homeSectionsClient';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 /** @param {{ initialSections: import('@/workspace/lib/homeSectionTypes').HomeSection[], products: import('@/workspace/lib/homeSectionTypes').Product[] }} props */
 export default function BuilderApp({ initialSections, products }) {
@@ -22,6 +23,7 @@ export default function BuilderApp({ initialSections, products }) {
   const [history, setHistory] = useState([]);
   const [historyState, setHistoryState] = useState('idle'); // idle | loading | error
   const [historyError, setHistoryError] = useState('');
+  const [pendingConfirmation, setPendingConfirmation] = useState(null);
 
   // Só usado pra soltar uma ferramenta nova da toolbox no canvas — mover ou
   // redimensionar um bloco já existente é um drag próprio (pointer events
@@ -86,12 +88,7 @@ export default function BuilderApp({ initialSections, products }) {
     setDirty(true);
   }
 
-  async function handleGenerateAI(e) {
-    e.preventDefault();
-    if (!aiPrompt.trim()) return;
-    if (sections.length > 0 && !window.confirm('Isso substitui os blocos atuais do canvas. Continuar?')) {
-      return;
-    }
+  async function generateAI() {
     setAiState('generating');
     setAiError('');
     try {
@@ -107,6 +104,16 @@ export default function BuilderApp({ initialSections, products }) {
       setAiState('error');
       setAiError(err.message);
     }
+  }
+
+  function handleGenerateAI(e) {
+    e.preventDefault();
+    if (!aiPrompt.trim()) return;
+    if (sections.length > 0) {
+      setPendingConfirmation(() => () => generateAI());
+      return;
+    }
+    return generateAI();
   }
 
   async function toggleHistory() {
@@ -126,12 +133,16 @@ export default function BuilderApp({ initialSections, products }) {
   }
 
   function handleReapplyHistory(entry) {
-    if (sections.length > 0 && !window.confirm('Isso substitui os blocos atuais do canvas. Continuar?')) {
+    const reapply = () => {
+      applyTemplate(entry.sections);
+      setAiPrompt(entry.prompt);
+      setHistoryOpen(false);
+    };
+    if (sections.length > 0) {
+      setPendingConfirmation(() => reapply);
       return;
     }
-    applyTemplate(entry.sections);
-    setAiPrompt(entry.prompt);
-    setHistoryOpen(false);
+    reapply();
   }
 
   async function handleSave() {
@@ -218,6 +229,7 @@ export default function BuilderApp({ initialSections, products }) {
           onDeselect={() => setSelectedId(null)}
           onRemove={() => removeSection(selectedId)}
         />
+        <ConfirmDialog open={!!pendingConfirmation} onOpenChange={(open) => !open && setPendingConfirmation(null)} title="Substituir blocos atuais?" description="Os blocos atuais do canvas serão substituídos pela nova estrutura." confirmLabel="Substituir" destructive onConfirm={() => pendingConfirmation ? pendingConfirmation() : undefined} />
       </div>
     </DndContext>
   );

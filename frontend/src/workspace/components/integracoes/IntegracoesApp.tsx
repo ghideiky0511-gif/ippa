@@ -2,6 +2,7 @@
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
 import { useState } from 'react';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import WorkspaceNav from '@/workspace/navigation/WorkspaceNav';
 import {
   activateErpIntegration,
@@ -23,6 +24,7 @@ export default function IntegracoesApp({ initialOptions }) {
   const [testState, setTestState] = useState({}); // { [provider]: { status, message } }
   const [pendingProvider, setPendingProvider] = useState(null);
   const [feedback, setFeedback] = useState(null); // { type: 'error' | 'success', text }
+  const [providerToDeactivate, setProviderToDeactivate] = useState(null);
 
   const editing = options.find((o) => o.provider === editingProvider) || null;
 
@@ -58,13 +60,6 @@ export default function IntegracoesApp({ initialOptions }) {
   }
 
   async function handleDeactivate(option) {
-    if (
-      !window.confirm(
-        `Desativar ${option.label}? A sincronização com o ERP para de funcionar até você ativar um provedor de novo.`
-      )
-    ) {
-      return;
-    }
     setPendingProvider(option.provider);
     setFeedback(null);
     try {
@@ -168,7 +163,7 @@ export default function IntegracoesApp({ initialOptions }) {
                       type="button"
                       className={adminUi.dangerButton}
                       disabled={isPending}
-                      onClick={() => handleDeactivate(option)}
+                      onClick={() => setProviderToDeactivate(option)}
                     >
                       Desativar
                     </button>
@@ -184,6 +179,7 @@ export default function IntegracoesApp({ initialOptions }) {
       {editing && (
         <ErpProviderCredentialsModal option={editing} onClose={() => setEditingProvider(null)} onSaved={handleSaved} />
       )}
+      <ConfirmDialog open={!!providerToDeactivate} onOpenChange={(open) => !open && setProviderToDeactivate(null)} title="Desativar integração?" description={`A sincronização com ${providerToDeactivate?.label || 'o ERP'} ficará pausada até você ativar um provedor novamente.`} confirmLabel="Desativar" destructive onConfirm={() => providerToDeactivate ? handleDeactivate(providerToDeactivate) : undefined} />
     </div>
   );
 }
