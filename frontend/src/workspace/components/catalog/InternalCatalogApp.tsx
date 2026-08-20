@@ -15,7 +15,7 @@ import Link from '@/components/TenantLink';
 import { useTenant } from '@/components/TenantProvider';
 import { pedidoRealtimeEventMessage, usePedidoRealtime, type PedidoParticipant, type PedidoPresence } from '@/lib/realtime/usePedidoRealtime';
 import { OrderSessionPeople } from '@/components/OrderSessionPeople';
-import { Card } from '@/components/ui/card';
+import CatalogProductCard from '@/components/CatalogProductCard';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Sheet, SheetContent, SheetHeader } from '@/components/ui/sheet';
 import {
@@ -42,32 +42,12 @@ function SessionLabel({ session }: { session: OrderSession }) {
 }
 
 function CatalogCard({ product, onOpen }: { product: Product; onOpen: () => void }) {
-  const colors = product.colors || [];
-  const shown = colors.slice(0, 6);
-  const extra = colors.length - shown.length;
-  return (
-    <Card className="group flex min-w-0 flex-col overflow-hidden transition-[box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(44,28,36,.12)]">
-      <div className="relative aspect-[9/16] overflow-hidden">
-        <button className="block size-full cursor-pointer border-0 bg-transparent p-0" onClick={onOpen} aria-label={`Ver cores e tamanhos de ${product.name}`}>
-          {product.videoUrl ? (
-            <video className="block size-full bg-brand-background object-cover transition-transform duration-[250ms] group-hover:scale-[1.04]" src={product.videoUrl} autoPlay loop muted playsInline disablePictureInPicture />
-          ) : (
-            <img className="block size-full bg-brand-background object-cover transition-transform duration-[250ms] group-hover:scale-[1.04]" src={product.image || 'https://via.placeholder.com/400x500?text=Sem+imagem'} alt={product.name} />
-          )}
-        </button>
-        {shown.length > 0 && <div className="pointer-events-none absolute right-2.5 bottom-2.5 left-2.5 flex flex-wrap items-center gap-1.5 rounded-full bg-white/90 px-2 py-1.5 backdrop-blur-sm">
-          {shown.map((color) => <span key={color} className="inline-block size-3.5 shrink-0 rounded-full border border-black/15" style={{ background: COLOR_MAP[color] || '#ccc' }} title={color} />)}
-          {extra > 0 && <span className="text-[11px] text-brand-muted">+{extra}</span>}
-        </div>}
-      </div>
-      <button type="button" onClick={onOpen} className="flex flex-1 flex-col gap-2 p-3.5 text-left">
-        {product.category && <span className="text-[11px] font-semibold text-brand-muted">{product.category}</span>}
-        <h3 className="min-h-[2.7em] text-[15px] font-semibold leading-[1.35]">{product.name}</h3>
-        {product.referenceId && <span className="-mt-1 text-[11px] text-brand-muted">{product.referenceId}</span>}
-        <span className="text-base font-bold text-foreground">{formatBRL(product.price)}</span>
-      </button>
-    </Card>
-  );
+  return <CatalogProductCard
+    product={product}
+    onOpen={onOpen}
+    title={<button type="button" onClick={onOpen} className="text-left hover:text-brand-primary">{product.name}</button>}
+    price={<span className="text-base font-bold text-foreground">{formatBRL(product.price)}</span>}
+  />;
 }
 
 function ShareCatalogSheet({ open, onOpenChange, publicPath }: { open: boolean; onOpenChange: (open: boolean) => void; publicPath: string }) {

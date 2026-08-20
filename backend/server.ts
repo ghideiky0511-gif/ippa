@@ -27,7 +27,22 @@ const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
 app.prepare().then(() => {
-    const httpServer = createServer((req, res) => handle(req, res));
+    const httpServer = createServer((req, res) => {
+        const origin = req.headers.origin;
+        if (origin && allowedOrigins.includes(origin)) {
+            res.setHeader("Access-Control-Allow-Origin", origin);
+            res.setHeader("Access-Control-Allow-Credentials", "true");
+            res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+            res.setHeader("Access-Control-Allow-Headers", "Authorization,Content-Type");
+            res.setHeader("Vary", "Origin");
+        }
+        if (req.method === "OPTIONS") {
+            res.statusCode = 204;
+            res.end();
+            return;
+        }
+        handle(req, res);
+    });
 
     const io = new Server(httpServer, {
         cors: { origin: allowedOrigins, credentials: false },

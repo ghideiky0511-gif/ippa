@@ -5,6 +5,7 @@ import { io, type Socket } from 'socket.io-client';
 import { useTenant } from '@/components/TenantProvider';
 import type { AuthUser } from '@/domain/clients/types';
 import type { CartItem, OrderSession, ShippingOption } from '@/domain/orders/types';
+import { apiFetch } from '@/lib/api-client';
 
 export interface PedidoPresence {
   userId: string;
@@ -142,7 +143,7 @@ export function usePedidoRealtime({ sessionId, onSession, onPresence, onParticip
 
     const connect = async () => {
       try {
-        const ticketResponse = await fetch(`/api/sessions/${sessionId}/realtime-ticket`, {
+        const ticketResponse = await apiFetch(`/api/sessions/${sessionId}/realtime-ticket`, {
           method: 'POST',
           cache: 'no-store',
         });

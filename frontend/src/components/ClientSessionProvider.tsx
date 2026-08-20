@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { toast } from 'sonner';
 import type { CartItem, OrderSession, ShippingOption } from '@/domain/orders/types';
 import { pedidoRealtimeEventMessage, usePedidoRealtime, type PedidoParticipant, type PedidoPresence } from '@/lib/realtime/usePedidoRealtime';
+import { apiEventSource, apiFetch } from '@/lib/api-client';
 
 // Contrato mínimo que CartProvider.tsx precisa pra escrever num pedido
 // compartilhado — mesmo formato que TalaoProvider.tsx expõe (ver
@@ -33,7 +34,7 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
   const [participants, setParticipants] = useState<PedidoParticipant[]>([]);
 
   function refetch() {
-    return fetch('/api/sessions/mine', { cache: 'no-store' })
+    return apiFetch('/api/sessions/mine', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((session: OrderSession | null) => setActiveSession(session))
       .catch(() => {});
@@ -54,7 +55,7 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    const source = new EventSource('/api/sessions/stream');
+    const source = apiEventSource('/api/sessions/stream');
     source.addEventListener('sessions-updated', () => refetch());
     return () => source.close();
   }, []);
@@ -63,7 +64,7 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
     if (!activeSession) return;
     const id = activeSession.id;
     setActiveSession((prev) => (prev && prev.id === id ? { ...prev, items } : prev));
-    await fetch(`/api/sessions/${id}`, {
+    await apiFetch(`/api/sessions/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ items }),
@@ -74,7 +75,7 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
     if (!activeSession) return;
     const id = activeSession.id;
     setActiveSession((prev) => (prev && prev.id === id ? { ...prev, shipping: shipping || undefined } : prev));
-    await fetch(`/api/sessions/${id}`, {
+    await apiFetch(`/api/sessions/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ shipping }),

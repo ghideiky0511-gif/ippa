@@ -6,6 +6,7 @@ import {
 import {
     sendOrderConfirmedEmail,
     sendPaymentLinkEmail,
+    sendFirstAccessConfirmationEmail,
     sendSignupConfirmationEmail,
 } from "@/lib/email";
 
@@ -16,6 +17,19 @@ export function notifySignup(
     void sendSignupConfirmationEmail({
         to: user.email,
         name: user.name,
+        storeName: tenant.name,
+    });
+}
+
+export function notifyFirstAccessConfirmation(
+    tenant: Tenant,
+    user: { email: string; name: string },
+    link: string,
+): void {
+    void sendFirstAccessConfirmationEmail({
+        to: user.email,
+        name: user.name,
+        link,
         storeName: tenant.name,
     });
 }

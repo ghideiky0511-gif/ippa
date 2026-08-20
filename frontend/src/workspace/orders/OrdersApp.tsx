@@ -7,6 +7,7 @@ import { fetchOrders, fetchOrderSessions } from '@/workspace/lib/ordersClient';
 import WorkspaceNav from '@/workspace/navigation/WorkspaceNav';
 import { CreateOrderModal } from './OrderTalaoModal';
 import Link from '@/components/TenantLink';
+import { apiEventSource } from '@/lib/api-client';
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -61,7 +62,7 @@ export default function OrdersApp({
   }, []);
 
   useEffect(() => {
-    const source = new EventSource('/api/sessions/stream');
+    const source = apiEventSource('/api/sessions/stream');
     source.addEventListener('sessions-updated', refresh);
     source.addEventListener('orders-updated', refresh);
     return () => source.close();

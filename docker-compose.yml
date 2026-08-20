@@ -81,10 +81,12 @@ services:
         BACKEND_INTERNAL_URL: http://backend:3011
         NEXT_PUBLIC_APP_URL: ${APP_URL:-http://localhost:3010}
         NEXT_PUBLIC_REALTIME_URL: ${REALTIME_URL:-http://localhost:3011}
+        NEXT_PUBLIC_BACKEND_URL: ${BACKEND_PUBLIC_URL:-http://localhost:3011}
     environment:
       BACKEND_INTERNAL_URL: http://backend:3011
       NEXT_PUBLIC_APP_URL: ${APP_URL:-http://localhost:3010}
       NEXT_PUBLIC_REALTIME_URL: ${REALTIME_URL:-http://localhost:3011}
+      NEXT_PUBLIC_BACKEND_URL: ${BACKEND_PUBLIC_URL:-http://localhost:3011}
     ports:
       - "3010:3010"
     depends_on:

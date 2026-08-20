@@ -1,11 +1,11 @@
-import { API_BASE } from '@/lib/api-config';
+import { apiFetch } from '@/lib/api-client';
 
 interface ApiErrorPayload {
   error?: string;
 }
 
 export async function adminJson<T>(path: string, init: RequestInit = {}, fallbackError: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, { cache: 'no-store', ...init });
+  const response = await apiFetch(path, { cache: 'no-store', ...init });
   const payload = await response.json().catch(() => null) as T | ApiErrorPayload | null;
 
   if (!response.ok) {

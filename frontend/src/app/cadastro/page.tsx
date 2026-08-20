@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import Link from '@/components/TenantLink';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getDocumentType } from '@/lib/document';
+import { apiFetch } from '@/lib/api-client';
 import { CART_KEY } from '@/components/CartProvider';
 import type { CartItem } from '@/domain/orders/types';
 import { useTenant } from '@/components/TenantProvider';
@@ -22,6 +23,7 @@ export default function CadastroPage() {
   const { href } = useTenant();
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect');
+  const requestedDocument = searchParams.get('document') ?? '';
   // Lido direto do localStorage (não via useCart()) porque /cadastro fica
   // fora do AppShell — ver CART_KEY em CartProvider.tsx.
   const [anonymousCart, setAnonymousCart] = useState<CartItem[]>([]);
@@ -36,7 +38,9 @@ export default function CadastroPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [cpfCnpj, setCpfCnpj] = useState('');
+  // O documento já foi validado na porta única /login. Esta etapa coleta
+  // apenas os demais dados de uma cliente nova.
+  const [cpfCnpj] = useState(requestedDocument);
   const [companyResponsible, setCompanyResponsible] = useState('');
   const [storeName, setStoreName] = useState('');
   const docType = useMemo(() => getDocumentType(cpfCnpj), [cpfCnpj]);
@@ -54,8 +58,15 @@ export default function CadastroPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    if (requestedDocument) return;
+    const params = new URLSearchParams();
+    if (redirect) params.set('redirect', redirect);
+    router.replace(href(`/login${params.size ? `?${params.toString()}` : ''}`));
+  }, [href, redirect, requestedDocument, router]);
+
+  useEffect(() => {
     let cancelled = false;
-    fetch('/api/store-settings')
+    apiFetch('/api/store-settings')
       .then((response) => (response.ok ? response.json() : null))
       .then((settings) => {
         if (!cancelled) setAllowCpfSignup(settings?.features?.allowCpfSignup !== false);
@@ -101,7 +112,7 @@ export default function CadastroPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/auth/signup', {
+      const res = await apiFetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -143,7 +154,7 @@ export default function CadastroPage() {
     <div className={publicUi.loginPage}>
       <form className={publicUi.loginForm} onSubmit={handleSubmit}>
         <h1>Criar conta</h1>
-        {allowCpfSignup === null ? (
+        {!requestedDocument || allowCpfSignup === null ? (
           <p>Carregando opções de cadastro…</p>
         ) : <>
         <div className={publicUi.field}>
@@ -160,7 +171,7 @@ export default function CadastroPage() {
         </div>
         <div className={publicUi.field}>
           <label>{allowCpfSignup ? 'CPF/CNPJ' : 'CNPJ'}</label>
-          <input type="text" inputMode="numeric" value={cpfCnpj} onChange={(e) => setCpfCnpj(e.target.value)} placeholder={allowCpfSignup ? 'CPF ou CNPJ' : 'Informe seu CNPJ'} required />
+          <input type="text" inputMode="numeric" value={cpfCnpj} placeholder={allowCpfSignup ? 'CPF ou CNPJ' : 'Informe seu CNPJ'} readOnly required />
         </div>
         {docType === 'cnpj' && (
           <div className={publicUi.field}>

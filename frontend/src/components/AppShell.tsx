@@ -37,6 +37,32 @@ function TalaoButton() {
   );
 }
 
+const ROLE_LABEL: Record<AuthUser['role'], string> = {
+  administrador: 'Administradora',
+  vendedora: 'Vendedora',
+  expedicao: 'Expedição',
+  entregador: 'Entregador(a)',
+  cliente: 'Cliente',
+};
+
+function profileInitials(name: string): string {
+  return name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || '?';
+}
+
+function HeaderProfile({ user }: { user: AuthUser }) {
+  return (
+    <div className={publicUi.topnavProfile} title={`${user.name} · ${ROLE_LABEL[user.role]}`}>
+      <div className={publicUi.topnavProfileInfo}>
+        <p className={publicUi.topnavProfileName}>{user.name}</p>
+        <p className={publicUi.topnavProfileRole}>{ROLE_LABEL[user.role]}</p>
+      </div>
+      <span className={publicUi.topnavAvatar} aria-label={`Foto de perfil de ${user.name}`}>
+        {user.avatarUrl ? <img className="size-full object-cover" src={user.avatarUrl} alt="" /> : profileInitials(user.name)}
+      </span>
+    </div>
+  );
+}
+
 function TopNav({ categoryTree, authUser }: { categoryTree: CategoryTreeEntry[]; authUser: AuthUser | null }) {
   const { cartCount, openCart } = useCart();
   const { tenant, href } = useTenant();
@@ -47,7 +73,7 @@ function TopNav({ categoryTree, authUser }: { categoryTree: CategoryTreeEntry[];
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' });
-    router.push(href('/login'));
+    router.push(href('/'));
     router.refresh();
   }
 
@@ -64,6 +90,7 @@ function TopNav({ categoryTree, authUser }: { categoryTree: CategoryTreeEntry[];
         </button>
         {authUser && <NotificationCenter />}
         {isVendedora && <TalaoButton />}
+        {authUser && <HeaderProfile user={authUser} />}
         {authUser ? <button className={publicUi.topnavLogin} onClick={handleLogout}>Sair</button> : <Link href="/login" className={publicUi.topnavLogin}>Entrar</Link>}
       </div>
     </nav>

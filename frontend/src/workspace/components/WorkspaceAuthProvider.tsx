@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { AuthUser } from '@/domain/clients/types';
 import { useTenant } from '@/components/TenantProvider';
+import { apiFetch } from '@/lib/api-client';
 
 interface WorkspaceAuthContextValue {
   workspaceUser: AuthUser | null;
@@ -23,14 +24,14 @@ export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
   const [workspaceUser, setWorkspaceUser] = useState<AuthUser | null>(null);
 
   useEffect(() => {
-    fetch('/api/workspace-session/me', { cache: 'no-store' })
-      .then((r): Promise<AuthUser | null> | null => (r.ok ? r.json() : null))
+    apiFetch('/api/auth/me', { cache: 'no-store' })
+      .then((r): Promise<AuthUser | null> | null => (r.ok ? r.json().then(({ user }) => user) : null))
       .then(setWorkspaceUser)
       .catch(() => {});
   }, []);
 
   async function logout() {
-    await fetch('/api/workspace-session/logout', { method: 'POST' });
+    await apiFetch('/api/auth/logout', { method: 'POST' });
     window.location.href = href('/workspace/login');
   }
 

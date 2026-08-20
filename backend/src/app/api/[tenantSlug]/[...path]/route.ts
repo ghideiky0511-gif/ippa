@@ -34,11 +34,16 @@ const ERROR_MESSAGES: Record<string, string> = {
         "Preencha nome, e-mail, senha, CPF/CNPJ, CEP, Rua, Número, Bairro, Cidade e Estado.",
     WEAK_PASSWORD: "A senha precisa ter pelo menos 6 caracteres.",
     CNPJ_REQUIRED: "Informe um CNPJ com 14 dígitos.",
+    INVALID_DOCUMENT: "Informe um CPF ou CNPJ válido.",
     EMAIL_TAKEN: "Já existe uma conta com esse e-mail.",
     DOCUMENT_TAKEN: "Já existe um cadastro com esse CPF/CNPJ.",
     CLIENT_ALREADY_HAS_LOGIN: "Essa cliente já tem login.",
     CLIENT_LOGIN_REQUIRED:
         "A cliente ainda não tem login — crie um antes de gerar o link.",
+    FIRST_ACCESS_EMAIL_REQUIRED:
+        "Este cadastro ainda não tem e-mail. Peça à loja para atualizar seus dados.",
+    INVALID_ACCOUNT_CONFIRMATION:
+        "Este link de confirmação é inválido ou expirou. Solicite um novo primeiro acesso.",
     CLIENT_REQUIRED: "Vincule um cadastro de cliente antes de gerar o link.",
     INCOMPLETE_CLIENT:
         "Complete o cadastro da cliente (CPF/CNPJ, e-mail, CEP) antes de gerar o link.",
@@ -432,6 +437,42 @@ export async function POST(
     >;
     const contextData = auditContext(request);
 
+    if (endpoint === "auth/document-access") {
+        if (typeof body.document !== "string") {
+            return NextResponse.json({ error: "Informe seu CPF ou CNPJ." }, { status: 400 });
+        }
+        return execute(() => authentication.getCustomerDocumentAccess(route.tenant, body.document as string));
+    }
+    if (endpoint === "auth/first-access") {
+        if (typeof body.document !== "string" || typeof body.password !== "string") {
+            return NextResponse.json({ error: "Informe documento e senha." }, { status: 400 });
+        }
+        return execute(() => authentication.startCustomerFirstAccess(
+            route.tenant,
+            body.document as string,
+            body.password as string,
+        ));
+    }
+    if (endpoint === "auth/confirm-first-access") {
+        if (typeof body.token !== "string" || !body.token) {
+            return NextResponse.json({ error: "Link de confirmação inválido." }, { status: 400 });
+        }
+        const response = await execute(() => authentication.confirmCustomerFirstAccess(
+            route.tenant,
+            body.token as string,
+            contextData,
+        ));
+        if (response.status !== 200) return response;
+        const payload = await response.json() as { user: unknown; token: string };
+        const result = NextResponse.json({ user: payload.user });
+        result.cookies.set(
+            authentication.sessionCookieName(route.tenant.slug),
+            payload.token,
+            cookieOptions(),
+        );
+        return result;
+    }
+
     if (
         endpoint === "auth/login" ||
         endpoint === "admin/auth/login" ||
@@ -480,11 +521,13 @@ export async function POST(
                 { status: 401 },
             );
         }
-        if (
-            endpoint === "admin/auth/login" ||
-            endpoint === "workspace/auth/login"
-        )
+        if (endpoint === "admin/auth/login")
             return NextResponse.json(result);
+        if (endpoint === "workspace/auth/login") {
+            const response = NextResponse.json({ user: result.user });
+            response.cookies.set("ippa_workspace_session", result.token, cookieOptions());
+            return response;
+        }
         const response = NextResponse.json({ user: result.user });
         response.cookies.set(
             authentication.sessionCookieName(route.tenant.slug),

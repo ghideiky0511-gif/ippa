@@ -12,6 +12,7 @@ import {
   searchOrderClients,
   updateOrderSession,
 } from '@/workspace/lib/ordersClient';
+import { apiEventSource } from '@/lib/api-client';
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -210,7 +211,7 @@ export function OrderTalaoModal({
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    const source = new EventSource(`/api/sessions/${session.id}/stream`);
+    const source = apiEventSource(`/api/sessions/${session.id}/stream`);
     source.addEventListener('session-updated', onRefresh);
     return () => source.close();
   }, [onRefresh, session.id]);

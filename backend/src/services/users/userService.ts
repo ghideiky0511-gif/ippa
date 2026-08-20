@@ -49,13 +49,29 @@ export async function createUserRecord(
     context: AuditRequestContext,
     params: { email: string; name: string; password: string; role: UserRole; clientId?: string; permissions?: AuthUser["permissions"] },
 ): Promise<AuthUser> {
+    return createUserRecordWithPasswordHash(client, actor, context, {
+        ...params,
+        passwordHash: await hash(params.password, PASSWORD_OPTIONS),
+    });
+}
+
+/** Cria a conta usando uma senha já derivada, usada no e-mail de primeiro acesso. */
+export async function createUserRecordWithPasswordHash(
+    client: PoolClient,
+    actor: Pick<AuthUser, "id" | "role" | "name"> | null,
+    context: AuditRequestContext,
+    params: {
+        email: string; name: string; role: UserRole; clientId?: string;
+        permissions?: AuthUser["permissions"]; passwordHash: string;
+    },
+): Promise<AuthUser> {
     const email = params.email.trim().toLowerCase();
     if (await findUserRowByEmail(client, email)) throw new ConflictError("EMAIL_TAKEN");
     const created = toAuthUser(await insertUserRow(client, {
         email,
         name: params.name.trim(),
         role: params.role,
-        passwordHash: await hash(params.password, PASSWORD_OPTIONS),
+        passwordHash: params.passwordHash,
         clientId: params.clientId,
         permissions: params.permissions ?? defaultPermissionsFor(params.role),
     }));

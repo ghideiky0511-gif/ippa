@@ -83,6 +83,25 @@ export async function sendSignupConfirmationEmail(params: { to: string; name: st
   });
 }
 
+/** Primeiro acesso: a conta só é criada depois do clique neste link. */
+export async function sendFirstAccessConfirmationEmail(params: {
+  to: string; name: string; link: string; storeName?: string;
+}): Promise<void> {
+  const storeName = params.storeName || DEFAULT_STORE_NAME;
+  await sendEmail({
+    to: params.to,
+    storeName,
+    subject: `Confirme sua conta — ${storeName}`,
+    html: layout(
+      storeName,
+      'Confirme seu primeiro acesso',
+      `<p>Olá, ${params.name}! Recebemos uma solicitação para criar sua senha.</p>
+       <p><a href="${params.link}" style="display: inline-block; background: #c2185b; color: #fff; padding: 10px 16px; border-radius: 6px; text-decoration: none;">Confirmar minha conta</a></p>
+       <p style="font-size: 13px; color: #767676;">Este link expira em 30 minutos. Se não foi você, ignore este e-mail.</p>`
+    ),
+  });
+}
+
 // Disparado por POST /api/sessions/[id]/payment-link, logo depois da
 // vendedora gerar (ou reaproveitar) o token — ver
 // web/src/app/pagar/[token]/page.tsx pra onde o link leva.

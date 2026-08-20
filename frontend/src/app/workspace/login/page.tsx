@@ -2,6 +2,7 @@
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTenant } from '@/components/TenantProvider';
+import { apiFetch } from '@/lib/api-client';
 
 // Login do workspace interno do tenant. Só entra quem tem
 // permissions.adminAccess (ver POST /api/{tenant}/admin/auth/login no
@@ -21,7 +22,7 @@ export default function WorkspaceLoginPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/workspace-session/login', {
+      const res = await apiFetch('/api/workspace/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),

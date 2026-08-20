@@ -3,7 +3,7 @@ import { getBackendUrl } from '@/lib/api-config';
 import type { AuthUser } from '@/domain/clients/types';
 
 const BACKEND_URL = getBackendUrl();
-const CUSTOMER_PUBLIC_PREFIXES = ['/login', '/cadastro', '/pagar', '/em-construcao'];
+const CUSTOMER_PUBLIC_PREFIXES = ['/login', '/cadastro', '/confirmar-conta', '/pagar', '/em-construcao'];
 
 function catalogAreaForPath(pathname: string): string {
   return pathname.startsWith('/pedidos') ? 'pedidos' : 'talao';
@@ -92,7 +92,9 @@ export async function proxy(request: NextRequest) {
     if (pathname.startsWith('/api/workspace-session/')) return NextResponse.next();
     const tenantSlug = tenantFromReferer(request);
     if (!tenantSlug) return NextResponse.json({ error: 'Tenant ausente.' }, { status: 404 });
-    return NextResponse.rewrite(new URL(`${BACKEND_URL}/api/${tenantSlug}${pathname.slice(4)}`, request.url));
+    const target = new URL(`${BACKEND_URL}/api/${tenantSlug}${pathname.slice(4)}`);
+    target.search = request.nextUrl.search;
+    return NextResponse.rewrite(target);
   }
 
   if (!slugFromPath) return NextResponse.redirect(new URL('/demo/', request.url));
@@ -100,7 +102,9 @@ export async function proxy(request: NextRequest) {
   const tenantPath = pathname.slice(tenantPrefix.length) || '/';
 
   if (tenantPath.startsWith('/api/')) {
-    return NextResponse.rewrite(new URL(`${BACKEND_URL}/api/${slugFromPath}${tenantPath.slice(4)}`, request.url));
+    const target = new URL(`${BACKEND_URL}/api/${slugFromPath}${tenantPath.slice(4)}`);
+    target.search = request.nextUrl.search;
+    return NextResponse.rewrite(target);
   }
 
   const requestHeaders = new Headers(request.headers);
