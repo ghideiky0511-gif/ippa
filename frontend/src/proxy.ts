@@ -145,7 +145,7 @@ export async function proxy(request: NextRequest) {
   }
 
   const user = await getCustomer(request, slugFromPath);
-  if (!user || user.role === 'vendedora' || user.role === 'cliente') {
+  if (!user || user.role === 'vendedora' || user.role === 'cliente' || user.permissions?.adminAccess === true) {
     return NextResponse.rewrite(new URL(tenantPath, request.url), { request: { headers: requestHeaders } });
   }
 

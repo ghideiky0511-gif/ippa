@@ -115,3 +115,9 @@ export const ClientLookupResultSchema = z.object({
     source: ClientLookupSourceSchema,
 });
 export type ClientLookupResult = z.infer<typeof ClientLookupResultSchema>;
+
+export const ClientSyncResultSchema = z.object({
+    client: ClientSchema,
+    updatedFields: z.array(z.string()),
+});
+export type ClientSyncResult = z.infer<typeof ClientSyncResultSchema>;

@@ -53,6 +53,44 @@ export const AudienceSchema = z.object({
 });
 export type Audience = z.infer<typeof AudienceSchema>;
 
+// Contrato padronizado de listagem paginada do catálogo (GET /api/catalog
+// com parâmetros) — usado tanto pela grade "outros produtos" com scroll
+// infinito de /catalogo quanto por qualquer outra tela que precise pedir
+// uma fatia filtrada do catálogo no futuro (admin, busca, etc.).
+export const CatalogPaginationSchema = z.object({
+  page: z.number(),
+  pageSize: z.number(),
+  total: z.number(),
+  totalPages: z.number(),
+});
+export type CatalogPagination = z.infer<typeof CatalogPaginationSchema>;
+
+export const CatalogPageSchema = z.object({
+  items: z.array(ProductSchema),
+  pagination: CatalogPaginationSchema,
+});
+export type CatalogPage = z.infer<typeof CatalogPageSchema>;
+
+// Carga inicial de /catalogo (GET /api/catalog-sections): uma vitrine por
+// Highlight cadastrado + a vitrine fixa de Promoções, mais duas versões
+// paginadas do restante do catálogo já filtrado — `outros` (sem nada que já
+// apareceu em alguma vitrine, para quando há 2+ vitrines com produto) e
+// `all` (tudo, para o fallback de grade única quando há 0 ou 1). O cliente
+// escolhe qual das duas usar e pagina o resto via GET /api/catalog.
+export const CatalogSectionSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  items: z.array(ProductSchema),
+});
+export type CatalogSection = z.infer<typeof CatalogSectionSchema>;
+
+export const CatalogSectionsResultSchema = z.object({
+  sections: z.array(CatalogSectionSchema),
+  all: CatalogPageSchema,
+  outros: CatalogPageSchema,
+});
+export type CatalogSectionsResult = z.infer<typeof CatalogSectionsResultSchema>;
+
 export const BannerSchema = z.object({
   id: z.string(),
   type: BannerMediaTypeSchema,

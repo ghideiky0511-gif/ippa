@@ -22,6 +22,20 @@ export async function findInternalIdByExternalId(
     return result.rows[0]?.internal_id ?? null;
 }
 
+export async function findExternalIdByInternalId(
+    client: PoolClient,
+    integrationId: string,
+    entityType: ErpEntityType,
+    internalId: string,
+): Promise<string | null> {
+    const result = await client.query<{ external_id: string }>(
+        `SELECT external_id FROM erp_external_references
+         WHERE tenant_id = app_tenant_id() AND integration_id = $1 AND entity_type = $2 AND internal_id = $3`,
+        [integrationId, entityType, internalId],
+    );
+    return result.rows[0]?.external_id ?? null;
+}
+
 export async function upsertExternalReferenceRow(
     client: PoolClient,
     value: { integrationId: string; entityType: ErpEntityType; internalId: string; externalId: string; metadata?: Record<string, unknown> },

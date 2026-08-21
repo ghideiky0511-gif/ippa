@@ -39,7 +39,7 @@ const ERROR_MESSAGES: Record<string, string> = {
         "Este link de confirmação é inválido ou expirou. Solicite um novo primeiro acesso.",
     CLIENT_REQUIRED: "Vincule um cadastro de cliente antes de gerar o link.",
     INCOMPLETE_CLIENT:
-        "Complete o cadastro da cliente (CPF/CNPJ, e-mail, CEP) antes de gerar o link.",
+        "Complete o cadastro da cliente (CPF/CNPJ, e-mail, CEP) antes de continuar.",
     EMPTY_ORDER: "Adicione peças ao pedido antes de gerar o link.",
     SHIPPING_REQUIRED: "Escolha o frete antes de gerar o link.",
     SELF_CHECKOUT_DISABLED:
@@ -64,7 +64,12 @@ const ERROR_MESSAGES: Record<string, string> = {
     ORDER_BOOK_NOT_EMPTY: "Só é possível cancelar um talão quando todos os pedidos pendentes estão vazios.",
     ORDER_BOOK_ALREADY_CLOSED: "Este talão já está fechado.",
     ERP_INTEGRATION_NOT_CONFIGURED:
-        "Configure e salve as credenciais deste provider antes de ativá-lo.",
+        "Nenhum provedor de ERP está configurado e ativo para esta loja.",
+    ERP_SYNC_UNAVAILABLE:
+        "Este provedor de ERP não suporta busca por documento.",
+    CLIENT_WITHOUT_DOCUMENT:
+        "Esta cliente não tem CPF/CNPJ salvo nem vínculo com o ERP — não é possível sincronizar.",
+    ERP_CLIENT_NOT_FOUND: "Cliente não encontrada no ERP ativo.",
 };
 
 function cookieOptions() {
@@ -105,6 +110,12 @@ function auditContext(request: NextRequest): AuditRequestContext {
         ipAddress,
         userAgent: request.headers.get("user-agent")?.slice(0, 512),
     };
+}
+
+function parseIdsParam(value: string | null): string[] | undefined {
+    if (!value) return undefined;
+    const ids = value.split(",").map((id) => id.trim()).filter(Boolean);
+    return ids.length > 0 ? ids : undefined;
 }
 
 function publicOrigin(request: NextRequest): string {
@@ -210,6 +221,7 @@ export async function GET(
             "tenant",
             "catalog",
             "catalog-filters",
+            "catalog-sections",
             "categories",
             "discounts",
             "highlights",
@@ -226,8 +238,40 @@ export async function GET(
                 slug: route.tenant.slug,
                 name: route.tenant.name,
             }),
-            catalog: () => catalog.listCatalog(route.tenant),
+            // Sem parâmetros: catálogo completo (compatibilidade com quem
+            // precisa da lista inteira — carrinho, resumo de pedidos, busca
+            // do menu, admin). Com parâmetros: consulta padronizada
+            // filtrada e paginada (ver CatalogQuery em catalogService).
+            catalog: () => {
+                const params = request.nextUrl.searchParams;
+                if (params.toString() === "") return catalog.listCatalog(route.tenant);
+                return catalog.listCatalogPage(route.tenant, {
+                    page: Number(params.get("page")) || undefined,
+                    pageSize: Number(params.get("pageSize")) || undefined,
+                    term: params.get("term") || undefined,
+                    category: params.get("category") || undefined,
+                    subcategory: params.get("subcategory") || undefined,
+                    color: params.get("color") || undefined,
+                    size: params.get("size") || undefined,
+                    ids: parseIdsParam(params.get("ids")),
+                    excludeIds: parseIdsParam(params.get("excludeIds")),
+                    restrictIds: parseIdsParam(params.get("restrictIds")),
+                    excludeFeatured: params.get("excludeFeatured") === "1",
+                });
+            },
             "catalog-filters": () => catalog.listCatalogFilters(route.tenant),
+            "catalog-sections": () => {
+                const params = request.nextUrl.searchParams;
+                return catalog.listCatalogSections(route.tenant, {
+                    term: params.get("term") || undefined,
+                    category: params.get("category") || undefined,
+                    subcategory: params.get("subcategory") || undefined,
+                    color: params.get("color") || undefined,
+                    size: params.get("size") || undefined,
+                    restrictIds: parseIdsParam(params.get("restrictIds")),
+                    pageSize: Number(params.get("pageSize")) || undefined,
+                });
+            },
             categories: () => catalog.categoryMenu(route.tenant),
             discounts: () => settings.listDiscounts(route.tenant),
             highlights: () => settings.listHighlights(route.tenant),
@@ -317,8 +361,10 @@ export async function GET(
             );
         case "orders":
             return execute(() => orders.userOrders(route.tenant, session.user));
-        case "admin/orders":
-            return execute(() => orders.userOrders(route.tenant, session.user));
+        case "admin/orders": {
+            const clientId = request.nextUrl.searchParams.get("clientId") ?? undefined;
+            return execute(() => orders.userOrders(route.tenant, session.user, { clientId }));
+        }
         case "admin/users":
             return execute(() => users.users(route.tenant, session.user));
         case "admin/classifications":
@@ -597,6 +643,16 @@ export async function POST(
                 authenticated.user,
                 path[1],
                 body,
+                mutationContext,
+            ),
+        );
+    }
+    if (path[0] === "clients" && path[1] && path[2] === "sync-erp") {
+        return execute(() =>
+            clients.syncClientFromErp(
+                route.tenant,
+                authenticated.user,
+                path[1],
                 mutationContext,
             ),
         );

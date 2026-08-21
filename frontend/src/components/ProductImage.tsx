@@ -16,6 +16,8 @@ export default function ProductImage({ src, alt, className, ...props }: ProductI
     // URLs de produtos sÃ£o externas e variÃ¡veis; o Service Worker cuida do cache.
     // eslint-disable-next-line @next/next/no-img-element
     <img
+      loading="lazy"
+      decoding="async"
       {...props}
       src={src || FALLBACK_IMAGE}
       alt={alt}

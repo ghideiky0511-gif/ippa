@@ -13,7 +13,7 @@ import {
   lookupOrderClientByDocument,
   searchOrderClients,
   updateOrderSession,
-} from '@/workspace/lib/ordersClient';
+} from '@/lib/ordersClient';
 import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
 
 function formatCurrency(value: number) {

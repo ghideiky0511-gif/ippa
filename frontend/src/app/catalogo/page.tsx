@@ -2,8 +2,8 @@ import { Suspense } from 'react';
 import { z } from 'zod';
 import CatalogApp from '@/components/CatalogApp';
 import { backendJson } from '@/lib/backend';
-import { HighlightSchema, type Highlight } from '@/domain/catalog/types';
-import { ProductSchema, type Product } from '@/domain/products/types';
+import { CatalogSectionsResultSchema } from '@/domain/catalog/types';
+import { CONFIG } from '@/lib/config';
 
 interface CatalogFilterOptions {
   categories: string[];
@@ -21,19 +21,40 @@ const CatalogFilterOptionsSchema = z.object({
 // refletir aqui sem rebuild — mesmo motivo de web/src/app/page.tsx.
 export const dynamic = 'force-dynamic';
 
-// Server Component: os dados já vêm prontos no HTML inicial, sem
-// depender de fetch no cliente (o que resolvia o bug do file://).
-// Suspense é obrigatório aqui porque CatalogApp usa useSearchParams
-// (pré-seleciona a categoria vinda do menu da home).
-export default async function Page() {
-  const [catalog, filterOptions, highlights] = await Promise.all([
-    backendJson('/api/catalog', z.array(ProductSchema)),
+// Server Component: a primeira carga (vitrines + grade paginada) já vem
+// pronta no HTML inicial via /api/catalog-sections, filtrada pelos
+// parâmetros de URL (categoria/subcategoria/público) — nada de montar a
+// página sem filtro e corrigir no cliente depois (mesmo bug que já
+// resolvemos pra highlights: o backend entrega pronto, o front não refaz).
+// Suspense é obrigatório porque CatalogApp usa useSearchParams (só mais
+// pra saber qual vitrine rolar até, `destaque` não filtra mais nada).
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ categoria?: string; subcategoria?: string; publico?: string }>;
+}) {
+  const { categoria, subcategoria, publico } = await searchParams;
+  const audience = publico ? CONFIG.home?.audiences?.find((a) => a.id === publico) : undefined;
+  const restrictIds = audience?.productIds ?? undefined;
+
+  const sectionsQuery = new URLSearchParams();
+  if (categoria) sectionsQuery.set('category', categoria);
+  if (subcategoria) sectionsQuery.set('subcategory', subcategoria);
+  if (restrictIds) sectionsQuery.set('restrictIds', restrictIds.join(','));
+
+  const [filterOptions, initialSections] = await Promise.all([
     backendJson('/api/catalog-filters', CatalogFilterOptionsSchema),
-    backendJson('/api/highlights', z.array(HighlightSchema)),
+    backendJson(`/api/catalog-sections?${sectionsQuery.toString()}`, CatalogSectionsResultSchema),
   ]);
+
   return (
     <Suspense>
-      <CatalogApp initialProducts={catalog} filterOptions={filterOptions} initialHighlights={highlights} />
+      <CatalogApp
+        filterOptions={filterOptions}
+        initialSections={initialSections}
+        initialFilters={{ category: categoria || '', subcategory: subcategoria || '' }}
+        restrictIds={restrictIds}
+      />
     </Suspense>
   );
 }

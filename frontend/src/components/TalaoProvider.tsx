@@ -1,8 +1,9 @@
 'use client';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { CartItem, OrderSession, ShippingOption } from '@/domain/orders/types';
+import type { CartItem, OrderBook, OrderSession, ShippingOption } from '@/domain/orders/types';
 import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
-import { usePedidoRealtime } from '@/lib/realtime/usePedidoRealtime';
+import { usePedidoRealtime, type PedidoParticipant, type PedidoPresence } from '@/lib/realtime/usePedidoRealtime';
+import { activateOrderBook, cancelOrderBook, createOrderBook, fetchActiveOrderBook, fetchOrderBooks } from '@/lib/ordersClient';
 
 interface TalaoContextValue {
   sessions: OrderSession[]; // todas (aberta + fechada) — usado por "buscar existentes"
@@ -13,6 +14,11 @@ interface TalaoContextValue {
   openTalao: () => void;
   closeTalao: () => void;
   selectSession: (id: string) => void;
+  // Reaplica uma sessão já carregada (e o talão dela) como ativa, sem
+  // chamar a API — usado pelo deep link ?session= (ver CatalogApp.tsx),
+  // que só deve mudar o que a tela mostra, não qual talão está "ativo"
+  // pro backend (isso só acontece via selectBook, uma escolha explícita).
+  resumeSession: (sessionId: string) => void;
   createSession: (clientName: string, channel: 'presencial' | 'whatsapp') => Promise<OrderSession>;
   closeSession: (id: string) => Promise<void>;
   reopenSession: (id: string) => Promise<void>;
@@ -23,6 +29,21 @@ interface TalaoContextValue {
   // da sessão ativa — ver POST /api/sessions/[id]/payment-link/route.ts.
   // Lança se a API recusar (carrinho vazio, sem frete, cliente incompleta).
   requestPaymentLink: () => Promise<string>;
+  // Talões (OrderBook) abertos da vendedora — uma vendedora pode manter
+  // vários em paralelo (ex.: feira + loja) e trocar entre eles; sessions
+  // ficam scoped ao talão ativo no painel (activeBookSessions), mas a
+  // busca "existentes" continua olhando todas as sessions (todos os
+  // talões) — ver TalaoDrawer.tsx.
+  books: OrderBook[];
+  activeBookId: string | null;
+  activeBook: OrderBook | null;
+  activeBookSessions: OrderSession[];
+  cancelledBookSessions: OrderSession[];
+  selectBook: (id: string) => Promise<void>;
+  createBook: (name: string) => Promise<void>;
+  cancelBook: (id: string) => Promise<void>;
+  presence: PedidoPresence[];
+  participants: PedidoParticipant[];
 }
 
 const TalaoContext = createContext<TalaoContextValue | null>(null);
@@ -36,6 +57,10 @@ export function TalaoProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<OrderSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [isTalaoOpen, setTalaoOpen] = useState(false);
+  const [books, setBooks] = useState<OrderBook[]>([]);
+  const [activeBookId, setActiveBookId] = useState<string | null>(null);
+  const [presence, setPresence] = useState<PedidoPresence[]>([]);
+  const [participants, setParticipants] = useState<PedidoParticipant[]>([]);
 
   function refetchSessions() {
     return fetch('/api/sessions', { cache: 'no-store' })
@@ -46,33 +71,90 @@ export function TalaoProvider({ children }: { children: ReactNode }) {
       .catch(() => {});
   }
 
+  function refetchBooks() {
+    return fetchOrderBooks('aberto').then(setBooks).catch(() => {});
+  }
+
   useEffect(() => {
-    fetch('/api/sessions', { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((all: OrderSession[]) => {
-        setSessions(all);
-        const firstOpen = all.find((s) => s.status === 'aberto');
-        if (firstOpen) setActiveSessionId(firstOpen.id);
-      })
-      .catch(() => {});
+    Promise.all([
+      fetch('/api/sessions', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : [])) as Promise<OrderSession[]>,
+      fetchOrderBooks('aberto').catch(() => [] as OrderBook[]),
+    ]).then(async ([all, openBooks]) => {
+      setSessions(all);
+      setBooks(openBooks);
+      const firstOpen = all.find((s) => s.status === 'aberto');
+      if (firstOpen) setActiveSessionId(firstOpen.id);
+      const active = openBooks.find((book) => book.isActive);
+      if (active) {
+        setActiveBookId(active.id);
+        return;
+      }
+      // Vendedora sem nenhum talão aberto ainda — a API cria (ou reabre) o
+      // "Talão atual" dela.
+      try {
+        const book = await fetchActiveOrderBook();
+        setBooks((current) => [book, ...current]);
+        setActiveBookId(book.id);
+      } catch {
+        // sem talão disponível agora — painel do talão fica vazio até a próxima atualização em tempo real
+      }
+    }).catch(() => {});
   }, []);
 
   useUpdatesRealtime((update) => {
-    if (update === 'sessions_updated' || update === 'order_books_updated') void refetchSessions();
+    if (update === 'sessions_updated' || update === 'order_books_updated') {
+      void refetchSessions();
+      void refetchBooks();
+    }
   });
 
   const openSessions = sessions.filter((s) => s.status === 'aberto' || s.status === 'aguardando_pagamento');
   const activeSession = sessions.find((s) => s.id === activeSessionId) || null;
+  const activeBook = books.find((b) => b.id === activeBookId) || null;
+  const activeBookSessions = sessions.filter((s) => s.orderBookId === activeBookId && (s.status === 'aberto' || s.status === 'aguardando_pagamento'));
+  const cancelledBookSessions = sessions.filter((s) => s.orderBookId === activeBookId && s.status === 'cancelado');
   const realtime = usePedidoRealtime({
     sessionId: activeSession?.id,
     onSession: (session) => setSessions((prev) => prev.map((item) => item.id === session.id ? session : item)),
+    onPresence: setPresence,
+    onParticipants: setParticipants,
   });
+
+  function resumeSession(sessionId: string) {
+    const session = sessions.find((s) => s.id === sessionId);
+    if (!session) return;
+    setActiveSessionId(session.id);
+    setActiveBookId(session.orderBookId);
+  }
+
+  async function selectBook(id: string) {
+    const active = await activateOrderBook(id);
+    setBooks((current) => current.map((book) => ({ ...book, isActive: book.id === active.id })));
+    setActiveBookId(active.id);
+    setActiveSessionId(null);
+  }
+
+  async function createBook(name: string) {
+    const created = await createOrderBook(name);
+    setBooks((current) => [created, ...current.map((book) => ({ ...book, isActive: false }))]);
+    setActiveBookId(created.id);
+    setActiveSessionId(null);
+  }
+
+  async function cancelBook(id: string) {
+    const cancelled = await cancelOrderBook(id);
+    setBooks((current) => current.map((book) => (book.id === cancelled.id ? cancelled : book)));
+    setActiveSessionId((cur) => {
+      const session = sessions.find((s) => s.id === cur);
+      return session && session.orderBookId === id ? null : cur;
+    });
+  }
 
   async function createSession(clientName: string, channel: 'presencial' | 'whatsapp') {
     const res = await fetch('/api/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientName, channel }),
+      body: JSON.stringify({ clientName, channel, orderBookId: activeBookId }),
     });
     const session: OrderSession = await res.json();
     setSessions((prev) => [...prev, session]);
@@ -155,6 +237,7 @@ export function TalaoProvider({ children }: { children: ReactNode }) {
       openTalao: () => setTalaoOpen(true),
       closeTalao: () => setTalaoOpen(false),
       selectSession: setActiveSessionId,
+      resumeSession,
       createSession,
       closeSession,
       reopenSession,
@@ -162,8 +245,18 @@ export function TalaoProvider({ children }: { children: ReactNode }) {
       updateActiveShipping,
       linkClient,
       requestPaymentLink,
+      books,
+      activeBookId,
+      activeBook,
+      activeBookSessions,
+      cancelledBookSessions,
+      selectBook,
+      createBook,
+      cancelBook,
+      presence,
+      participants,
     }),
-    [sessions, activeSessionId, isTalaoOpen]
+    [sessions, activeSessionId, isTalaoOpen, books, activeBookId, activeBook, activeBookSessions, cancelledBookSessions, presence, participants]
   );
 
   return <TalaoContext.Provider value={value}>{children}</TalaoContext.Provider>;

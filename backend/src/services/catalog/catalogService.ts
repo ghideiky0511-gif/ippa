@@ -1,6 +1,7 @@
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
-import type { CategoryTreeEntry, Discount, Product, Variant } from "@/lib/types";
+import type { CategoryTreeEntry, Discount, Highlight, Product, Variant } from "@/lib/types";
+import type { CatalogPage, CatalogSectionsResult } from "@/contracts/catalog";
 import {
     listCategoryMenuRows,
     listInventoryBalanceRows,
@@ -17,6 +18,7 @@ import {
     listDiscountTierRows,
 } from "@/models/settingsModel";
 import { getActiveProductDiscount } from "@/services/settings/discountCalculator";
+import { listHighlights } from "@/services/settings/highlightService";
 
 // Árvore categoria->subcategorias pro menu público — direto de `classifications`/
 // `classification_types` (hierarquia real via `parent_id`, sem heurística de
@@ -168,4 +170,116 @@ export async function listCatalog(tenant: Tenant): Promise<Product[]> {
             return product;
         });
     });
+}
+
+const DEFAULT_PAGE_SIZE = 24;
+const MAX_PAGE_SIZE = 100;
+
+// Parâmetros de consulta padronizados do catálogo — todo consumidor
+// (grade paginada, vitrine de destaque, futura tela de admin) monta um
+// desses e chama listCatalogPage/listCatalogSections; nenhuma tela
+// reimplementa seu próprio corte da lista de produtos.
+export interface CatalogQuery {
+    page?: number;
+    pageSize?: number;
+    term?: string;
+    category?: string;
+    subcategory?: string;
+    color?: string;
+    size?: string;
+    // Conjunto exato e ordenado a retornar (uma vitrine de destaque, por
+    // exemplo) — quando presente, ignora page/pageSize e devolve tudo que
+    // casar, na ordem dada.
+    ids?: string[];
+    excludeIds?: string[];
+    // Restringe aos IDs dados sem alterar ordem/paginação (ex.: recorte por
+    // público-alvo combinado com os demais filtros).
+    restrictIds?: string[];
+    // Exclui qualquer produto que pertença a algum Highlight cadastrado ou
+    // tenha desconto ativo — a mesma regra usada para montar "outros
+    // produtos" em listCatalogSections, disponível aqui pra quem pagina
+    // essa vitrine manualmente (scroll infinito).
+    excludeFeatured?: boolean;
+}
+
+function matchesCatalogFacets(product: Product, query: {
+    term?: string; category?: string; subcategory?: string; color?: string; size?: string; restrictIds?: string[]; excludeIds?: string[];
+}): boolean {
+    const term = query.term?.trim().toLowerCase();
+    if (term && !(product.name || "").toLowerCase().includes(term) && !(product.id || "").toLowerCase().includes(term)) return false;
+    // Categorias "dobradas" no menu (ex.: BODY ALCA vira subcategoria de
+    // BODY) têm produtos cujo `category` real é o nome dobrado — some do
+    // filtro se a gente só comparar contra `subcategory`.
+    const isFoldedMatch = !!query.subcategory && product.category === query.subcategory;
+    if (query.category && product.category !== query.category && !isFoldedMatch) return false;
+    if (query.subcategory && product.subcategory !== query.subcategory && !isFoldedMatch) return false;
+    if (query.color && !(product.colors || []).includes(query.color)) return false;
+    if (query.size && !(product.sizes || []).includes(query.size)) return false;
+    if (query.restrictIds && !query.restrictIds.includes(product.id)) return false;
+    if (query.excludeIds && query.excludeIds.includes(product.id)) return false;
+    return true;
+}
+
+function featuredProductIds(products: Product[], highlights: Highlight[]): Set<string> {
+    const ids = new Set<string>();
+    for (const highlight of highlights) for (const id of highlight.productIds) ids.add(id);
+    for (const product of products) if (product.activeDiscount) ids.add(product.id);
+    return ids;
+}
+
+function pickByIds(products: Product[], ids: string[]): Product[] {
+    const byId = new Map(products.map((p) => [p.id, p]));
+    return ids.map((id) => byId.get(id)).filter((p): p is Product => Boolean(p));
+}
+
+function paginate(items: Product[], page?: number, pageSize?: number): CatalogPage {
+    const size = Math.min(Math.max(pageSize || DEFAULT_PAGE_SIZE, 1), MAX_PAGE_SIZE);
+    const current = Math.max(page || 1, 1);
+    const start = (current - 1) * size;
+    return {
+        items: items.slice(start, start + size),
+        pagination: { page: current, pageSize: size, total: items.length, totalPages: Math.max(Math.ceil(items.length / size), 1) },
+    };
+}
+
+export async function listCatalogPage(tenant: Tenant, query: CatalogQuery): Promise<CatalogPage> {
+    const [products, highlights] = await Promise.all([
+        listCatalog(tenant),
+        query.excludeFeatured ? listHighlights(tenant) : Promise.resolve<Highlight[]>([]),
+    ]);
+    let matching = products.filter((p) => matchesCatalogFacets(p, query));
+    if (query.excludeFeatured) {
+        const featuredIds = featuredProductIds(matching, highlights);
+        matching = matching.filter((p) => !featuredIds.has(p.id));
+    }
+    if (query.ids) {
+        const items = pickByIds(matching, query.ids);
+        return { items, pagination: { page: 1, pageSize: items.length || 1, total: items.length, totalPages: 1 } };
+    }
+    return paginate(matching, query.page, query.pageSize);
+}
+
+export interface CatalogSectionsQuery {
+    term?: string;
+    category?: string;
+    subcategory?: string;
+    color?: string;
+    size?: string;
+    restrictIds?: string[];
+    pageSize?: number;
+}
+
+export async function listCatalogSections(tenant: Tenant, query: CatalogSectionsQuery): Promise<CatalogSectionsResult> {
+    const [products, highlights] = await Promise.all([listCatalog(tenant), listHighlights(tenant)]);
+    const matching = products.filter((p) => matchesCatalogFacets(p, query));
+    const highlightSections = highlights.map((h) => ({ id: h.id, label: h.label, items: pickByIds(matching, h.productIds) }));
+    const promoSection = { id: "promocoes", label: "Promoções", items: matching.filter((p) => !!p.activeDiscount) };
+    const sections = [...highlightSections, promoSection].filter((s) => s.items.length > 0);
+    const featuredIds = featuredProductIds(matching, highlights);
+    const outrosPool = matching.filter((p) => !featuredIds.has(p.id));
+    return {
+        sections,
+        all: paginate(matching, 1, query.pageSize),
+        outros: paginate(outrosPool, 1, query.pageSize),
+    };
 }

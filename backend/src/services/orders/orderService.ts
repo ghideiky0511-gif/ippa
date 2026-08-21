@@ -28,16 +28,20 @@ function isAdministrator(user: AuthUser): boolean {
 export async function userOrders(
     tenant: Tenant,
     user: AuthUser,
+    filters?: { clientId?: string },
 ): Promise<Order[]> {
+    if (filters?.clientId && !isAdministrator(user)) throw new ForbiddenError();
     return withTenantTransaction(tenant, user, async (client) => {
         const [orders, items] = await Promise.all([
-            isAdministrator(user)
-                ? listTenantOrderRows(client)
-                : user.role === "cliente" && user.clientId
-                  ? listOrderRowsBy(client, "client_id", user.clientId)
-                  : user.role === "vendedora"
-                    ? listOrderRowsBy(client, "seller_id", user.id)
-                    : listTenantOrderRows(client),
+            filters?.clientId
+                ? listOrderRowsBy(client, "client_id", filters.clientId)
+                : isAdministrator(user)
+                  ? listTenantOrderRows(client)
+                  : user.role === "cliente" && user.clientId
+                    ? listOrderRowsBy(client, "client_id", user.clientId)
+                    : user.role === "vendedora"
+                      ? listOrderRowsBy(client, "seller_id", user.id)
+                      : listTenantOrderRows(client),
             listOrderItemRows(client),
         ]);
         return orders.map((order) =>

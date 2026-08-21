@@ -2,14 +2,18 @@
 import { publicUi } from '@/lib/ui';
 
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { ArrowRight, X } from 'lucide-react';
+import { ArrowRight, Share2, X } from 'lucide-react';
 import { useTalao } from './TalaoProvider';
 import { useCart } from './CartProvider';
+import { useTenant } from './TenantProvider';
 import { formatBRL } from '@/lib/format';
 import { getDocumentType } from '@/lib/document';
+import { isClientComplete } from '@/lib/clientComplete';
 import { z } from 'zod';
 import { ClientSchema, type Client } from '@/domain/clients/types';
 import type { OrderSession } from '@/domain/orders/types';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import ShareCatalogSheet from './ShareCatalogSheet';
 
 const ClientWithLoginSchema = ClientSchema.extend({ hasLogin: z.boolean().optional() });
 
@@ -190,9 +194,12 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
 
   // Aparece independente do painel estar aberto/fechado — é um pendência
   // que bloqueia o frete (ver useTalaoClientGate.ts), não faz sentido
-  // esconder atrás do "editar".
+  // esconder atrás do "editar". Só depois de isClientComplete: um login
+  // criado pra um cadastro sem CPF/CNPJ nunca mais aparece pro fluxo de
+  // /login por CPF da cliente (findClientRowByDocumentDigits não casa
+  // cpf_cnpj nulo), deixando essa conta travada.
   const createLoginSection =
-    session.clientId && linkedClient && !linkedClient.hasLogin ? (
+    session.clientId && linkedClient && isClientComplete(linkedClient) && !linkedClient.hasLogin ? (
       <CreateLoginSection client={linkedClient} onCreated={refetchLinkedClient} />
     ) : null;
 
@@ -270,10 +277,17 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
 export default function TalaoDrawer() {
   const talao = useTalao();
   const { openCart } = useCart();
+  const { href } = useTenant();
   const [query, setQuery] = useState('');
   const [showNewForm, setShowNewForm] = useState(false);
   const [newClientName, setNewClientName] = useState('');
   const [newChannel, setNewChannel] = useState<'presencial' | 'whatsapp'>('presencial');
+  const [isSharing, setSharing] = useState(false);
+  const [isCreatingBook, setCreatingBook] = useState(false);
+  const [newBookName, setNewBookName] = useState('');
+  const [savingBook, setSavingBook] = useState(false);
+  const [bookError, setBookError] = useState<string | null>(null);
+  const [isCancelingBook, setCancelingBook] = useState(false);
 
   const searchResults = useMemo(() => {
     if (!talao) return [];
@@ -284,8 +298,8 @@ export default function TalaoDrawer() {
 
   if (!talao) return null;
 
-  const { isTalaoOpen, closeTalao, openSessions, activeSession, selectSession, closeSession, reopenSession, createSession } = talao;
-  const others = openSessions.filter((s) => s.id !== activeSession?.id);
+  const { isTalaoOpen, closeTalao, activeBookSessions, cancelledBookSessions, activeSession, selectSession, closeSession, reopenSession, createSession, books, activeBook, selectBook, createBook, cancelBook } = talao;
+  const others = activeBookSessions.filter((s) => s.id !== activeSession?.id);
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
@@ -303,16 +317,88 @@ export default function TalaoDrawer() {
     setQuery('');
   }
 
+  async function handleSelectBook(id: string) {
+    setBookError(null);
+    try {
+      await selectBook(id);
+    } catch (error) {
+      setBookError(error instanceof Error ? error.message : 'Não foi possível trocar o talão.');
+    }
+  }
+
+  async function handleCreateBook(e: FormEvent) {
+    e.preventDefault();
+    if (!newBookName.trim()) return;
+    setSavingBook(true);
+    setBookError(null);
+    try {
+      await createBook(newBookName.trim());
+      setNewBookName('');
+      setCreatingBook(false);
+    } catch (error) {
+      setBookError(error instanceof Error ? error.message : 'Não foi possível criar o talão.');
+    } finally {
+      setSavingBook(false);
+    }
+  }
+
+  async function handleCancelBook() {
+    if (!activeBook) return;
+    setBookError(null);
+    try {
+      await cancelBook(activeBook.id);
+    } catch (error) {
+      setBookError(error instanceof Error ? error.message : 'Não foi possível cancelar o talão.');
+    }
+  }
+
   return (
     <>
       <div className={[publicUi.overlay, isTalaoOpen ? 'block' : 'hidden'].join(' ')} onClick={closeTalao} />
       <aside className={[publicUi.drawerRight, isTalaoOpen ? 'translate-x-0' : ''].join(' ')}>
         <div className={publicUi.drawerHeader}>
           <h2>talão de pedidos</h2>
-          <button className={publicUi.drawerIconButton} aria-label="Fechar" onClick={closeTalao}><X className="size-4" aria-hidden="true" /></button>
+          <div className="flex items-center gap-1">
+            <button className={publicUi.drawerIconButton} aria-label="Gerar link público" title="Gerar link público" onClick={() => setSharing(true)}><Share2 className="size-4" aria-hidden="true" /></button>
+            <button className={publicUi.drawerIconButton} aria-label="Fechar" onClick={closeTalao}><X className="size-4" aria-hidden="true" /></button>
+          </div>
         </div>
 
         <div className={publicUi.drawerBody}>
+          <div className={publicUi.talaoLabel}>talão</div>
+          <div className="contents">
+            <select
+              aria-label="Talão atual"
+              value={activeBook?.id || ''}
+              onChange={(e) => void handleSelectBook(e.target.value)}
+              className="min-h-10 rounded-control border border-[#ccc] bg-white px-3 text-sm"
+            >
+              {books.map((book) => (
+                <option key={book.id} value={book.id}>{book.name}{book.isActive ? ' · atual' : ''}</option>
+              ))}
+            </select>
+            <button className={publicUi.subtleButton} type="button" onClick={() => setCreatingBook((v) => !v)}>+ novo talão</button>
+            {activeBook?.status === 'aberto' && (
+              <button className={publicUi.subtleButton} type="button" onClick={() => setCancelingBook(true)}>Cancelar talão</button>
+            )}
+          </div>
+
+          {isCreatingBook && (
+            <form className="contents" onSubmit={handleCreateBook}>
+              <input
+                value={newBookName}
+                onChange={(e) => setNewBookName(e.target.value)}
+                placeholder="Nome do talão"
+                autoFocus
+              />
+              <button className={publicUi.primaryButton} type="submit" disabled={!newBookName.trim() || savingBook}>
+                {savingBook ? 'Criando…' : 'Criar e ativar'}
+              </button>
+            </form>
+          )}
+
+          {bookError && <p className={publicUi.error}>{bookError}</p>}
+
           <div className={publicUi.talaoLabel}>pedido ativo</div>
           {activeSession ? (
             <>
@@ -381,6 +467,25 @@ export default function TalaoDrawer() {
             </>
           )}
 
+          {cancelledBookSessions.length > 0 && (
+            <>
+              <div className={publicUi.talaoLabel}>cancelados</div>
+              <div className="contents">
+                {cancelledBookSessions.map((s) => (
+                  <div key={s.id} className={publicUi.talaoCard}>
+                    <div className={publicUi.talaoInfo}>
+                      <span className={publicUi.talaoName}>{s.clientName || 'Sem cliente'}</span>
+                      <span className={publicUi.talaoChannel}>{CHANNEL_LABELS[s.channel]}</span>
+                    </div>
+                    <button className={publicUi.subtleButton} type="button" onClick={() => reopenSession(s.id)}>
+                      Reativar no talão
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
           <div className={publicUi.talaoLabel}>adicionar mais pedidos ao talão</div>
           <div className="contents">
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="buscar existentes" />
@@ -417,6 +522,16 @@ export default function TalaoDrawer() {
           )}
         </div>
       </aside>
+      <ConfirmDialog
+        open={isCancelingBook}
+        onOpenChange={setCancelingBook}
+        title="Cancelar talão?"
+        description="Os pedidos pendentes e vazios deste talão serão cancelados. Pedidos já finalizados permanecem no histórico. Se algum pedido pendente tiver peças, o cancelamento não será permitido."
+        confirmLabel="Cancelar talão"
+        destructive
+        onConfirm={handleCancelBook}
+      />
+      <ShareCatalogSheet open={isSharing} onOpenChange={setSharing} publicPath={href('/catalogo')} />
     </>
   );
 }

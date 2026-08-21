@@ -152,11 +152,7 @@ export default function ProductDetailContent({ product }: { product: Product }) 
         <div className="contents">{product.category}{product.subcategory ? ` · ${product.subcategory}` : ''}</div>
         <h2>{product.name}</h2>
         {product.referenceId && <div className="contents">{product.referenceId}</div>}
-        {!showPrices ? (
-          <div className="contents">
-            <Link href="/login" className={publicUi.primaryButton}>Entrar para ver o preço</Link>
-          </div>
-        ) : (
+        {showPrices && (
           <>
             {effectivePercent > 0 ? (
               <div
@@ -200,7 +196,9 @@ export default function ProductDetailContent({ product }: { product: Product }) 
 
         {!authUser && (
           <p className="contents">
-            <Link href="/login" className={publicUi.primaryButton}>Entre para montar seu carrinho</Link>
+            <Link href="/login" className={publicUi.primaryButton}>
+              {showPrices ? 'Entre para montar seu carrinho' : 'Entrar para ver o preço e montar seu carrinho'}
+            </Link>
           </p>
         )}
 
@@ -249,7 +247,7 @@ export default function ProductDetailContent({ product }: { product: Product }) 
                     {showPrices ? (
                       <span className="contents">{formatBRL(pack.price)}</span>
                     ) : (
-                      <Link href="/login" className="contents">Entrar para ver o preço</Link>
+                      <span className="contents">Preço disponível após entrar</span>
                     )}
                   </div>
                   {pack.scope === 'grade' && pack.color && (

@@ -5,6 +5,7 @@ import {
     CreateClientInputSchema,
     UpdateClientInputSchema,
     type ClientLookupResult,
+    type ClientSyncResult,
     type ClientsPage,
 } from "@/contracts/clients";
 import { CpfCnpjSchema, documentDigits } from "@/contracts/shared";
@@ -18,12 +19,17 @@ import {
 } from "@/models/clientsModel";
 import { findUserRowByClientId } from "@/models/usersModel";
 import { findActiveErpIntegrationRow } from "@/models/erpIntegrationsModel";
-import { upsertExternalReferenceRow } from "@/models/erpExternalReferencesModel";
+import { findExternalIdByInternalId, upsertExternalReferenceRow } from "@/models/erpExternalReferencesModel";
 import { createErpProvider } from "@/erp/registry";
 import { createExternalApiCallReporter } from "@/services/erp/externalApiLogService";
 import { recordAuditEvent, CLIENT_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
-import { ConflictError, ForbiddenError, ValidationError } from "@/services/shared/errors";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
 import { toClient } from "./clientMapper";
+
+const ERP_SYNCABLE_FIELDS = [
+    "cpfCnpj", "email", "cep", "street", "number",
+    "complement", "neighborhood", "city", "state",
+] as const satisfies readonly (keyof Client)[];
 
 const AUDITED_CLIENT_FIELDS = [
     "name", "cpfCnpj", "email", "cep", "street", "number", "complement",
@@ -168,13 +174,23 @@ export async function findOrImportTenantClientByDocument(
         const found = await provider.lookupClientByDocument(document);
         if (!found) return { client: null, source: "not_found" };
 
+        // provider.lookupClientByDocument já casou este registro pelo
+        // documento buscado (é o próprio filtro da busca), mas o mapper do
+        // provider pode não ecoar o campo de volta (ex.: TOTVS às vezes não
+        // devolve "cpf"/"cnpj" no corpo de individuals/legal-entities search).
+        // Sem isso o cliente importa sem documento e nunca mais casa no
+        // /login por CPF (findClientRowByDocumentDigits não acha cpf_cnpj
+        // nulo) — usamos os dígitos já validados como garantia, já que são
+        // exatamente o que este cliente comprovadamente tem.
+        const dataToInsert = { ...found.data, cpfCnpj: found.data.cpfCnpj || digits, lastSellerId: user.id };
+
         // Corrida: duas buscas quase simultâneas pelo mesmo documento ainda
         // não importado podem tentar inserir a mesma linha — a segunda perde
         // a corrida no índice único (tenant_id, cpf_cnpj) e reaproveita o que
         // a primeira acabou de criar, em vez de falhar pro vendedor.
         let row;
         try {
-            row = await insertClientRow(client, { ...found.data, lastSellerId: user.id });
+            row = await insertClientRow(client, dataToInsert);
         } catch (error) {
             if ((error as { code?: string }).code !== "23505") throw error;
             row = await findClientRowByDocumentDigits(client, digits);
@@ -190,5 +206,60 @@ export async function findOrImportTenantClientByDocument(
             metadata: { source: "erp", provider: integration.provider },
         });
         return { client: toClient(row), source: "erp" };
+    });
+}
+
+// Botão "sincronizar com ERP" da página de detalhe do cliente: busca esse
+// registro de novo no ERP e preenche só os campos que ainda estão vazios
+// localmente — nunca sobrescreve o que já foi preenchido (na loja ou pela
+// própria cliente). Cliente sem cpfCnpj salvo (o caso que este botão existe
+// pra consertar) não tem documento pra buscar de novo; usa o external_id
+// gravado na importação original, que para individuals/legal-entities do
+// TOTVS é o próprio documento (ver totvsmoda/index.ts:lookupClientByDocument).
+export async function syncClientFromErp(
+    tenant: Tenant,
+    user: AuthUser,
+    id: string,
+    context: AuditRequestContext,
+): Promise<ClientSyncResult> {
+    if (!canManageClients(user)) throw new ForbiddenError();
+    return withTenantTransaction(tenant, user, async (client) => {
+        const currentRow = await findClientRow(client, id);
+        if (!currentRow) throw new NotFoundError("CLIENT_NOT_FOUND");
+        const current = toClient(currentRow);
+
+        const integration = await findActiveErpIntegrationRow(client);
+        if (!integration) throw new ValidationError("ERP_INTEGRATION_NOT_CONFIGURED");
+        const provider = createErpProvider(
+            integration.provider, integration.credentials,
+            createExternalApiCallReporter(tenant, user, integration.provider),
+        );
+        if (!provider.lookupClientByDocument) throw new ValidationError("ERP_SYNC_UNAVAILABLE");
+
+        const rawDocument = current.cpfCnpj
+            || await findExternalIdByInternalId(client, integration.id, "client", id);
+        const parsedDocument = rawDocument ? CpfCnpjSchema.safeParse(rawDocument) : null;
+        if (!parsedDocument?.success) throw new ValidationError("CLIENT_WITHOUT_DOCUMENT");
+
+        const found = await provider.lookupClientByDocument(parsedDocument.data);
+        if (!found) throw new NotFoundError("ERP_CLIENT_NOT_FOUND");
+
+        const fresh = { ...found.data, cpfCnpj: found.data.cpfCnpj || parsedDocument.data };
+        const updatedFields = ERP_SYNCABLE_FIELDS.filter((field) => !current[field]?.trim() && Boolean(fresh[field]?.trim()));
+        if (updatedFields.length === 0) return { client: current, updatedFields: [] };
+
+        const merged = { ...current, ...Object.fromEntries(updatedFields.map((field) => [field, fresh[field]])) };
+        const row = await updateClientRow(client, id, { ...merged, name: merged.name.trim() });
+        if (!row) throw new NotFoundError("CLIENT_NOT_FOUND");
+
+        await upsertExternalReferenceRow(client, {
+            integrationId: integration.id, entityType: "client", internalId: id, externalId: found.externalId,
+        });
+        await recordAuditEvent(client, {
+            action: CLIENT_AUDIT_ACTIONS.UPDATED,
+            entityId: id, actor: user, context,
+            metadata: { changedFields: updatedFields, source: "erp_resync" },
+        });
+        return { client: toClient(row), updatedFields };
     });
 }

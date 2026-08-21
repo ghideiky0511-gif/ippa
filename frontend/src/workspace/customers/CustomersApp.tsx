@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { X } from 'lucide-react';
+import Link from '@/components/TenantLink';
 import { adminUi } from '@/workspace/lib/ui';
 import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import { KpiCard } from '@/workspace/components/shared/KpiCard';
@@ -142,21 +143,21 @@ export default function CustomersApp({ initialPage }: { initialPage: ClientsPage
             rowKey={(client) => client.id}
             emptyMessage="Nenhuma cliente encontrada."
             columns={[
-              { key: 'name', header: 'Nome', cell: (client) => client.name },
+              { key: 'name', header: 'Nome', cell: (client) => <Link href={`/workspace/clientes/${client.id}`} className="font-semibold text-foreground hover:text-brand-primary">{client.name}</Link> },
               { key: 'email', header: 'E-mail', cell: (client) => client.email || '—' },
               { key: 'doc', header: 'CPF/CNPJ', cell: (client) => client.cpfCnpj || '—' },
               { key: 'city', header: 'Cidade/UF', cell: (client) => client.city ? `${client.city}/${client.state || '—'}` : '—' },
               { key: 'createdAt', header: 'Cadastro', cell: (client) => new Date(client.createdAt).toLocaleDateString('pt-BR') },
             ]}
             mobileCard={(client) => (
-              <div className="rounded-brand border border-border bg-surface p-4">
+              <Link href={`/workspace/clientes/${client.id}`} className="block rounded-brand border border-border bg-surface p-4 active:scale-[.99]">
                 <p className="font-semibold text-foreground">{client.name}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">{client.email || 'Sem e-mail'} · {client.cpfCnpj || 'Sem documento'}</p>
                 <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
                   <span>{client.city ? `${client.city}/${client.state || '—'}` : 'Sem endereço'}</span>
                   <span>Desde {new Date(client.createdAt).toLocaleDateString('pt-BR')}</span>
                 </div>
-              </div>
+              </Link>
             )}
           />
           <div className="mt-4 flex items-center justify-between gap-3 text-sm text-muted-foreground">

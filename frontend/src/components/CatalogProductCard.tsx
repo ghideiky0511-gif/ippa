@@ -1,4 +1,6 @@
-import type { ReactNode } from 'react';
+'use client';
+
+import { useEffect, useRef, type ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { COLOR_MAP } from '@/lib/config';
@@ -24,12 +26,32 @@ export default function CatalogProductCard({ product, onOpen, imageAction, title
   const shownColors = colors.slice(0, MAX_COLOR_DOTS);
   const extraColors = colors.length - shownColors.length;
 
+  // Um card de vídeo decodificando em segundo plano pesa muito mais que uma
+  // imagem parada — com dezenas deles numa vitrine, "autoPlay" em todos ao
+  // mesmo tempo é o maior consumidor de memória/CPU da grade, de longe.
+  // Só toca quando o card realmente está visível; `preload="metadata"`
+  // evita baixar o vídeo inteiro antes disso.
+  const videoRef = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) video.play().catch(() => {});
+        else video.pause();
+      },
+      { threshold: 0.25 },
+    );
+    observer.observe(video);
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <Card className={publicUi.catalogCard}>
       <div className={publicUi.catalogCardMedia}>
         <button type="button" className="block size-full cursor-pointer border-0 bg-transparent p-0" aria-label={`Ver cores e tamanhos de ${product.name}`} onClick={onOpen}>
           {product.videoUrl ? (
-            <video className="block size-full bg-brand-background object-cover transition-transform duration-[250ms] group-hover:scale-[1.04]" src={product.videoUrl} autoPlay loop muted playsInline disablePictureInPicture />
+            <video ref={videoRef} className="block size-full bg-brand-background object-cover transition-transform duration-[250ms] group-hover:scale-[1.04]" src={product.videoUrl} preload="metadata" loop muted playsInline disablePictureInPicture />
           ) : (
             <ProductImage src={product.image} alt={product.name} className="size-full bg-brand-background transition-transform duration-[250ms] group-hover:scale-[1.04]" />
           )}

@@ -2,8 +2,9 @@ import { z } from 'zod';
 import { OrderBookSchema, OrderSchema, OrderSessionSchema, type Order, type OrderBook, type OrderSession } from '@/domain/orders/types';
 import { adminJsonServer } from './httpServer';
 
-export function fetchOrders(): Promise<Order[]> {
-  return adminJsonServer('/api/admin/orders', z.array(OrderSchema), {}, 'Não foi possível carregar os pedidos.');
+export function fetchOrders(params?: { clientId?: string }): Promise<Order[]> {
+  const query = params?.clientId ? `?clientId=${encodeURIComponent(params.clientId)}` : '';
+  return adminJsonServer(`/api/admin/orders${query}`, z.array(OrderSchema), {}, 'Não foi possível carregar os pedidos.');
 }
 
 export function fetchOrderSessions(): Promise<OrderSession[]> {

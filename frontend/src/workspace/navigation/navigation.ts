@@ -35,7 +35,7 @@ export const WORKSPACE_NAV_GROUPS: WorkspaceNavGroup[] = [
     items: [
       { href: '/workspace/pedidos', label: 'Pedidos', icon: ShoppingBag },
       { href: '/workspace/clientes', label: 'Clientes', icon: Users },
-      { href: '/workspace/catalogo', label: 'Catálogo', icon: ClipboardList },
+      { href: '/catalogo', label: 'Catálogo', icon: ClipboardList },
     ],
   },
   {

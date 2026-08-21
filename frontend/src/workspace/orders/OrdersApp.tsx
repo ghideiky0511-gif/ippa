@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { Order, OrderSession } from '@/domain/orders/types';
 import { adminUi } from '@/workspace/lib/ui';
-import { fetchOrders, fetchOrderSessions } from '@/workspace/lib/ordersClient';
+import { fetchOrders, fetchOrderSessions } from '@/lib/ordersClient';
 import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import { KpiCard } from '@/workspace/components/shared/KpiCard';
 import { ResponsiveDataTable } from '@/workspace/components/shared/ResponsiveDataTable';
@@ -125,10 +125,10 @@ export default function OrdersApp({
               { key: 'channel', header: 'Canal', cell: (session) => session.channel },
               { key: 'items', header: 'Peças', cell: (session) => itemCount(session.items) },
               { key: 'total', header: 'Total', cell: (session) => formatCurrency(sessionTotal(session)) },
-              { key: 'actions', header: '', cell: (session) => <Link href={`/workspace/catalogo?session=${encodeURIComponent(session.id)}`} className={adminUi.button}>Entrar no atendimento</Link> },
+              { key: 'actions', header: '', cell: (session) => <Link href={`/catalogo?session=${encodeURIComponent(session.id)}`} className={adminUi.button}>Entrar no atendimento</Link> },
             ]}
             mobileCard={(session) => (
-              <Link href={`/workspace/catalogo?session=${encodeURIComponent(session.id)}`} className="block rounded-brand border border-border bg-surface p-4 active:scale-[.99]">
+              <Link href={`/catalogo?session=${encodeURIComponent(session.id)}`} className="block rounded-brand border border-border bg-surface p-4 active:scale-[.99]">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="truncate font-semibold text-foreground">{session.clientId ? session.clientName : 'Sem cliente'}</p>

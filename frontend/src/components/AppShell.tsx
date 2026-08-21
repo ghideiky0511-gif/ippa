@@ -13,6 +13,7 @@ import { AuthProvider } from './AuthProvider';
 import CartDrawer from './CartDrawer';
 import TalaoDrawer from './TalaoDrawer';
 import PresenceBadge from './PresenceBadge';
+import TalaoPresenceBadge from './TalaoPresenceBadge';
 import ProductQuickView from './ProductQuickView';
 import SideMenu from './SideMenu';
 import CatalogFooter from './CatalogFooter';
@@ -69,6 +70,15 @@ function TopNav({ categoryTree, authUser }: { categoryTree: CategoryTreeEntry[];
   const router = useRouter();
   const pathname = usePathname();
   const isVendedora = authUser?.role === 'vendedora';
+  // Administradora tem adminAccess (ver isAdministrator no backend) e por
+  // isso também opera o talão — mesmo bypass que proxy.ts usa pra liberar
+  // o acesso a /catalogo. Só ela e a vendedora chegam aqui: cliente nunca
+  // tem adminAccess nem role vendedora.
+  const hasTalaoAccess = isVendedora || authUser?.permissions?.adminAccess === true;
+  // "Meus pedidos" é o histórico de compras de uma cliente — não existe
+  // pra quem está logada com papel interno (a versão dela desse conceito
+  // é o talão: atendimentos atuais, ver TalaoButton/TalaoDrawer).
+  const isInternal = authUser != null && authUser.role !== 'cliente';
   const onCatalogPage = pathname?.startsWith(href('/catalogo')) || pathname?.startsWith('/catalogo');
 
   async function handleLogout() {
@@ -83,13 +93,14 @@ function TopNav({ categoryTree, authUser }: { categoryTree: CategoryTreeEntry[];
       <Link href="/" className={publicUi.topnavBrand}>{tenant.name}</Link>
       <div className={publicUi.topnavLinks}>
         {!onCatalogPage && <Link href="/catalogo">Catálogo</Link>}
-        <Link href="/pedidos">{isVendedora ? 'Minhas vendas' : 'Meus pedidos'}</Link>
+        {isVendedora && <Link href="/workspace">Voltar ao workspace</Link>}
+        {!isInternal && <Link href="/pedidos">Meus pedidos</Link>}
         <button className={publicUi.topnavCart} onClick={openCart} aria-label="Carrinho">
           <ShoppingBag className="size-5" aria-hidden="true" />
           <span className={publicUi.count}>{cartCount}</span>
         </button>
         {authUser && <NotificationCenter />}
-        {isVendedora && <TalaoButton />}
+        {hasTalaoAccess && <TalaoButton />}
         {authUser && <HeaderProfile user={authUser} />}
         {authUser ? <button className={publicUi.topnavLogin} onClick={handleLogout}>Sair</button> : <Link href="/login" className={publicUi.topnavLogin}>Entrar</Link>}
       </div>
@@ -103,7 +114,9 @@ export default function AppShell({ children, categoryTree, authUser, publicCatal
   authUser: AuthUser | null;
   publicCatalogPrices: boolean;
 }) {
-  const isVendedora = authUser?.role === 'vendedora';
+  // Mesmo bypass do proxy.ts: vendedora sempre opera o talão; administradora
+  // só quando tem adminAccess (ver isAdministrator no backend).
+  const hasTalaoAccess = authUser?.role === 'vendedora' || authUser?.permissions?.adminAccess === true;
   const isCliente = authUser?.role === 'cliente';
   const body = (
     <AuthProvider authUser={authUser} publicCatalogPrices={publicCatalogPrices}>
@@ -115,15 +128,16 @@ export default function AppShell({ children, categoryTree, authUser, publicCatal
             <CatalogFooter />
           </div>
           <CartDrawer />
-          {isVendedora && <TalaoDrawer />}
+          {hasTalaoAccess && <TalaoDrawer />}
           {isCliente && <PresenceBadge />}
+          {hasTalaoAccess && <TalaoPresenceBadge />}
           <GlobalQuickView />
         </CartProvider>
       </QuickViewProvider>
     </AuthProvider>
   );
 
-  if (isVendedora) return <TalaoProvider>{body}</TalaoProvider>;
+  if (hasTalaoAccess) return <TalaoProvider>{body}</TalaoProvider>;
   if (isCliente) return <ClientSessionProvider>{body}</ClientSessionProvider>;
   return body;
 }

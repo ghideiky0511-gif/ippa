@@ -1,17 +1,16 @@
 "use client";
 import { publicUi } from "@/lib/ui";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Filters from "./Filters";
 import ProductCard from "./ProductCard";
 import ProductCardSkeleton from "./ProductCardSkeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
-import { CONFIG } from "@/lib/config";
 import { enableImageCache } from "@/lib/image-cache";
-import { getProductsByIds } from "@/lib/catalogFacets";
-import type { Highlight } from "@/domain/catalog/types";
+import { useTalao } from "./TalaoProvider";
+import type { CatalogPage, CatalogSectionsResult } from "@/domain/catalog/types";
 import type { Product } from "@/domain/products/types";
 
 export interface CatalogFilters {
@@ -20,8 +19,6 @@ export interface CatalogFilters {
     subcategory: string;
     color: string;
     size: string;
-    destaque: string;
-    publico: string;
 }
 
 export interface CatalogFilterOptions {
@@ -30,168 +27,225 @@ export interface CatalogFilterOptions {
     sizes: string[];
 }
 
-interface CatalogSection {
-    id: string;
-    label: string;
-    products: Product[];
+const EMPTY_FILTERS: CatalogFilters = { term: "", category: "", subcategory: "", color: "", size: "" };
+const LOAD_MORE_ROOT_MARGIN = "600px 0px";
+const REFETCH_DEBOUNCE_MS = 350;
+// Scroll infinito nunca "esquece" o que já carregou — sem isso, uma sessão
+// longa acumula centenas de <img> na grade de baixo e o navegador some com
+// memória. Ao rolar pra cima, cortamos de volta pra essa quantidade de
+// páginas (os itens mais recentes, no fim da lista, que já ficaram pra trás
+// na rolagem); descer de novo até o fim busca essas páginas outra vez.
+const WINDOW_PAGE_COUNT = 2;
+const SCROLL_UP_THRESHOLD_PX = 4;
+
+// Monta os parâmetros de filtro (não pagina/não escolhe seção) — reutilizado
+// tanto pra pedir um novo recorte de vitrines (mudança de filtro) quanto pra
+// pedir mais uma página da grade de baixo (scroll infinito).
+function facetParams(filters: CatalogFilters, restrictIds?: string[]): URLSearchParams {
+    const params = new URLSearchParams();
+    if (filters.term) params.set("term", filters.term);
+    if (filters.category) params.set("category", filters.category);
+    if (filters.subcategory) params.set("subcategory", filters.subcategory);
+    if (filters.color) params.set("color", filters.color);
+    if (filters.size) params.set("size", filters.size);
+    if (restrictIds && restrictIds.length > 0) params.set("restrictIds", restrictIds.join(","));
+    return params;
+}
+
+interface BottomGrid {
+    // "outros": grade de baixo exclui o que já apareceu nas vitrines acima
+    // (há 2+ vitrines com produto). "all": não há vitrines o bastante pra
+    // valer a pena separar — grade única com tudo que casou no filtro.
+    mode: "outros" | "all";
+    showSections: boolean;
+    items: Product[];
+    pagination: CatalogPage["pagination"];
+}
+
+function deriveBottomGrid(result: CatalogSectionsResult): BottomGrid {
+    const groupCount = result.sections.length + (result.outros.pagination.total > 0 ? 1 : 0);
+    const showSections = groupCount > 1;
+    const page = showSections ? result.outros : result.all;
+    return { mode: showSections ? "outros" : "all", showSections, items: page.items, pagination: page.pagination };
 }
 
 export default function CatalogApp({
-    initialProducts,
     filterOptions,
-    initialHighlights,
+    initialSections,
+    initialFilters,
+    restrictIds,
 }: {
-    initialProducts: Product[];
     filterOptions: CatalogFilterOptions;
-    initialHighlights: Highlight[];
+    initialSections: CatalogSectionsResult;
+    initialFilters: { category: string; subcategory: string };
+    restrictIds?: string[];
 }) {
     const searchParams = useSearchParams();
-    const [filters, setFilters] = useState<CatalogFilters>(() => ({
-        term: "",
-        category: searchParams.get("categoria") || "",
-        subcategory: searchParams.get("subcategoria") || "",
-        color: "",
-        size: "",
-        destaque: searchParams.get("destaque") || "",
-        publico: searchParams.get("publico") || "",
-    }));
-    // Vem pronto do server component (page.tsx busca /api/highlights junto com
-    // o catálogo) — nada de refazer essa busca no cliente depois do primeiro
-    // paint, senão a página monta em grade única e só vira abas um instante
-    // depois, com o rótulo de cada vitrine "piscando" por cima do produto.
-    const [highlights] = useState<Highlight[]>(initialHighlights);
+    const [filters, setFilters] = useState<CatalogFilters>({ ...EMPTY_FILTERS, ...initialFilters });
+    const [sectionsResult, setSectionsResult] = useState<CatalogSectionsResult>(initialSections);
+    const [bottomGrid, setBottomGrid] = useState<BottomGrid>(() => deriveBottomGrid(initialSections));
+    const [loadingSections, setLoadingSections] = useState(false);
+    const [loadingMore, setLoadingMore] = useState(false);
 
     useEffect(() => {
         enableImageCache();
     }, []);
 
-    const highlight = useMemo(
-        () => highlights.find((h) => h.id === filters.destaque),
-        [highlights, filters.destaque],
-    );
-    const audience = useMemo(
-        () => CONFIG.home?.audiences?.find((a) => a.id === filters.publico),
-        [filters.publico],
-    );
+    // Link profundo /catalogo?session=<id> (ex.: "Entrar no atendimento" em
+    // /workspace/pedidos) — resume o pedido e o talão dela sem reativar esse
+    // talão no servidor (ver TalaoProvider.resumeSession). talao é null pra
+    // cliente/anônimo, então isso não faz nada fora do papel de vendedora.
+    const talao = useTalao();
+    const requestedSessionId = searchParams.get("session");
+    const hasResumedSession = useRef(false);
+    useEffect(() => {
+        if (!requestedSessionId || !talao || hasResumedSession.current) return;
+        const match = talao.sessions.find((s) => s.id === requestedSessionId);
+        if (!match) return;
+        talao.resumeSession(requestedSessionId);
+        hasResumedSession.current = true;
+    }, [requestedSessionId, talao]);
 
-    const filteredProducts = useMemo(() => {
-        const term = filters.term.trim().toLowerCase();
-        return initialProducts.filter((p) => {
-            const matchesTerm =
-                !term ||
-                (p.name || "").toLowerCase().includes(term) ||
-                (p.id || "").toLowerCase().includes(term);
-            // Categorias "dobradas" no menu (ex.: BODY ALCA vira subcategoria de
-            // BODY) têm produtos cujo campo `category` real é o nome dobrado — esse
-            // produto some do filtro se a gente só comparar contra `subcategory`.
-            const isFoldedMatch =
-                !!filters.subcategory && p.category === filters.subcategory;
-            const matchesCat =
-                !filters.category ||
-                p.category === filters.category ||
-                isFoldedMatch;
-            const matchesSubcat =
-                !filters.subcategory ||
-                p.subcategory === filters.subcategory ||
-                isFoldedMatch;
-            const matchesColor =
-                !filters.color || (p.colors || []).includes(filters.color);
-            const matchesSize =
-                !filters.size || (p.sizes || []).includes(filters.size);
-            // Destaque/público são tags de agrupamento (lista de IDs), não a
-            // taxonomia categoria/subcategoria — destaques vêm de /api/highlights
-            // (editável em /colecoes), públicos ainda em CONFIG.home.audiences.
-            const matchesHighlight =
-                !highlight || (highlight.productIds || []).includes(p.id);
-            const matchesAudience =
-                !audience ||
-                !audience.productIds ||
-                audience.productIds.includes(p.id);
-            return (
-                matchesTerm &&
-                matchesCat &&
-                matchesSubcat &&
-                matchesColor &&
-                matchesSize &&
-                matchesHighlight &&
-                matchesAudience
-            );
-        });
-    }, [initialProducts, filters, highlight, audience]);
+    // O primeiro paint já vem pronto do server component (catalogo/page.tsx
+    // chama /api/catalog-sections com os filtros da URL) — só refaz a busca
+    // quando o usuário de fato muda um filtro depois de montado, com um
+    // pequeno debounce pra não disparar uma requisição por tecla digitada.
+    const isFirstRender = useRef(true);
+    useEffect(() => {
+        if (isFirstRender.current) {
+            isFirstRender.current = false;
+            return;
+        }
+        setLoadingSections(true);
+        const timeout = setTimeout(async () => {
+            try {
+                const params = facetParams(filters, restrictIds);
+                const response = await fetch(`/api/catalog-sections?${params.toString()}`);
+                const result: CatalogSectionsResult = await response.json();
+                setSectionsResult(result);
+                setBottomGrid(deriveBottomGrid(result));
+            } finally {
+                setLoadingSections(false);
+            }
+        }, REFETCH_DEBOUNCE_MS);
+        return () => clearTimeout(timeout);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [filters.term, filters.category, filters.subcategory, filters.color, filters.size]);
 
-    // Catálogo em vitrines (não uma grade única): uma por Highlight
-    // cadastrado (/colecoes na plataforma admin) mais uma vitrine fixa de
-    // peças com desconto "peças específicas" ativo (/descontos), e por fim
-    // uma vitrine de sobra ("Outros produtos") com tudo que não caiu em
-    // nenhuma vitrine cadastrada — pra nenhuma peça filtrada sumir da
-    // página só por não pertencer a um destaque/promoção. Cada vitrine
-    // cruza os produtos já filtrados pela barra de filtros com o critério
-    // da vitrine — uma peça pode aparecer em mais de uma (ex.: peça em
-    // destaque que também está em promoção). Vitrine sem nenhuma peça
-    // (filtro zerou ou highlight vazio) some da lista — não faz sentido
-    // oferecer uma aba pra rolar até nada.
-    const sections = useMemo<CatalogSection[]>(() => {
-        const highlightSections = highlights.map(
-            (h): CatalogSection => ({
-                id: h.id,
-                label: h.label,
-                products: getProductsByIds(filteredProducts, h.productIds || []),
-            }),
+    async function loadMore() {
+        if (loadingMore || bottomGrid.pagination.page >= bottomGrid.pagination.totalPages) return;
+        setLoadingMore(true);
+        try {
+            const params = facetParams(filters, restrictIds);
+            if (bottomGrid.mode === "outros") params.set("excludeFeatured", "1");
+            params.set("page", String(bottomGrid.pagination.page + 1));
+            params.set("pageSize", String(bottomGrid.pagination.pageSize));
+            const response = await fetch(`/api/catalog?${params.toString()}`);
+            const page: CatalogPage = await response.json();
+            setBottomGrid((prev) => ({ ...prev, items: [...prev.items, ...page.items], pagination: page.pagination }));
+        } finally {
+            setLoadingMore(false);
+        }
+    }
+
+    const sentinelRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        const sentinel = sentinelRef.current;
+        if (!sentinel || bottomGrid.pagination.page >= bottomGrid.pagination.totalPages) return;
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries[0]?.isIntersecting) loadMore();
+            },
+            { rootMargin: LOAD_MORE_ROOT_MARGIN },
         );
-        const promoSection: CatalogSection = {
-            id: "promocoes",
-            label: "Promoções",
-            products: filteredProducts.filter((p) => !!p.activeDiscount),
-        };
-        const featuredIds = new Set(
-            [...highlightSections, promoSection].flatMap((s) => s.products.map((p) => p.id)),
-        );
-        const othersSection: CatalogSection = {
-            id: "outros",
-            label: "Outros produtos",
-            products: filteredProducts.filter((p) => !featuredIds.has(p.id)),
-        };
-        return [...highlightSections, promoSection, othersSection].filter(
-            (s) => s.products.length > 0,
-        );
-    }, [filteredProducts, highlights]);
+        observer.observe(sentinel);
+        return () => observer.disconnect();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [bottomGrid, filters, restrictIds, loadingMore]);
 
-    // Só 2+ vitrines com produto justificam abas — com 0 ou 1, cai de volta
-    // na grade única (mesmo conteúdo, sem abas à toa).
-    const showSections = sections.length > 1;
+    // Ao subir na página, libera memória cortando o excesso de itens já
+    // carregados no fim da grade de baixo — eles ficaram pra trás na
+    // rolagem, então sumir com o DOM/imagens deles não é percebido. O
+    // corte sempre fecha em um número inteiro de páginas, então a próxima
+    // vez que o sentinela de baixo for atingido, loadMore() busca
+    // exatamente a página seguinte, sem buraco nem duplicata.
+    const lastScrollYRef = useRef(0);
+    useEffect(() => {
+        lastScrollYRef.current = window.scrollY;
+        let ticking = false;
+        function handleScroll() {
+            if (ticking) return;
+            ticking = true;
+            requestAnimationFrame(() => {
+                const y = window.scrollY;
+                const goingUp = y < lastScrollYRef.current - SCROLL_UP_THRESHOLD_PX;
+                lastScrollYRef.current = y;
+                ticking = false;
+                if (!goingUp) return;
+                setBottomGrid((prev) => {
+                    const maxItems = WINDOW_PAGE_COUNT * prev.pagination.pageSize;
+                    if (prev.items.length <= maxItems) return prev;
+                    const keptPages = Math.floor(maxItems / prev.pagination.pageSize);
+                    const keptCount = keptPages * prev.pagination.pageSize;
+                    return {
+                        ...prev,
+                        items: prev.items.slice(0, keptCount),
+                        pagination: { ...prev.pagination, page: keptPages },
+                    };
+                });
+            });
+        }
+        window.addEventListener("scroll", handleScroll, { passive: true });
+        return () => window.removeEventListener("scroll", handleScroll);
+    }, []);
 
-    const [activeId, setActiveId] = useState("");
+    const sections = sectionsResult.sections;
+    const showSections = bottomGrid.showSections;
+    const totalCount = sectionsResult.all.pagination.total;
+    const isEmpty = !showSections && bottomGrid.pagination.total === 0;
+
+    const [activeId, setActiveId] = useState(() => sections[0]?.id ?? "");
     const sectionRefs = useRef(new Map<string, HTMLElement>());
     const tabRefs = useRef(new Map<string, HTMLButtonElement>());
     const tabsRef = useRef<HTMLDivElement>(null);
     const [underline, setUnderline] = useState({ left: 0, width: 0 });
 
-    useEffect(() => {
-        if (!showSections) return;
-        if (!sections.some((s) => s.id === activeId)) setActiveId(sections[0].id);
-    }, [showSections, sections, activeId]);
+    // Aba visível "Outros produtos" (grade de baixo) entra na navegação de
+    // abas como qualquer vitrine, só que renderizada com scroll infinito em
+    // vez de mapear um array fixo.
+    const tabs = showSections
+        ? [...sections.map((s) => ({ id: s.id, label: s.label })), ...(bottomGrid.pagination.total > 0 ? [{ id: "outros", label: "Outros produtos" }] : [])]
+        : [];
+
+    // Se a aba selecionada não existe mais no recorte atual (filtro mudou,
+    // a vitrine sumiu), cai pra primeira aba — calculado direto no render
+    // em vez de um efeito só pra sincronizar estado (guia do React: ajustar
+    // estado durante a renderização evita o "cascading render" de um
+    // setState solto dentro de useEffect).
+    const activeTabId = showSections && !tabs.some((t) => t.id === activeId) ? (tabs[0]?.id ?? "") : activeId;
 
     // Link direto pra uma vitrine (ex.: /catalogo#promocoes, campanha de
-    // WhatsApp) — a rolagem nativa do navegador pro #hash acontece antes do
-    // React montar as seções, então repetimos manualmente assim que elas
-    // existem no DOM. Só na carga inicial (hasSyncedHash trava depois de
-    // rodar uma vez — filtro novo não deve arrancar a pessoa de onde ela
-    // rolou por conta).
+    // WhatsApp, ou /catalogo?destaque=X vindo do menu) — a rolagem nativa
+    // do navegador pro #hash acontece antes do React montar as seções,
+    // então repetimos manualmente assim que elas existem no DOM. Só na
+    // carga inicial (hasSyncedHash trava depois de rodar uma vez — filtro
+    // novo não deve arrancar a pessoa de onde ela rolou por conta).
     const hasSyncedHash = useRef(false);
     useEffect(() => {
         if (hasSyncedHash.current) return;
-        const hash = window.location.hash.slice(1);
-        if (!hash) {
+        const target = window.location.hash.slice(1) || searchParams.get("destaque") || "";
+        if (!target) {
             hasSyncedHash.current = true;
             return;
         }
-        const el = sectionRefs.current.get(hash);
+        const el = sectionRefs.current.get(target);
         if (el) {
             el.scrollIntoView({ block: "start" });
-            setActiveId(hash);
+            setActiveId(target);
         }
         hasSyncedHash.current = true;
-    }, [sections]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sections, bottomGrid.pagination.total]);
 
     // Aba ativa acompanha a rolagem (scrollspy): a "banda de detecção" fica
     // colada no topo (compensando topnav + barra de abas, ambas sticky) e
@@ -211,28 +265,47 @@ export default function CatalogApp({
             },
             { rootMargin: "-140px 0px -70% 0px", threshold: 0 },
         );
-        sections.forEach((s) => {
-            const el = sectionRefs.current.get(s.id);
+        tabs.forEach((t) => {
+            const el = sectionRefs.current.get(t.id);
             if (el) observer.observe(el);
         });
         return () => observer.disconnect();
-    }, [showSections, sections]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showSections, sections, bottomGrid.pagination.total]);
 
     useLayoutEffect(() => {
         if (!showSections) return;
         function measure() {
-            const btn = tabRefs.current.get(activeId);
+            const btn = tabRefs.current.get(activeTabId);
             if (!btn) return;
             setUnderline({ left: btn.offsetLeft, width: btn.offsetWidth });
         }
         measure();
         window.addEventListener("resize", measure);
         return () => window.removeEventListener("resize", measure);
-    }, [showSections, activeId, sections]);
+    }, [showSections, activeTabId, sections]);
 
     function goToSection(id: string) {
         setActiveId(id);
         sectionRefs.current.get(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    function clearFilters() {
+        setFilters({ ...EMPTY_FILTERS });
+    }
+
+    function renderBottomGrid() {
+        return (
+            <>
+                <div className={publicUi.catalogGrid}>
+                    {bottomGrid.items.map((p) => (
+                        <ProductCard key={p.id} product={p} />
+                    ))}
+                    {loadingMore && Array.from({ length: 4 }).map((_, i) => <ProductCardSkeleton key={`more-${i}`} />)}
+                </div>
+                {bottomGrid.pagination.page < bottomGrid.pagination.totalPages && <div ref={sentinelRef} aria-hidden="true" />}
+            </>
+        );
     }
 
     return (
@@ -244,109 +317,82 @@ export default function CatalogApp({
                             options={filterOptions}
                             filters={filters}
                             onChange={setFilters}
-                            onClear={() =>
-                                setFilters({
-                                    term: "",
-                                    category: "",
-                                    subcategory: "",
-                                    color: "",
-                                    size: "",
-                                    destaque: "",
-                                    publico: "",
-                                })
-                            }
+                            onClear={clearFilters}
                         />
                     </div>
-                    <div className={publicUi.catalogContent}>
-                        {initialProducts.length === 0 ? (
-                            <div className={publicUi.catalogGrid}>
-                                {Array.from({ length: 8 }).map((_, i) => (
-                                    <ProductCardSkeleton key={i} />
-                                ))}
-                            </div>
-                        ) : (
+                    <div className={`${publicUi.catalogContent} ${loadingSections ? "opacity-60 transition-opacity" : "transition-opacity"}`}>
+                        <div className={publicUi.catalogResults}>
+                            <span>{totalCount} {totalCount === 1 ? "produto encontrado" : "produtos encontrados"}</span>
+                            <span className="hidden text-xs font-medium tracking-[.08em] uppercase sm:inline">Catálogo</span>
+                        </div>
+                        {isEmpty ? (
+                            <EmptyState
+                                title="Nenhum produto encontrado"
+                                description="Tente remover um filtro ou buscar por outro nome."
+                                action={
+                                    <Button type="button" variant="outline" onClick={clearFilters}>
+                                        Limpar filtros
+                                    </Button>
+                                }
+                            />
+                        ) : showSections ? (
                             <>
-                                <div className={publicUi.catalogResults}>
-                                    <span>{filteredProducts.length}{" "}
-                                        {filteredProducts.length === 1
-                                            ? "produto encontrado"
-                                            : "produtos encontrados"}</span>
-                                    <span className="hidden text-xs font-medium tracking-[.08em] uppercase sm:inline">Catálogo</span>
-                                </div>
-                                {filteredProducts.length === 0 ? (
-                                    <EmptyState
-                                        title="Nenhum produto encontrado"
-                                        description="Tente remover um filtro ou buscar por outro nome."
-                                        action={
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                onClick={() =>
-                                                    setFilters({
-                                                        term: "",
-                                                        category: "",
-                                                        subcategory: "",
-                                                        color: "",
-                                                        size: "",
-                                                        destaque: "",
-                                                        publico: "",
-                                                    })
-                                                }
-                                            >
-                                                Limpar filtros
-                                            </Button>
-                                        }
+                                <nav className={publicUi.catalogTabs} ref={tabsRef}>
+                                    {tabs.map((t) => (
+                                        <button
+                                            key={t.id}
+                                            type="button"
+                                            ref={(el) => {
+                                                if (el) tabRefs.current.set(t.id, el);
+                                                else tabRefs.current.delete(t.id);
+                                            }}
+                                            className={`${publicUi.catalogTab} ${t.id === activeTabId ? publicUi.catalogTabActive : ""}`}
+                                            onClick={() => goToSection(t.id)}
+                                        >
+                                            {t.label}
+                                        </button>
+                                    ))}
+                                    <span
+                                        className={publicUi.catalogTabUnderline}
+                                        style={{ transform: `translateX(${underline.left}px)`, width: underline.width }}
                                     />
-                                ) : showSections ? (
-                                    <>
-                                        <nav className={publicUi.catalogTabs} ref={tabsRef}>
-                                            {sections.map((s) => (
-                                                <button
-                                                    key={s.id}
-                                                    type="button"
-                                                    ref={(el) => {
-                                                        if (el) tabRefs.current.set(s.id, el);
-                                                        else tabRefs.current.delete(s.id);
-                                                    }}
-                                                    className={`${publicUi.catalogTab} ${s.id === activeId ? publicUi.catalogTabActive : ""}`}
-                                                    onClick={() => goToSection(s.id)}
-                                                >
-                                                    {s.label}
-                                                </button>
+                                </nav>
+                                {sections.map((s) => (
+                                    <section
+                                        key={s.id}
+                                        id={s.id}
+                                        data-section-id={s.id}
+                                        ref={(el) => {
+                                            if (el) sectionRefs.current.set(s.id, el);
+                                            else sectionRefs.current.delete(s.id);
+                                        }}
+                                        className={publicUi.catalogSection}
+                                    >
+                                        <h2 className={publicUi.catalogSectionTitle}>{s.label}</h2>
+                                        <div className={publicUi.catalogGrid}>
+                                            {s.items.map((p) => (
+                                                <ProductCard key={p.id} product={p} />
                                             ))}
-                                            <span
-                                                className={publicUi.catalogTabUnderline}
-                                                style={{ transform: `translateX(${underline.left}px)`, width: underline.width }}
-                                            />
-                                        </nav>
-                                        {sections.map((s) => (
-                                            <section
-                                                key={s.id}
-                                                id={s.id}
-                                                data-section-id={s.id}
-                                                ref={(el) => {
-                                                    if (el) sectionRefs.current.set(s.id, el);
-                                                    else sectionRefs.current.delete(s.id);
-                                                }}
-                                                className={publicUi.catalogSection}
-                                            >
-                                                <h2 className={publicUi.catalogSectionTitle}>{s.label}</h2>
-                                                <div className={publicUi.catalogGrid}>
-                                                    {s.products.map((p) => (
-                                                        <ProductCard key={p.id} product={p} />
-                                                    ))}
-                                                </div>
-                                            </section>
-                                        ))}
-                                    </>
-                                ) : (
-                                    <div className={publicUi.catalogGrid}>
-                                        {filteredProducts.map((p) => (
-                                            <ProductCard key={p.id} product={p} />
-                                        ))}
-                                    </div>
+                                        </div>
+                                    </section>
+                                ))}
+                                {bottomGrid.pagination.total > 0 && (
+                                    <section
+                                        id="outros"
+                                        data-section-id="outros"
+                                        ref={(el) => {
+                                            if (el) sectionRefs.current.set("outros", el);
+                                            else sectionRefs.current.delete("outros");
+                                        }}
+                                        className={publicUi.catalogSection}
+                                    >
+                                        <h2 className={publicUi.catalogSectionTitle}>Outros produtos</h2>
+                                        {renderBottomGrid()}
+                                    </section>
                                 )}
                             </>
+                        ) : (
+                            renderBottomGrid()
                         )}
                     </div>
                 </div>

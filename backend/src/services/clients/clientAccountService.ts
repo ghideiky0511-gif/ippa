@@ -53,6 +53,7 @@ export async function createAdministrativeClient(
   const email = data.email;
   const password = data.password;
   const fields = registration(data, email);
+  if (!fields.cpfCnpj?.trim() || !fields.cep?.trim()) throw new ValidationError("INCOMPLETE_CLIENT");
   const result = await withTenantTransaction(tenant, actor, async (client) => {
     const digits = fields.cpfCnpj ? documentDigits(fields.cpfCnpj) : "";
     if (digits && await findClientRowByDocumentDigits(client, digits)) throw new ConflictError("DOCUMENT_TAKEN");
@@ -83,6 +84,9 @@ export async function createClientLogin(
   const user = await withTenantTransaction(tenant, actor, async (client) => {
     const clientRow = await findClientRow(client, clientId);
     if (!clientRow) throw new NotFoundError("CLIENT_NOT_FOUND");
+    if (!clientRow.name.trim() || !clientRow.cpf_cnpj?.trim() || !clientRow.email?.trim() || !clientRow.cep?.trim()) {
+      throw new ValidationError("INCOMPLETE_CLIENT");
+    }
     if (await findUserRowByClientId(client, clientId)) throw new ConflictError("CLIENT_ALREADY_HAS_LOGIN");
     return createUserRecord(client, actor, context, {
       email, password, name: clientRow.name, role: "cliente", clientId,
