@@ -45,11 +45,18 @@ export function NotificationCenter() {
   }
 
   useEffect(() => {
-    void refresh();
+    const initialRefresh = window.setTimeout(() => void refresh(), 0);
     const id = window.setInterval(() => void refresh(), 60_000);
-    return () => window.clearInterval(id);
+    return () => {
+      window.clearTimeout(initialRefresh);
+      window.clearInterval(id);
+    };
   }, []);
-  useEffect(() => { if (open) void refresh(true); }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const refreshTimer = window.setTimeout(() => void refresh(true), 0);
+    return () => window.clearTimeout(refreshTimer);
+  }, [open]);
 
   const canActivate = browserSupportsPush() && config?.enabled && config?.configured && !status?.active && (typeof Notification === "undefined" || Notification.permission !== "denied");
   async function openItem(item: NotificationItem) {

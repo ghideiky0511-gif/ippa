@@ -1,5 +1,5 @@
 'use client';
-import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useTalao } from './TalaoProvider';
 import { useClientSession } from './ClientSessionProvider';
@@ -46,6 +46,9 @@ interface CartContextValue {
     stockQty?: number,
     backorderDate?: string
   ) => void;
+  // Guarda o produto no carrinho sem comprometer cor/tamanho. A grade é
+  // escolhida depois, a partir do item marcado como "Selecione a grade".
+  addProductDraft: (product: Product) => void;
   // Tira todas as linhas daquele produto do pedido.
   removeProduct: (productId: string) => void;
   changeQty: (key: string, qty: number) => void;
@@ -76,8 +79,12 @@ interface CartContextValue {
 
 const CartContext = createContext<CartContextValue | null>(null);
 export function CartProvider({ children }: { children: ReactNode }) {
-  // O pedido remoto é a única fonte de verdade; não há estado persistente no navegador.
-  const cart: CartItem[] = [];
+  // Sem atendimento ativo, a cliente monta o próprio carrinho e conclui o
+  // checkout direto. A sessão remota continua sendo a fonte de verdade só
+  // quando uma vendedora assumiu o atendimento.
+  const [personalCart, setPersonalCart] = useState<CartItem[]>([]);
+  const [personalShipping, setPersonalShipping] = useState<ShippingOption | null>(null);
+  const customerSessionCreation = useRef(false);
   const [isCartOpen, setCartOpen] = useState(false);
   const authUserCtx = useAuthUser();
 
@@ -100,7 +107,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const sessionActions = talaoOpen || clientOpen;
   const activeSession = sessionActions?.activeSession ?? null;
 
-  const shipping = activeSession?.shipping ?? null;
+  const shipping = activeSession?.shipping ?? personalShipping;
 
   const [catalogById, setCatalogById] = useState<Record<string, Product>>({});
   const [discounts, setDiscounts] = useState<Discount[]>([]);
@@ -115,6 +122,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => {});
   }, []);
+
+  // Enquanto a sessão atribuída está sendo criada, o carrinho local absorve
+  // cliques sucessivos. Assim que o atendimento existe, ele recebe o estado
+  // mais recente sem bloquear a cliente.
+  useEffect(() => {
+    if (!clientOpen || personalCart.length === 0) return;
+    void clientOpen.updateActiveItems(personalCart).then(() => setPersonalCart([]));
+  }, [clientOpen, personalCart]);
 
   useEffect(() => {
     fetch('/api/discounts')
@@ -131,12 +146,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
       void sessionActions!.updateActiveItems(items);
       return;
     }
-    // TODO(configuração): quando /workspace/ferramentas expuser
-    // `allowPublicCart`, esta guarda deverá consultar a flag antes de criar
-    // uma sessão para visitante. No MVP, somente cliente autenticada cria o
-    // carrinho remoto.
     if (authUserCtx.authUser?.role === 'cliente' && clientSession) {
-      void clientSession.createActiveSession(items);
+      setPersonalCart(items);
+      if (!customerSessionCreation.current) {
+        customerSessionCreation.current = true;
+        void clientSession.createActiveSession(items).finally(() => {
+          customerSessionCreation.current = false;
+        });
+      }
       return;
     }
     toast.info(authUserCtx.authUser?.role === 'vendedora'
@@ -165,32 +182,38 @@ export function CartProvider({ children }: { children: ReactNode }) {
         { key, id: product.id, name: product.name, image: product.image, color, size, price: product.price, qty, stockQty, backorderDate },
       ];
     }
-    updateItems(apply(activeSession?.items ?? []));
+    updateItems(apply(activeSession?.items ?? personalCart));
+  }
+
+  function addProductDraft(product: Product) {
+    // Cor e tamanho vazios identificam um rascunho no contrato do carrinho.
+    // A quantidade fica em zero até a cliente definir a grade.
+    addToCart(product, '', '', 0);
   }
 
   function removeProduct(productId: string) {
-    updateItems((activeSession?.items ?? []).filter((i) => i.id !== productId));
+    updateItems((activeSession?.items ?? personalCart).filter((i) => i.id !== productId));
   }
 
   function changeQty(key: string, qty: number) {
-    updateItems((activeSession?.items ?? []).map((i) => (i.key === key ? { ...i, qty } : i)));
+    updateItems((activeSession?.items ?? personalCart).map((i) => (i.key === key ? { ...i, qty } : i)));
   }
 
   function removeFromCart(key: string) {
-    updateItems((activeSession?.items ?? []).filter((i) => i.key !== key));
+    updateItems((activeSession?.items ?? personalCart).filter((i) => i.key !== key));
   }
 
   // `date: null` limpa a previsão escolhida (ex.: se a qty voltar pra
   // dentro do estoque depois de um decrement).
   function setBackorderDate(key: string, date: string | null) {
     updateItems(
-      (activeSession?.items ?? []).map((i) => (i.key === key ? { ...i, backorderDate: date ?? undefined } : i))
+      (activeSession?.items ?? personalCart).map((i) => (i.key === key ? { ...i, backorderDate: date ?? undefined } : i))
     );
   }
 
   function setBackorderDateForKeys(keys: string[], date: string | null) {
     const keySet = new Set(keys);
-    updateItems((activeSession?.items ?? []).map((i) => (keySet.has(i.key) ? { ...i, backorderDate: date ?? undefined } : i)));
+    updateItems((activeSession?.items ?? personalCart).map((i) => (keySet.has(i.key) ? { ...i, backorderDate: date ?? undefined } : i)));
   }
 
   // Junta `addItems` em cima do que sobrou depois de tirar `removeKeys` —
@@ -215,7 +238,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   function replaceItems(removeKeys: string[], addItems: CartItem[]) {
     const removeSet = new Set(removeKeys);
-    updateItems(mergeItems((activeSession?.items ?? []).filter((i) => !removeSet.has(i.key)), addItems));
+    updateItems(mergeItems((activeSession?.items ?? personalCart).filter((i) => !removeSet.has(i.key)), addItems));
   }
 
   function clearCart() {
@@ -223,7 +246,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }
 
   function setShipping(next: ShippingOption | null) {
-    if (activeSession) void sessionActions!.updateActiveShipping(next);
+    if (activeSession) {
+      void sessionActions!.updateActiveShipping(next);
+      return;
+    }
+    if (authUserCtx.authUser?.role === 'cliente') setPersonalShipping(next);
   }
 
   function clearShipping() {
@@ -262,7 +289,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     return order;
   }
 
-  const effectiveCart = activeSession ? activeSession.items : cart;
+  const effectiveCart = activeSession ? activeSession.items : personalCart;
   const cartCount = effectiveCart.reduce((sum, item) => sum + item.qty, 0);
   const cartSubtotal = effectiveCart.reduce((sum, item) => sum + item.price * item.qty, 0);
   const cartDiscount = useMemo(() => getCartDiscount(effectiveCart, discounts), [effectiveCart, discounts]);
@@ -282,6 +309,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       openCart: () => setCartOpen(true),
       closeCart: () => setCartOpen(false),
       addToCart,
+      addProductDraft,
       removeProduct,
       changeQty,
       removeFromCart,

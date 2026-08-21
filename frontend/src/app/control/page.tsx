@@ -21,7 +21,12 @@ export default function ControlPage() {
     setTenants(payload.tenants || []);
   }
 
-  useEffect(() => { load().finally(() => setLoading(false)); }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void load().finally(() => setLoading(false));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

@@ -91,26 +91,30 @@ function OpenProductQuickView({ product, onClose }: { product: Product; onClose:
         side="right"
         mobileSide="bottom"
         overlayClassName={isTransitioningToPage ? 'pointer-events-none bg-black/0 transition-colors duration-200' : 'transition-colors duration-200'}
-        className={`w-full md:w-[70vw] ${isTransitioningToPage ? 'pointer-events-none' : ''}`}
+        className={`w-full md:w-[70vw] ${isTransitioningToPage ? 'pointer-events-none border-transparent bg-transparent shadow-none transition-[transform,background-color,border-color,box-shadow] duration-150' : ''}`}
         style={sheetOffsetY ? { transform: `translateY(${sheetOffsetY}px)` } : undefined}
       >
         <motion.div layoutRoot className="flex h-full min-h-0 flex-col">
           <div
-            className="flex touch-none justify-center py-3 md:hidden"
+            className={`flex touch-none justify-center py-3 transition-opacity duration-150 md:hidden ${isTransitioningToPage ? 'opacity-0' : ''}`}
             onPointerDown={startSheetDrag}
             onPointerMove={moveSheetDrag}
             onPointerUp={finishSheetDrag}
             onPointerCancel={finishSheetDrag}
           ><span className="h-1 w-10 rounded-full bg-border" /></div>
-          <SheetHeader>
+          <div className={`transition-opacity duration-150 ${isTransitioningToPage ? 'opacity-0' : ''}`}>
+            <SheetHeader>
             <ProductPageLink productId={product.id} className="text-[13px] font-bold text-brand-primary hover:underline">
               Abrir página do produto
             </ProductPageLink>
             <MiniCartPreview />
-          </SheetHeader>
+            </SheetHeader>
+          </div>
           <motion.div layoutScroll className="flex-1 overflow-y-auto p-4">
             <ProductDetailContent product={product} presentation="panel" />
-            <SimilarProducts products={currentSimilar} loading={isLoadingSimilar} />
+            <div className={`transition-opacity duration-150 ${isTransitioningToPage ? 'opacity-0' : ''}`} aria-hidden={isTransitioningToPage}>
+              <SimilarProducts products={currentSimilar} loading={isLoadingSimilar} />
+            </div>
           </motion.div>
         </motion.div>
       </SheetContent>

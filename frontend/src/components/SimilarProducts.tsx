@@ -2,6 +2,7 @@
 import { useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import ProductCard from './ProductCard';
+import Link from './TenantLink';
 import type { Product } from '@/domain/products/types';
 
 function SimilarProductsSkeleton() {
@@ -47,7 +48,19 @@ export default function SimilarProducts({ products, loading = false }: { product
   }
 
   if (loading) return <SimilarProductsSkeleton />;
-  if (products.length === 0) return null;
+  if (products.length === 0) {
+    return (
+      <section className="mt-8 min-w-0">
+        <div className="mb-3 [&>h2]:text-lg [&>h2]:font-bold">
+          <h2>Você também pode gostar</h2>
+        </div>
+        <div className="rounded-brand border border-dashed border-border bg-surface-muted px-4 py-5 text-sm text-muted-foreground">
+          Ainda não encontramos sugestões para esta seleção.{' '}
+          <Link href="/" className="font-semibold text-brand-primary hover:underline">Ver catálogo</Link>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="mt-8 min-w-0">

@@ -31,8 +31,8 @@ export function useTalaoClientGate(): TalaoClientGate {
 
   useEffect(() => {
     if (!clientId) {
-      setClient(null);
-      return;
+      const clearClient = window.setTimeout(() => setClient(null), 0);
+      return () => window.clearTimeout(clearClient);
     }
     let cancelled = false;
     fetch(`/api/clients/${clientId}`)

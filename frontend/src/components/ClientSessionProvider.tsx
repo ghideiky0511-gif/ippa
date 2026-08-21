@@ -36,14 +36,16 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
   const [presence, setPresence] = useState<PedidoPresence[]>([]);
   const [participants, setParticipants] = useState<PedidoParticipant[]>([]);
 
-  function refetch() {
+  function refetch(): Promise<OrderSession | undefined> {
     return apiFetch('/api/sessions/mine', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((json) => {
         const parsed = OrderSessionSchema.nullable().safeParse(json);
-        setActiveSession(parsed.success ? parsed.data : null);
+        const session = parsed.success ? parsed.data : null;
+        setActiveSession(session);
+        return session ?? undefined;
       })
-      .catch(() => {});
+      .catch(() => undefined);
   }
 
   useEffect(() => {
@@ -69,14 +71,17 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
     if (!activeSession) return;
     const id = activeSession.id;
     setActiveSession((prev) => (prev && prev.id === id ? { ...prev, items } : prev));
-    const response = await realtime.updateSession({ items }).then(() => true).catch(() => false);
-    // Sem isso, um pedido já pago/cancelado (ex.: a vendedora finalizou
-    // enquanto a cliente ainda editava o carrinho) rejeita o PUT em
-    // silêncio: o item some da tela mas nunca é salvo, e a cliente não
-    // percebe. `refetch()` traz o estado real (a sessão fechada) de volta.
-    if (!response) {
-      toast.error('Este pedido já foi fechado. Atualizando...');
-      await refetch();
+    try {
+      await realtime.updateSession({ items });
+    } catch (error) {
+      // Só diz que fechou depois de confirmar isso no servidor. Uma queda ou
+      // reconexão do WebSocket não altera o status do pedido.
+      const current = await refetch();
+      toast.error(
+        current?.status === 'fechado' || current?.status === 'cancelado'
+          ? 'Este pedido já foi fechado. Atualizando...'
+          : error instanceof Error ? error.message : 'Não foi possível atualizar o pedido. Tente novamente.',
+      );
     }
   }
 
@@ -84,10 +89,15 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
     if (!activeSession) return;
     const id = activeSession.id;
     setActiveSession((prev) => (prev && prev.id === id ? { ...prev, shipping: shipping || undefined } : prev));
-    const response = await realtime.updateSession({ shipping: shipping || undefined }).then(() => true).catch(() => false);
-    if (!response) {
-      toast.error('Este pedido já foi fechado. Atualizando...');
-      await refetch();
+    try {
+      await realtime.updateSession({ shipping: shipping || undefined });
+    } catch (error) {
+      const current = await refetch();
+      toast.error(
+        current?.status === 'fechado' || current?.status === 'cancelado'
+          ? 'Este pedido já foi fechado. Atualizando...'
+          : error instanceof Error ? error.message : 'Não foi possível atualizar o pedido. Tente novamente.',
+      );
     }
   }
 

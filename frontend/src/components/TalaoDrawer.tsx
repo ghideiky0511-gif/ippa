@@ -1,7 +1,7 @@
 'use client';
 import { publicUi } from '@/lib/ui';
 
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { ArrowRight, Share2, X } from 'lucide-react';
 import { useTalao } from './TalaoProvider';
 import { useCart } from './CartProvider';
@@ -120,7 +120,7 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
   const [createError, setCreateError] = useState<string | null>(null);
   const [linkedClient, setLinkedClient] = useState<ClientWithLogin | null>(null);
 
-  function refetchLinkedClient() {
+  const refetchLinkedClient = useCallback(() => {
     if (!session.clientId) {
       setLinkedClient(null);
       return;
@@ -132,26 +132,26 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
         setLinkedClient(parsed.success ? parsed.data : null);
       })
       .catch(() => {});
-  }
-
-  useEffect(() => {
-    refetchLinkedClient();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- só quando o cadastro vinculado muda, não a cada render
   }, [session.clientId]);
 
   useEffect(() => {
+    const timeout = window.setTimeout(refetchLinkedClient, 0);
+    return () => window.clearTimeout(timeout);
+  }, [refetchLinkedClient]);
+
+  useEffect(() => {
     const q = query.trim();
-    if (!q) {
-      setResults([]);
-      return;
-    }
-    const timeout = setTimeout(() => {
+    const timeout = window.setTimeout(() => {
+      if (!q) {
+        setResults([]);
+        return;
+      }
       fetch(`/api/clients?q=${encodeURIComponent(q)}`)
         .then((r) => (r.ok ? r.json() : []))
         .then(setResults)
         .catch(() => {});
-    }, 250);
-    return () => clearTimeout(timeout);
+    }, q ? 250 : 0);
+    return () => window.clearTimeout(timeout);
   }, [query]);
 
   async function handleCreateAndLink(e: FormEvent) {

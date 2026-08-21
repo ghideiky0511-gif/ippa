@@ -36,6 +36,19 @@ function interleave(lists: Product[][]): Product[] {
   return result;
 }
 
+// Último recurso para não deixar o bloco de recomendações vazio quando as
+// regras configuradas não encontram nenhuma peça. A âncora nunca reaparece:
+// no quick-view ela é o produto atual; no carrinho, são todos os produtos já
+// escolhidos. Embaralhar uma cópia evita alterar a ordem do catálogo em cache.
+function randomFallback(catalog: Product[], excluded: Set<string>, limit = 3): Product[] {
+  const candidates = catalog.filter((product) => !excluded.has(product.id));
+  for (let index = candidates.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [candidates[index], candidates[randomIndex]] = [candidates[randomIndex], candidates[index]];
+  }
+  return candidates.slice(0, limit);
+}
+
 export function computeSimilarProducts(
   context: SimilarProductsContext,
   anchors: Product[],
@@ -88,5 +101,8 @@ export async function recommendSimilarProducts(
   const [catalog, settings] = await Promise.all([listCatalog(tenant), getSimilarProductsSettings(tenant)]);
   const byId = new Map(catalog.map((product) => [product.id, product]));
   const anchors = productIds.map((id) => byId.get(id)).filter((product): product is Product => Boolean(product));
-  return { products: computeSimilarProducts(context, anchors, catalog, settings) };
+  const products = computeSimilarProducts(context, anchors, catalog, settings);
+  return {
+    products: products.length > 0 ? products : randomFallback(catalog, new Set(productIds)),
+  };
 }

@@ -189,6 +189,25 @@ export async function closeOpenOrderSessionRowsByOrder(client: PoolClient, order
     return result.rows;
 }
 
+// Proteção para dados legados ou interrupções durante a finalização: uma
+// sessão aberta não pode continuar apontando para um pedido já concluído.
+// A consulta é limitada à cliente para poder ser usada quando ela retoma o
+// carrinho, sem afetar atendimentos de outras pessoas.
+export async function closeStaleOrderSessionRowsByClient(client: PoolClient, clientId: string): Promise<OrderSessionRow[]> {
+    const result = await client.query<OrderSessionRow>(
+        `UPDATE order_sessions AS session SET status = 'fechado', payment_token_hash = NULL,
+           payment_token_created_at = NULL, updated_at = now()
+         FROM orders AS "order"
+         WHERE session.tenant_id = app_tenant_id() AND "order".tenant_id = app_tenant_id()
+           AND session.client_id = $1 AND session.order_id = "order".id
+           AND session.status IN ('aberto', 'aguardando_pagamento')
+           AND "order".status IN ('pago', 'cancelado')
+         RETURNING ${sessionFields}`,
+        [clientId],
+    );
+    return result.rows;
+}
+
 export async function cancelOpenOrderSessionRowsByBook(client: PoolClient, orderBookId: string): Promise<OrderSessionRow[]> {
     const result = await client.query<OrderSessionRow>(
         `UPDATE order_sessions SET status = 'cancelado', payment_token_hash = NULL,

@@ -359,7 +359,7 @@ export default function ToolsApp({ initialSettings, initialSimilarProductsSettin
 
         <p className={adminUi.previewEmpty}>
           Prazo até o link de pagamento gerado pela vendedora (em /frete) expirar — depois disso a cliente vê
-          "link expirado" e a vendedora precisa gerar um novo (mesmo botão, reaproveita se ainda estiver válido).
+          &quot;link expirado&quot; e a vendedora precisa gerar um novo (mesmo botão, reaproveita se ainda estiver válido).
         </p>
         <div className={adminUi.fieldRow} style={{ alignItems: 'flex-end' }}>
           <div className={adminUi.field} style={{ maxWidth: 140 }}>
@@ -384,7 +384,7 @@ export default function ToolsApp({ initialSettings, initialSimilarProductsSettin
 
         <h2 className={adminUi.subheading}>Produtos similares</h2>
         <p className={adminUi.previewEmpty}>
-          Regra usada na fileira "Você também pode gostar" — página do produto, quick-view e carrinho. Curadoria
+          Regra usada na fileira &quot;Você também pode gostar&quot; — página do produto, quick-view e carrinho. Curadoria
           manual 1 por 1 (substitui a regra pra um produto específico) fica em /produtos.
         </p>
 
@@ -422,7 +422,7 @@ export default function ToolsApp({ initialSettings, initialSimilarProductsSettin
 
         <h3 className="contents">Categorias complementares</h3>
         <p className={adminUi.previewEmpty}>
-          Usado pela regra "categoria complementar" acima — ex.: peças de cima combinando com peças de baixo.
+          Usado pela regra &quot;categoria complementar&quot; acima — ex.: peças de cima combinando com peças de baixo.
         </p>
         <div className="contents">
           {Object.entries(similarSettings.complementaryCategories).map(([category, targets]) => (

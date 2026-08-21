@@ -31,6 +31,11 @@ interface PedidoRealtimeOptions {
   allowCustomerSessionCreation?: boolean;
 }
 
+interface SocketWaiter {
+  sessionId: string | null;
+  resolve: (socket: Socket) => void;
+}
+
 export interface PedidoRealtimeConnection {
   updateSession: (changes: Partial<Pick<OrderSession, 'items' | 'shipping'>>) => Promise<void>;
   createCustomerSession: (items: CartItem[]) => Promise<OrderSession>;
@@ -100,10 +105,33 @@ export function usePedidoRealtime({ sessionId, onSession, onPresence, onParticip
   const onParticipantsRef = useRef(onParticipants);
   const onEventRef = useRef(onEvent);
   const socketRef = useRef<Socket | null>(null);
+  // O socket de criação nasce sem sessão e passa a representar uma sessão
+  // depois de `criar_sessao_cliente`. Guardar esse vínculo evita enviar a
+  // primeira alteração para o socket anterior enquanto a troca reconecta.
+  const socketSessionIdRef = useRef<string | null>(null);
+  const socketWaitersRef = useRef(new Set<SocketWaiter>());
+
+  const waitForSocket = useCallback((expectedSessionId: string | null): Promise<Socket> => {
+    if (socketRef.current && socketSessionIdRef.current === expectedSessionId) return Promise.resolve(socketRef.current);
+    return new Promise<Socket>((resolve, reject) => {
+      let timer: number;
+      const waiter: SocketWaiter = {
+        sessionId: expectedSessionId,
+        resolve: (socket) => {
+          window.clearTimeout(timer);
+          resolve(socket);
+        },
+      };
+      timer = window.setTimeout(() => {
+        socketWaitersRef.current.delete(waiter);
+        reject(new Error('Conexão em tempo real indisponível.'));
+      }, 10_000);
+      socketWaitersRef.current.add(waiter);
+    });
+  }, []);
 
   const emitWithAck = useCallback(async <T,>(event: string, payload: unknown): Promise<T> => {
-    const socket = socketRef.current;
-    if (!socket) throw new Error('Conexão em tempo real indisponível.');
+    const socket = await waitForSocket(sessionId ?? null);
     if (!socket.connected) {
       await new Promise<void>((resolve, reject) => {
         const timer = window.setTimeout(() => reject(new Error('A conexão em tempo real expirou.')), 10_000);
@@ -118,7 +146,7 @@ export function usePedidoRealtime({ sessionId, onSession, onPresence, onParticip
         resolve(response);
       });
     });
-  }, []);
+  }, [sessionId, waitForSocket]);
 
   useEffect(() => {
     onSessionRef.current = onSession;
@@ -184,6 +212,12 @@ export function usePedidoRealtime({ sessionId, onSession, onPresence, onParticip
           reconnection: false,
         });
         socketRef.current = socket;
+        socketSessionIdRef.current = sessionId ?? null;
+        for (const waiter of socketWaitersRef.current) {
+          if (waiter.sessionId !== socketSessionIdRef.current) continue;
+          socketWaitersRef.current.delete(waiter);
+          waiter.resolve(socket);
+        }
         socket.on('connect', () => {
           retryDelay = 1_000;
           if (sessionId) socket?.emit('entrar_sessao', {});
@@ -218,6 +252,7 @@ export function usePedidoRealtime({ sessionId, onSession, onPresence, onParticip
     async createCustomerSession(items: CartItem[]) {
       const response = await emitWithAck<{ ok: boolean; session?: OrderSession; motivo?: string }>('criar_sessao_cliente', { items });
       if (!response.session) throw new Error('O pedido não foi criado.');
+      socketSessionIdRef.current = response.session.id;
       return response.session;
     },
   }), [emitWithAck]);

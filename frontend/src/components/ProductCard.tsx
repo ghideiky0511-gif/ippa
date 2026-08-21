@@ -2,7 +2,6 @@
 
 import Link from '@/components/TenantLink';
 import { Check, Plus } from 'lucide-react';
-import { toast } from 'sonner';
 import { formatBRL, priceWithPercentOff } from '@/lib/format';
 import { useCart } from './CartProvider';
 import { useQuickView } from './QuickViewProvider';
@@ -11,26 +10,23 @@ import CatalogProductCard from './CatalogProductCard';
 import type { Product } from '@/domain/products/types';
 
 export default function ProductCard({ product }: { product: Product }) {
-  const { removeProduct, cart } = useCart();
+  const { addProductDraft, cart } = useCart();
   const { openQuickView } = useQuickView();
   const { showPrices } = useAuthUser();
   const inCart = cart.some((item) => item.id === product.id);
 
-  function toggleCart() {
-    if (inCart) {
-      removeProduct(product.id);
-      toast.success(`${product.name} removido do carrinho`);
-      return;
-    }
-    openQuickView(product);
+  function addProductToCart() {
+    if (inCart) return;
+    addProductDraft(product);
   }
 
   const imageAction = (
     <button
       type="button"
-      className={`absolute right-2.5 bottom-2.5 flex size-11 cursor-pointer items-center justify-center rounded-full border-0 text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)] transition-[background,transform] hover:scale-105 ${inCart ? 'animate-card-plus bg-success hover:bg-[#17633f]' : 'bg-brand-primary hover:bg-brand-primary-dark'}`}
-      aria-label={inCart ? `Remover ${product.name} do carrinho` : `Adicionar ${product.name} ao carrinho`}
-      onClick={toggleCart}
+      className={`absolute right-2.5 bottom-2.5 flex size-11 cursor-pointer items-center justify-center rounded-full border-0 text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)] transition-[background,transform] hover:scale-105 disabled:cursor-default disabled:hover:scale-100 ${inCart ? 'animate-card-plus bg-success hover:bg-[#17633f]' : 'bg-brand-primary hover:bg-brand-primary-dark'}`}
+      aria-label={inCart ? `${product.name} já está no carrinho` : `Adicionar ${product.name} ao carrinho`}
+      onClick={addProductToCart}
+      disabled={inCart}
     >
       {inCart ? <Check className="size-5" aria-hidden="true" /> : <Plus className="size-5" aria-hidden="true" />}
     </button>

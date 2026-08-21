@@ -8,6 +8,7 @@ import {
     UpdateOrderSessionInputSchema,
 } from "@/contracts/orders";
 import {
+    closeStaleOrderSessionRowsByClient,
     findLatestOpenOrderSessionRowByClient,
     findOrderSessionRow,
     insertOrderSessionItemRow,
@@ -42,6 +43,23 @@ import { findActiveOrderBookRow, findOrderBookRow, insertOrderBookRow, reopenOrd
 import { closeOrderBookWhenFinished } from "./orderBookLifecycle";
 import { toOrder, toOrderSession } from "./orderMapper";
 import { pickSeller } from "./sellerAssignmentService";
+
+async function reconcileFinalizedCustomerSessions(client: Parameters<typeof findLatestOpenOrderSessionRowByClient>[0], clientId: string) {
+    const sessions = await closeStaleOrderSessionRowsByClient(client, clientId);
+    const bookIds = new Set(sessions.map((session) => session.order_book_id));
+    const books = (await Promise.all(
+        [...bookIds].map((bookId) => closeOrderBookWhenFinished(client, bookId)),
+    )).filter((book): book is OrderBookRow => Boolean(book));
+    return { sessions, books };
+}
+
+function notifyReconciledSessions(tenantId: string, reconciled: Awaited<ReturnType<typeof reconcileFinalizedCustomerSessions>>) {
+    for (const session of reconciled.sessions) {
+        notifySession(tenantId, toOrderSession(session, []));
+        scheduleSessionBroadcast(toOrderSession(session, []));
+    }
+    for (const book of reconciled.books) notifyOrderBook(tenantId, { sellerId: book.seller_id });
+}
 
 function canManageSession(user: AuthUser, sellerId: string): boolean {
     return user.role !== "cliente" && (user.role !== "vendedora" || sellerId === user.id);
@@ -123,15 +141,21 @@ export const sellerSessions = orderSessions;
 
 export async function customerActiveSession(tenant: Tenant, user: AuthUser): Promise<OrderSession | null> {
     if (user.role !== "cliente" || !user.clientId) throw new ForbiddenError();
-    return withTenantTransaction(tenant, user, async (client) => {
+    const result = await withTenantTransaction(tenant, user, async (client) => {
+        const reconciled = await reconcileFinalizedCustomerSessions(client, user.clientId!);
         const row = await findLatestOpenOrderSessionRowByClient(client, user.clientId!);
-        if (!row) return null;
+        if (!row) return { session: null, reconciled };
         const [items, seller] = await Promise.all([
             listOrderSessionItemRowsBySession(client, row.id),
             findUserRowById(client, row.seller_id),
         ]);
-        return { ...toOrderSession(row, items.map((item) => item.snapshot)), sellerName: seller?.name };
+        return {
+            session: { ...toOrderSession(row, items.map((item) => item.snapshot)), sellerName: seller?.name },
+            reconciled,
+        };
     });
+    notifyReconciledSessions(tenant.id, result.reconciled);
+    return result.session;
 }
 
 const EnsureCustomerOrderSessionSchema = z.object({ items: z.array(CartItemSchema).optional() });
@@ -155,13 +179,14 @@ export async function ensureCustomerOrderSession(
         // Duas abas podem pedir a criação ao mesmo tempo. O lock transacional
         // mantém uma única sessão online por cliente.
         await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`customer-session:${registration.id}`]);
+        const reconciled = await reconcileFinalizedCustomerSessions(client, registration.id);
 
         // Idempotência no socket/retries: uma cliente só tem uma sessão viva
         // e novas peças serão gravadas pelo evento de atualização.
         const existing = await findLatestOpenOrderSessionRowByClient(client, registration.id);
         if (existing) {
             const items = (await listOrderSessionItemRowsBySession(client, existing.id)).map((item) => item.snapshot);
-            return { session: toOrderSession(existing, items), created: false };
+            return { session: toOrderSession(existing, items), created: false, reconciled };
         }
 
         // A cliente volta para a última vendedora que a atendeu. Sem esse
@@ -172,13 +197,14 @@ export async function ensureCustomerOrderSession(
             countOpenOrderSessionRowsBySeller(client),
             findStoreSettingsRow(client),
         ]);
-        // A vendedora recebe apenas sua carteira e somente enquanto estiver
-        // ativa. Sem vendedora disponível, a administradora ativa cobre a fila.
-        let sellerId = registration.last_seller_id && sellerIds.includes(registration.last_seller_id)
-            ? registration.last_seller_id
-            : pickSeller(sellerIds, openCounts, settings?.assignment_strategy ?? undefined);
+        // A carteira da cliente tem prioridade mesmo se a responsável estiver
+        // offline: a atribuição registra quem atende o pedido, mas não impede
+        // a cliente de montar e finalizar a compra sozinha. Para clientes sem
+        // histórico, a distribuição continua usando quem está disponível.
+        let sellerId = registration.last_seller_id
+            ?? pickSeller(sellerIds, openCounts, settings?.assignment_strategy ?? undefined);
         if (!sellerId) sellerId = administratorIds[0] ?? null;
-        if (!sellerId) return { session: null, created: false };
+        if (!sellerId) return { session: null, created: false, reconciled };
 
         const book = (await findActiveOrderBookRow(client, sellerId))
             ?? await insertOrderBookRow(client, sellerId, "Atendimentos online");
@@ -216,9 +242,10 @@ export async function ensureCustomerOrderSession(
             context,
             metadata: { channel: "online", hasClient: true, itemCount: requestedItems.length },
         });
-        return { session, created: true };
+        return { session, created: true, reconciled };
     });
 
+    notifyReconciledSessions(tenant.id, result.reconciled);
     if (result.session && result.created) {
         notifySession(tenant.id, result.session);
         scheduleSessionBroadcast(result.session);
