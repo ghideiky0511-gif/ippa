@@ -80,22 +80,86 @@ export function requestToken(
     );
 }
 
-export function auditContext(request: NextRequest): AuditRequestContext {
+export function clientIp(request: NextRequest): string | undefined {
     const forwardedFor = request.headers
         .get("x-forwarded-for")
         ?.split(",")[0]
         ?.trim();
     const realIp = request.headers.get("x-real-ip")?.trim();
-    const ipAddress = [forwardedFor, realIp].find(
+    return [forwardedFor, realIp].find(
         (value): value is string =>
             typeof value === "string" && isIP(value) !== 0,
     );
+}
+
+export function auditContext(request: NextRequest): AuditRequestContext {
     return {
         requestId: randomUUID(),
-        ipAddress,
+        ipAddress: clientIp(request),
         userAgent: request.headers.get("user-agent")?.slice(0, 512),
     };
 }
+
+// Contador em memória de processo único (ver nota em lib/logger.ts — o
+// backend roda como um processo Node de longa duração via Docker, não em
+// funções serverless/edge efêmeras, então um Map local é consistente entre
+// requisições). Reinicia a cada deploy/restart — aceitável para conter
+// abuso e força bruta, não é um requisito de auditoria permanente.
+type RateLimitBucket = { count: number; resetAt: number };
+const rateLimitBuckets = new Map<string, RateLimitBucket>();
+
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, bucket] of rateLimitBuckets) {
+        if (bucket.resetAt <= now) rateLimitBuckets.delete(key);
+    }
+}, 5 * 60_000).unref();
+
+export type RateLimitResult = { allowed: boolean; retryAfterSeconds: number };
+
+export function rateLimit(
+    scope: string,
+    identifier: string | undefined,
+    limit: number,
+    windowMs: number,
+): RateLimitResult {
+    // Sem IP confiável (proxy não configurado, request local etc.): não dá
+    // pra distinguir clientes, então não há o que limitar — falha aberta em
+    // vez de bloquear todo mundo sob a mesma chave.
+    if (!identifier) return { allowed: true, retryAfterSeconds: 0 };
+    const key = `${scope}:${identifier}`;
+    const now = Date.now();
+    const bucket = rateLimitBuckets.get(key);
+    if (!bucket || bucket.resetAt <= now) {
+        rateLimitBuckets.set(key, { count: 1, resetAt: now + windowMs });
+        return { allowed: true, retryAfterSeconds: 0 };
+    }
+    if (bucket.count >= limit) {
+        return {
+            allowed: false,
+            retryAfterSeconds: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)),
+        };
+    }
+    bucket.count += 1;
+    return { allowed: true, retryAfterSeconds: 0 };
+}
+
+export function tooManyRequests(retryAfterSeconds: number): NextResponse {
+    return NextResponse.json(
+        { error: "Muitas tentativas. Tente novamente em alguns minutos." },
+        { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } },
+    );
+}
+
+// Limites de aplicação geral: baseline "por app" aplicado em toda rota de
+// tenant (ver resolveTenantRoute em lib/http/tenantRoute.ts).
+export const GENERAL_RATE_LIMIT = { limit: 120, windowMs: 60_000 };
+
+// Limites para rotas sensíveis a força bruta / enumeração (login, cadastro,
+// consulta de documento) — mais apertado que o baseline geral, contado à
+// parte por IP+rota pra uma rajada de cadastro não consumir o orçamento do
+// login e vice-versa.
+export const AUTH_RATE_LIMIT = { limit: 10, windowMs: 10 * 60_000 };
 
 export function parseIdsParam(value: string | null): string[] | undefined {
     if (!value) return undefined;

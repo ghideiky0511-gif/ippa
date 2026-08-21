@@ -5,26 +5,15 @@ import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser } from "@/lib/types";
 import { findActiveSessionRow, insertSessionRow, revokeSessionRow } from "@/models/sessionsModel";
-import { findCustomerUserRowByDocumentDigits, findUserRowByEmail, findUserRowById, type UserRow } from "@/models/usersModel";
+import { findCustomerUserRowByDocumentDigits, findUserRowByEmail, findUserRowById } from "@/models/usersModel";
 import { findStoreSettingsRow } from "@/models/settingsModel";
 import { recordAuditEvent, AUTHENTICATION_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
 import { isAdministrator } from "@/services/users/userService";
+import { toAuthUser } from "@/services/users/userMapper";
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface AuthenticatedSession { user: AuthUser; sessionId: string }
-
-function toAuthUser(row: UserRow): AuthUser {
-    return {
-        id: row.id,
-        email: row.email,
-        name: row.name,
-        role: row.role,
-        avatarUrl: row.avatar_url ?? undefined,
-        clientId: row.client_id ?? undefined,
-        permissions: row.permissions,
-    };
-}
 
 function tokenDigest(token: string): string {
     return createHash("sha256").update(token).digest("hex");
@@ -40,7 +29,7 @@ export async function authenticate(tenant: Tenant, email: string, password: stri
     const normalizedEmail = parsedEmail.data;
     return withTenantTransaction(tenant, {}, async (client) => {
         const user = await findUserRowByEmail(client, normalizedEmail);
-        return user && await verify(user.password_hash, password) ? toAuthUser(user) : null;
+        return user && await verify(user.password_hash, password) ? await toAuthUser(user) : null;
     });
 }
 
@@ -68,7 +57,7 @@ export async function loginByDocument(
         const settings = await findStoreSettingsRow(client);
         if (settings?.features?.allowCpfSignup === false && digits.length !== 14) return null;
         const row = await findCustomerUserRowByDocumentDigits(client, digits);
-        return row && await verify(row.password_hash, password) ? toAuthUser(row) : null;
+        return row && await verify(row.password_hash, password) ? await toAuthUser(row) : null;
     });
     return user ? { user, token: await issueSession(tenant, user, context) } : null;
 }
@@ -122,7 +111,7 @@ export async function getAuthenticatedSession(tenant: Tenant, token?: string): P
         const session = await findActiveSessionRow(client, tokenDigest(token));
         if (!session) return null;
         const user = await findUserRowById(client, session.user_id);
-        return user ? { user: toAuthUser(user), sessionId: session.id } : null;
+        return user ? { user: await toAuthUser(user), sessionId: session.id } : null;
     });
 }
 
@@ -146,7 +135,7 @@ export async function logout(tenant: Tenant, token: string | undefined, context:
         if (user) await recordAuditEvent(client, {
             action: AUTHENTICATION_AUDIT_ACTIONS.LOGGED_OUT,
             entityId: user.id,
-            actor: toAuthUser(user),
+            actor: { id: user.id, name: user.name, role: user.role },
             context: { ...context, sessionId: session.id },
         });
     });

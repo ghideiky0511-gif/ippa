@@ -46,9 +46,8 @@ export type AuthUser = z.infer<typeof AuthUserSchema>;
 // foto atual; a aus\u00eancia do campo preserva o valor armazenado.
 export const UpdateOwnProfileInputSchema = z.object({
   name: RequiredTextSchema.optional(),
-  avatarUrl: z.string().url('Informe uma URL v\u00e1lida para a foto.').nullable().optional(),
 }).refine(
-  (value) => value.name !== undefined || value.avatarUrl !== undefined,
+  (value) => value.name !== undefined,
   { message: 'Informe ao menos um campo para atualizar.' },
 );
 export type UpdateOwnProfileInput = z.infer<typeof UpdateOwnProfileInputSchema>;

@@ -12,28 +12,23 @@ import type { AuthUser, UserRole } from "@/lib/types";
 import { deleteClientRow, listClientRows } from "@/models/clientsModel";
 import {
     findUserRowByEmail, findUserRowById, insertUserRow, listUserRows, listUserRowsByIds,
-    revokeUserSessionRows, softDeleteUserRow, updateUserRow, type UserRow,
+    revokeUserSessionRows, softDeleteUserRow, updateUserRow,
 } from "@/models/usersModel";
 import { recordAuditEvent, USER_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
 import { toClient } from "@/services/clients/clientMapper";
 import { notifySignup } from "@/services/notifications";
+import { toAuthUser } from "./userMapper";
+
+export { toAuthUser } from "./userMapper";
 
 const PASSWORD_OPTIONS = { memoryCost: 19 * 1024, timeCost: 2, parallelism: 1 };
-
-export function toAuthUser(row: UserRow): AuthUser {
-    return {
-        id: row.id, email: row.email, name: row.name, role: row.role,
-        avatarUrl: row.avatar_url ?? undefined,
-        clientId: row.client_id ?? undefined, permissions: row.permissions,
-    };
-}
 
 // Leitura reutilizÃ¡vel para recursos que guardam apenas user_id e precisam
 // exibir a identidade/papel atual da conta sem duplicar esses campos.
 export async function listUsersByIds(client: PoolClient, ids: string[]): Promise<AuthUser[]> {
     const uniqueIds = [...new Set(ids)];
-    return (await listUserRowsByIds(client, uniqueIds)).map(toAuthUser);
+    return Promise.all((await listUserRowsByIds(client, uniqueIds)).map(toAuthUser));
 }
 
 export function isAdministrator(user: AuthUser | null): boolean {
@@ -72,7 +67,7 @@ export async function createUserRecordWithPasswordHash(
 ): Promise<AuthUser> {
     const email = params.email.trim().toLowerCase();
     if (await findUserRowByEmail(client, email)) throw new ConflictError("EMAIL_TAKEN");
-    const created = toAuthUser(await insertUserRow(client, {
+    const created = await toAuthUser(await insertUserRow(client, {
         email,
         name: params.name.trim(),
         role: params.role,
@@ -95,8 +90,8 @@ export async function users(tenant: Tenant, actor: AuthUser): Promise<Array<Auth
     return withTenantTransaction(tenant, actor, async (client) => {
         const [userRows, clientRows] = await Promise.all([listUserRows(client), listClientRows(client)]);
         const clientsById = new Map(clientRows.map((row) => [row.id, toClient(row)]));
-        return userRows.map((row) => {
-            const user = toAuthUser(row);
+        return Promise.all(userRows.map(async (row) => {
+            const user = await toAuthUser(row);
             const registration = user.clientId ? clientsById.get(user.clientId) : undefined;
             return {
                 ...user,
@@ -114,7 +109,7 @@ export async function users(tenant: Tenant, actor: AuthUser): Promise<Array<Auth
                 lastSellerId: registration?.lastSellerId,
                 createdAt: registration?.createdAt,
             };
-        });
+        }));
     });
 }
 
@@ -184,7 +179,7 @@ export async function updateOwnProfile(
     return withTenantTransaction(tenant, actor, async (client) => {
         const updated = await updateUserRow(client, actor.id, parsed.data);
         if (!updated) throw new NotFoundError("USER_NOT_FOUND");
-        const user = toAuthUser(updated);
+        const user = await toAuthUser(updated);
         await recordAuditEvent(client, {
             action: USER_AUDIT_ACTIONS.UPDATED,
             entityId: user.id,

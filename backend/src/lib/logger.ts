@@ -1,7 +1,9 @@
-// Logger mínimo, sem dependência externa: o app roda em Next.js
-// (serverless/edge em produção), onde gravar em arquivo (winston + fs) não
-// é confiável. Formaliza o padrão "[scope] mensagem" que já aparecia solto
-// em alguns console.error (ver lib/email.ts).
+// Logger mínimo, sem dependência externa: o app roda self-hosted (Docker/VM,
+// processo Node de longa duração — ver docker-compose.yml), então stdout/
+// stderr já é coletado pela infra de logs do container; gravar em arquivo
+// (winston + fs) só adicionaria uma dependência sem necessidade. Formaliza o
+// padrão "[scope] mensagem" que já aparecia solto em alguns console.error
+// (ver lib/email.ts).
 
 export type LogMeta = Record<string, unknown>;
 

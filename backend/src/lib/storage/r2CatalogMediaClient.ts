@@ -39,6 +39,13 @@ export interface ProductCatalogMediaPath {
   variant?: string;
 }
 
+export interface UserAvatarMediaPath {
+  tenantSlug: string;
+  userId: string;
+  mediaId: string;
+  extension: "jpeg" | "png" | "webp";
+}
+
 function requiredEnv(name: string): string {
   const value = (process.env[name] ?? "").trim();
   if (!value) throw new Error(`${name} não está configurada.`);
@@ -118,6 +125,20 @@ export function productCatalogMediaPath(input: ProductCatalogMediaPath): string 
   }
 
   return `${mediaId}/${referenceId}-${variant}.${extension}`;
+}
+
+/** Caminho imutável da foto de perfil, isolado por tenant e por usuária. */
+export function userAvatarMediaPath(input: UserAvatarMediaPath): string {
+  const tenantSlug = input.tenantSlug.trim().toLowerCase();
+  const userId = input.userId.trim().toLowerCase();
+  const mediaId = input.mediaId.trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(tenantSlug)) {
+    throw new Error("Slug de tenant inválido para avatar.");
+  }
+  if (!UUID_PATTERN.test(userId) || !UUID_PATTERN.test(mediaId)) {
+    throw new Error("IDs de avatar devem ser UUIDs válidos.");
+  }
+  return `avatars/${tenantSlug}/${userId}/${mediaId}.${input.extension}`;
 }
 
 // "NoSuchKey" (GetObject) e "NotFound" (HeadObject, sem corpo de erro) são os

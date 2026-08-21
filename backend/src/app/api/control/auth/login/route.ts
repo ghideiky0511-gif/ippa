@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticatePlatform, issuePlatformSession } from '@/services/platform';
+import { clientIp, rateLimit, tooManyRequests, AUTH_RATE_LIMIT } from '@/lib/http/apiHelpers';
 
 export async function POST(request: NextRequest) {
+  const limitResult = rateLimit('control-auth-login', clientIp(request), AUTH_RATE_LIMIT.limit, AUTH_RATE_LIMIT.windowMs);
+  if (!limitResult.allowed) return tooManyRequests(limitResult.retryAfterSeconds);
   const body = await request.json().catch(() => null);
   const email = typeof body?.email === 'string' ? body.email : '';
   const password = typeof body?.password === 'string' ? body.password : '';

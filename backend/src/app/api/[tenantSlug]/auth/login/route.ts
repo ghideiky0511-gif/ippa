@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveTenantRoute, isTenantRouteError } from "@/lib/http/tenantRoute";
-import { auditContext, cookieOptions } from "@/lib/http/apiHelpers";
+import {
+    auditContext,
+    clientIp,
+    cookieOptions,
+    rateLimit,
+    tooManyRequests,
+    AUTH_RATE_LIMIT,
+} from "@/lib/http/apiHelpers";
 import * as authentication from "@/services/auth";
 
 type RouteContext = { params: Promise<{ tenantSlug: string }> };
@@ -17,6 +24,13 @@ export async function POST(
 ): Promise<Response> {
     const route = await resolveTenantRoute(request, context.params);
     if (isTenantRouteError(route)) return route;
+    const limitResult = rateLimit(
+        "auth-login",
+        clientIp(request),
+        AUTH_RATE_LIMIT.limit,
+        AUTH_RATE_LIMIT.windowMs,
+    );
+    if (!limitResult.allowed) return tooManyRequests(limitResult.retryAfterSeconds);
     const body = (await request.json().catch(() => ({}))) as Record<
         string,
         unknown
