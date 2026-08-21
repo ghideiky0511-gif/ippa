@@ -11,8 +11,9 @@ import { getSearchSuggestions } from '@/lib/search';
 import { Input } from '@/components/ui/input';
 import type { CategoryTreeEntry, Highlight } from '@/domain/catalog/types';
 import type { Product } from '@/domain/products/types';
+import type { AuthUser } from '@/domain/clients/types';
 
-export default function SideMenu({ categoryTree }: { categoryTree: CategoryTreeEntry[] }) {
+export default function SideMenu({ categoryTree, authUser }: { categoryTree: CategoryTreeEntry[]; authUser: AuthUser | null }) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [panel, setPanel] = useState<'menu' | 'categories'>('menu');
@@ -55,6 +56,7 @@ export default function SideMenu({ categoryTree }: { categoryTree: CategoryTreeE
 
   const suggestions = catalog ? getSearchSuggestions(catalog, query) : [];
   const audiences = CONFIG.home?.audiences || [];
+  const isInternal = authUser != null && authUser.role !== 'cliente';
   const menuLayer = (
     <>
       <button type="button" className={`fixed inset-0 z-[100] cursor-default bg-black/40 transition-opacity ${open ? 'opacity-100' : 'pointer-events-none opacity-0'}`} onClick={closeMenu} aria-label="Fechar menu" />
@@ -79,7 +81,7 @@ export default function SideMenu({ categoryTree }: { categoryTree: CategoryTreeE
           </div>
           {highlights.length > 0 && <div className="border-b border-border px-5 py-3">{highlights.map((h) => <Link key={h.id} href={`/catalogo?destaque=${encodeURIComponent(h.id)}`} className="flex min-h-11 items-center text-sm font-semibold hover:text-brand-primary" onClick={closeMenu}>{h.label}</Link>)}</div>}
           {audiences.length > 0 && <div className="border-b border-border px-5 py-3">{audiences.map((a) => <button key={a.id} type="button" className={`flex min-h-11 w-full items-center justify-between text-left text-sm ${panel === 'categories' && activeAudience === a.id ? 'font-bold text-brand-primary' : 'font-semibold text-foreground'}`} onClick={() => toggleAudience(a.id)}>{a.label}<ChevronRight className="size-4" /></button>)}</div>}
-          <div className="px-5 py-3"><Link href="/catalogo" className="flex min-h-11 items-center text-sm font-semibold hover:text-brand-primary" onClick={closeMenu}>Catálogo completo</Link><Link href="/pedidos" className="flex min-h-11 items-center text-sm font-semibold hover:text-brand-primary" onClick={closeMenu}>Meus pedidos</Link></div>
+          <div className="px-5 py-3"><Link href="/catalogo" className="flex min-h-11 items-center text-sm font-semibold hover:text-brand-primary" onClick={closeMenu}>Catálogo completo</Link>{!isInternal && <Link href="/pedidos" className="flex min-h-11 items-center text-sm font-semibold hover:text-brand-primary" onClick={closeMenu}>Meus pedidos</Link>}</div>
         </div>
         <div className={`absolute inset-0 flex flex-col overflow-y-auto bg-surface transition-transform duration-300 ${panel === 'categories' ? 'translate-x-0' : 'translate-x-full'}`}>
           <div className="flex min-h-16 items-center border-b border-border px-5"><button type="button" className="inline-flex min-h-11 items-center gap-2 rounded-control px-2 text-sm font-bold text-brand-primary hover:bg-brand-background" onClick={() => setPanel('menu')}><ArrowLeft className="size-4" />Voltar</button></div>

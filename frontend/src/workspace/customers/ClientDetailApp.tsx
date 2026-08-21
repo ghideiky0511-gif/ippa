@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ArrowLeft, RefreshCw } from 'lucide-react';
 import type { ClientWithLogin } from '@/domain/clients/types';
 import type { Order } from '@/domain/orders/types';
@@ -9,6 +9,8 @@ import { adminUi } from '@/workspace/lib/ui';
 import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import { ResponsiveDataTable } from '@/workspace/components/shared/ResponsiveDataTable';
 import { syncClientFromErp } from '@/workspace/lib/customersClient';
+import { fetchOrders } from '@/lib/ordersClient';
+import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -47,16 +49,30 @@ export default function ClientDetailApp({
   initialOrders: Order[];
 }) {
   const [client, setClient] = useState(initialClient);
-  const [orders] = useState(initialOrders);
+  const [orders, setOrders] = useState(initialOrders);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<{ type: 'success' | 'info' | 'error'; text: string } | null>(null);
+
+  const refreshOrders = useCallback(async () => {
+    try {
+      setOrders(await fetchOrders({ clientId: client.id }));
+    } catch {
+      // Mantém o histórico atual quando a atualização em segundo plano falhar.
+    }
+  }, [client.id]);
+
+  useUpdatesRealtime((update) => {
+    if (update === 'orders_updated') void refreshOrders();
+  });
 
   async function handleSync() {
     setSyncing(true);
     setSyncMessage(null);
     try {
       const result = await syncClientFromErp(client.id);
-      setClient(result.client);
+      // A sincronização atualiza apenas o perfil comercial; `hasLogin` é
+      // calculado no GET de detalhe e não faz parte da resposta do ERP.
+      setClient((current) => ({ ...result.client, hasLogin: current.hasLogin }));
       setSyncMessage(
         result.updatedFields.length > 0
           ? { type: 'success', text: `Atualizado com dados do ERP: ${result.updatedFields.map((field) => FIELD_LABELS[field] ?? field).join(', ')}.` }

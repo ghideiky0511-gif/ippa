@@ -355,7 +355,7 @@ export default function TalaoDrawer() {
   return (
     <>
       <div className={[publicUi.overlay, isTalaoOpen ? 'block' : 'hidden'].join(' ')} onClick={closeTalao} />
-      <aside className={[publicUi.drawerRight, isTalaoOpen ? 'translate-x-0' : ''].join(' ')}>
+      <aside className={[publicUi.drawerRight, isTalaoOpen ? 'translate-x-0' : 'translate-x-full'].join(' ')}>
         <div className={publicUi.drawerHeader}>
           <h2>talão de pedidos</h2>
           <div className="flex items-center gap-1">

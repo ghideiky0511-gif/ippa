@@ -5,6 +5,7 @@ import Link from '@/components/TenantLink';
 import { CONFIG } from '@/lib/config';
 import { publicUi } from '@/lib/ui';
 import { useTenant } from './TenantProvider';
+import type { AuthUser } from '@/domain/clients/types';
 
 function formatWhatsapp(number: string) {
   const digits = number.replace(/\D/g, '');
@@ -17,10 +18,11 @@ function formatWhatsapp(number: string) {
   return `+${digits}`;
 }
 
-export default function CatalogFooter() {
+export default function CatalogFooter({ authUser }: { authUser: AuthUser | null }) {
   const { tenant } = useTenant();
   const { contact, footer } = CONFIG;
   const hasContact = Boolean(contact.email || contact.whatsappNumber || contact.instagramUrl || contact.address || contact.serviceHours);
+  const isInternal = authUser != null && authUser.role !== 'cliente';
   const whatsappHref = contact.whatsappNumber
     ? `https://wa.me/${contact.whatsappNumber.replace(/\D/g, '')}?text=${encodeURIComponent(`Olá! Preciso de ajuda com o catálogo da ${tenant.name}.`)}`
     : '';
@@ -37,7 +39,7 @@ export default function CatalogFooter() {
         <nav className={publicUi.catalogFooterSection} aria-label="Navegação do rodapé">
           <h2>Explorar</h2>
           <Link href="/catalogo">Catálogo</Link>
-          <Link href="/pedidos">Meus pedidos</Link>
+          {!isInternal && <Link href="/pedidos">Meus pedidos</Link>}
         </nav>
 
         <section className={publicUi.catalogFooterSection} aria-label="Atendimento">

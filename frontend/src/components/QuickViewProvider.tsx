@@ -4,8 +4,11 @@ import type { Product } from '@/domain/products/types';
 
 interface QuickViewContextValue {
   quickViewProduct: Product | null;
+  transitioningProductId: string | null;
   openQuickView: (product: Product) => void;
   closeQuickView: () => void;
+  startProductPageTransition: (productId: string) => void;
+  completeProductPageTransition: (productId: string) => void;
 }
 
 const QuickViewContext = createContext<QuickViewContextValue | null>(null);
@@ -19,11 +22,25 @@ const QuickViewContext = createContext<QuickViewContextValue | null>(null);
 // aqui pra não duplicar.
 export function QuickViewProvider({ children }: { children: ReactNode }) {
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
+  const [transitioningProductId, setTransitioningProductId] = useState<string | null>(null);
 
   const value: QuickViewContextValue = {
     quickViewProduct,
-    openQuickView: setQuickViewProduct,
-    closeQuickView: () => setQuickViewProduct(null),
+    transitioningProductId,
+    openQuickView: (product) => {
+      setTransitioningProductId(null);
+      setQuickViewProduct(product);
+    },
+    closeQuickView: () => {
+      setTransitioningProductId(null);
+      setQuickViewProduct(null);
+    },
+    startProductPageTransition: setTransitioningProductId,
+    completeProductPageTransition: (productId) => {
+      if (transitioningProductId !== productId) return;
+      setTransitioningProductId(null);
+      setQuickViewProduct(null);
+    },
   };
 
   return <QuickViewContext.Provider value={value}>{children}</QuickViewContext.Provider>;

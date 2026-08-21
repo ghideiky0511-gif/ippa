@@ -18,8 +18,9 @@ import {
 } from '@/domain/orders/types';
 import { adminJson } from './http';
 
-export function fetchOrders(): Promise<Order[]> {
-  return adminJson('/api/admin/orders', OrderSchema.array(), {}, 'Não foi possível carregar os pedidos.');
+export function fetchOrders(params?: { clientId?: string }): Promise<Order[]> {
+  const query = params?.clientId ? `?clientId=${encodeURIComponent(params.clientId)}` : '';
+  return adminJson(`/api/admin/orders${query}`, OrderSchema.array(), {}, 'Não foi possível carregar os pedidos.');
 }
 
 export function fetchOrderSessions(): Promise<OrderSession[]> {

@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { LayoutGroup } from 'motion/react';
 import Link from '@/components/TenantLink';
 import { ClipboardList, ShoppingBag } from 'lucide-react';
 import { NotificationCenter } from './notification-center';
@@ -89,16 +90,16 @@ function TopNav({ categoryTree, authUser }: { categoryTree: CategoryTreeEntry[];
 
   return (
     <nav className={publicUi.topnav} aria-label="Navegação principal">
-      <SideMenu categoryTree={categoryTree} />
+      <SideMenu categoryTree={categoryTree} authUser={authUser} />
       <Link href="/" className={publicUi.topnavBrand}>{tenant.name}</Link>
       <div className={publicUi.topnavLinks}>
         {!onCatalogPage && <Link href="/catalogo">Catálogo</Link>}
         {isVendedora && <Link href="/workspace">Voltar ao workspace</Link>}
         {!isInternal && <Link href="/pedidos">Meus pedidos</Link>}
-        <button className={publicUi.topnavCart} onClick={openCart} aria-label="Carrinho">
+        {!isInternal && <button className={publicUi.topnavCart} onClick={openCart} aria-label="Carrinho">
           <ShoppingBag className="size-5" aria-hidden="true" />
           <span className={publicUi.count}>{cartCount}</span>
-        </button>
+        </button>}
         {authUser && <NotificationCenter />}
         {hasTalaoAccess && <TalaoButton />}
         {authUser && <HeaderProfile user={authUser} />}
@@ -122,16 +123,18 @@ export default function AppShell({ children, categoryTree, authUser, publicCatal
     <AuthProvider authUser={authUser} publicCatalogPrices={publicCatalogPrices}>
       <QuickViewProvider>
         <CartProvider>
-          <div className="flex min-h-screen flex-col">
-            <TopNav categoryTree={categoryTree} authUser={authUser} />
-            <div className="flex-1">{children}</div>
-            <CatalogFooter />
-          </div>
-          <CartDrawer />
-          {hasTalaoAccess && <TalaoDrawer />}
-          {isCliente && <PresenceBadge />}
-          {hasTalaoAccess && <TalaoPresenceBadge />}
-          <GlobalQuickView />
+          <LayoutGroup id="product-detail">
+            <div className="flex min-h-screen flex-col">
+              <TopNav categoryTree={categoryTree} authUser={authUser} />
+              <div className="flex-1">{children}</div>
+              <CatalogFooter authUser={authUser} />
+            </div>
+            <CartDrawer />
+            {hasTalaoAccess && <TalaoDrawer />}
+            {isCliente && <PresenceBadge />}
+            {hasTalaoAccess && <TalaoPresenceBadge />}
+            <GlobalQuickView />
+          </LayoutGroup>
         </CartProvider>
       </QuickViewProvider>
     </AuthProvider>

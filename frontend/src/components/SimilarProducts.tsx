@@ -4,12 +4,29 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import ProductCard from './ProductCard';
 import type { Product } from '@/domain/products/types';
 
+function SimilarProductsSkeleton() {
+  return (
+    <section className="mt-8 min-w-0" aria-busy="true" aria-label="Carregando produtos similares">
+      <div className="mb-3 h-6 w-52 animate-pulse rounded bg-surface-muted" />
+      <div className="flex gap-3 overflow-hidden pb-2">
+        {Array.from({ length: 4 }, (_, index) => (
+          <div key={index} className="w-32 shrink-0 sm:w-40">
+            <div className="aspect-[4/5] animate-pulse rounded-brand bg-surface-muted" />
+            <div className="mt-3 h-4 w-4/5 animate-pulse rounded bg-surface-muted" />
+            <div className="mt-2 h-4 w-2/5 animate-pulse rounded bg-surface-muted" />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 // Fileira horizontal de "produtos similares" (regra configurável em
 // /ferramentas, ver web/src/lib/similarProducts.ts) — usada na página
 // cheia do produto, no quick-view e no carrinho. Setas de navegação em vez
 // de grade, pra não ocupar muito espaço nos dois últimos (drawers
 // estreitos).
-export default function SimilarProducts({ products }: { products: Product[] }) {
+export default function SimilarProducts({ products, loading = false }: { products: Product[]; loading?: boolean }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [atStart, setAtStart] = useState(true);
   const [atEnd, setAtEnd] = useState(false);
@@ -29,6 +46,7 @@ export default function SimilarProducts({ products }: { products: Product[] }) {
     el.scrollBy({ left: dir * amount, behavior: 'smooth' });
   }
 
+  if (loading) return <SimilarProductsSkeleton />;
   if (products.length === 0) return null;
 
   return (

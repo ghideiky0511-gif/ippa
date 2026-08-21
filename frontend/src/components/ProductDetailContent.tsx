@@ -2,6 +2,7 @@
 import { publicUi } from '@/lib/ui';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { motion, useReducedMotion } from 'motion/react';
 import { Check, TrendingUp } from 'lucide-react';
 import Link from '@/components/TenantLink';
 import { COLOR_MAP, CONFIG } from '@/lib/config';
@@ -22,7 +23,13 @@ function matchesAvailabilityFilter(availability: Availability, filter: Availabil
   return availability === 'preorder' || availability === 'backorder';
 }
 
-export default function ProductDetailContent({ product }: { product: Product }) {
+export default function ProductDetailContent({ product, presentation = 'page', onLayoutAnimationComplete }: {
+  product: Product;
+  presentation?: 'page' | 'panel';
+  onLayoutAnimationComplete?: () => void;
+}) {
+  const isPanel = presentation === 'panel';
+  const shouldReduceMotion = useReducedMotion();
   const { cart, discounts, addToCart, changeQty, removeFromCart, setBackorderDate } = useCart();
   const { authUser, showPrices } = useAuthUser();
   const matrix = useMemo(() => buildVariantMatrix(product), [product]);
@@ -43,19 +50,20 @@ export default function ProductDetailContent({ product }: { product: Product }) 
   useEffect(() => {
     fetch('/api/store-settings')
       .then((r) => r.json())
-      .then((s) =>
-        setToolFlags({
+      .then((s) => {
+        const nextToolFlags = {
           preSale: s?.features?.preSale !== false,
           readyToShip: s?.features?.readyToShip !== false,
-        })
-      )
+        };
+        setToolFlags(nextToolFlags);
+        setAvailabilityFilter((current) => {
+          if (current === 'preorder' && !nextToolFlags.preSale) return 'all';
+          if (current === 'in_stock' && !nextToolFlags.readyToShip) return 'all';
+          return current;
+        });
+      })
       .catch(() => {});
   }, []);
-
-  useEffect(() => {
-    if (availabilityFilter === 'preorder' && !toolFlags.preSale) setAvailabilityFilter('all');
-    if (availabilityFilter === 'in_stock' && !toolFlags.readyToShip) setAvailabilityFilter('all');
-  }, [toolFlags, availabilityFilter]);
 
   const displayImage = resolveImageForColor(product, selectedColor) || gallery[activeImageIndex] || null;
   const showSuggestedPrice = !!product.suggestedRetailPrice;
@@ -126,10 +134,16 @@ export default function ProductDetailContent({ product }: { product: Product }) 
   }
 
   return (
-    <div className={publicUi.productDetail}>
+    <motion.div
+      layoutId={`product-detail-${product.id}`}
+      layout
+      transition={{ layout: shouldReduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 280, damping: 30, mass: 0.8 } }}
+      onLayoutAnimationComplete={onLayoutAnimationComplete}
+      className={[publicUi.productDetail, isPanel ? 'grid-cols-[minmax(0,10rem)_minmax(0,1fr)] gap-4 py-0 max-sm:grid-cols-[minmax(0,8.5rem)_minmax(0,1fr)]' : ''].join(' ')}
+    >
       <div className={publicUi.gallery}>
         <ProductImage
-          className={publicUi.detailImage}
+          className={[publicUi.detailImage, isPanel ? 'aspect-[4/5]' : ''].join(' ')}
           src={displayImage}
           alt={product.name}
         />
@@ -148,10 +162,10 @@ export default function ProductDetailContent({ product }: { product: Product }) 
         )}
       </div>
 
-      <div className={publicUi.detailInfo}>
-        <div className="contents">{product.category}{product.subcategory ? ` · ${product.subcategory}` : ''}</div>
-        <h2>{product.name}</h2>
-        {product.referenceId && <div className="contents">{product.referenceId}</div>}
+      <div className={[publicUi.detailInfo, isPanel ? 'gap-2 text-sm' : ''].join(' ')}>
+        <div className={isPanel ? 'text-xs text-brand-muted' : ''}>{product.category}{product.subcategory ? ` · ${product.subcategory}` : ''}</div>
+        <h2 className={isPanel ? 'text-base leading-tight' : ''}>{product.name}</h2>
+        {product.referenceId && <div className={isPanel ? 'text-xs text-brand-muted' : ''}>{product.referenceId}</div>}
         {showPrices && (
           <>
             {effectivePercent > 0 ? (
@@ -192,7 +206,7 @@ export default function ProductDetailContent({ product }: { product: Product }) 
             )}
           </>
         )}
-        {product.description && <p className="contents">{product.description}</p>}
+        {product.description && <p className={isPanel ? 'line-clamp-3 text-xs leading-5 text-brand-muted' : ''}>{product.description}</p>}
 
         {!authUser && (
           <p className="contents">
@@ -304,48 +318,58 @@ export default function ProductDetailContent({ product }: { product: Product }) 
           </div>
         )}
 
-        <div className="contents">
-          <button
-            type="button"
-            className={'pill-filter' + (availabilityFilter === 'all' ? ' active' : '')}
-            onClick={() => setAvailabilityFilter('all')}
-          >
-            todas as entregas
-          </button>
-          {toolFlags.preSale && (
+        <div className={publicUi.variantPicker}>
+          <div className={publicUi.variantFilters}>
             <button
               type="button"
-              className={'pill-filter pill-filter-preorder' + (availabilityFilter === 'preorder' ? ' active' : '')}
-              onClick={() => setAvailabilityFilter('preorder')}
+              className={[publicUi.variantFilter, availabilityFilter === 'all' ? publicUi.variantFilterActive : ''].join(' ')}
+              onClick={() => setAvailabilityFilter('all')}
             >
-              pré-venda
+              todas as entregas
             </button>
-          )}
-          {toolFlags.readyToShip && (
-            <button
-              type="button"
-              className={'pill-filter pill-filter-instock' + (availabilityFilter === 'in_stock' ? ' active' : '')}
-              onClick={() => setAvailabilityFilter('in_stock')}
-            >
-              pronta-entrega
-            </button>
-          )}
+            {toolFlags.preSale && (
+              <button
+                type="button"
+                className={[
+                  publicUi.variantFilter,
+                  publicUi.variantFilterPreorder,
+                  availabilityFilter === 'preorder' ? publicUi.variantFilterActive : '',
+                ].join(' ')}
+                onClick={() => setAvailabilityFilter('preorder')}
+              >
+                pré-venda
+              </button>
+            )}
+            {toolFlags.readyToShip && (
+              <button
+                type="button"
+                className={[
+                  publicUi.variantFilter,
+                  publicUi.variantFilterInStock,
+                  availabilityFilter === 'in_stock' ? publicUi.variantFilterActive : '',
+                ].join(' ')}
+                onClick={() => setAvailabilityFilter('in_stock')}
+              >
+                pronta-entrega
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="contents">
-          <table className="contents">
-            <thead>
+        <div className={publicUi.variantMatrix}>
+          <table className={publicUi.variantMatrixTable}>
+            <thead className={publicUi.variantMatrixHead}>
               <tr>
-                <th>Cor</th>
+                <th className={publicUi.variantMatrixHeadCell}>Cor</th>
                 {matrix.sizes.map((s) => (
-                  <th key={s}>{s}</th>
+                  <th key={s} className={publicUi.variantMatrixHeadCell}>{s}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {matrix.rows.map((row) => (
-                <tr key={row.color}>
-                  <td className="contents">
+                <tr key={row.color} className={publicUi.variantMatrixRow}>
+                  <td className={publicUi.variantMatrixColor}>
                     <span className={publicUi.swatch} style={{ background: COLOR_MAP[row.color] || '#ccc' }} />
                     {row.color}
                   </td>
@@ -357,7 +381,10 @@ export default function ProductDetailContent({ product }: { product: Product }) 
                       return (
                         <td
                           key={size}
-                          className={'matrix-cell' + (!cell ? ' matrix-cell-empty' : ' matrix-cell-out')}
+                          className={[
+                            publicUi.variantMatrixCell,
+                            !cell ? publicUi.variantMatrixCellEmpty : publicUi.variantMatrixCellOut,
+                          ].join(' ')}
                           title={cell ? deliveryLabel(cell.availability) : 'Não existe nessa combinação'}
                         >
                           {cell ? '✕' : '—'}
@@ -371,14 +398,16 @@ export default function ProductDetailContent({ product }: { product: Product }) 
                     return (
                       <td
                         key={size}
-                        className={
-                          'matrix-cell matrix-cell-ok' +
-                          (cell.availability !== 'in_stock' ? ' matrix-cell-preorder' : '') +
-                          (dimmed ? ' matrix-cell-dimmed' : '')
-                        }
+                        className={[
+                          publicUi.variantMatrixCell,
+                          dimmed ? publicUi.variantMatrixCellDimmed : '',
+                        ].join(' ')}
                         title={deliveryLabel(cell.availability)}
                       >
-                        <div className="contents">
+                        <div className={[
+                          publicUi.variantQtyControl,
+                          cell.availability !== 'in_stock' ? publicUi.variantQtyPreorder : '',
+                        ].join(' ')}>
                           <button
                             type="button"
                             disabled={!authUser || qty === 0}
@@ -386,8 +415,8 @@ export default function ProductDetailContent({ product }: { product: Product }) 
                           >
                             −
                           </button>
-                          <span className="qty-instock">{inStock}</span>
-                          {excess > 0 && <span className="contents">+{excess}</span>}
+                          <span>{inStock}</span>
+                          {excess > 0 && <span className={publicUi.variantQtyExcess}>+{excess}</span>}
                           <button type="button" disabled={!authUser} onClick={() => increment(row.color, size, cell.stockQty)}>
                             +
                           </button>
@@ -401,6 +430,6 @@ export default function ProductDetailContent({ product }: { product: Product }) 
           </table>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

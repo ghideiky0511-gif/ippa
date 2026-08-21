@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from '@/components/TenantLink';
+import { motion } from 'motion/react';
 import { ShoppingBag } from 'lucide-react';
 import ProductDetailContent from './ProductDetailContent';
+import ProductPageLink from './ProductPageLink';
 import SimilarProducts from './SimilarProducts';
 import { useCart } from './CartProvider';
+import { useQuickView } from './QuickViewProvider';
 import { formatBRL } from '@/lib/format';
 import { Sheet, SheetContent, SheetHeader } from '@/components/ui/sheet';
 import { z } from 'zod';
@@ -24,38 +26,93 @@ function MiniCartPreview() {
 }
 
 export default function ProductQuickView({ product, onClose }: { product: Product | null; onClose: () => void }) {
-  const isOpen = Boolean(product);
+  if (!product) return null;
+  return <OpenProductQuickView key={product.id} product={product} onClose={onClose} />;
+}
+
+function OpenProductQuickView({ product, onClose }: { product: Product; onClose: () => void }) {
+  const isOpen = true;
+  const { transitioningProductId } = useQuickView();
   const [similar, setSimilar] = useState<Product[]>([]);
+  const [similarProductId, setSimilarProductId] = useState<string | null>(null);
+  const [dragStartY, setDragStartY] = useState<number | null>(null);
+  const [sheetOffsetY, setSheetOffsetY] = useState(0);
+  const productId = product.id;
+  const isTransitioningToPage = transitioningProductId === product.id;
+  const isLoadingSimilar = similarProductId !== productId;
+  const currentSimilar = similarProductId === productId ? similar : [];
+
+  function closeQuickView() {
+    setSimilar([]);
+    setSimilarProductId(null);
+    onClose();
+  }
+
+  function startSheetDrag(event: React.PointerEvent<HTMLDivElement>) {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDragStartY(event.clientY);
+  }
+
+  function moveSheetDrag(event: React.PointerEvent<HTMLDivElement>) {
+    if (dragStartY === null) return;
+    setSheetOffsetY(Math.max(0, event.clientY - dragStartY));
+  }
+
+  function finishSheetDrag(event: React.PointerEvent<HTMLDivElement>) {
+    if (dragStartY === null) return;
+    const offsetY = Math.max(0, event.clientY - dragStartY);
+    setDragStartY(null);
+    setSheetOffsetY(0);
+    if (offsetY >= 112) closeQuickView();
+  }
 
   useEffect(() => {
-    if (!product) return;
     let cancelled = false;
     fetch('/api/similar-products', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ context: 'quickview', productIds: [product.id] }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ context: 'quickview', productIds: [productId] }),
     })
       .then((r) => (r.ok ? r.json() : { products: [] }))
       .then((data) => {
         if (cancelled) return;
         const parsed = SimilarProductsResultSchema.safeParse(data);
         setSimilar(parsed.success ? parsed.data.products : []);
+        setSimilarProductId(productId);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (cancelled) return;
+        setSimilarProductId(productId);
+      });
     return () => { cancelled = true; };
-  }, [product]);
+  }, [productId]);
 
   return (
-    <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="right" className="w-[min(100%,34rem)]">
-        {product && <>
+    <Sheet open={isOpen} onOpenChange={(open) => !open && closeQuickView()}>
+      <SheetContent
+        side="right"
+        mobileSide="bottom"
+        overlayClassName={isTransitioningToPage ? 'pointer-events-none bg-black/0 transition-colors duration-200' : 'transition-colors duration-200'}
+        className={`w-full md:w-[70vw] ${isTransitioningToPage ? 'pointer-events-none' : ''}`}
+        style={sheetOffsetY ? { transform: `translateY(${sheetOffsetY}px)` } : undefined}
+      >
+        <motion.div layoutRoot className="flex h-full min-h-0 flex-col">
+          <div
+            className="flex touch-none justify-center py-3 md:hidden"
+            onPointerDown={startSheetDrag}
+            onPointerMove={moveSheetDrag}
+            onPointerUp={finishSheetDrag}
+            onPointerCancel={finishSheetDrag}
+          ><span className="h-1 w-10 rounded-full bg-border" /></div>
           <SheetHeader>
-            <Link href={`/produto/${product.id}`} className="text-[13px] font-bold text-brand-primary hover:underline">Abrir página do produto</Link>
+            <ProductPageLink productId={product.id} className="text-[13px] font-bold text-brand-primary hover:underline">
+              Abrir página do produto
+            </ProductPageLink>
             <MiniCartPreview />
           </SheetHeader>
-          <div className="flex-1 overflow-y-auto p-5">
-            <ProductDetailContent product={product} />
-            <SimilarProducts products={similar} />
-          </div>
-        </>}
+          <motion.div layoutScroll className="flex-1 overflow-y-auto p-4">
+            <ProductDetailContent product={product} presentation="panel" />
+            <SimilarProducts products={currentSimilar} loading={isLoadingSimilar} />
+          </motion.div>
+        </motion.div>
       </SheetContent>
     </Sheet>
   );

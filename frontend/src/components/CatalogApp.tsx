@@ -9,6 +9,7 @@ import ProductCardSkeleton from "./ProductCardSkeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { enableImageCache } from "@/lib/image-cache";
+import { takeCatalogScrollPosition } from "@/lib/catalog-scroll";
 import { useTalao } from "./TalaoProvider";
 import type { CatalogPage, CatalogSectionsResult } from "@/domain/catalog/types";
 import type { Product } from "@/domain/products/types";
@@ -89,6 +90,21 @@ export default function CatalogApp({
 
     useEffect(() => {
         enableImageCache();
+    }, []);
+
+    useEffect(() => {
+        const scrollY = takeCatalogScrollPosition(window.location.pathname);
+        if (scrollY === null) return;
+
+        let frame = 0;
+        let attempts = 0;
+        const restoreScroll = () => {
+            window.scrollTo(0, scrollY);
+            attempts += 1;
+            if (attempts < 30 && Math.abs(window.scrollY - scrollY) > 1) frame = requestAnimationFrame(restoreScroll);
+        };
+        frame = requestAnimationFrame(restoreScroll);
+        return () => cancelAnimationFrame(frame);
     }, []);
 
     // Link profundo /catalogo?session=<id> (ex.: "Entrar no atendimento" em

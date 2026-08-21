@@ -5,7 +5,7 @@ import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { backendJson } from '@/lib/backend';
 import { ProductSchema, type Product } from '@/domain/products/types';
-import ProductDetailContent from '@/components/ProductDetailContent';
+import ProductPageDetail from '@/components/ProductPageDetail';
 import SimilarProducts from '@/components/SimilarProducts';
 
 const SimilarProductsResultSchema = z.object({ products: z.array(ProductSchema) });
@@ -30,9 +30,9 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
   });
 
   return (
-    <main className="contents">
-      <Link href="/" className={publicUi.backLink}><ArrowLeft className="size-4" aria-hidden="true" />Voltar ao catálogo</Link>
-      <ProductDetailContent product={product} />
+    <main className={`${publicUi.container} pb-14`}>
+      <Link href="/catalogo" scroll={false} className={publicUi.backLink}><ArrowLeft className="size-4" aria-hidden="true" />Voltar ao catálogo</Link>
+      <ProductPageDetail product={product} />
       <SimilarProducts products={similar} />
     </main>
   );
