@@ -1,4 +1,9 @@
 import { hash } from "@node-rs/argon2";
+import {
+    CreateTenantUserInputSchema,
+    DEFAULT_SELLER_CATALOG_AREAS,
+    UpdateTenantUserInputSchema,
+} from "@/contracts/auth";
 import type { PoolClient } from "pg";
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
@@ -14,8 +19,6 @@ import { toClient } from "@/services/clients/clientMapper";
 import { notifySignup } from "@/services/notifications";
 
 const PASSWORD_OPTIONS = { memoryCost: 19 * 1024, timeCost: 2, parallelism: 1 };
-
-export const KNOWN_CATALOG_AREAS = ["talao", "pedidos"] as const;
 
 export function toAuthUser(row: UserRow): AuthUser {
     return {
@@ -38,7 +41,7 @@ export function isAdministrator(user: AuthUser | null): boolean {
 export function defaultPermissionsFor(role: UserRole): NonNullable<AuthUser["permissions"]> {
     switch (role) {
         case "administrador": return { adminAccess: true, catalogAreas: [] };
-        case "vendedora": return { adminAccess: false, catalogAreas: ["talao", "pedidos"] };
+        case "vendedora": return { adminAccess: false, catalogAreas: [...DEFAULT_SELLER_CATALOG_AREAS] };
         default: return { adminAccess: false, catalogAreas: [] };
     }
 }
@@ -116,22 +119,14 @@ export async function users(tenant: Tenant, actor: AuthUser): Promise<Array<Auth
 export async function createTenantUser(
     tenant: Tenant,
     actor: AuthUser,
-    body: { email?: unknown; name?: unknown; password?: unknown; role?: unknown; catalogAreas?: unknown },
+    body: unknown,
     context: AuditRequestContext,
 ): Promise<AuthUser> {
     if (!isAdministrator(actor)) throw new ForbiddenError();
-    const email = typeof body.email === "string" ? body.email : null;
-    const name = typeof body.name === "string" ? body.name : null;
-    const password = typeof body.password === "string" ? body.password : null;
-    if (!email || !name || !password) throw new ValidationError();
-    if (password.length < 6) throw new ValidationError("WEAK_PASSWORD");
-    const roles: UserRole[] = ["administrador", "vendedora", "expedicao", "entregador", "cliente"];
-    const role: UserRole = body.role === undefined ? "vendedora" : body.role as UserRole;
-    if (!roles.includes(role)) throw new ValidationError();
-    const catalogAreas = Array.isArray(body.catalogAreas)
-        ? body.catalogAreas.filter((area): area is string => typeof area === "string" &&
-            KNOWN_CATALOG_AREAS.includes(area as typeof KNOWN_CATALOG_AREAS[number]))
-        : undefined;
+    const parsed = CreateTenantUserInputSchema.safeParse(body);
+    if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
+    const { email, name, password, catalogAreas } = parsed.data;
+    const role: UserRole = parsed.data.role ?? "vendedora";
     const created = await withTenantTransaction(tenant, actor, (client) => createUserRecord(client, actor, context, {
         email,
         name,
@@ -150,25 +145,21 @@ export async function updateTenantUser(
     tenant: Tenant,
     actor: AuthUser,
     id: string,
-    body: { name?: unknown; email?: unknown; password?: unknown; catalogAreas?: unknown },
+    body: unknown,
 ): Promise<AuthUser> {
     if (!isAdministrator(actor)) throw new ForbiddenError();
-    const password = typeof body.password === "string" && body.password ? body.password : undefined;
-    if (password && password.length < 6) throw new ValidationError("WEAK_PASSWORD");
+    const parsed = UpdateTenantUserInputSchema.safeParse(body);
+    if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
+    const { email, name, catalogAreas, password } = parsed.data;
     return withTenantTransaction(tenant, actor, async (client) => {
         const current = await findUserRowById(client, id);
         if (!current) throw new NotFoundError("USER_NOT_FOUND");
-        const email = typeof body.email === "string" && body.email.trim() ? body.email.trim().toLowerCase() : undefined;
         if (email) {
             const existing = await findUserRowByEmail(client, email);
             if (existing && existing.id !== id) throw new ConflictError("EMAIL_TAKEN");
         }
-        const catalogAreas = Array.isArray(body.catalogAreas)
-            ? body.catalogAreas.filter((area): area is string => typeof area === "string" &&
-                KNOWN_CATALOG_AREAS.includes(area as typeof KNOWN_CATALOG_AREAS[number]))
-            : undefined;
         const updated = await updateUserRow(client, id, {
-            name: typeof body.name === "string" && body.name.trim() ? body.name.trim() : undefined,
+            name,
             email,
             passwordHash: password ? await hash(password, PASSWORD_OPTIONS) : undefined,
             permissions: catalogAreas ? { ...current.permissions, catalogAreas } : undefined,

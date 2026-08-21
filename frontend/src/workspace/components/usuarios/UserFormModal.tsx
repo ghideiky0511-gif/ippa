@@ -4,6 +4,7 @@ import { adminUi } from '@/workspace/lib/ui';
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { createVendedora, createCliente, updateUser, updateClient } from '@/workspace/lib/usersClient';
+import { DEFAULT_SELLER_CATALOG_AREAS } from '@/domain/clients/types';
 
 // Ferramentas do catálogo que dá pra liberar/bloquear por conta (ver
 // KNOWN_CATALOG_AREAS em web/src/lib/auth.ts e areaForPath em
@@ -13,7 +14,7 @@ const CATALOG_AREAS = [
   { key: 'pedidos', label: 'Meus pedidos / Minhas vendas' },
 ];
 
-const DEFAULT_VENDEDORA_AREAS = ['talao', 'pedidos'];
+const DEFAULT_VENDEDORA_AREAS = [...DEFAULT_SELLER_CATALOG_AREAS];
 
 const EMPTY = {
   name: '',
@@ -72,22 +73,6 @@ export default function UserFormModal({ role, mode, user, onClose, onSaved }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!form.name.trim() || !form.email.trim()) {
-      setSaveState('error');
-      setErrorMsg('Preencha nome e e-mail de login.');
-      return;
-    }
-    if (!isEdit && !form.password) {
-      setSaveState('error');
-      setErrorMsg('Preencha a senha de acesso.');
-      return;
-    }
-    if (form.password && form.password.length < 6) {
-      setSaveState('error');
-      setErrorMsg('A senha precisa ter pelo menos 6 caracteres.');
-      return;
-    }
-
     setSaveState('saving');
     setErrorMsg('');
     try {
@@ -106,7 +91,23 @@ export default function UserFormModal({ role, mode, user, onClose, onSaved }) {
         if (user.clientId) {
           clientUpdate = await updateClient(user.clientId, form);
         }
-        saved = { ...loginUpdate, ...clientUpdate, id: loginUpdate.id, clientId: user.clientId };
+        saved = {
+          ...loginUpdate,
+          ...(clientUpdate ? {
+            cpfCnpj: clientUpdate.cpfCnpj,
+            clientEmail: clientUpdate.email,
+            cep: clientUpdate.cep,
+            street: clientUpdate.street,
+            number: clientUpdate.number,
+            complement: clientUpdate.complement,
+            neighborhood: clientUpdate.neighborhood,
+            city: clientUpdate.city,
+            state: clientUpdate.state,
+            companyResponsible: clientUpdate.companyResponsible,
+            storeName: clientUpdate.storeName,
+          } : {}),
+          clientId: user.clientId,
+        };
       }
       onSaved(saved);
     } catch (err) {

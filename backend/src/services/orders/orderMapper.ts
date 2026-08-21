@@ -1,4 +1,5 @@
 import type { CartItem, Order, OrderSession } from "@/lib/types";
+import { OrderChannelSchema } from "@/contracts/orders";
 import type { OrderRow, OrderSessionRow } from "@/models/ordersModel";
 
 export function toOrderSession(row: OrderSessionRow, items: CartItem[]): OrderSession {
@@ -9,7 +10,7 @@ export function toOrderSession(row: OrderSessionRow, items: CartItem[]): OrderSe
         clientName: row.client_name,
         clientId: row.client_id ?? undefined,
         sellerId: row.seller_id,
-        channel: row.channel,
+        channel: OrderChannelSchema.catch("online").parse(row.channel),
         status: row.status,
         shipping: row.shipping ?? undefined,
         items,
@@ -28,7 +29,7 @@ export function toOrder(row: OrderRow, items: CartItem[]): Order {
         status: row.status as Order["status"],
         items,
         total: Number(row.total),
-        channel: row.channel,
+        channel: OrderChannelSchema.catch("online").parse(row.channel),
         shipping: row.shipping ?? undefined,
         paymentMethod: row.payment_method ?? undefined,
         discount: row.discount ?? undefined,

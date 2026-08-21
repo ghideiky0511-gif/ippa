@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import type { Client } from '@/domain/clients/types';
+import { documentDigits } from '@/lib/document';
 import type { CartItem, Order, OrderChannel, OrderSession } from '@/domain/orders/types';
 import type { Product } from '@/domain/products/types';
 import { adminUi } from '@/workspace/lib/ui';
@@ -56,7 +57,7 @@ function ClientLookup({
     setLoading(true);
     setError(null);
     try {
-      const digits = value.replace(/\D/g, '');
+      const digits = documentDigits(value);
       if (digits.length === 11 || digits.length === 14) {
         // CPF/CNPJ exato: local primeiro, e se não existir o backend tenta
         // importar do ERP ativo antes de dizer que não encontrou.

@@ -1,4 +1,5 @@
 import type { CartItem, Client, Company, Order, Product, Variant } from "@/lib/types";
+import { OrderChannelSchema } from "@/contracts/orders";
 
 // Adequação do formato bruto do TOTVS Moda para os tipos internos — só aqui,
 // igual mock/mapper.ts faz para o mock. Os tipos de produto (prefixo
@@ -237,7 +238,7 @@ export function mapTotvsModaOrder(raw: TotvsModaOrder): Omit<Order, "id"> {
         status: "pago",
         items,
         total: items.reduce((sum, item) => sum + item.price * item.qty, 0),
-        channel: raw.salesChannel ?? "online",
+        channel: OrderChannelSchema.catch("online").parse(raw.salesChannel),
     };
 }
 

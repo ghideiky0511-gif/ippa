@@ -6,9 +6,8 @@ import Link from '@/components/TenantLink';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getDocumentType } from '@/lib/document';
 import { apiFetch } from '@/lib/api-client';
-import { CART_KEY } from '@/components/CartProvider';
-import type { CartItem } from '@/domain/orders/types';
 import { useTenant } from '@/components/TenantProvider';
+import { CustomerSignupSchema } from '@/domain/clients/types';
 
 interface ViaCepResponse {
   erro?: boolean;
@@ -24,17 +23,6 @@ export default function CadastroPage() {
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect');
   const requestedDocument = searchParams.get('document') ?? '';
-  // Lido direto do localStorage (não via useCart()) porque /cadastro fica
-  // fora do AppShell — ver CART_KEY em CartProvider.tsx.
-  const [anonymousCart, setAnonymousCart] = useState<CartItem[]>([]);
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(CART_KEY);
-      if (raw) setAnonymousCart(JSON.parse(raw));
-    } catch {
-      /* localStorage indisponível/corrompido — segue sem carrinho anônimo */
-    }
-  }, []);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -109,34 +97,21 @@ export default function CadastroPage() {
       setError('Informe um CNPJ com 14 dígitos.');
       return;
     }
+    const parsed = CustomerSignupSchema.safeParse({
+      name, email, password, cpfCnpj, companyResponsible, storeName, cep,
+      street, number, complement, neighborhood, city, state,
+    });
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message || 'Revise os dados do cadastro.');
+      return;
+    }
     setLoading(true);
     setError('');
     try {
       const res = await apiFetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name,
-          email,
-          password,
-          cpfCnpj,
-          companyResponsible,
-          storeName,
-          cep,
-          street,
-          number,
-          complement,
-          neighborhood,
-          city,
-          state,
-          // Carrinho anônimo (localStorage) montado antes de criar conta —
-          // se o gatilho de fila atribuir uma vendedora e criar um talão
-          // novo (ver POST /api/auth/signup), ele nasce com esses itens em
-          // vez de vazio, pra não "sumir" o carrinho bem na hora em que a
-          // pessoa é obrigada a logar pra continuar (ver gate de login em
-          // /frete e /pagamento).
-          cart: anonymousCart,
-        }),
+        body: JSON.stringify(parsed.data),
       });
       const data = await res.json();
       if (!res.ok) {

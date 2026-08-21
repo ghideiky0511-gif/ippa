@@ -18,10 +18,12 @@ export default function ConditionalShell({
   children,
   categoryTree,
   authUser,
+  publicCatalogPrices,
 }: {
   children: ReactNode;
   categoryTree: CategoryTreeEntry[];
   authUser: AuthUser | null;
+  publicCatalogPrices: boolean;
 }) {
   const pathname = usePathname();
   const { tenant } = useTenant();
@@ -29,7 +31,7 @@ export default function ConditionalShell({
   const skipShell = NO_SHELL_PREFIXES.some((prefix) => tenantPath?.startsWith(prefix));
   if (skipShell) return <>{children}</>;
   return (
-    <AppShell categoryTree={categoryTree} authUser={authUser}>
+    <AppShell categoryTree={categoryTree} authUser={authUser} publicCatalogPrices={publicCatalogPrices}>
       {children}
     </AppShell>
   );

@@ -1,6 +1,12 @@
+import { z } from "zod";
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
-import type { AuthUser, CartItem, Order, OrderSession, OrderSessionParticipant } from "@/lib/types";
+import type { AuthUser, Order, OrderSession, OrderSessionParticipant } from "@/lib/types";
+import { CartItemSchema } from "@/contracts/shared";
+import {
+    CreateOrderSessionInputSchema,
+    UpdateOrderSessionInputSchema,
+} from "@/contracts/orders";
 import {
     findLatestOpenOrderSessionRowByClient,
     findOrderSessionRow,
@@ -128,27 +134,30 @@ export async function customerActiveSession(tenant: Tenant, user: AuthUser): Pro
     });
 }
 
+const EnsureCustomerOrderSessionSchema = z.object({ items: z.array(CartItemSchema).optional() });
+
 /** Cria uma sessão online para a cliente somente quando ela tem peças no carrinho. */
 export async function ensureCustomerOrderSession(
     tenant: Tenant,
     user: AuthUser,
-    body: { items?: unknown },
+    body: unknown,
     context: AuditRequestContext,
 ): Promise<OrderSession | null> {
     if (user.role !== "cliente" || !user.clientId) throw new ForbiddenError();
-    const requestedItems = Array.isArray(body.items) ? body.items as CartItem[] : [];
-    if (!requestedItems.some((item) => item && typeof item === "object" && item.qty > 0)) return null;
+    const parsed = EnsureCustomerOrderSessionSchema.safeParse(body);
+    if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
+    const requestedItems = parsed.data.items ?? [];
+    if (!requestedItems.some((item) => item.qty > 0)) return null;
 
     const result = await withTenantTransaction(tenant, user, async (client) => {
         const registration = await findClientRow(client, user.clientId!);
         if (!registration) throw new NotFoundError("CLIENT_NOT_FOUND");
-        // Duas abas podem promover o mesmo localStorage ao mesmo tempo. O
-        // lock transacional serializa essa passagem e mantém a idempotência
-        // também fora do controle do React.
+        // Duas abas podem pedir a criação ao mesmo tempo. O lock transacional
+        // mantém uma única sessão online por cliente.
         await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`customer-session:${registration.id}`]);
 
-        // Idempotência na hidratação/retries do browser: uma cliente só tem
-        // uma sessão aberta e novas peças serão gravadas pelo PUT normal.
+        // Idempotência no socket/retries: uma cliente só tem uma sessão viva
+        // e novas peças serão gravadas pelo evento de atualização.
         const existing = await findLatestOpenOrderSessionRowByClient(client, registration.id);
         if (existing) {
             const items = (await listOrderSessionItemRowsBySession(client, existing.id)).map((item) => item.snapshot);
@@ -220,30 +229,38 @@ export async function ensureCustomerOrderSession(
 export async function createOrderSession(
     tenant: Tenant,
     user: AuthUser,
-    body: Partial<OrderSession>,
+    body: unknown,
     context: AuditRequestContext,
 ): Promise<OrderSession> {
     if (user.role === "cliente") throw new ForbiddenError();
+    const parsedBody = CreateOrderSessionInputSchema.safeParse(body);
+    if (!parsedBody.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsedBody.error.issues);
+    const data = parsedBody.data;
     const created = await withTenantTransaction(tenant, user, async (client) => {
-        const items = Array.isArray(body.items) ? body.items : [];
-        const requestedBookId = typeof body.orderBookId === "string" && body.orderBookId
-            ? body.orderBookId
-            : undefined;
+        const items = data.items ?? [];
+        const requestedBookId = data.orderBookId;
         const book = requestedBookId
             ? await findOrderBookRow(client, requestedBookId)
             : (await findActiveOrderBookRow(client, user.id)) ?? await insertOrderBookRow(client, user.id, "Talão atual");
         if (!book) throw new NotFoundError("ORDER_BOOK_NOT_FOUND");
         if (book.seller_id !== user.id || book.status !== "aberto") throw new ForbiddenError();
-        const requestedClientId = typeof body.clientId === "string" && body.clientId
-            ? body.clientId
-            : undefined;
+        const requestedClientId = data.clientId;
         const registration = requestedClientId
             ? await findClientRow(client, requestedClientId)
             : null;
         if (requestedClientId && !registration) throw new NotFoundError("CLIENT_NOT_FOUND");
-        const clientName = registration?.name ?? (typeof body.clientName === "string" && body.clientName.trim()
-            ? body.clientName.trim() : "Sem cliente");
-        const channel = body.channel === "whatsapp" || body.channel === "online" ? body.channel : "presencial";
+        const clientName = registration?.name ?? (data.clientName?.trim() || "Sem cliente");
+        const channel = data.channel === "whatsapp" || data.channel === "online" ? data.channel : "presencial";
+        // A mesma cliente não ganha um segundo atendimento online se a
+        // vendedora abrir o pedido manualmente enquanto ela já está no site.
+        if (registration && channel === "online") {
+            await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`customer-session:${registration.id}`]);
+            const existing = await findLatestOpenOrderSessionRowByClient(client, registration.id);
+            if (existing) {
+                const items = (await listOrderSessionItemRowsBySession(client, existing.id)).map((item) => item.snapshot);
+                return toOrderSession(existing, items);
+            }
+        }
         // Upsell: cliente com pedido em aberto pra essa mesma vendedora
         // reaproveita o pedido; sem clientId (registro "Sem cliente"), não
         // há como localizar um pedido depois, então cada sessão fica solta.
@@ -257,7 +274,7 @@ export async function createOrderSession(
             channel,
             status: "aberto",
             shipping: undefined,
-            notes: body.notes,
+            notes: data.notes,
         });
         for (const item of items) await insertOrderSessionItemRow(client, row.id, item);
         if (order && items.length > 0) {
@@ -290,8 +307,11 @@ export async function updateSession(
     tenant: Tenant,
     user: AuthUser,
     id: string,
-    body: Partial<OrderSession> & { shipping?: unknown },
+    rawBody: unknown,
 ): Promise<OrderSession> {
+    const parsedBody = UpdateOrderSessionInputSchema.safeParse(rawBody);
+    if (!parsedBody.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsedBody.error.issues);
+    const body = parsedBody.data;
     const changes: { book?: OrderBookRow } = {};
     const updated = await withTenantTransaction(tenant, user, async (client) => {
         const currentRow = await findOrderSessionRow(client, id);
@@ -313,7 +333,7 @@ export async function updateSession(
         let notes = currentRow.notes ?? undefined;
         let status = currentRow.status;
         if (isSeller) {
-            if (typeof body.clientId === "string" && body.clientId) {
+            if (body.clientId) {
                 const registration = await findClientRow(client, body.clientId);
                 if (!registration) throw new NotFoundError("CLIENT_NOT_FOUND");
                 clientId = registration.id;
@@ -334,20 +354,14 @@ export async function updateSession(
                     lastSellerId: currentRow.seller_id,
                 });
             }
-            if (typeof body.notes === "string") notes = body.notes;
-            if (body.status !== undefined) {
-                if (!(["aberto", "fechado", "aguardando_pagamento", "cancelado"] as unknown[]).includes(body.status)) {
-                    throw new ValidationError();
-                }
-                status = body.status;
-            }
+            if (body.notes !== undefined) notes = body.notes;
+            if (body.status !== undefined) status = body.status;
         }
         let shipping = currentRow.shipping ?? undefined;
         if (body.shipping === null) shipping = undefined;
-        else if (body.shipping && typeof body.shipping === "object" &&
-            typeof (body.shipping as { price?: unknown }).price === "number") shipping = body.shipping as OrderSession["shipping"];
-        const items = Array.isArray(body.items) ? body.items : currentItems;
-        if (Array.isArray(body.items)) await replaceOrderSessionItemRows(client, id, items);
+        else if (body.shipping) shipping = body.shipping;
+        const items = body.items ?? currentItems;
+        if (body.items !== undefined) await replaceOrderSessionItemRows(client, id, items);
 
         // order_id só falta numa sessão que nunca teve cliente vinculado.
         // Se esta chamada é o momento em que o cliente passa a existir
@@ -371,7 +385,7 @@ export async function updateSession(
             }
             if (justAttached) {
                 await syncOrderItems(client, { orderId, currentItems: [], nextItems: items, actorId: user.id, actorRole: user.role });
-            } else if (Array.isArray(body.items)) {
+            } else if (body.items !== undefined) {
                 // Diff é (itens ANTES desta MESMA sessão -> itens depois),
                 // não (todo o pedido -> body). Com upsell, o pedido pode ter
                 // itens vindos de outra sessão (ex. atendimento fechado
@@ -416,13 +430,18 @@ export async function canAccessOrderSession(
     });
 }
 
+const FinalizeOrderSessionSchema = z.object({ paymentMethod: z.string().optional() });
+
 export async function finalizeOrderSession(
     tenant: Tenant,
     user: AuthUser,
     id: string,
-    body: { paymentMethod?: unknown },
+    rawBody: unknown,
 ): Promise<Order> {
     if (user.role === "cliente") throw new ForbiddenError();
+    const parsedBody = FinalizeOrderSessionSchema.safeParse(rawBody);
+    if (!parsedBody.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsedBody.error.issues);
+    const body = parsedBody.data;
     let changedSessions: OrderSession[] = [];
     let changedBooks: OrderBookRow[] = [];
     const order = await withTenantTransaction(tenant, user, async (client) => {
@@ -459,9 +478,7 @@ export async function finalizeOrderSession(
             status: "pago",
             total,
             shipping: session.shipping ?? undefined,
-            paymentMethod: typeof body.paymentMethod === "string"
-                ? body.paymentMethod
-                : undefined,
+            paymentMethod: body.paymentMethod,
         });
         if (!row) throw new NotFoundError("ORDER_NOT_FOUND");
         // Fecha TODA sessão irmã ainda aberta que aponte pro mesmo pedido

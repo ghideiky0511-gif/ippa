@@ -1,6 +1,10 @@
+import { z } from "zod";
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
-import type { AuthUser, ClassificationKind } from "@/lib/types";
+import type { AuthUser } from "@/lib/types";
+import type { ClassificationEntry } from "@/contracts/catalog";
+import { ProductOverridesSchema } from "@/contracts/catalog";
+import { CreateProductInputSchema } from "@/contracts/products";
 import {
     clearProductOverrideRows,
     insertProductRow,
@@ -21,60 +25,18 @@ function requireAdministrator(user: AuthUser): void {
   if (user.role !== "administrador" || user.permissions?.adminAccess !== true) throw new ForbiddenError();
 }
 
-export interface CreateProductInput {
-  name: string;
-  price: number;
-  category?: string;
-  referenceId?: string;
-  description?: string;
-  image?: string;
-  variant?: { color: string; size: string };
-}
-
-function optionalText(value: unknown): string | undefined {
-  if (value === undefined || value === null) return undefined;
-  if (typeof value !== "string") throw new ValidationError();
-  const trimmed = value.trim();
-  return trimmed || undefined;
-}
-
 function classificationSlug(value: string): string {
   const slug = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 127);
   return slug || "categoria";
 }
 
-function parseCreateProduct(value: unknown): CreateProductInput {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new ValidationError();
-  const body = value as Record<string, unknown>;
-  const name = optionalText(body.name);
-  const price = body.price;
-  if (!name || typeof price !== "number" || !Number.isFinite(price) || price < 0) throw new ValidationError();
-  const image = optionalText(body.image);
-  if (image) {
-    try {
-      const url = new URL(image);
-      if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error();
-    } catch { throw new ValidationError(); }
-  }
-  const rawVariant = body.variant;
-  let variant: CreateProductInput["variant"];
-  if (rawVariant !== undefined) {
-    if (!rawVariant || typeof rawVariant !== "object" || Array.isArray(rawVariant)) throw new ValidationError();
-    const item = rawVariant as Record<string, unknown>;
-    const color = optionalText(item.color);
-    const size = optionalText(item.size);
-    if (!color || !size) throw new ValidationError();
-    variant = { color, size };
-  }
-  return { name, price, category: optionalText(body.category), referenceId: optionalText(body.referenceId),
-    description: optionalText(body.description), image, variant };
-}
-
 /** Cadastro manual enxuto. Variantes adicionais e estoque ficam para a tela de estoque. */
 export async function createProduct(tenant: Tenant, actor: AuthUser, value: unknown): Promise<{ id: string }> {
   requireAdministrator(actor);
-  const input = parseCreateProduct(value);
+  const parsed = CreateProductInputSchema.safeParse(value);
+  if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inv\u00e1lidos.", parsed.error.issues);
+  const input = parsed.data;
   return withTenantTransaction(tenant, actor, async (client) => {
     if (input.referenceId && await productReferenceIdExists(client, input.referenceId)) throw new ConflictError("PRODUCT_REFERENCE_ID_TAKEN");
     const product = await insertProductRow(client, {
@@ -96,15 +58,6 @@ export async function createProduct(tenant: Tenant, actor: AuthUser, value: unkn
   });
 }
 
-export interface ClassificationEntry {
-  id: string;
-  kind: ClassificationKind;
-  parentId: string | null;
-  name: string;
-  active: boolean;
-  position: number;
-}
-
 export async function listClassifications(tenant: Tenant, actor: AuthUser): Promise<ClassificationEntry[]> {
   requireAdministrator(actor);
   return withTenantTransaction(tenant, actor, async (client) => (await listClassificationRows(client)).map((row) => ({
@@ -117,11 +70,13 @@ export async function listClassifications(tenant: Tenant, actor: AuthUser): Prom
   })));
 }
 
+const SetClassificationActiveSchema = z.object({ active: z.boolean() });
+
 export async function setClassificationActive(tenant: Tenant, actor: AuthUser, id: string, value: unknown): Promise<ClassificationEntry> {
   requireAdministrator(actor);
-  const body = value as { active?: unknown } | null;
-  if (!body || typeof body.active !== "boolean") throw new ValidationError();
-  const updated = await withTenantTransaction(tenant, actor, (client) => setClassificationActiveRow(client, id, body.active as boolean));
+  const parsed = SetClassificationActiveSchema.safeParse(value);
+  if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
+  const updated = await withTenantTransaction(tenant, actor, (client) => setClassificationActiveRow(client, id, parsed.data.active));
   if (!updated) throw new NotFoundError("CLASSIFICATION_NOT_FOUND");
   return {
     id: updated.id,
@@ -138,24 +93,15 @@ export async function catalogOrder(tenant: Tenant, actor: AuthUser): Promise<str
   return withTenantTransaction(tenant, actor, listCatalogOrderRows);
 }
 
+const CatalogOrderSchema = z.array(z.string());
+
 export async function replaceCatalogOrder(tenant: Tenant, actor: AuthUser, value: unknown): Promise<string[]> {
   requireAdministrator(actor);
-  if (!Array.isArray(value) || value.some((id) => typeof id !== "string")) throw new ValidationError();
-  const ids = [...new Set(value as string[])];
+  const parsed = CatalogOrderSchema.safeParse(value);
+  if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
+  const ids = [...new Set(parsed.data)];
   await withTenantTransaction(tenant, actor, (client) => replaceCatalogOrderRows(client, ids));
   return ids;
-}
-
-function validOverride(value: unknown): value is ProductOverrideRow {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const item = value as Record<string, unknown>;
-  const numberFields = ["suggestedRetailPrice", "markup"];
-  const stringFields = ["referenceId", "category", "subcategory", "collection"];
-  const arrayFields = ["similarProductIdsQuickview", "similarProductIdsCart"];
-  return numberFields.every((key) => item[key] === undefined || typeof item[key] === "number") &&
-    stringFields.every((key) => item[key] === undefined || typeof item[key] === "string") &&
-    arrayFields.every((key) => item[key] === undefined ||
-      (Array.isArray(item[key]) && (item[key] as unknown[]).every((id) => typeof id === "string")));
 }
 
 export async function productOverrides(tenant: Tenant, actor: AuthUser): Promise<Record<string, ProductOverrideRow>> {
@@ -171,9 +117,9 @@ export async function replaceProductOverrides(
   value: unknown,
 ): Promise<Record<string, ProductOverrideRow>> {
   requireAdministrator(actor);
-  if (!value || typeof value !== "object" || Array.isArray(value) ||
-      Object.values(value).some((override) => !validOverride(override))) throw new ValidationError();
-  const overrides = value as Record<string, ProductOverrideRow>;
+  const parsed = ProductOverridesSchema.safeParse(value);
+  if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
+  const overrides = parsed.data;
   await withTenantTransaction(tenant, actor, async (client) => {
     await clearProductOverrideRows(client);
     for (const [productId, override] of Object.entries(overrides)) {

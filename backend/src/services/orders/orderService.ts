@@ -1,6 +1,7 @@
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
-import type { AuthUser, CartItem, Order, OrderChannel, OrderSession } from "@/lib/types";
+import type { AuthUser, Order, OrderChannel, OrderSession } from "@/lib/types";
+import { CreateCustomerOrderInputSchema } from "@/contracts/orders";
 import {
     closeOpenOrderSessionRowsByOrder,
     findOrderSessionRow,
@@ -11,7 +12,6 @@ import {
     updateOrderRow,
 } from "@/models/ordersModel";
 import { getOrCreateOpenOrder, syncOrderItems } from "./orderItemSync";
-import { deleteClientCartRows } from "@/models/clientsModel";
 import { findUserRowById } from "@/models/usersModel";
 import { findStoreSettingsRow } from "@/models/settingsModel";
 import { notifyOrder, notifyOrderBook, notifySession } from "@/services/realtime/updateBroadcast";
@@ -54,17 +54,13 @@ export async function userOrders(
 export async function createCustomerOrder(
     tenant: Tenant,
     user: AuthUser,
-    body: Record<string, unknown>,
+    rawBody: unknown,
 ): Promise<Order> {
     if (user.role !== "cliente" || !user.clientId) throw new ForbiddenError();
-    if (
-        !Array.isArray(body.items) ||
-        typeof body.total !== "number" ||
-        !Number.isFinite(body.total) ||
-        typeof body.channel !== "string"
-    )
-        throw new ValidationError();
-    const items = body.items as CartItem[];
+    const parsed = CreateCustomerOrderInputSchema.safeParse(rawBody);
+    if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
+    const body = parsed.data;
+    const items = body.items;
     const requestedChannel = body.channel;
     let changedSessions: OrderSession[] = [];
     let changedBooks: OrderBookRow[] = [];
@@ -82,7 +78,7 @@ export async function createCustomerOrder(
         // apagar upsell de uma OUTRA sessão que aponte pro mesmo pedido e
         // que este checkout nunca viu.
         let itemsFromSession = false;
-        if (typeof body.sessionId === "string" && body.sessionId) {
+        if (body.sessionId) {
             const session = await findOrderSessionRow(client, body.sessionId);
             if (session && session.client_id === user.clientId) {
                 const settings = await findStoreSettingsRow(client);
@@ -93,8 +89,9 @@ export async function createCustomerOrder(
                 itemsFromSession = Boolean(orderId);
             }
         }
-        const allowedChannels = new Set(["presencial", "whatsapp", "online"]);
-        const channel = (allowedChannels.has(requestedChannel) ? requestedChannel : "online") as OrderChannel;
+        const channel: OrderChannel = requestedChannel === "presencial" || requestedChannel === "whatsapp"
+            ? requestedChannel
+            : "online";
         // Sem sessão (autosserviço puro do catálogo): reaproveita pedido em
         // aberto se a cliente já tiver um (ex. checkout abandonado antes),
         // senão cria. Sem sincronização ao vivo enquanto ela navega -- os
@@ -110,13 +107,10 @@ export async function createCustomerOrder(
         }
         const row = await updateOrderRow(client, orderId, {
             status: "pago",
-            total: body.total as number,
-            shipping: body.shipping as Order["shipping"],
-            paymentMethod:
-                typeof body.paymentMethod === "string"
-                    ? body.paymentMethod
-                    : undefined,
-            discount: body.discount as Order["discount"],
+            total: body.total,
+            shipping: body.shipping,
+            paymentMethod: body.paymentMethod,
+            discount: body.discount,
         });
         if (!row) throw new NotFoundError("ORDER_NOT_FOUND");
         if (sellerId) {
@@ -132,7 +126,6 @@ export async function createCustomerOrder(
         changedBooks = (await Promise.all(
             [...bookIds].map((bookId) => closeOrderBookWhenFinished(client, bookId)),
         )).filter((book): book is OrderBookRow => Boolean(book));
-        await deleteClientCartRows(client, user.clientId!);
         return toOrder(row, orderItems);
     });
     for (const changedSession of changedSessions) notifySession(tenant.id, changedSession);

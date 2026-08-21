@@ -2,6 +2,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { CartItem, OrderSession, ShippingOption } from '@/domain/orders/types';
 import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
+import { usePedidoRealtime } from '@/lib/realtime/usePedidoRealtime';
 
 interface TalaoContextValue {
   sessions: OrderSession[]; // todas (aberta + fechada) — usado por "buscar existentes"
@@ -62,6 +63,10 @@ export function TalaoProvider({ children }: { children: ReactNode }) {
 
   const openSessions = sessions.filter((s) => s.status === 'aberto' || s.status === 'aguardando_pagamento');
   const activeSession = sessions.find((s) => s.id === activeSessionId) || null;
+  const realtime = usePedidoRealtime({
+    sessionId: activeSession?.id,
+    onSession: (session) => setSessions((prev) => prev.map((item) => item.id === session.id ? session : item)),
+  });
 
   async function createSession(clientName: string, channel: 'presencial' | 'whatsapp') {
     const res = await fetch('/api/sessions', {
@@ -99,22 +104,14 @@ export function TalaoProvider({ children }: { children: ReactNode }) {
     if (!activeSession) return;
     const id = activeSession.id;
     setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, items } : s)));
-    await fetch(`/api/sessions/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items }),
-    });
+    await realtime.updateSession({ items });
   }
 
   async function updateActiveShipping(shipping: ShippingOption | null) {
     if (!activeSession) return;
     const id = activeSession.id;
     setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, shipping: shipping || undefined } : s)));
-    await fetch(`/api/sessions/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ shipping }),
-    });
+    await realtime.updateSession({ shipping: shipping || undefined });
   }
 
   // Sempre chama a API — o servidor decide se reaproveita o token existente

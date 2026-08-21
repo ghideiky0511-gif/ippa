@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import type { Availability, ClassificationKind } from "@/lib/types";
+import type { ProductOverride } from "@/contracts/catalog";
 
 export interface ProductRow {
     id: string;
@@ -17,11 +18,7 @@ export interface ProductRow {
     attributes: Record<string, unknown>;
 }
 
-export type ProductOverrideRow = Partial<Pick<
-    import("@/lib/types").Product,
-    "referenceId" | "suggestedRetailPrice" | "markup" | "similarProductIdsQuickview" |
-    "similarProductIdsCart" | "category" | "subcategory" | "collection"
->>;
+export type ProductOverrideRow = ProductOverride;
 
 export interface ProductVariantRow {
     product_id: string;

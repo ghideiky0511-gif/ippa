@@ -7,8 +7,11 @@ import { useTalao } from './TalaoProvider';
 import { useCart } from './CartProvider';
 import { formatBRL } from '@/lib/format';
 import { getDocumentType } from '@/lib/document';
-import type { Client } from '@/domain/clients/types';
+import { z } from 'zod';
+import { ClientSchema, type Client } from '@/domain/clients/types';
 import type { OrderSession } from '@/domain/orders/types';
+
+const ClientWithLoginSchema = ClientSchema.extend({ hasLogin: z.boolean().optional() });
 
 function itemCount(session: OrderSession): number {
   return session.items.reduce((sum, i) => sum + i.qty, 0);
@@ -120,7 +123,10 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
     }
     fetch(`/api/clients/${session.clientId}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then(setLinkedClient)
+      .then((json) => {
+        const parsed = ClientWithLoginSchema.nullable().safeParse(json);
+        setLinkedClient(parsed.success ? parsed.data : null);
+      })
       .catch(() => {});
   }
 

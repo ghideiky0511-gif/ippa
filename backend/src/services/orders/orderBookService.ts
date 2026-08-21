@@ -15,6 +15,7 @@ import { ForbiddenError, NotFoundError, ValidationError } from "@/services/share
 import { notifyOrderBook, notifySession } from "@/services/realtime/updateBroadcast";
 import { toOrderSession } from "./orderMapper";
 import { getOrderBookSessionState } from "./orderBookLifecycle";
+import { CreateOrderBookInputSchema } from "@/contracts/orders";
 
 function toOrderBook(row: OrderBookRow): OrderBook {
     return {
@@ -51,9 +52,11 @@ export async function activeOrderBook(tenant: Tenant, user: AuthUser): Promise<O
     return result;
 }
 
-export async function createOrderBook(tenant: Tenant, user: AuthUser, body: { name?: unknown }): Promise<OrderBook> {
+export async function createOrderBook(tenant: Tenant, user: AuthUser, rawBody: unknown): Promise<OrderBook> {
     requireInternal(user);
-    const name = typeof body.name === "string" ? body.name.trim() : "";
+    const parsed = CreateOrderBookInputSchema.safeParse(rawBody);
+    if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
+    const name = parsed.data.name?.trim() ?? "";
     if (!name) throw new ValidationError("ORDER_BOOK_NAME_REQUIRED");
     const book = toOrderBook(await withTenantTransaction(tenant, user, (client) => insertOrderBookRow(client, user.id, name)));
     notifyOrderBook(tenant.id, book);

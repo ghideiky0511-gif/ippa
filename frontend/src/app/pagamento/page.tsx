@@ -89,10 +89,9 @@ export default function PagamentoPage() {
     );
   }
 
-  // Compra sem talão nenhum (guest ou cliente comprando sozinha) pode ser
-  // montada sem login, mas finalizar exige conta — combinado com o usuário:
-  // sem login não dá pra sequer ver preço (ver hidePriceWithoutLogin em
-  // /ferramentas), então também não faz sentido fechar pedido sem login.
+  // O carrinho remoto só é criado para cliente autenticada. Portanto,
+  // visitante pode navegar pelo catálogo, mas precisa entrar antes de
+  // chegar a qualquer etapa de checkout.
   if (!authUser) {
     return (
       <main className="contents">

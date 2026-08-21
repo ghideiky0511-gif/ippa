@@ -1,5 +1,4 @@
 import type { PoolClient } from "pg";
-import type { CartItem } from "@/lib/types";
 
 export interface ClientRow {
     id: string; name: string; cpf_cnpj: string | null; email: string | null;
@@ -113,14 +112,3 @@ export async function deleteClientRow(client: PoolClient, id: string): Promise<C
     return result.rows[0] ?? null;
 }
 
-export async function deleteClientCartRows(client: PoolClient, clientId: string): Promise<void> {
-    await client.query("DELETE FROM client_cart_items WHERE tenant_id = app_tenant_id() AND client_id = $1", [clientId]);
-}
-
-export async function insertClientCartRow(client: PoolClient, clientId: string, item: CartItem): Promise<void> {
-    await client.query(
-        `INSERT INTO client_cart_items (tenant_id, client_id, cart_key, product_id, snapshot)
-         VALUES (app_tenant_id(), $1, $2, $3, $4)`,
-        [clientId, item.key, item.id || null, JSON.stringify(item)],
-    );
-}

@@ -1,5 +1,5 @@
+import { ClientsPageSchema, type ClientsPage } from '@/domain/clients/types';
 import { adminJsonServer } from './httpServer';
-import type { ClientsPage } from './customersClient';
 
 function clientsPath({ query = '', page = 1, pageSize = 20 }: { query?: string; page?: number; pageSize?: number } = {}) {
   const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
@@ -8,5 +8,5 @@ function clientsPath({ query = '', page = 1, pageSize = 20 }: { query?: string; 
 }
 
 export function fetchClients(params?: { query?: string; page?: number; pageSize?: number }): Promise<ClientsPage> {
-  return adminJsonServer(clientsPath(params), {}, 'Não foi possível carregar os clientes.');
+  return adminJsonServer(clientsPath(params), ClientsPageSchema, {}, 'Não foi possível carregar os clientes.');
 }

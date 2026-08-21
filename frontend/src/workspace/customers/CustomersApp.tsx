@@ -7,6 +7,7 @@ import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import { KpiCard } from '@/workspace/components/shared/KpiCard';
 import { ResponsiveDataTable } from '@/workspace/components/shared/ResponsiveDataTable';
 import { addClientByDocument, fetchClientsPage, type ClientsPage } from '@/workspace/lib/customersClient';
+import { CpfCnpjSchema } from '@/contracts/shared';
 
 function AddClientByDocumentModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => Promise<void> }) {
   const [document, setDocument] = useState('');
@@ -15,11 +16,12 @@ function AddClientByDocumentModal({ onClose, onAdded }: { onClose: () => void; o
   const [loading, setLoading] = useState(false);
 
   async function submit() {
-    const digits = document.replace(/\D/g, '');
-    if (digits.length !== 11 && digits.length !== 14) {
+    const parsedDocument = CpfCnpjSchema.safeParse(document);
+    if (!parsedDocument.success) {
       setError('Informe um CPF com 11 dígitos ou um CNPJ com 14 dígitos.');
       return;
     }
+    const digits = parsedDocument.data;
     setLoading(true);
     setError(null);
     setMessage(null);

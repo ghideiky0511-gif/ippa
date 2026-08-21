@@ -1,7 +1,7 @@
 'use client';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
-import type { CartItem, OrderSession, ShippingOption } from '@/domain/orders/types';
+import { OrderSessionSchema, type CartItem, type OrderSession, type ShippingOption } from '@/domain/orders/types';
 import { pedidoRealtimeEventMessage, usePedidoRealtime, type PedidoParticipant, type PedidoPresence } from '@/lib/realtime/usePedidoRealtime';
 import { apiFetch } from '@/lib/api-client';
 import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
@@ -16,6 +16,7 @@ interface ClientSessionContextValue {
   participants: PedidoParticipant[];
   updateActiveItems: (items: CartItem[]) => Promise<void>;
   updateActiveShipping: (shipping: ShippingOption | null) => Promise<void>;
+  createActiveSession: (items: CartItem[]) => Promise<OrderSession | null>;
   adoptSession: (session: OrderSession) => void;
 }
 
@@ -38,7 +39,10 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
   function refetch() {
     return apiFetch('/api/sessions/mine', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
-      .then((session: OrderSession | null) => setActiveSession(session))
+      .then((json) => {
+        const parsed = OrderSessionSchema.nullable().safeParse(json);
+        setActiveSession(parsed.success ? parsed.data : null);
+      })
       .catch(() => {});
   }
 
@@ -48,12 +52,13 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
 
   // O socket aplica o snapshot da sessão sem F5: itens, frete e status;
   // a lista de presença informa quando a vendedora entra ou sai do pedido.
-  usePedidoRealtime({
+  const realtime = usePedidoRealtime({
     sessionId: activeSession?.id,
     onSession: setActiveSession,
     onPresence: setPresence,
     onParticipants: setParticipants,
     onEvent: (event) => toast.info(pedidoRealtimeEventMessage(event)),
+    allowCustomerSessionCreation: !activeSession,
   });
 
   useUpdatesRealtime((update) => {
@@ -64,16 +69,12 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
     if (!activeSession) return;
     const id = activeSession.id;
     setActiveSession((prev) => (prev && prev.id === id ? { ...prev, items } : prev));
-    const response = await apiFetch(`/api/sessions/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items }),
-    });
+    const response = await realtime.updateSession({ items }).then(() => true).catch(() => false);
     // Sem isso, um pedido já pago/cancelado (ex.: a vendedora finalizou
     // enquanto a cliente ainda editava o carrinho) rejeita o PUT em
     // silêncio: o item some da tela mas nunca é salvo, e a cliente não
     // percebe. `refetch()` traz o estado real (a sessão fechada) de volta.
-    if (!response.ok) {
+    if (!response) {
       toast.error('Este pedido já foi fechado. Atualizando...');
       await refetch();
     }
@@ -83,14 +84,21 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
     if (!activeSession) return;
     const id = activeSession.id;
     setActiveSession((prev) => (prev && prev.id === id ? { ...prev, shipping: shipping || undefined } : prev));
-    const response = await apiFetch(`/api/sessions/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ shipping }),
-    });
-    if (!response.ok) {
+    const response = await realtime.updateSession({ shipping: shipping || undefined }).then(() => true).catch(() => false);
+    if (!response) {
       toast.error('Este pedido já foi fechado. Atualizando...');
       await refetch();
+    }
+  }
+
+  async function createActiveSession(items: CartItem[]): Promise<OrderSession | null> {
+    try {
+      const session = await realtime.createCustomerSession(items);
+      setActiveSession(session);
+      return session;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível criar o pedido.');
+      return null;
     }
   }
 
@@ -99,7 +107,7 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
   }
 
   const value = useMemo<ClientSessionContextValue>(
-    () => ({ activeSession, presence, participants, updateActiveItems, updateActiveShipping, adoptSession }),
+    () => ({ activeSession, presence, participants, updateActiveItems, updateActiveShipping, createActiveSession, adoptSession }),
     [activeSession, participants, presence]
   );
 

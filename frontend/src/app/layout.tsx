@@ -5,10 +5,11 @@ import { Cormorant_Garamond, Manrope } from 'next/font/google';
 import ConditionalShell from "@/components/ConditionalShell";
 import { TenantProvider } from '@/components/TenantProvider';
 import { AppToaster } from '@/components/ui/toaster';
+import { z } from "zod";
 import { backendJson, backendRequest } from "@/lib/backend";
 import type { AuthUser } from "@/domain/clients/types";
-import type { CategoryTreeEntry } from "@/domain/catalog/types";
-import type { TenantProfile } from '@/domain/tenant/types';
+import { CategoryTreeEntrySchema, StoreSettingsSchema, type CategoryTreeEntry } from "@/domain/catalog/types";
+import { TenantProfileSchema, type TenantProfile } from '@/domain/tenant/types';
 import "./tailwind.css";
 
 const manrope = Manrope({
@@ -37,7 +38,7 @@ export async function generateMetadata(): Promise<Metadata> {
   if (incomingHeaders.get('x-ippa-control') === '1') {
     return { title: 'Control IPPA', description: 'Gestão de tenants da plataforma IPPA' };
   }
-  const tenant = await backendJson<TenantProfile>('/api/tenant');
+  const tenant = await backendJson('/api/tenant', TenantProfileSchema);
   return { title: `Catálogo — ${tenant.name}`, description: `Catálogo de ${tenant.name}` };
 }
 
@@ -57,10 +58,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       </html>
     );
   }
-  const [categoryTree, authResponse, tenant] = await Promise.all([
-    backendJson<CategoryTreeEntry[]>('/api/categories'),
+  const [categoryTree, authResponse, tenant, storeSettings] = await Promise.all([
+    backendJson('/api/categories', z.array(CategoryTreeEntrySchema)),
     backendRequest('/api/auth/me'),
-    backendJson<TenantProfile>('/api/tenant'),
+    backendJson('/api/tenant', TenantProfileSchema),
+    backendJson('/api/store-settings', StoreSettingsSchema),
   ]);
   const authPayload = authResponse.ok
     ? await authResponse.json() as { user: AuthUser | null }
@@ -69,7 +71,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     <html lang="pt-BR" className={`${manrope.variable} ${cormorant.variable}`}>
       <body className="min-h-screen bg-surface-muted font-sans text-foreground">
         <TenantProvider tenant={tenant}>
-          <ConditionalShell categoryTree={categoryTree} authUser={authPayload.user}>
+          <ConditionalShell
+            categoryTree={categoryTree}
+            authUser={authPayload.user}
+            publicCatalogPrices={storeSettings.features?.publicCatalogPrices !== false}
+          >
             {children}
           </ConditionalShell>
         </TenantProvider>

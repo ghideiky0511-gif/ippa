@@ -45,20 +45,26 @@ export default function Filters({ options, filters, onChange, onClear }: {
     </>
   );
 
+  const searchField = (
+    <div className="relative min-w-0 flex-1">
+      <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+      <Input
+        className="min-w-0 pl-9 shadow-sm transition-[border-color,box-shadow] focus-visible:shadow-[0_0_0_4px_rgba(24,24,27,.10)]"
+        placeholder="Buscar por nome ou código..."
+        value={filters.term}
+        onChange={(e) => onChange({ ...filters, term: e.target.value })}
+      />
+    </div>
+  );
+
   return (
     <div className={publicUi.catalogToolbar}>
-      <div className="flex gap-2 md:items-center">
-        <div className="relative min-w-0 flex-1 md:max-w-md">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <Input
-          className="min-w-0 pl-9 shadow-sm transition-[border-color,box-shadow] focus-visible:shadow-[0_0_0_4px_rgba(24,24,27,.10)]"
-          placeholder="Buscar por nome ou código..."
-          value={filters.term}
-          onChange={(e) => onChange({ ...filters, term: e.target.value })}
-          />
-        </div>
+      {/* Mobile: barra de busca + botão que abre o Sheet com os filtros.
+          Desktop: barra de busca some daqui, filtros viram coluna fixa ao lado. */}
+      <div className="flex gap-2 md:hidden">
+        {searchField}
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-          <Button type="button" variant="outline" className="shrink-0 md:hidden" onClick={() => setMobileOpen(true)}>
+          <Button type="button" variant="outline" className="shrink-0" onClick={() => setMobileOpen(true)}>
             <SlidersHorizontal className="size-4" aria-hidden="true" />
             Filtros{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
           </Button>
@@ -73,9 +79,15 @@ export default function Filters({ options, filters, onChange, onClear }: {
           </SheetContent>
         </Sheet>
       </div>
-      <div className="mt-3 hidden items-center gap-2 md:flex">
-        {filterFields}
-        {hasActiveFilters && <Button type="button" variant="ghost" size="sm" onClick={onClear}><X className="size-4" aria-hidden="true" />Limpar</Button>}
+      <div className="hidden md:flex md:flex-col md:gap-4">
+        <h2 className={publicUi.catalogSidebarTitle}>Filtros</h2>
+        {searchField}
+        <div className={publicUi.catalogFilterGroup}>{filterFields}</div>
+        {hasActiveFilters && (
+          <Button type="button" variant="ghost" size="sm" className="self-start" onClick={onClear}>
+            <X className="size-4" aria-hidden="true" />Limpar filtros
+          </Button>
+        )}
       </div>
     </div>
   );

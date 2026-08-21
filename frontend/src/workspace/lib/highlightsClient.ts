@@ -1,8 +1,9 @@
-import type { Highlight } from '@/domain/catalog/types';
+import { z } from 'zod';
+import { HighlightSchema, type Highlight } from '@/domain/catalog/types';
 import { adminJson } from './http';
 
 export function saveHighlights(highlights: Highlight[]): Promise<Highlight[]> {
-  return adminJson('/api/highlights', {
+  return adminJson('/api/highlights', z.array(HighlightSchema), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(highlights),

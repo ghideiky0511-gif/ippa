@@ -97,15 +97,16 @@ function TopNav({ categoryTree, authUser }: { categoryTree: CategoryTreeEntry[];
   );
 }
 
-export default function AppShell({ children, categoryTree, authUser }: {
+export default function AppShell({ children, categoryTree, authUser, publicCatalogPrices }: {
   children: ReactNode;
   categoryTree: CategoryTreeEntry[];
   authUser: AuthUser | null;
+  publicCatalogPrices: boolean;
 }) {
   const isVendedora = authUser?.role === 'vendedora';
   const isCliente = authUser?.role === 'cliente';
   const body = (
-    <AuthProvider authUser={authUser}>
+    <AuthProvider authUser={authUser} publicCatalogPrices={publicCatalogPrices}>
       <QuickViewProvider>
         <CartProvider>
           <div className="flex min-h-screen flex-col">

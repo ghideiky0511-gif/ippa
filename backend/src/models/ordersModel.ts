@@ -65,7 +65,7 @@ export async function findOrderSessionRowByPaymentTokenHash(
 export async function findLatestOpenOrderSessionRowByClient(client: PoolClient, clientId: string): Promise<OrderSessionRow | null> {
     const result = await client.query<OrderSessionRow>(
         `SELECT ${sessionFields} FROM order_sessions
-         WHERE tenant_id = app_tenant_id() AND client_id = $1 AND status = 'aberto'
+         WHERE tenant_id = app_tenant_id() AND client_id = $1 AND status IN ('aberto', 'aguardando_pagamento')
          ORDER BY updated_at DESC LIMIT 1`, [clientId],
     );
     return result.rows[0] ?? null;

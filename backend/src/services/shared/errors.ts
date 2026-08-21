@@ -10,7 +10,11 @@ export class ServiceError extends Error {
 }
 
 export class ValidationError extends ServiceError {
-  constructor(code = "INVALID_INPUT", message = code) { super(code, 400, message); }
+  constructor(
+    code = "INVALID_INPUT",
+    message = code,
+    public readonly details?: unknown,
+  ) { super(code, 400, message); }
 }
 
 export class ForbiddenError extends ServiceError {

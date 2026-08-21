@@ -17,10 +17,7 @@ function isDraft(item: CartItem): boolean {
 // Um produto pode ter várias linhas no carrinho (uma por cor×tamanho
 // escolhido) — agrupadas aqui por produto pra não poluir a lista: resumo
 // recolhido (quantas cores, quantas peças, total) com "ver mais" pra
-// expandir e ver/editar linha por linha. Se o produto só tem o rascunho
-// (adicionado pelo + do card, sem grade ainda — ver addDraft em
-// CartProvider.tsx), mostra "selecione a grade" e o botão abre o
-// quick-view em vez de expandir uma lista vazia.
+// expandir e ver/editar linha por linha.
 function CartProductGroup({ productId, items }: { productId: string; items: CartItem[] }) {
   const { changeQty, removeFromCart, catalogById, cartDiscountByProduct } = useCart();
   const { openQuickView } = useQuickView();

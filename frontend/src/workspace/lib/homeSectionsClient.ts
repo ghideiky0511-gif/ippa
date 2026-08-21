@@ -1,16 +1,19 @@
-import type { HomeAiHistoryItem, HomeSection } from '@/domain/catalog/types';
+import { z } from 'zod';
+import { HomeAiHistoryItemSchema, HomeSectionSchema, type HomeAiHistoryItem, type HomeSection } from '@/domain/catalog/types';
 import { adminJson } from './http';
 
 export function saveHomeSections(sections: HomeSection[]): Promise<HomeSection[]> {
-  return adminJson('/api/home-sections', {
+  return adminJson('/api/home-sections', z.array(HomeSectionSchema), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(sections),
   }, 'Não foi possível salvar — confira os dados e tente de novo.');
 }
 
+const GenerateHomeSectionsResultSchema = z.object({ sections: z.array(HomeSectionSchema) });
+
 export async function generateHomeSections(prompt: string, currentSections: HomeSection[]): Promise<HomeSection[]> {
-  const result = await adminJson<{ sections: HomeSection[] }>('/api/admin/home-ai', {
+  const result = await adminJson('/api/admin/home-ai', GenerateHomeSectionsResultSchema, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prompt, currentSections }),
@@ -18,7 +21,9 @@ export async function generateHomeSections(prompt: string, currentSections: Home
   return result.sections;
 }
 
+const HomeAiHistoryResultSchema = z.object({ history: z.array(HomeAiHistoryItemSchema).optional() });
+
 export async function fetchHomeAiHistory(): Promise<HomeAiHistoryItem[]> {
-  const result = await adminJson<{ history?: HomeAiHistoryItem[] }>('/api/admin/home-ai/history', {}, 'Não foi possível carregar o histórico.');
+  const result = await adminJson('/api/admin/home-ai/history', HomeAiHistoryResultSchema, {}, 'Não foi possível carregar o histórico.');
   return result.history ?? [];
 }

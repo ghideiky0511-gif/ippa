@@ -107,10 +107,8 @@ export default function FretePage() {
     );
   }
 
-  // Montar/revisar o carrinho não exige login — combinado com o usuário:
-  // a partir daqui (seguir pro frete) sim, porque sem login não dá nem pra
-  // ver preço (ver hidePriceWithoutLogin em /ferramentas). O carrinho
-  // continua salvo (localStorage) enquanto ela entra/cria conta.
+  // O checkout exige uma cliente autenticada porque o carrinho pertence à
+  // sessão online dela.
   if (!authUser) {
     return (
       <main className="contents">

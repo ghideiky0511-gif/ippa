@@ -9,9 +9,13 @@ import { formatBRL } from '@/lib/format';
 import { useAuthUser } from '@/components/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
-import type { CartItem, Order } from '@/domain/orders/types';
-import type { Product } from '@/domain/products/types';
+import { z } from 'zod';
+import { OrderSchema, type CartItem, type Order } from '@/domain/orders/types';
+import { ProductSchema, type Product } from '@/domain/products/types';
 import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
+
+const OrdersSchema = z.array(OrderSchema);
+const ProductsSchema = z.array(ProductSchema);
 
 // Pedido de atacado pode ter dezenas de linhas (peça×cor×tamanho) — listar
 // item a item deixaria o card gigante. Resume por categoria (peças, qty e
@@ -48,7 +52,10 @@ export default function PedidosPage() {
     if (!authUser) return;
     fetch('/api/orders')
       .then((r) => (r.ok ? r.json() : []))
-      .then(setOrders)
+      .then((json) => {
+        const parsed = OrdersSchema.safeParse(json);
+        setOrders(parsed.success ? parsed.data : []);
+      })
       .catch(() => setOrders([]));
   }, [authUser]);
 
@@ -58,7 +65,10 @@ export default function PedidosPage() {
     if (!authUser || update !== 'orders_updated') return;
     void fetch('/api/orders', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : []))
-      .then(setOrders)
+      .then((json) => {
+        const parsed = OrdersSchema.safeParse(json);
+        setOrders(parsed.success ? parsed.data : []);
+      })
       .catch(() => {});
   });
 
@@ -69,7 +79,11 @@ export default function PedidosPage() {
   useEffect(() => {
     fetch('/api/catalog')
       .then((r) => (r.ok ? r.json() : []))
-      .then((products: Product[]) => setCatalogById(Object.fromEntries(products.map((p) => [p.id, p]))))
+      .then((json) => {
+        const parsed = ProductsSchema.safeParse(json);
+        const products = parsed.success ? parsed.data : [];
+        setCatalogById(Object.fromEntries(products.map((p) => [p.id, p])));
+      })
       .catch(() => {});
   }, []);
 
@@ -133,7 +147,11 @@ export default function PedidosPage() {
                 <span>
                   {new Date(order.date).toLocaleString('pt-BR')}
                   <span className="contents">
-                    {order.channel === 'site' ? 'via site' : 'via WhatsApp'}
+                    {order.channel === 'online'
+                      ? 'via site'
+                      : order.channel === 'whatsapp'
+                        ? 'via WhatsApp'
+                        : 'presencial'}
                   </span>
                 </span>
                 <span className="contents">{formatBRL(order.total)}</span>

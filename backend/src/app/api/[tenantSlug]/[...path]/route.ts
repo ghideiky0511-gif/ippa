@@ -11,7 +11,7 @@ import * as home from "@/services/home";
 import * as orders from "@/services/orders";
 import * as recommendations from "@/services/recommendations";
 import * as settings from "@/services/settings";
-import { NotFoundError, ServiceError } from "@/services/shared/errors";
+import { NotFoundError, ServiceError, ValidationError } from "@/services/shared/errors";
 import * as users from "@/services/users";
 import * as pushNotifications from "@/services/notifications/pushNotificationService";
 import { mintRealtimeTicket, mintUpdatesRealtimeTicket } from "@/services/realtime/ticketService";
@@ -118,12 +118,19 @@ function publicOrigin(request: NextRequest): string {
 
 function serviceError(error: unknown): NextResponse | null {
     if (!(error instanceof ServiceError)) return null;
-    const payload: Record<string, string> = {
+    const payload: Record<string, unknown> = {
         error: ERROR_MESSAGES[error.code] ?? error.message,
     };
     if (error.code === "PAYMENT_LINK_EXPIRED") {
         payload.error = "expired";
         payload.message = ERROR_MESSAGES[error.code];
+    }
+    // Issues do Zod (campo a campo) — só presente quando o erro veio de uma
+    // validação de schema na camada de serviço; não localizado pro
+    // português (ver contexto no plano de validação), é pra debug/inspeção,
+    // não pra mostrar cru pro usuário final.
+    if (error instanceof ValidationError && error.details !== undefined) {
+        payload.details = error.details;
     }
     return NextResponse.json(payload, { status: error.status });
 }
@@ -812,24 +819,6 @@ export async function PUT(
                 body,
             ),
         );
-    }
-    if (path[0] === "clients" && path[1] && path[2] === "cart") {
-        if (!Array.isArray(body.items))
-            return NextResponse.json(
-                { error: "Corpo inválido." },
-                { status: 400 },
-            );
-        const items = body.items;
-        return execute(async () => {
-            await clients.saveClientCart(
-                route.tenant,
-                authenticated.user,
-                path[1],
-                items,
-                mutationContext,
-            );
-            return { ok: true };
-        });
     }
     if (path[0] === "clients" && path[1]) {
         return execute(async () => {

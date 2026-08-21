@@ -22,10 +22,7 @@ import type { Product } from '@/domain/products/types';
 // dele, uma linha por COR escolhida — uma peça com 2 cores no carrinho
 // aparece como 1 bloco com 2 linhas de cor, não como 2 blocos repetindo
 // nome/imagem/referência. Cada linha de cor tem a grade INTEIRA de tamanhos
-// daquela cor, editável (+/- direto na linha). Peças ainda sem grade
-// escolhida (rascunho, ver addDraft em CartProvider.tsx) mostram a mesma
-// linha completa (cor/entrega/grade), só que nada ainda está no carrinho
-// de verdade até a primeira quantidade ser marcada.
+// daquela cor, editável (+/- direto na linha).
 function isDraft(item: CartItem): boolean {
   return !item.color && !item.size;
 }

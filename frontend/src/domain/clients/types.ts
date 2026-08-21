@@ -1,44 +1,26 @@
-import type { CartItem } from '@/domain/orders/types';
-
-export type UserRole = 'administrador' | 'vendedora' | 'expedicao' | 'entregador' | 'cliente';
-export interface AuthUser { id: string; email: string; name: string; role: UserRole; avatarUrl?: string; clientId?: string; permissions?: { adminAccess?: boolean; catalogAreas?: string[] }; }
-export interface Client {
-  id: string; name: string; cpfCnpj?: string; email?: string; cep?: string; street?: string; number?: string; complement?: string;
-  neighborhood?: string; city?: string; state?: string; companyResponsible?: string; storeName?: string; cart?: CartItem[];
-  cartUpdatedAt?: string; lastSellerId?: string; createdAt: string; updatedAt: string;
-}
-export interface AdminUser extends AuthUser {
-  cpfCnpj?: string;
-  clientEmail?: string;
-  cep?: string;
-  street?: string;
-  number?: string;
-  complement?: string;
-  neighborhood?: string;
-  city?: string;
-  state?: string;
-  companyResponsible?: string;
-  storeName?: string;
-  createdAt?: string;
-}
-export type CatalogArea = 'talao' | 'pedidos';
-export interface UserCredentials {
-  name: string;
-  email: string;
-  password?: string;
-  catalogAreas?: CatalogArea[];
-}
-export interface ClientRegistration extends UserCredentials {
-  password: string;
-  cpfCnpj?: string;
-  clientEmail?: string;
-  cep?: string;
-  street?: string;
-  number?: string;
-  complement?: string;
-  neighborhood?: string;
-  city?: string;
-  state?: string;
-  companyResponsible?: string;
-  storeName?: string;
-}
+// Contratos sincronizados do backend: este arquivo conserva apenas o caminho
+// de importação usado pela UI.
+export * from "@/contracts/clients";
+export {
+    AdminUserSchema,
+    AuthPermissionsSchema,
+    AuthUserSchema,
+    CatalogAreaSchema,
+    ClientRegistrationSchema,
+    ClientRegistrationUpdateSchema,
+    CustomerSignupSchema,
+    CreateUserCredentialsSchema,
+    DEFAULT_SELLER_CATALOG_AREAS,
+    PasswordSchema,
+    UpdateTenantUserInputSchema,
+    UserCredentialsSchema,
+    type CatalogArea,
+    type ClientRegistration,
+    type ClientRegistrationUpdate,
+    type CustomerSignup,
+    type AdminUser,
+    type AuthPermissions,
+    type AuthUser,
+    type UserCredentials,
+    type UserRole,
+} from "@/contracts/auth";

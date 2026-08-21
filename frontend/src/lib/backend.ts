@@ -1,4 +1,5 @@
 import { cookies, headers } from 'next/headers';
+import type { z } from 'zod';
 import { getBackendUrl } from '@/lib/api-config';
 
 const BACKEND_URL = getBackendUrl();
@@ -19,10 +20,26 @@ export async function backendRequest(pathname: string, init: RequestInit = {}): 
   });
 }
 
-export async function backendJson<T>(pathname: string, init: RequestInit = {}): Promise<T> {
+// `schema` valida a resposta em runtime (não só documenta o tipo) — uma
+// resposta fora do formato esperado lança em vez de propagar campos
+// undefined/errados pro componente. Ver plano de validação Zod na
+// fronteira da API.
+export async function backendJson<S extends z.ZodTypeAny>(
+  pathname: string,
+  schema: S,
+  init: RequestInit = {},
+): Promise<z.infer<S>> {
   const response = await backendRequest(pathname, init);
   if (!response.ok) {
     throw new Error(`Backend respondeu ${response.status} para ${pathname}.`);
   }
-  return response.json() as Promise<T>;
+  const json = await response.json();
+  const parsed = schema.safeParse(json);
+  if (!parsed.success) {
+    throw Object.assign(
+      new Error(`Resposta inválida do backend para ${pathname}.`),
+      { details: parsed.error.issues },
+    );
+  }
+  return parsed.data;
 }

@@ -1,7 +1,9 @@
+import { z } from "zod";
 import type { Tenant } from "@/lib/db/tenant";
 import type { Product, SimilarProductsRuleConfig, SimilarProductsSettings } from "@/lib/types";
 import { listCatalog } from "@/services/catalog";
 import { getSimilarProductsSettings } from "@/services/settings";
+import { ValidationError } from "@/services/shared/errors";
 
 type SimilarProductsContext = "quickview" | "cart";
 type Rule = (catalog: Product[], anchors: Product[], excluded: Set<string>, settings: SimilarProductsSettings) => Product[];
@@ -69,14 +71,20 @@ export function computeSimilarProducts(
   }).slice(0, config.limit);
 }
 
+const RecommendSimilarProductsSchema = z.object({
+  context: z.enum(["quickview", "cart"]).optional(),
+  productIds: z.array(z.string()).optional(),
+});
+
 export async function recommendSimilarProducts(
   tenant: Tenant,
-  body: { context?: unknown; productIds?: unknown },
+  rawBody: unknown,
 ): Promise<{ products: Product[] }> {
+  const parsed = RecommendSimilarProductsSchema.safeParse(rawBody);
+  if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
+  const body = parsed.data;
   const context: SimilarProductsContext = body.context === "cart" ? "cart" : "quickview";
-  const productIds = Array.isArray(body.productIds)
-    ? body.productIds.filter((id): id is string => typeof id === "string")
-    : [];
+  const productIds = body.productIds ?? [];
   const [catalog, settings] = await Promise.all([listCatalog(tenant), getSimilarProductsSettings(tenant)]);
   const byId = new Map(catalog.map((product) => [product.id, product]));
   const anchors = productIds.map((id) => byId.get(id)).filter((product): product is Product => Boolean(product));

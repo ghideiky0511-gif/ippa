@@ -1,3 +1,10 @@
+import { z } from "zod";
+import {
+  ClientRegistrationSchema,
+  ClientRegistrationUpdateSchema,
+  PasswordSchema,
+} from "@/contracts/auth";
+import { documentDigits, EmailSchema } from "@/contracts/shared";
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser, Client } from "@/lib/types";
@@ -9,42 +16,45 @@ import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@
 import { createUserRecord, isAdministrator } from "@/services/users/userService";
 import { toClient } from "./clientMapper";
 
-function text(value: unknown): string | undefined {
-  return typeof value === "string" ? value.trim() || undefined : undefined;
-}
+// Campos comerciais usam clientEmail para não confundir contato com o e-mail
+// de login. O contrato já normaliza textos, documento e e-mail.
+const ClientRegistrationFieldsSchema = ClientRegistrationUpdateSchema;
 
-function registration(body: Record<string, unknown>, fallbackEmail?: string): Omit<Client, "id" | "createdAt" | "updatedAt"> {
+function registration(body: z.infer<typeof ClientRegistrationFieldsSchema>, fallbackEmail?: string): Omit<Client, "id" | "createdAt" | "updatedAt"> {
   return {
-    name: text(body.name) ?? "",
-    cpfCnpj: text(body.cpfCnpj),
-    email: text(body.clientEmail) ?? fallbackEmail,
-    cep: text(body.cep),
-    street: text(body.street),
-    number: text(body.number),
-    complement: text(body.complement),
-    neighborhood: text(body.neighborhood),
-    city: text(body.city),
-    state: text(body.state),
-    companyResponsible: text(body.companyResponsible),
-    storeName: text(body.storeName),
+    name: body.name ?? "",
+    cpfCnpj: body.cpfCnpj,
+    email: body.clientEmail ?? fallbackEmail,
+    cep: body.cep,
+    street: body.street,
+    number: body.number,
+    complement: body.complement,
+    neighborhood: body.neighborhood,
+    city: body.city,
+    state: body.state,
+    companyResponsible: body.companyResponsible,
+    storeName: body.storeName,
   };
 }
+
+const CreateAdministrativeClientSchema = ClientRegistrationSchema;
 
 export async function createAdministrativeClient(
   tenant: Tenant,
   actor: AuthUser,
-  body: Record<string, unknown>,
+  body: unknown,
   context: AuditRequestContext,
 ): Promise<AuthUser & { cpfCnpj?: string }> {
   if (!isAdministrator(actor)) throw new ForbiddenError();
-  const name = text(body.name);
-  const email = text(body.email)?.toLowerCase();
-  const password = typeof body.password === "string" ? body.password : "";
-  if (!name || !email || !password) throw new ValidationError();
-  if (password.length < 6) throw new ValidationError("WEAK_PASSWORD");
-  const fields = registration(body, email);
+  const parsed = CreateAdministrativeClientSchema.safeParse(body);
+  if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
+  const data = parsed.data;
+  const name = data.name;
+  const email = data.email;
+  const password = data.password;
+  const fields = registration(data, email);
   const result = await withTenantTransaction(tenant, actor, async (client) => {
-    const digits = fields.cpfCnpj?.replace(/\D/g, "") ?? "";
+    const digits = fields.cpfCnpj ? documentDigits(fields.cpfCnpj) : "";
     if (digits && await findClientRowByDocumentDigits(client, digits)) throw new ConflictError("DOCUMENT_TAKEN");
     const createdClient = toClient(await insertClientRow(client, { ...fields, name }));
     const user = await createUserRecord(client, actor, context, {
@@ -56,18 +66,20 @@ export async function createAdministrativeClient(
   return result;
 }
 
+const ClientLoginSchema = z.object({ email: EmailSchema, password: PasswordSchema });
+
 export async function createClientLogin(
   tenant: Tenant,
   actor: AuthUser,
   clientId: string,
-  body: Record<string, unknown>,
+  body: unknown,
   context: AuditRequestContext,
 ): Promise<{ user: AuthUser }> {
   if (actor.role !== "vendedora" && !isAdministrator(actor)) throw new ForbiddenError();
-  const email = text(body.email)?.toLowerCase();
-  const password = typeof body.password === "string" ? body.password : "";
-  if (!email || !password) throw new ValidationError();
-  if (password.length < 6) throw new ValidationError("WEAK_PASSWORD");
+  const parsed = ClientLoginSchema.safeParse(body);
+  if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
+  const email = parsed.data.email;
+  const password = parsed.data.password;
   const user = await withTenantTransaction(tenant, actor, async (client) => {
     const clientRow = await findClientRow(client, clientId);
     if (!clientRow) throw new NotFoundError("CLIENT_NOT_FOUND");
@@ -84,22 +96,25 @@ export async function updateAdministrativeClient(
   tenant: Tenant,
   actor: AuthUser,
   clientId: string,
-  body: Record<string, unknown>,
+  rawBody: unknown,
 ): Promise<Client> {
   if (!isAdministrator(actor)) throw new ForbiddenError();
+  const parsed = ClientRegistrationFieldsSchema.safeParse(rawBody);
+  if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
+  const body = parsed.data;
   return withTenantTransaction(tenant, actor, async (client) => {
     const currentRow = await findClientRow(client, clientId);
     if (!currentRow) throw new NotFoundError("CLIENT_NOT_FOUND");
     const current = toClient(currentRow);
     const supplied = registration(body);
     const cpfCnpj = Object.hasOwn(body, "cpfCnpj") ? supplied.cpfCnpj : current.cpfCnpj;
-    const digits = cpfCnpj?.replace(/\D/g, "") ?? "";
+    const digits = cpfCnpj ? documentDigits(cpfCnpj) : "";
     if (digits) {
       const duplicate = await findClientRowByDocumentDigits(client, digits);
       if (duplicate && duplicate.id !== clientId) throw new ConflictError("DOCUMENT_TAKEN");
     }
     const updated = await updateClientRow(client, clientId, {
-      name: text(body.name) ?? current.name,
+      name: body.name ?? current.name,
       cpfCnpj,
       email: Object.hasOwn(body, "clientEmail") ? supplied.email : current.email,
       cep: Object.hasOwn(body, "cep") ? supplied.cep : current.cep,

@@ -1,13 +1,14 @@
 'use client';
-import { createContext, ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import { useTalao } from './TalaoProvider';
 import { useClientSession } from './ClientSessionProvider';
 import { useAuthUser } from './AuthProvider';
 import { getCartDiscount, type AppliedDiscount } from '@/lib/discounts';
-import { apiFetch } from '@/lib/api-client';
-import type { CartItem, Order, OrderSession, ShippingOption } from '@/domain/orders/types';
-import type { Discount } from '@/domain/catalog/types';
-import type { Product } from '@/domain/products/types';
+import { type CartItem, type Order, type ShippingOption } from '@/domain/orders/types';
+import { DiscountSchema, type Discount } from '@/domain/catalog/types';
+import { ProductSchema, type Product } from '@/domain/products/types';
+import { z } from 'zod';
 
 interface CartContextValue {
   cart: CartItem[];
@@ -45,14 +46,7 @@ interface CartContextValue {
     stockQty?: number,
     backorderDate?: string
   ) => void;
-  // Adiciona o produto ao carrinho sem cor/tamanho definidos ainda (botão +
-  // do card) — vira um item "rascunho" (ver CartItem em types.ts), qty 0,
-  // até a pessoa escolher a grade no quick-view. Não duplica: se o produto
-  // já tem qualquer item no carrinho (rascunho ou resolvido), não faz nada.
-  addDraft: (product: Product) => void;
-  // Contrário do addDraft — tira TODAS as linhas daquele produto do
-  // carrinho (rascunho e/ou grade já escolhida), usado quando clica no ✓
-  // do card pra desfazer.
+  // Tira todas as linhas daquele produto do pedido.
   removeProduct: (productId: string) => void;
   changeQty: (key: string, qty: number) => void;
   removeFromCart: (key: string) => void;
@@ -69,7 +63,7 @@ interface CartContextValue {
   // "desfazer" e apagar uma linha (removeKeys sem addItems).
   replaceItems: (removeKeys: string[], addItems: CartItem[]) => void;
   clearCart: () => void;
-  saveOrderToHistory: (items: CartItem[], total: number, extra?: Record<string, unknown>) => Order;
+  saveOrderToHistory: (items: CartItem[], total: number, extra?: Record<string, unknown>) => Omit<Order, 'status'>;
   shipping: ShippingOption | null;
   setShipping: (shipping: ShippingOption | null) => void;
   clearShipping: () => void;
@@ -81,68 +75,14 @@ interface CartContextValue {
 }
 
 const CartContext = createContext<CartContextValue | null>(null);
-// Exportado porque /cadastro/page.tsx precisa ler o carrinho anônimo direto
-// do localStorage — essa página fica FORA do AppShell (ver
-// ConditionalShell.tsx, NO_SHELL_PREFIXES), então CartProvider nem está
-// montado ali, useCart() não é uma opção. É sempre o carrinho de CONVIDADA
-// (sem conta) — ver cartKeyFor abaixo, que é a mesma chave quando não há
-// authUser.
-export const CART_KEY = 'ippa_cart_v1';
-
-// Carrinho pessoal (localStorage) precisa ser por CONTA, não uma chave única
-// pro navegador inteiro — sem isso, logar com outra cliente no mesmo
-// navegador mostrava o carrinho de quem tinha logado antes ali (achado
-// reportado pelo usuário: "entrei em outro login e apareceu o carrinho de
-// outro cliente"). Convidada (sem login) continua na chave base, igual
-// sempre — é o que /cadastro/page.tsx já lê direto.
-function cartKeyFor(authUser: { id: string } | null): string {
-  return authUser ? `${CART_KEY}:${authUser.id}` : CART_KEY;
-}
-
-function readJSON<T>(key: string, fallback: T): T {
-  if (typeof window === 'undefined') return fallback;
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
 export function CartProvider({ children }: { children: ReactNode }) {
-  // Carrinho começa vazio de propósito (igual ao servidor, que nunca vê
-  // localStorage) e só é lido de verdade no efeito abaixo, depois do
-  // primeiro render — se lêssemos localStorage direto no useState (lazy
-  // initializer), o cliente hidrataria com um valor diferente do HTML
-  // vindo do servidor (que não tem acesso a localStorage) e React acusaria
-  // hydration mismatch. O eslint-disable é porque essa regra normalmente
-  // certa (evitar setState em efeito) não se aplica aqui: é exatamente
-  // esse "atualiza só depois de montar" que evita o mismatch.
-  const [cart, setCart] = useState<CartItem[]>([]);
+  // O pedido remoto é a única fonte de verdade; não há estado persistente no navegador.
+  const cart: CartItem[] = [];
   const [isCartOpen, setCartOpen] = useState(false);
-  const [hydrated, setHydrated] = useState(false);
-  // Frete escolhido no fluxo carrinho -> frete -> pagamento. Pra compra
-  // pessoal continua transitório (não precisa sobreviver a dias/reload) —
-  // mas com uma sessão de talão ativa também é persistido nela (ver
-  // useEffect e setShipping/clearShipping abaixo), porque a vendedora
-  // escolhe o frete e depois entrega o resto pra cliente terminar via link
-  // de pagamento (ver requestPaymentLink em TalaoProvider.tsx) — precisa
-  // sobreviver a ela sair da tela.
-  const [shipping, setShippingState] = useState<ShippingOption | null>(null);
   const authUserCtx = useAuthUser();
 
-  // Duas fontes possíveis de "pedido compartilhado", nunca as duas ao mesmo
-  // tempo (um só provider é montado por role, ver AppShell.tsx): talão da
-  // vendedora (TalaoProvider.tsx) ou a sessão atribuída da própria cliente
-  // logada (ClientSessionProvider.tsx — o que faz o carrinho dela virar de
-  // fato o mesmo pedido que a vendedora está montando, em vez de dois
-  // carrinhos desconectados). `sessionActions` é o objeto certo pra chamar
-  // updateActiveItems/updateActiveShipping; `activeSession` é só o dado.
-  // null pra cliente final sem sessão atribuída, ou vendedora sem sessão
-  // ativa selecionada — nesses casos o carrinho "de verdade" continua o
-  // pessoal (localStorage), mesma useCart() em
-  // ProductCard/ProductQuickView/ProductDetailContent, sem precisar saber
-  // de nada disso.
+  // Há uma única fonte de itens: a sessão selecionada pela vendedora ou a
+  // única sessão online aberta da cliente.
   const talao = useTalao();
   const clientSession = useClientSession();
   // Sessão 'fechado' não conta mais como "carrinho compartilhado ativo"
@@ -159,67 +99,18 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const clientOpen = clientSession?.activeSession && clientSession.activeSession.status !== 'fechado' && clientSession.activeSession.status !== 'cancelado' ? clientSession : null;
   const sessionActions = talaoOpen || clientOpen;
   const activeSession = sessionActions?.activeSession ?? null;
-  const latestCartRef = useRef<CartItem[]>(cart);
 
-  useEffect(() => {
-    latestCartRef.current = cart;
-  }, [cart]);
-
-  // Hidrata o frete local a partir do que já estava salvo na sessão (ex.:
-  // vendedora saiu de /frete e voltou, ou trocou de sessão ativa no talão)
-  // — sem isso o campo local ficaria sempre null até ela escolher de novo.
-  useEffect(() => {
-    if (activeSession) setShippingState(activeSession.shipping || null);
-  }, [activeSession?.id, activeSession?.shipping]);
-
-  // Quando a sessão compartilhada deixa de existir (pedido fechado, ou link
-  // de pagamento gerado — GET /api/sessions/mine só devolve status
-  // 'aberto'), effectiveCart cai pro carrinho pessoal (localStorage). Sem
-  // isso, esse carrinho pessoal — que pode ter sobrado de ANTES da sessão
-  // começar (ex.: carrinho anônimo herdado no cadastro, ver
-  // POST /api/auth/signup) — "reaparecia" na tela como se o pedido recém
-  // fechado ainda estivesse ali (achado reportado pelo usuário: "após a
-  // conclusão do pedido, o carrinho da cliente continua visível"). Só limpa
-  // na TRANSIÇÃO de "tinha sessão" pra "não tem mais", não sempre que
-  // activeSession for null (senão limparia o carrinho pessoal de quem nunca
-  // teve sessão nenhuma).
-  const hadSessionRef = useRef(false);
-  useEffect(() => {
-    if (activeSession) {
-      hadSessionRef.current = true;
-    } else if (hadSessionRef.current) {
-      hadSessionRef.current = false;
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- reação a evento (sessão fechou), não estado derivado de props
-      setCart([]);
-    }
-  }, [activeSession]);
+  const shipping = activeSession?.shipping ?? null;
 
   const [catalogById, setCatalogById] = useState<Record<string, Product>>({});
   const [discounts, setDiscounts] = useState<Discount[]>([]);
 
-  // Ref (não state) porque o efeito de gravação abaixo precisa saber a
-  // chave ATUAL sem disparar em cima da própria troca de conta — ver
-  // cartKeyFor. Se essa chave fosse uma dependência do efeito de gravação,
-  // ao trocar de conta os dois efeitos rodariam no mesmo commit e o de
-  // gravação gravaria o carrinho ANTIGO (ainda não trocado, por causa do
-  // setState assíncrono) na chave NOVA, sobrescrevendo o que essa conta já
-  // tinha salvo.
-  const cartKeyRef = useRef(cartKeyFor(authUserCtx.authUser));
-
-  useEffect(() => {
-    const key = cartKeyFor(authUserCtx.authUser);
-    cartKeyRef.current = key;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ver comentário acima do useState(cart)
-    setCart(readJSON(key, []));
-    setHydrated(true);
-    // Recarrega também quando troca de conta (login/logout sem remount do
-    // provider, ver router.refresh() em /login e /cadastro).
-  }, [authUserCtx.authUser?.id]);
-
   useEffect(() => {
     fetch('/api/catalog')
       .then((r) => (r.ok ? r.json() : []))
-      .then((products: Product[]) => {
+      .then((json) => {
+        const parsed = z.array(ProductSchema).safeParse(json);
+        const products = parsed.success ? parsed.data : [];
         setCatalogById(Object.fromEntries(products.map((p) => [p.id, p])));
       })
       .catch(() => {});
@@ -228,47 +119,30 @@ export function CartProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     fetch('/api/discounts')
       .then((r) => (r.ok ? r.json() : []))
-      .then(setDiscounts)
+      .then((json) => {
+        const parsed = z.array(DiscountSchema).safeParse(json);
+        setDiscounts(parsed.success ? parsed.data : []);
+      })
       .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (hydrated) window.localStorage.setItem(cartKeyRef.current, JSON.stringify(cart));
-  }, [cart, hydrated]);
-
-  // Promove o carrinho pessoal da cliente autenticada a um atendimento online.
-  const sessionBootstrapRef = useRef(false);
-  useEffect(() => {
-    if (!hydrated) return;
-    if (authUserCtx.authUser?.role !== 'cliente' || !authUserCtx.authUser.clientId) return;
-    if (clientSession?.activeSession || sessionBootstrapRef.current) return;
-    if (!cart.some((item) => item.qty > 0)) return;
-
-    // A primeira peça promove o rascunho local a um atendimento online. A
-    // resposta entra no ClientSessionProvider e o Socket.IO passa a manter
-    // cliente e vendedora dentro da mesma sessão.
-    sessionBootstrapRef.current = true;
-    apiFetch('/api/sessions/mine', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: latestCartRef.current }),
-    })
-      .then(async (response) => {
-        if (!response.ok) return null;
-        const session = await response.json() as OrderSession | null;
-        if (!session) return null;
-        // Captura uma alteração feita enquanto a criação estava em voo.
-        const synced = await apiFetch(`/api/sessions/${session.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items: latestCartRef.current }),
-        });
-        return synced.ok ? await synced.json() as OrderSession : session;
-      })
-      .then((session) => { if (session) clientSession?.adoptSession(session); })
-      .catch(() => {})
-      .finally(() => { sessionBootstrapRef.current = false; });
-  }, [cart, hydrated, authUserCtx.authUser?.clientId, authUserCtx.authUser?.role, clientSession]);
+  function updateItems(items: CartItem[]): void {
+    if (activeSession) {
+      void sessionActions!.updateActiveItems(items);
+      return;
+    }
+    // TODO(configuração): quando /workspace/ferramentas expuser
+    // `allowPublicCart`, esta guarda deverá consultar a flag antes de criar
+    // uma sessão para visitante. No MVP, somente cliente autenticada cria o
+    // carrinho remoto.
+    if (authUserCtx.authUser?.role === 'cliente' && clientSession) {
+      void clientSession.createActiveSession(items);
+      return;
+    }
+    toast.info(authUserCtx.authUser?.role === 'vendedora'
+      ? 'Selecione ou crie um pedido no talão antes de adicionar itens.'
+      : 'Entre na sua conta para criar um pedido.');
+  }
 
   function addToCart(
     product: Product,
@@ -279,9 +153,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
     backorderDate?: string
   ) {
     const key = [product.id, color, size].join('|');
-    // Um item resolvido (cor+tamanho escolhidos) substitui o rascunho desse
-    // produto, se existir — ver addDraft abaixo.
-    const draftKey = `${product.id}|draft`;
     function apply(base: CartItem[]): CartItem[] {
       const existing = base.find((i) => i.key === key);
       if (existing) {
@@ -294,72 +165,32 @@ export function CartProvider({ children }: { children: ReactNode }) {
         { key, id: product.id, name: product.name, image: product.image, color, size, price: product.price, qty, stockQty, backorderDate },
       ];
     }
-    if (activeSession) {
-      sessionActions!.updateActiveItems(apply(activeSession.items.filter((i) => i.key !== draftKey)));
-      return;
-    }
-    setCart((prev) => apply(prev.filter((i) => i.key !== draftKey)));
-  }
-
-  function addDraft(product: Product) {
-    const draftKey = `${product.id}|draft`;
-    const base = activeSession ? activeSession.items : cart;
-    if (base.some((i) => i.id === product.id)) return; // já tem rascunho ou item resolvido pra esse produto
-    const draft: CartItem = { key: draftKey, id: product.id, name: product.name, image: product.image, price: product.price, qty: 0 };
-    if (activeSession) {
-      sessionActions!.updateActiveItems([...base, draft]);
-      return;
-    }
-    setCart((prev) => [...prev, draft]);
+    updateItems(apply(activeSession?.items ?? []));
   }
 
   function removeProduct(productId: string) {
-    if (activeSession) {
-      sessionActions!.updateActiveItems(activeSession.items.filter((i) => i.id !== productId));
-      return;
-    }
-    setCart((prev) => prev.filter((i) => i.id !== productId));
+    updateItems((activeSession?.items ?? []).filter((i) => i.id !== productId));
   }
 
   function changeQty(key: string, qty: number) {
-    if (activeSession) {
-      sessionActions!.updateActiveItems(activeSession.items.map((i) => (i.key === key ? { ...i, qty } : i)));
-      return;
-    }
-    setCart((prev) => prev.map((i) => (i.key === key ? { ...i, qty } : i)));
+    updateItems((activeSession?.items ?? []).map((i) => (i.key === key ? { ...i, qty } : i)));
   }
 
   function removeFromCart(key: string) {
-    if (activeSession) {
-      sessionActions!.updateActiveItems(activeSession.items.filter((i) => i.key !== key));
-      return;
-    }
-    setCart((prev) => prev.filter((i) => i.key !== key));
+    updateItems((activeSession?.items ?? []).filter((i) => i.key !== key));
   }
 
   // `date: null` limpa a previsão escolhida (ex.: se a qty voltar pra
   // dentro do estoque depois de um decrement).
   function setBackorderDate(key: string, date: string | null) {
-    if (activeSession) {
-      sessionActions!.updateActiveItems(
-        activeSession.items.map((i) => (i.key === key ? { ...i, backorderDate: date ?? undefined } : i))
-      );
-      return;
-    }
-    setCart((prev) =>
-      prev.map((i) => (i.key === key ? { ...i, backorderDate: date ?? undefined } : i))
+    updateItems(
+      (activeSession?.items ?? []).map((i) => (i.key === key ? { ...i, backorderDate: date ?? undefined } : i))
     );
   }
 
   function setBackorderDateForKeys(keys: string[], date: string | null) {
     const keySet = new Set(keys);
-    if (activeSession) {
-      sessionActions!.updateActiveItems(
-        activeSession.items.map((i) => (keySet.has(i.key) ? { ...i, backorderDate: date ?? undefined } : i))
-      );
-      return;
-    }
-    setCart((prev) => prev.map((i) => (keySet.has(i.key) ? { ...i, backorderDate: date ?? undefined } : i)));
+    updateItems((activeSession?.items ?? []).map((i) => (keySet.has(i.key) ? { ...i, backorderDate: date ?? undefined } : i)));
   }
 
   // Junta `addItems` em cima do que sobrou depois de tirar `removeKeys` —
@@ -384,41 +215,28 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   function replaceItems(removeKeys: string[], addItems: CartItem[]) {
     const removeSet = new Set(removeKeys);
-    if (activeSession) {
-      const base = activeSession.items.filter((i) => !removeSet.has(i.key));
-      sessionActions!.updateActiveItems(mergeItems(base, addItems));
-      return;
-    }
-    setCart((prev) => mergeItems(prev.filter((i) => !removeSet.has(i.key)), addItems));
+    updateItems(mergeItems((activeSession?.items ?? []).filter((i) => !removeSet.has(i.key)), addItems));
   }
 
   function clearCart() {
-    if (activeSession) {
-      sessionActions!.updateActiveItems([]);
-      return;
-    }
-    setCart([]);
+    updateItems([]);
   }
 
   function setShipping(next: ShippingOption | null) {
-    setShippingState(next);
-    if (activeSession) sessionActions!.updateActiveShipping(next);
+    if (activeSession) void sessionActions!.updateActiveShipping(next);
   }
 
   function clearShipping() {
     setShipping(null);
   }
 
-  // "Meus pedidos" é sempre da CONTA agora (ver GET/POST /api/orders,
-  // web/src/app/pedidos/page.tsx) — sem login não existe pedido pra
-  // mostrar, por isso não grava mais em localStorage aqui (fazia isso
-  // antes da conta existir; sem ninguém lendo, um pedido salvo aqui só
-  // vazava informação de compra pra "aparecer" mesmo deslogada, o que já
-  // confundiu quem testou). Cliente sem login que finaliza (WhatsApp ou
-  // /pagamento) tem o pedido enviado normalmente, só não fica salvo em
-  // lugar nenhum além da própria mensagem de WhatsApp/confirmação na tela.
-  function saveOrderToHistory(items: CartItem[], total: number, extra: Record<string, unknown> = {}): Order {
-    const order: Order = {
+  // "Meus pedidos" é sempre da conta autenticada; o histórico é gravado no
+  // backend ao concluir o checkout.
+  // Payload de saída pro POST /api/orders — sem `status` porque quem
+  // decide o status real é o backend ao receber o pedido, nunca o
+  // cliente (ver Order.status em backend/src/contracts/orders.ts).
+  function saveOrderToHistory(items: CartItem[], total: number, extra: Record<string, unknown> = {}): Omit<Order, 'status'> {
+    const order: Omit<Order, 'status'> = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       date: new Date().toISOString(),
       items,
@@ -464,7 +282,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
       openCart: () => setCartOpen(true),
       closeCart: () => setCartOpen(false),
       addToCart,
-      addDraft,
       removeProduct,
       changeQty,
       removeFromCart,

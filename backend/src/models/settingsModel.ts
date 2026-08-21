@@ -1,11 +1,11 @@
 import type { PoolClient } from "pg";
-import type { AssignmentStrategy, BannerMediaType, DiscountType, HomeSectionType, SimilarProductsSettings } from "@/lib/types";
+import type { AssignmentStrategy, BannerMediaType, DiscountType, HomeSectionType, SimilarProductsSettings, StoreFeatures } from "@/lib/types";
 
 export interface StoreSettingsRow {
     default_markup: string | null;
     assignment_strategy: AssignmentStrategy | null;
     payment_link_expiration_minutes: number;
-    features: Record<string, boolean>;
+    features: StoreFeatures;
 }
 export interface DiscountRow { id: string; label: string; active: boolean; type: DiscountType; percent: string }
 export interface DiscountTierRow { discount_id: string; min_qty: number; percent: string }
@@ -28,7 +28,7 @@ export async function findStoreSettingsRow(client: PoolClient): Promise<StoreSet
 
 export async function upsertStoreSettingsRow(client: PoolClient, settings: {
     defaultMarkup: number | null; assignmentStrategy: AssignmentStrategy | null;
-    paymentLinkExpirationMinutes: number; features: Record<string, boolean>;
+    paymentLinkExpirationMinutes: number; features: StoreFeatures;
 }): Promise<void> {
     await client.query(
         `INSERT INTO store_settings (tenant_id, default_markup, assignment_strategy, payment_link_expiration_minutes, features, updated_at)

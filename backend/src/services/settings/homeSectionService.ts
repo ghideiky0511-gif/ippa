@@ -1,6 +1,8 @@
+import { z } from "zod";
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser, HomeSection } from "@/lib/types";
+import { HomeSectionSchema } from "@/contracts/catalog";
 import {
     deleteHomeSectionRows, insertHomeBannerRow, insertHomeSectionRow,
     listHomeBannerRows, listHomeSectionRows,
@@ -31,13 +33,13 @@ export async function listHomeSections(tenant: Tenant): Promise<HomeSection[]> {
     });
 }
 
+const HomeSectionsSchema = z.array(HomeSectionSchema);
+
 export async function replaceHomeSections(tenant: Tenant, actor: AuthUser, value: unknown): Promise<HomeSection[]> {
     requireSettingsAdministrator(actor);
-    if (!Array.isArray(value) || !value.every((section) => section && typeof section === "object" &&
-        typeof section.id === "string" && (section.type === "banner" || section.type === "product") &&
-        (section.type !== "product" || typeof section.productId === "string") &&
-        (section.type !== "banner" || Array.isArray(section.banners)))) throw new ValidationError();
-    const sections = (value as HomeSection[]).map((section): HomeSection => section.type === "product"
+    const parsed = HomeSectionsSchema.safeParse(value);
+    if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
+    const sections = parsed.data.map((section): HomeSection => section.type === "product"
         ? { ...section, id: databaseId(section.id) }
         : {
             ...section,
@@ -57,8 +59,6 @@ export async function replaceHomeSections(tenant: Tenant, actor: AuthUser, value
             });
             if (section.type === "banner") {
                 for (const [bannerPosition, banner] of section.banners.entries()) {
-                    if (!banner || typeof banner.id !== "string" || (banner.type !== "image" && banner.type !== "video") ||
-                        typeof banner.mediaUrl !== "string") throw new ValidationError();
                     await insertHomeBannerRow(client, section.id, { ...banner, position: bannerPosition });
                 }
             }

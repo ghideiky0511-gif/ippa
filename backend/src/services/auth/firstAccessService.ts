@@ -1,5 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { hash } from "@node-rs/argon2";
+import { CpfCnpjSchema, EmailSchema } from "@/contracts/shared";
+import { PasswordSchema } from "@/contracts/auth";
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser } from "@/lib/types";
@@ -28,13 +30,12 @@ function digest(value: string): string {
 }
 
 async function validateDocument(client: Parameters<typeof findStoreSettingsRow>[0], document: string): Promise<string> {
-    const digits = document.replace(/\D/g, "");
     const settings = await findStoreSettingsRow(client);
-    const validLength = digits.length === 11 || digits.length === 14;
-    if (!validLength || (settings?.features?.allowCpfSignup === false && digits.length !== 14)) {
+    const parsedDocument = CpfCnpjSchema.safeParse(document);
+    if (!parsedDocument.success || (settings?.features?.allowCpfSignup === false && parsedDocument.data.length !== 14)) {
         throw new ValidationError(settings?.features?.allowCpfSignup === false ? "CNPJ_REQUIRED" : "INVALID_DOCUMENT");
     }
-    return digits;
+    return parsedDocument.data;
 }
 
 export async function getCustomerDocumentAccess(
@@ -59,15 +60,16 @@ export async function startCustomerFirstAccess(
     document: string,
     password: string,
 ): Promise<{ state: "confirmation_pending" }> {
-    if (password.length < 6) throw new ValidationError("WEAK_PASSWORD");
+    if (!PasswordSchema.safeParse(password).success) throw new ValidationError("WEAK_PASSWORD");
     const token = randomBytes(32).toString("base64url");
     const recipient = await withTenantTransaction(tenant, {}, async (client) => {
         const digits = await validateDocument(client, document);
         const registration = await findClientRowByDocumentDigits(client, digits);
         if (!registration) throw new NotFoundError("CLIENT_NOT_FOUND");
         if (await findUserRowByClientId(client, registration.id)) throw new ConflictError("CLIENT_ALREADY_HAS_LOGIN");
-        const email = registration.email?.trim().toLowerCase();
-        if (!email) throw new ValidationError("FIRST_ACCESS_EMAIL_REQUIRED");
+        const parsedEmail = EmailSchema.safeParse(registration.email);
+        if (!parsedEmail.success) throw new ValidationError("FIRST_ACCESS_EMAIL_REQUIRED");
+        const email = parsedEmail.data;
         if (await findUserRowByEmail(client, email)) throw new ConflictError("EMAIL_TAKEN");
         await upsertClientAccountConfirmationRow(client, {
             clientId: registration.id,
@@ -106,8 +108,9 @@ export async function confirmCustomerFirstAccess(
         const registration = await findClientRow(client, confirmation.client_id);
         if (!registration) throw new NotFoundError("CLIENT_NOT_FOUND");
         if (await findUserRowByClientId(client, registration.id)) throw new ConflictError("CLIENT_ALREADY_HAS_LOGIN");
-        const email = registration.email?.trim().toLowerCase();
-        if (!email) throw new ValidationError("FIRST_ACCESS_EMAIL_REQUIRED");
+        const parsedEmail = EmailSchema.safeParse(registration.email);
+        if (!parsedEmail.success) throw new ValidationError("FIRST_ACCESS_EMAIL_REQUIRED");
+        const email = parsedEmail.data;
         const user = await createUserRecordWithPasswordHash(client, null, context, {
             email,
             name: registration.name,

@@ -29,10 +29,11 @@ const TOOLS = [
     description: 'Botão "pronta-entrega" no filtro de entrega da página de produto/quick-view (grade de cor×tamanho).',
   },
   {
-    id: 'hidePriceWithoutLogin',
-    label: 'Esconder preço de quem não está logado',
+    id: 'publicCatalogPrices',
+    label: 'Exibir preços no catálogo público',
     description:
-      'Visitante sem cadastro/login vê só foto, nome e cores — o preço vira um link pra entrar/criar conta. Desligada por padrão (diferente das outras ferramentas acima, aqui a peça começa sempre com preço à mostra em storeSettings.json até a loja ligar).',
+      'Ligada: visitante vê os preços. Desligada: foto, nome e cores continuam públicos, mas o valor é substituído por um convite para entrar ou criar conta.',
+    defaultEnabled: true,
   },
   {
     id: 'allowCpfSignup',
@@ -113,10 +114,15 @@ export default function ToolsApp({ initialSettings, initialSimilarProductsSettin
     [products]
   );
 
-  // Ausente em storeSettings.json = ligada (comportamento padrão de quando
-  // a ferramenta foi construída) — só `false` explícito desliga.
+  // TODO(configuração): incluir aqui a regra `allowPublicCart` quando a loja
+  // puder liberar carrinho para visitantes. Hoje o carrinho da cliente só é
+  // criado após o login e permanece uma sessão remota por vez.
+  //
+  // Ausente em storeSettings.json usa o padrão de cada ferramenta. Isso
+  // mantém o estado exibido no workspace igual ao aplicado no catálogo.
   function isEnabled(id) {
-    return settings.features?.[id] !== false;
+    const tool = TOOLS.find((item) => item.id === id);
+    return settings.features?.[id] ?? tool?.defaultEnabled ?? true;
   }
 
   async function handleToggle(id) {

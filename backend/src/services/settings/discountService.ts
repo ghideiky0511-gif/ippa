@@ -1,6 +1,8 @@
+import { z } from "zod";
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser, Discount } from "@/lib/types";
+import { DiscountSchema } from "@/contracts/catalog";
 import {
     deleteDiscountRows, insertDiscountProductRow, insertDiscountRow, insertDiscountTierRow,
     listDiscountProductRows, listDiscountRows, listDiscountTierRows,
@@ -28,20 +30,13 @@ export async function listDiscounts(tenant: Tenant): Promise<Discount[]> {
     });
 }
 
-function validDiscounts(value: unknown): value is Discount[] {
-    return Array.isArray(value) && value.every((discount) => discount && typeof discount === "object" &&
-        typeof discount.id === "string" && typeof discount.label === "string" &&
-        typeof discount.active === "boolean" && (discount.type === "quantity" || discount.type === "products") &&
-        Number.isFinite(discount.percent) && discount.percent >= 0 && discount.percent <= 100 &&
-        Array.isArray(discount.tiers) && discount.tiers.every((tier: { minQty: number; percent: number }) => Number.isFinite(tier.minQty) && tier.minQty > 0 &&
-            Number.isFinite(tier.percent) && tier.percent >= 0 && tier.percent <= 100) &&
-        Array.isArray(discount.productIds) && discount.productIds.every((id: unknown) => typeof id === "string"));
-}
+const DiscountsSchema = z.array(DiscountSchema);
 
 export async function replaceDiscounts(tenant: Tenant, actor: AuthUser, value: unknown): Promise<Discount[]> {
     requireSettingsAdministrator(actor);
-    if (!validDiscounts(value)) throw new ValidationError();
-    const discounts = value.map((discount) => ({ ...discount, id: databaseId(discount.id) }));
+    const parsed = DiscountsSchema.safeParse(value);
+    if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
+    const discounts = parsed.data.map((discount) => ({ ...discount, id: databaseId(discount.id) }));
     await withTenantTransaction(tenant, actor, async (client) => {
         await deleteDiscountRows(client);
         for (const discount of discounts) {

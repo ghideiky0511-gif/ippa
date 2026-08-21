@@ -2,6 +2,13 @@ import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser, Client } from "@/lib/types";
 import {
+    CreateClientInputSchema,
+    UpdateClientInputSchema,
+    type ClientLookupResult,
+    type ClientsPage,
+} from "@/contracts/clients";
+import { CpfCnpjSchema, documentDigits } from "@/contracts/shared";
+import {
     findClientRow,
     findClientRowByDocumentDigits,
     insertClientRow,
@@ -27,10 +34,6 @@ function canManageClients(user: AuthUser): boolean {
     return user.role !== "cliente";
 }
 
-function documentDigits(value: string): string {
-    return value.replace(/\D/g, "");
-}
-
 export async function searchTenantClients(tenant: Tenant, user: AuthUser, query?: string): Promise<Client[]> {
     if (!canManageClients(user)) throw new ForbiddenError();
     return withTenantTransaction(tenant, user, async (client) =>
@@ -38,11 +41,7 @@ export async function searchTenantClients(tenant: Tenant, user: AuthUser, query?
     );
 }
 
-export interface AdministrativeClientsPage {
-    clients: Client[];
-    pagination: { page: number; pageSize: number; total: number; totalPages: number };
-    kpis: { newThisMonth: number; withEmail: number; withAddress: number };
-}
+export type AdministrativeClientsPage = ClientsPage;
 
 export async function searchAdministrativeClients(tenant: Tenant, user: AuthUser, query?: string, requestedPage?: number, requestedPageSize?: number): Promise<AdministrativeClientsPage> {
     if (!canManageClients(user)) throw new ForbiddenError();
@@ -70,13 +69,13 @@ export async function getTenantClient(tenant: Tenant, user: AuthUser, id: string
 export async function createTenantClient(
     tenant: Tenant,
     user: AuthUser,
-    value: { name?: unknown; cpfCnpj?: unknown },
+    value: unknown,
     context: AuditRequestContext,
 ): Promise<Client> {
     if (!canManageClients(user)) throw new ForbiddenError();
-    const name = typeof value.name === "string" ? value.name.trim() : "";
-    const cpfCnpj = typeof value.cpfCnpj === "string" ? value.cpfCnpj.trim() || undefined : undefined;
-    if (!name) throw new ValidationError();
+    const parsed = CreateClientInputSchema.safeParse(value);
+    if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
+    const { name, cpfCnpj } = parsed.data;
     return withTenantTransaction(tenant, user, async (client) => {
         const digits = cpfCnpj ? documentDigits(cpfCnpj) : "";
         if (digits && await findClientRowByDocumentDigits(client, digits)) {
@@ -101,15 +100,17 @@ export async function updateTenantClient(
     tenant: Tenant,
     user: AuthUser,
     id: string,
-    value: Partial<Client>,
+    value: unknown,
     context: AuditRequestContext,
 ): Promise<Client | null> {
     if (!canManageClients(user) && user.clientId !== id) throw new ForbiddenError();
+    const parsed = UpdateClientInputSchema.safeParse(value);
+    if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
     return withTenantTransaction(tenant, user, async (client) => {
         const currentRow = await findClientRow(client, id);
         if (!currentRow) return null;
         const current = toClient(currentRow);
-        const merged = { ...current, ...value };
+        const merged = { ...current, ...parsed.data };
         const digits = merged.cpfCnpj ? documentDigits(merged.cpfCnpj) : "";
         if (digits) {
             const existing = await findClientRowByDocumentDigits(client, digits);
@@ -120,7 +121,7 @@ export async function updateTenantClient(
             name: merged.name.trim(),
         });
         if (!row) return null;
-        const changedFields = AUDITED_CLIENT_FIELDS.filter((field) => Object.hasOwn(value, field));
+        const changedFields = AUDITED_CLIENT_FIELDS.filter((field) => Object.hasOwn(parsed.data, field));
         await recordAuditEvent(client, {
             action: CLIENT_AUDIT_ACTIONS.UPDATED,
             entityId: id,
@@ -130,11 +131,6 @@ export async function updateTenantClient(
         });
         return toClient(row);
     });
-}
-
-export interface ClientLookupResult {
-    client: Client | null;
-    source: "local" | "erp" | "not_found";
 }
 
 // Fluxo do talão: vendedor busca por CPF/CNPJ exato. Cadastro local do
@@ -150,10 +146,11 @@ export async function findOrImportTenantClientByDocument(
     context: AuditRequestContext,
 ): Promise<ClientLookupResult> {
     if (!canManageClients(user)) throw new ForbiddenError();
-    const digits = documentDigits(document);
-    if (digits.length !== 11 && digits.length !== 14) {
-        throw new ValidationError("INVALID_DOCUMENT", "Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.");
+    const parsedDocument = CpfCnpjSchema.safeParse(document);
+    if (!parsedDocument.success) {
+        throw new ValidationError("INVALID_DOCUMENT", "Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.", parsedDocument.error.issues);
     }
+    const digits = parsedDocument.data;
 
     return withTenantTransaction(tenant, user, async (client) => {
         const localRow = await findClientRowByDocumentDigits(client, digits);

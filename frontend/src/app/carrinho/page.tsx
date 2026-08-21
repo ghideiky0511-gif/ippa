@@ -15,8 +15,11 @@ import CheckoutSteps from '@/components/CheckoutSteps';
 import UnselectedItemsModal from '@/components/UnselectedItemsModal';
 import SimilarProducts from '@/components/SimilarProducts';
 import { useTenant } from '@/components/TenantProvider';
+import { z } from 'zod';
 import type { CartItem } from '@/domain/orders/types';
-import type { Product } from '@/domain/products/types';
+import { ProductSchema, type Product } from '@/domain/products/types';
+
+const SimilarProductsResultSchema = z.object({ products: z.array(ProductSchema) });
 
 // Peças que estão no carrinho mas com qty 0 em todo mundo (rascunho nunca
 // resolvido, ou grade zerada — ver decrement em CartRows.tsx, que agora
@@ -65,7 +68,9 @@ export default function CarrinhoPage() {
     })
       .then((r) => (r.ok ? r.json() : { products: [] }))
       .then((data) => {
-        if (!cancelled) setSimilar(data.products || []);
+        if (cancelled) return;
+        const parsed = SimilarProductsResultSchema.safeParse(data);
+        setSimilar(parsed.success ? parsed.data.products : []);
       })
       .catch(() => {});
     return () => {

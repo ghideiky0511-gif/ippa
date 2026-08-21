@@ -8,7 +8,10 @@ import SimilarProducts from './SimilarProducts';
 import { useCart } from './CartProvider';
 import { formatBRL } from '@/lib/format';
 import { Sheet, SheetContent, SheetHeader } from '@/components/ui/sheet';
-import type { Product } from '@/domain/products/types';
+import { z } from 'zod';
+import { ProductSchema, type Product } from '@/domain/products/types';
+
+const SimilarProductsResultSchema = z.object({ products: z.array(ProductSchema) });
 
 function MiniCartPreview() {
   const { cartCount, cartTotal, openCart } = useCart();
@@ -31,7 +34,11 @@ export default function ProductQuickView({ product, onClose }: { product: Produc
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ context: 'quickview', productIds: [product.id] }),
     })
       .then((r) => (r.ok ? r.json() : { products: [] }))
-      .then((data) => { if (!cancelled) setSimilar(data.products || []); })
+      .then((data) => {
+        if (cancelled) return;
+        const parsed = SimilarProductsResultSchema.safeParse(data);
+        setSimilar(parsed.success ? parsed.data.products : []);
+      })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [product]);

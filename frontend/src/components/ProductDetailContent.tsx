@@ -24,7 +24,7 @@ function matchesAvailabilityFilter(availability: Availability, filter: Availabil
 
 export default function ProductDetailContent({ product }: { product: Product }) {
   const { cart, discounts, addToCart, changeQty, removeFromCart, setBackorderDate } = useCart();
-  const { showPrices } = useAuthUser();
+  const { authUser, showPrices } = useAuthUser();
   const matrix = useMemo(() => buildVariantMatrix(product), [product]);
   const gallery = useMemo(() => resolveGallery(product), [product]);
   const [selectedColor, setSelectedColor] = useState<string | null>(
@@ -198,6 +198,12 @@ export default function ProductDetailContent({ product }: { product: Product }) 
         )}
         {product.description && <p className="contents">{product.description}</p>}
 
+        {!authUser && (
+          <p className="contents">
+            <Link href="/login" className={publicUi.primaryButton}>Entre para montar seu carrinho</Link>
+          </p>
+        )}
+
         <div className="contents">
           <div className="contents">Cor {selectedColor ? `— ${selectedColor}` : ''}</div>
           <div className="contents">
@@ -240,7 +246,11 @@ export default function ProductDetailContent({ product }: { product: Product }) 
                         {pack.scope === 'grade' ? 'grade' : 'pack sortido'}
                       </span>
                     </span>
-                    <span className="contents">{formatBRL(pack.price)}</span>
+                    {showPrices ? (
+                      <span className="contents">{formatBRL(pack.price)}</span>
+                    ) : (
+                      <Link href="/login" className="contents">Entrar para ver o preço</Link>
+                    )}
                   </div>
                   {pack.scope === 'grade' && pack.color && (
                     <div className="contents">
@@ -373,14 +383,14 @@ export default function ProductDetailContent({ product }: { product: Product }) 
                         <div className="contents">
                           <button
                             type="button"
-                            disabled={qty === 0}
+                            disabled={!authUser || qty === 0}
                             onClick={() => decrement(row.color, size)}
                           >
                             −
                           </button>
                           <span className="qty-instock">{inStock}</span>
                           {excess > 0 && <span className="contents">+{excess}</span>}
-                          <button type="button" onClick={() => increment(row.color, size, cell.stockQty)}>
+                          <button type="button" disabled={!authUser} onClick={() => increment(row.color, size, cell.stockQty)}>
                             +
                           </button>
                         </div>

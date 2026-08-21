@@ -1,11 +1,12 @@
+import { z } from 'zod';
 import { publicUi } from '@/lib/ui';
 import ProductImage from '@/components/ProductImage';
 import { getProductsByIds } from '@/lib/catalogFacets';
 import { backendJson } from '@/lib/backend';
 import { formatBRL } from '@/lib/format';
 import PrintButton from '@/components/PrintButton';
-import type { Highlight } from '@/domain/catalog/types';
-import type { Product } from '@/domain/products/types';
+import { HighlightSchema, type Highlight } from '@/domain/catalog/types';
+import { ProductSchema, type Product } from '@/domain/products/types';
 
 // `searchParams` já é uma Request-time API — só de usar isso a página vira
 // dynamic sozinha, não precisa de `export const dynamic` aqui.
@@ -16,8 +17,8 @@ export default async function CatalogoPdfPage({
 }) {
   const { destaque } = await searchParams;
   const [catalog, highlights] = await Promise.all([
-    backendJson<Product[]>('/api/catalog'),
-    backendJson<Highlight[]>('/api/highlights'),
+    backendJson('/api/catalog', z.array(ProductSchema)),
+    backendJson('/api/highlights', z.array(HighlightSchema)),
   ]);
   const highlight = highlights.find((h) => h.id === destaque);
   const products = highlight ? getProductsByIds(catalog, highlight.productIds) : [];

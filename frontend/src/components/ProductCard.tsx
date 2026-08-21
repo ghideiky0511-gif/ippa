@@ -11,7 +11,7 @@ import CatalogProductCard from './CatalogProductCard';
 import type { Product } from '@/domain/products/types';
 
 export default function ProductCard({ product }: { product: Product }) {
-  const { addDraft, removeProduct, cart } = useCart();
+  const { removeProduct, cart } = useCart();
   const { openQuickView } = useQuickView();
   const { showPrices } = useAuthUser();
   const inCart = cart.some((item) => item.id === product.id);
@@ -22,8 +22,7 @@ export default function ProductCard({ product }: { product: Product }) {
       toast.success(`${product.name} removido do carrinho`);
       return;
     }
-    addDraft(product);
-    toast.success(`${product.name} adicionado ao carrinho`);
+    openQuickView(product);
   }
 
   const imageAction = (

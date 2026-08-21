@@ -5,7 +5,7 @@ import type { AuthUser } from '@/domain/clients/types';
 const BACKEND_URL = getBackendUrl();
 const CUSTOMER_PUBLIC_PREFIXES = ['/login', '/cadastro', '/confirmar-conta', '/pagar', '/em-construcao'];
 
-function catalogAreaForPath(pathname: string): string {
+function catalogAreaForPath(pathname: string): 'talao' | 'pedidos' {
   return pathname.startsWith('/pedidos') ? 'pedidos' : 'talao';
 }
 

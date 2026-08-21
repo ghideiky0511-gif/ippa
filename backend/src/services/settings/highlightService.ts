@@ -1,6 +1,8 @@
+import { z } from "zod";
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser, Highlight } from "@/lib/types";
+import { HighlightSchema } from "@/contracts/catalog";
 import {
     deleteHighlightRows, insertHighlightProductRow, insertHighlightRow,
     listHighlightProductRows, listHighlightRows,
@@ -23,14 +25,13 @@ export async function listHighlights(tenant: Tenant): Promise<Highlight[]> {
     });
 }
 
+const HighlightsSchema = z.array(HighlightSchema);
+
 export async function replaceHighlights(tenant: Tenant, actor: AuthUser, value: unknown): Promise<Highlight[]> {
     requireSettingsAdministrator(actor);
-    if (!Array.isArray(value) || !value.every((highlight) => highlight && typeof highlight === "object" &&
-        typeof highlight.id === "string" && typeof highlight.label === "string" &&
-        Array.isArray(highlight.productIds) && highlight.productIds.every((id: unknown) => typeof id === "string"))) {
-        throw new ValidationError();
-    }
-    const highlights = (value as Highlight[]).map((highlight) => ({ ...highlight, id: databaseId(highlight.id) }));
+    const parsed = HighlightsSchema.safeParse(value);
+    if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
+    const highlights = parsed.data.map((highlight) => ({ ...highlight, id: databaseId(highlight.id) }));
     await withTenantTransaction(tenant, actor, async (client) => {
         await deleteHighlightRows(client);
         for (const highlight of highlights) {

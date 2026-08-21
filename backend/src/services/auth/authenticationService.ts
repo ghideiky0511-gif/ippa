@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { verify } from "@node-rs/argon2";
+import { CpfCnpjSchema, EmailSchema } from "@/contracts/shared";
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser } from "@/lib/types";
@@ -33,7 +34,9 @@ export function sessionCookieName(tenantSlug: string): string {
 }
 
 export async function authenticate(tenant: Tenant, email: string, password: string): Promise<AuthUser | null> {
-    const normalizedEmail = email.trim().toLowerCase();
+    const parsedEmail = EmailSchema.safeParse(email);
+    if (!parsedEmail.success) return null;
+    const normalizedEmail = parsedEmail.data;
     return withTenantTransaction(tenant, {}, async (client) => {
         const user = await findUserRowByEmail(client, normalizedEmail);
         return user && await verify(user.password_hash, password) ? toAuthUser(user) : null;
@@ -58,7 +61,9 @@ export async function loginByDocument(
     context: AuditRequestContext,
 ): Promise<{ user: AuthUser; token: string } | null> {
     const user = await withTenantTransaction(tenant, {}, async (client) => {
-        const digits = document.replace(/\D/g, "");
+        const parsedDocument = CpfCnpjSchema.safeParse(document);
+        if (!parsedDocument.success) return null;
+        const digits = parsedDocument.data;
         const settings = await findStoreSettingsRow(client);
         if (settings?.features?.allowCpfSignup === false && digits.length !== 14) return null;
         const row = await findCustomerUserRowByDocumentDigits(client, digits);

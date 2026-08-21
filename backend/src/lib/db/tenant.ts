@@ -1,11 +1,8 @@
 import type { PoolClient } from 'pg';
 import { getPool } from './pool';
 
-export interface Tenant {
-  id: string;
-  slug: string;
-  name: string;
-}
+export type { Tenant } from '@/contracts/tenant';
+import type { Tenant } from '@/contracts/tenant';
 
 export interface ActorContext {
   userId?: string;

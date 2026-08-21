@@ -1,19 +1,16 @@
+import {
+  CreateProductInputSchema,
+  CreateProductResultSchema,
+  type CreateProductInput,
+  type CreateProductResult,
+} from '@/domain/products/types';
 import { adminJson } from './http';
 
-export interface CreateProductInput {
-  name: string;
-  price: number;
-  category?: string;
-  referenceId?: string;
-  description?: string;
-  image?: string;
-  variant?: { color: string; size: string };
-}
-
-export function createProduct(product: CreateProductInput): Promise<{ id: string }> {
-  return adminJson('/api/admin/products', {
+export function createProduct(product: CreateProductInput): Promise<CreateProductResult> {
+  const payload = CreateProductInputSchema.parse(product);
+  return adminJson('/api/admin/products', CreateProductResultSchema, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(product),
+    body: JSON.stringify(payload),
   }, 'Não foi possível cadastrar o produto.');
 }

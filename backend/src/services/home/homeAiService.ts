@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser, Banner, HomeSection, Product } from "@/lib/types";
+import type { HomeAiHistoryItem } from "@/contracts/catalog";
 import { insertHomeAiHistoryRow, listHomeAiHistoryRows } from "@/models/homeAiModel";
 import { listCatalog } from "@/services/catalog";
 import { ForbiddenError, ServiceError, ValidationError } from "@/services/shared/errors";
@@ -40,7 +41,7 @@ Produtos (id | nome | categoria | preço | foto):
 ${products.map((product) => `${product.id} | ${product.name} | ${product.category}${product.subcategory ? ` / ${product.subcategory}` : ""} | R$${product.price.toFixed(2)} | ${product.image || product.images?.length ? "com foto" : "sem foto"}`).join("\n")}`;
 }
 
-export async function homeAiHistory(tenant: Tenant, actor: AuthUser) {
+export async function homeAiHistory(tenant: Tenant, actor: AuthUser): Promise<HomeAiHistoryItem[]> {
   requireAdministrator(actor);
   return withTenantTransaction(tenant, actor, async (client) => (await listHomeAiHistoryRows(client)).map((row) => ({
     id: row.id, prompt: row.prompt, at: row.created_at.toISOString(), sections: row.sections,
