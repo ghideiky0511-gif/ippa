@@ -930,6 +930,7 @@ CREATE TABLE public.users (
 	tenant_id uuid NOT NULL,
 	email text NOT NULL,
 	"name" text NOT NULL,
+	avatar_url text NULL,
 	"role" public."user_role" NOT NULL,
 	password_hash text NOT NULL,
 	client_id uuid NULL,

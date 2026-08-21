@@ -2,6 +2,7 @@ import { hash } from "@node-rs/argon2";
 import {
     CreateTenantUserInputSchema,
     DEFAULT_SELLER_CATALOG_AREAS,
+    UpdateOwnProfileInputSchema,
     UpdateTenantUserInputSchema,
 } from "@/contracts/auth";
 import type { PoolClient } from "pg";
@@ -23,6 +24,7 @@ const PASSWORD_OPTIONS = { memoryCost: 19 * 1024, timeCost: 2, parallelism: 1 };
 export function toAuthUser(row: UserRow): AuthUser {
     return {
         id: row.id, email: row.email, name: row.name, role: row.role,
+        avatarUrl: row.avatar_url ?? undefined,
         clientId: row.client_id ?? undefined, permissions: row.permissions,
     };
 }
@@ -166,6 +168,31 @@ export async function updateTenantUser(
         });
         if (!updated) throw new NotFoundError("USER_NOT_FOUND");
         return toAuthUser(updated);
+    });
+}
+
+/** Atualiza apenas os dados de perfil da pr\u00f3pria conta autenticada. */
+export async function updateOwnProfile(
+    tenant: Tenant,
+    actor: AuthUser,
+    body: unknown,
+    context: AuditRequestContext,
+): Promise<AuthUser> {
+    const parsed = UpdateOwnProfileInputSchema.safeParse(body);
+    if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inv\u00e1lidos.", parsed.error.issues);
+
+    return withTenantTransaction(tenant, actor, async (client) => {
+        const updated = await updateUserRow(client, actor.id, parsed.data);
+        if (!updated) throw new NotFoundError("USER_NOT_FOUND");
+        const user = toAuthUser(updated);
+        await recordAuditEvent(client, {
+            action: USER_AUDIT_ACTIONS.UPDATED,
+            entityId: user.id,
+            actor,
+            context,
+            metadata: { fields: Object.keys(parsed.data) },
+        });
+        return user;
     });
 }
 

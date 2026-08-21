@@ -10,6 +10,7 @@ import {
   Shirt,
   ShoppingBag,
   UserCog,
+  UserRound,
   Users,
   type LucideIcon,
 } from 'lucide-react';
@@ -54,6 +55,7 @@ export const WORKSPACE_NAV_GROUPS: WorkspaceNavGroup[] = [
       { href: '/workspace/ferramentas', label: 'Ferramentas', icon: Settings2 },
       { href: '/workspace/integracoes', label: 'Integrações', icon: Plug },
       { href: '/workspace/usuarios', label: 'Usuários', icon: UserCog },
+      { href: '/workspace/perfil', label: 'Meu perfil', icon: UserRound },
     ],
   },
 ];

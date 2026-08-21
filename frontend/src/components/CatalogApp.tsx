@@ -185,6 +185,12 @@ export default function CatalogApp({
     // corte sempre fecha em um número inteiro de páginas, então a próxima
     // vez que o sentinela de baixo for atingido, loadMore() busca
     // exatamente a página seguinte, sem buraco nem duplicata.
+    //
+    // Crítico: só corta se o primeiro item a ser removido já está abaixo
+    // da tela (fora da viewport). Cortar só pela contagem total, sem
+    // olhar a posição real, apagava itens que o usuário ainda estava
+    // olhando no meio da lista — a grade encolhia debaixo do scroll dele.
+    const bottomGridContainerRef = useRef<HTMLDivElement>(null);
     const lastScrollYRef = useRef(0);
     useEffect(() => {
         lastScrollYRef.current = window.scrollY;
@@ -203,6 +209,15 @@ export default function CatalogApp({
                     if (prev.items.length <= maxItems) return prev;
                     const keptPages = Math.floor(maxItems / prev.pagination.pageSize);
                     const keptCount = keptPages * prev.pagination.pageSize;
+
+                    const container = bottomGridContainerRef.current;
+                    const boundaryEl = container?.children[keptCount] as HTMLElement | undefined;
+                    // Sem medir o DOM (grade ainda não montou) ou item logo
+                    // acima/dentro da tela: não corta ainda, tenta de novo
+                    // no próximo scroll. Margem de 200px pra folga contra
+                    // scroll rápido.
+                    if (!boundaryEl || boundaryEl.getBoundingClientRect().top < window.innerHeight + 200) return prev;
+
                     return {
                         ...prev,
                         items: prev.items.slice(0, keptCount),
@@ -313,7 +328,7 @@ export default function CatalogApp({
     function renderBottomGrid() {
         return (
             <>
-                <div className={publicUi.catalogGrid}>
+                <div className={publicUi.catalogGrid} ref={bottomGridContainerRef}>
                     {bottomGrid.items.map((p) => (
                         <ProductCard key={p.id} product={p} />
                     ))}

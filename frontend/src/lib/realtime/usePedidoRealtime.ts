@@ -38,7 +38,11 @@ interface SocketWaiter {
 
 export interface PedidoRealtimeConnection {
   updateSession: (changes: Partial<Pick<OrderSession, 'items' | 'shipping'>>) => Promise<void>;
-  createCustomerSession: (items: CartItem[]) => Promise<OrderSession>;
+  createCustomerSession: (items: CartItem[]) => Promise<{
+    session: OrderSession | null;
+    pendingAssignment: boolean;
+    aviso?: string;
+  }>;
 }
 
 export type PedidoRealtimeEvent =
@@ -250,10 +254,16 @@ export function usePedidoRealtime({ sessionId, onSession, onPresence, onParticip
       await emitWithAck<{ ok: boolean; motivo?: string }>('atualizar_sessao', changes);
     },
     async createCustomerSession(items: CartItem[]) {
-      const response = await emitWithAck<{ ok: boolean; session?: OrderSession; motivo?: string }>('criar_sessao_cliente', { items });
-      if (!response.session) throw new Error('O pedido não foi criado.');
-      socketSessionIdRef.current = response.session.id;
-      return response.session;
+      const response = await emitWithAck<{
+        ok: boolean; session?: OrderSession; motivo?: string;
+        pendingAssignment?: boolean; aviso?: string;
+      }>('criar_sessao_cliente', { items });
+      if (response.session) socketSessionIdRef.current = response.session.id;
+      return {
+        session: response.session ?? null,
+        pendingAssignment: response.pendingAssignment === true,
+        aviso: response.aviso,
+      };
     },
   }), [emitWithAck]);
 }

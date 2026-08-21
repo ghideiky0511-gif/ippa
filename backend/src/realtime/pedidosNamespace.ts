@@ -150,14 +150,24 @@ export function setupPedidosNamespace(io: Server): Namespace {
         // cria (ou recupera) sua única sessão online diretamente no socket.
         socket.on(
             "criar_sessao_cliente",
-            async (payload: unknown, ack?: (res: { ok: boolean; session?: ConsumedRealtimeTicket["session"]; motivo?: string }) => void) => {
+            async (payload: unknown, ack?: (res: {
+                ok: boolean; session?: ConsumedRealtimeTicket["session"]; motivo?: string;
+                pendingAssignment?: boolean; aviso?: string;
+            }) => void) => {
                 if (!(socket.data as PedidosSocketData).canCreateCustomerSession || user.role !== "cliente") {
                     return ack?.({ ok: false, motivo: "Não autorizado." });
                 }
                 try {
                     const { tenant } = socket.data as PedidosSocketData;
                     const session = await orders.ensureCustomerOrderSession(tenant, user, payload, { requestId: randomUUID() });
-                    if (!session) return ack?.({ ok: false, motivo: "Nenhuma vendedora está disponível agora." });
+                    // A ausência temporária de vendedora não impede a compra:
+                    // a cliente mantém o carrinho local e pode finalizar pelo
+                    // checkout direto. É um aviso de atendimento, não erro.
+                    if (!session) return ack?.({
+                        ok: true,
+                        pendingAssignment: true,
+                        aviso: "Seu carrinho está salvo. Uma vendedora será notificada assim que estiver disponível para participar do atendimento online.",
+                    });
                     sessionId = session.id;
                     initialSnapshot = session;
                     socket.data = { ...socket.data, sessionId, initialSnapshot, canCreateCustomerSession: false };

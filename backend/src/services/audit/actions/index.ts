@@ -25,6 +25,7 @@ export const AUDIT_ENTITY_BY_ACTION = {
   [AUTHENTICATION_AUDIT_ACTIONS.LOGGED_IN]: 'user',
   [AUTHENTICATION_AUDIT_ACTIONS.LOGGED_OUT]: 'user',
   [USER_AUDIT_ACTIONS.CREATED]: 'user',
+  [USER_AUDIT_ACTIONS.UPDATED]: 'user',
 } as const satisfies Record<AuditAction, AuditEntityType>;
 
 export type EntityForAuditAction<A extends AuditAction> = (typeof AUDIT_ENTITY_BY_ACTION)[A];

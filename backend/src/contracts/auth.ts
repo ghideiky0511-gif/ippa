@@ -42,6 +42,17 @@ export const AuthUserSchema = z.object({
 });
 export type AuthUser = z.infer<typeof AuthUserSchema>;
 
+// Edi\u00e7\u00e3o feita pela pr\u00f3pria pessoa autenticada. `null` remove a
+// foto atual; a aus\u00eancia do campo preserva o valor armazenado.
+export const UpdateOwnProfileInputSchema = z.object({
+  name: RequiredTextSchema.optional(),
+  avatarUrl: z.string().url('Informe uma URL v\u00e1lida para a foto.').nullable().optional(),
+}).refine(
+  (value) => value.name !== undefined || value.avatarUrl !== undefined,
+  { message: 'Informe ao menos um campo para atualizar.' },
+);
+export type UpdateOwnProfileInput = z.infer<typeof UpdateOwnProfileInputSchema>;
+
 // Credenciais reutilizadas na criação e edição de contas. O schema também
 // normaliza o e-mail antes que ele atravesse a fronteira da API.
 export const UserCredentialsSchema = z.object({

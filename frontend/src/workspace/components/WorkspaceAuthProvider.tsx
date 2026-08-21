@@ -3,15 +3,16 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { AuthUser } from '@/domain/clients/types';
 import { useTenant } from '@/components/TenantProvider';
-import { apiFetch } from '@/lib/api-client';
 
 interface WorkspaceAuthContextValue {
   workspaceUser: AuthUser | null;
+  updateWorkspaceUser: (user: AuthUser) => void;
   logout: () => Promise<void>;
 }
 
 const WorkspaceAuthContext = createContext<WorkspaceAuthContextValue>({
   workspaceUser: null,
+  updateWorkspaceUser: () => {},
   logout: async () => {},
 });
 
@@ -24,18 +25,18 @@ export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
   const [workspaceUser, setWorkspaceUser] = useState<AuthUser | null>(null);
 
   useEffect(() => {
-    apiFetch('/api/auth/me', { cache: 'no-store' })
+    fetch('/api/workspace-session/me', { cache: 'no-store' })
       .then((r): Promise<AuthUser | null> | null => (r.ok ? r.json().then(({ user }) => user) : null))
       .then(setWorkspaceUser)
       .catch(() => {});
   }, []);
 
   async function logout() {
-    await apiFetch('/api/auth/logout', { method: 'POST' });
+    await fetch('/api/workspace-session/logout', { method: 'POST' });
     window.location.href = href('/workspace/login');
   }
 
-  return <WorkspaceAuthContext.Provider value={{ workspaceUser, logout }}>{children}</WorkspaceAuthContext.Provider>;
+  return <WorkspaceAuthContext.Provider value={{ workspaceUser, updateWorkspaceUser: setWorkspaceUser, logout }}>{children}</WorkspaceAuthContext.Provider>;
 }
 
 export function useWorkspaceAuth() {

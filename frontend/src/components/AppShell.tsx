@@ -94,7 +94,7 @@ function TopNav({ categoryTree, authUser }: { categoryTree: CategoryTreeEntry[];
       <Link href="/" className={publicUi.topnavBrand}>{tenant.name}</Link>
       <div className={publicUi.topnavLinks}>
         {!onCatalogPage && <Link href="/catalogo">Catálogo</Link>}
-        {isVendedora && <Link href="/workspace">Voltar ao workspace</Link>}
+        {hasTalaoAccess && <Link href="/workspace">Voltar ao workspace</Link>}
         {!isInternal && <Link href="/pedidos">Meus pedidos</Link>}
         {!isInternal && <button className={publicUi.topnavCart} onClick={openCart} aria-label="Carrinho">
           <ShoppingBag className="size-5" aria-hidden="true" />

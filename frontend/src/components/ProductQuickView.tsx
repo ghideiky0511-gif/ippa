@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { ShoppingBag } from 'lucide-react';
 import ProductDetailContent from './ProductDetailContent';
@@ -26,12 +26,46 @@ function MiniCartPreview() {
 }
 
 export default function ProductQuickView({ product, onClose }: { product: Product | null; onClose: () => void }) {
-  if (!product) return null;
-  return <OpenProductQuickView key={product.id} product={product} onClose={onClose} />;
+  const { transitioningProductId } = useQuickView();
+  // Mantém o último produto exibido até a animação de saída do Sheet
+  // terminar — se desmontássemos assim que `product` vira null, a
+  // AnimatePresence nunca chegaria a rodar a transição de fechamento.
+  const [displayedProduct, setDisplayedProduct] = useState<Product | null>(product);
+  const wasPageTransitionRef = useRef(false);
+
+  if (product && product !== displayedProduct) setDisplayedProduct(product);
+  if (product) wasPageTransitionRef.current = transitioningProductId === product.id;
+  // Exceção: fechamento por navegação pra página cheia do produto já é
+  // resolvido visualmente pelo layoutId compartilhado (ProductDetailContent)
+  // — desmonta na hora, sem animação própria do Sheet, senão o painel
+  // (já transparente) arrasta esse elemento junto ao deslizar pra fora.
+  if (product === null && displayedProduct !== null && wasPageTransitionRef.current) {
+    setDisplayedProduct(null);
+  }
+
+  if (!displayedProduct) return null;
+  return (
+    <OpenProductQuickView
+      key={displayedProduct.id}
+      product={displayedProduct}
+      isOpen={product !== null}
+      onClose={onClose}
+      onClosed={() => setDisplayedProduct(null)}
+    />
+  );
 }
 
-function OpenProductQuickView({ product, onClose }: { product: Product; onClose: () => void }) {
-  const isOpen = true;
+function OpenProductQuickView({
+  product,
+  isOpen,
+  onClose,
+  onClosed,
+}: {
+  product: Product;
+  isOpen: boolean;
+  onClose: () => void;
+  onClosed: () => void;
+}) {
   const { transitioningProductId } = useQuickView();
   const [similar, setSimilar] = useState<Product[]>([]);
   const [similarProductId, setSimilarProductId] = useState<string | null>(null);
@@ -43,8 +77,6 @@ function OpenProductQuickView({ product, onClose }: { product: Product; onClose:
   const currentSimilar = similarProductId === productId ? similar : [];
 
   function closeQuickView() {
-    setSimilar([]);
-    setSimilarProductId(null);
     onClose();
   }
 
@@ -86,13 +118,13 @@ function OpenProductQuickView({ product, onClose }: { product: Product; onClose:
   }, [productId]);
 
   return (
-    <Sheet open={isOpen} onOpenChange={(open) => !open && closeQuickView()}>
+    <Sheet open={isOpen} onOpenChange={(open) => !open && closeQuickView()} onExitComplete={onClosed}>
       <SheetContent
         side="right"
         mobileSide="bottom"
         overlayClassName={isTransitioningToPage ? 'pointer-events-none bg-black/0 transition-colors duration-200' : 'transition-colors duration-200'}
         className={`w-full md:w-[70vw] ${isTransitioningToPage ? 'pointer-events-none border-transparent bg-transparent shadow-none transition-[transform,background-color,border-color,box-shadow] duration-150' : ''}`}
-        style={sheetOffsetY ? { transform: `translateY(${sheetOffsetY}px)` } : undefined}
+        dragOffsetY={sheetOffsetY || undefined}
       >
         <motion.div layoutRoot className="flex h-full min-h-0 flex-col">
           <div

@@ -1,5 +1,5 @@
 'use client';
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { OrderSessionSchema, type CartItem, type OrderSession, type ShippingOption } from '@/domain/orders/types';
 import { pedidoRealtimeEventMessage, usePedidoRealtime, type PedidoParticipant, type PedidoPresence } from '@/lib/realtime/usePedidoRealtime';
@@ -35,6 +35,7 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
   const [activeSession, setActiveSession] = useState<OrderSession | null>(null);
   const [presence, setPresence] = useState<PedidoPresence[]>([]);
   const [participants, setParticipants] = useState<PedidoParticipant[]>([]);
+  const pendingAssignmentRef = useRef(false);
 
   function refetch(): Promise<OrderSession | undefined> {
     return apiFetch('/api/sessions/mine', { cache: 'no-store' })
@@ -102,10 +103,21 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
   }
 
   async function createActiveSession(items: CartItem[]): Promise<OrderSession | null> {
+    // Sem ninguém disponível, o carrinho continua local e o checkout direto
+    // permanece liberado. Evita pedir uma nova atribuição a cada alteração.
+    if (pendingAssignmentRef.current) return null;
     try {
-      const session = await realtime.createCustomerSession(items);
-      setActiveSession(session);
-      return session;
+      const result = await realtime.createCustomerSession(items);
+      if (!result.session) {
+        if (result.pendingAssignment) {
+          pendingAssignmentRef.current = true;
+          toast.info(result.aviso || 'Seu carrinho está salvo. Uma vendedora será notificada assim que estiver disponível.');
+        }
+        return null;
+      }
+      pendingAssignmentRef.current = false;
+      setActiveSession(result.session);
+      return result.session;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Não foi possível criar o pedido.');
       return null;

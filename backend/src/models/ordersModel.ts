@@ -202,7 +202,9 @@ export async function closeStaleOrderSessionRowsByClient(client: PoolClient, cli
            AND session.client_id = $1 AND session.order_id = "order".id
            AND session.status IN ('aberto', 'aguardando_pagamento')
            AND "order".status IN ('pago', 'cancelado')
-         RETURNING ${sessionFields}`,
+         RETURNING session.id, session.order_book_id, session.client_name, session.client_id,
+           session.seller_id, session.channel, session.status, session.order_id, session.shipping,
+           session.payment_token_created_at, session.notes, session.created_at, session.updated_at`,
         [clientId],
     );
     return result.rows;

@@ -2,6 +2,7 @@
 
 import { ChevronLeft } from 'lucide-react';
 import { useTenant } from '@/components/TenantProvider';
+import Link from '@/components/TenantLink';
 import { NotificationCenter } from '@/components/notification-center';
 import { Button } from '@/components/ui/button';
 import { useWorkspaceAuth } from '@/workspace/components/WorkspaceAuthProvider';
@@ -29,7 +30,12 @@ export default function WorkspaceSidebar({ onClose }: { onClose?: () => void }) 
       </div>
       {workspaceUser && (
         <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-3">
-          <span className="truncate text-sm font-semibold text-foreground">{workspaceUser.name}</span>
+          <Link href="/workspace/perfil" className="flex min-w-0 items-center gap-2 rounded-control p-1 -m-1 hover:bg-brand-background" title="Editar meu perfil">
+            <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-primary text-xs font-extrabold text-white">
+              {workspaceUser.avatarUrl ? <img className="size-full object-cover" src={workspaceUser.avatarUrl} alt="" /> : workspaceUser.name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()}
+            </span>
+            <span className="truncate text-sm font-semibold text-foreground">{workspaceUser.name}</span>
+          </Link>
           <button type="button" className="text-[13px] font-semibold text-muted-foreground underline-offset-2 hover:text-brand-primary hover:underline" onClick={() => void logout()}>
             Sair
           </button>

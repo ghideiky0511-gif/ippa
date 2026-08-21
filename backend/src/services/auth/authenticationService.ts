@@ -20,6 +20,7 @@ function toAuthUser(row: UserRow): AuthUser {
         email: row.email,
         name: row.name,
         role: row.role,
+        avatarUrl: row.avatar_url ?? undefined,
         clientId: row.client_id ?? undefined,
         permissions: row.permissions,
     };

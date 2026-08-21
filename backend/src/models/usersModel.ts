@@ -3,10 +3,10 @@ import type { AuthUser, UserRole } from "@/lib/types";
 
 export interface UserRow {
     id: string; email: string; name: string; role: UserRole; client_id: string | null;
-    permissions: AuthUser["permissions"]; password_hash: string;
+    avatar_url: string | null; permissions: AuthUser["permissions"]; password_hash: string;
 }
 
-const userFields = "id, email, name, role, client_id, permissions, password_hash";
+const userFields = "id, email, name, role, avatar_url, client_id, permissions, password_hash";
 
 export async function findUserRowByEmail(client: PoolClient, email: string): Promise<UserRow | null> {
     const result = await client.query<UserRow>(
@@ -34,14 +34,14 @@ export async function findUserRowByClientId(client: PoolClient, clientId: string
 
 export async function insertUserRow(client: PoolClient, params: {
     email: string; name: string; role: UserRole; passwordHash: string;
-    clientId?: string; permissions: AuthUser["permissions"];
+    clientId?: string; avatarUrl?: string; permissions: AuthUser["permissions"];
 }): Promise<UserRow> {
     const result = await client.query<UserRow>(
-        `INSERT INTO users (tenant_id, email, name, role, password_hash, client_id, permissions)
-         VALUES (app_tenant_id(), $1, $2, $3, $4, $5, $6)
+        `INSERT INTO users (tenant_id, email, name, role, password_hash, avatar_url, client_id, permissions)
+         VALUES (app_tenant_id(), $1, $2, $3, $4, $5, $6, $7)
          RETURNING ${userFields}`,
         [params.email, params.name, params.role, params.passwordHash,
-         params.clientId ?? null, JSON.stringify(params.permissions ?? {})],
+         params.avatarUrl ?? null, params.clientId ?? null, JSON.stringify(params.permissions ?? {})],
     );
     return result.rows[0];
 }
@@ -57,7 +57,7 @@ export async function listUserRows(client: PoolClient): Promise<UserRow[]> {
 /** Localiza somente a conta da cliente vinculada ao CPF/CNPJ informado. */
 export async function findCustomerUserRowByDocumentDigits(client: PoolClient, documentDigits: string): Promise<UserRow | null> {
     const result = await client.query<UserRow>(
-        `SELECT users.id, users.email, users.name, users.role, users.client_id, users.permissions, users.password_hash
+        `SELECT users.id, users.email, users.name, users.role, users.avatar_url, users.client_id, users.permissions, users.password_hash
          FROM users
          JOIN clients ON clients.id = users.client_id AND clients.tenant_id = app_tenant_id()
          WHERE users.tenant_id = app_tenant_id() AND users.deleted_at IS NULL AND users.role = 'cliente'
@@ -79,15 +79,17 @@ export async function listUserRowsByIds(client: PoolClient, ids: string[]): Prom
 
 
 export async function updateUserRow(client: PoolClient, id: string, value: {
-    name?: string; email?: string; passwordHash?: string; permissions?: AuthUser["permissions"];
+    name?: string; email?: string; passwordHash?: string; avatarUrl?: string | null; permissions?: AuthUser["permissions"];
 }): Promise<UserRow | null> {
     const result = await client.query<UserRow>(
         `UPDATE users SET name = COALESCE($2, name), email = COALESCE($3, email),
-           password_hash = COALESCE($4, password_hash), permissions = COALESCE($5, permissions), updated_at = now()
+           password_hash = COALESCE($4, password_hash), permissions = COALESCE($5, permissions),
+           avatar_url = CASE WHEN $6 THEN $7 ELSE avatar_url END, updated_at = now()
          WHERE tenant_id = app_tenant_id() AND id = $1 AND deleted_at IS NULL
          RETURNING ${userFields}`,
         [id, value.name ?? null, value.email ?? null, value.passwordHash ?? null,
-         value.permissions ? JSON.stringify(value.permissions) : null],
+         value.permissions ? JSON.stringify(value.permissions) : null,
+         value.avatarUrl !== undefined, value.avatarUrl ?? null],
     );
     return result.rows[0] ?? null;
 }
