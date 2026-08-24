@@ -2,18 +2,20 @@
 import { publicUi } from '@/lib/ui';
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { ArrowRight, Share2, X } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ArrowRight, MoreHorizontal, Plus, Search, Share2, X } from 'lucide-react';
 import { useTalao } from './TalaoProvider';
 import { useCart } from './CartProvider';
 import { useTenant } from './TenantProvider';
 import { formatBRL } from '@/lib/format';
-import { getDocumentType } from '@/lib/document';
+import { clientSubtext, getDocumentType } from '@/lib/document';
 import { isClientComplete } from '@/lib/clientComplete';
 import { z } from 'zod';
 import { ClientSchema, type Client } from '@/domain/clients/types';
 import type { OrderSession } from '@/domain/orders/types';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import ShareCatalogSheet from './ShareCatalogSheet';
+import TenantLink from './TenantLink';
 
 const ClientWithLoginSchema = ClientSchema.extend({ hasLogin: z.boolean().optional() });
 
@@ -101,6 +103,8 @@ function CreateLoginSection({ client, onCreated }: { client: ClientWithLogin; on
 // ter login (ver CreateLoginSection acima).
 function ClientCadastroSection({ session }: { session: OrderSession }) {
   const talao = useTalao()!;
+  const router = useRouter();
+  const { href } = useTenant();
   const [expanded, setExpanded] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Client[]>([]);
@@ -154,6 +158,24 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
     return () => window.clearTimeout(timeout);
   }, [query]);
 
+  // Cliente master (compra por várias filiais de uma vez) — em vez de
+  // seguir no drawer, a vendedora vai direto pra página cheia do talão pra
+  // montar o atendimento de todo o grupo (decisão combinada com o
+  // usuário). Sem filiais, é uma cliente normal, segue no drawer como
+  // sempre.
+  async function redirectIfMaster(client: Client) {
+    try {
+      const res = await fetch(`/api/clients?parentId=${encodeURIComponent(client.id)}`);
+      const branches = res.ok ? await res.json() : [];
+      if (Array.isArray(branches) && branches.length > 0) {
+        talao.closeTalao();
+        router.push(href(`/workspace/talao?masterId=${client.id}`));
+      }
+    } catch {
+      // Sem confirmação de filiais, segue no drawer normalmente.
+    }
+  }
+
   async function handleCreateAndLink(e: FormEvent) {
     e.preventDefault();
     setCreateError(null);
@@ -182,6 +204,7 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
     setStoreName('');
     setEmail('');
     setCep('');
+    await redirectIfMaster(client);
   }
 
   async function handleLinkExisting(client: Client) {
@@ -190,6 +213,7 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
     setResults([]);
     setExpanded(false);
     setJustLinked(true);
+    await redirectIfMaster(client);
   }
 
   // Aparece independente do painel estar aberto/fechado — é um pendência
@@ -267,6 +291,48 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
   );
 }
 
+// Visão secundária do "+" — troca o conteúdo do drawer (não abre um painel
+// novo, decisão combinada com o usuário) por master + filiais do grupo,
+// pra vendedora escolher qual pedido quer seguir.
+function MasterGroupPanel({
+  masterName,
+  rows,
+  clientsById,
+  onBack,
+  onSelect,
+}: {
+  masterName: string;
+  rows: OrderSession[];
+  clientsById: Record<string, Client>;
+  onBack: () => void;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div className="contents">
+      <button type="button" className={publicUi.talaoViewLink} onClick={onBack}>
+        ← voltar
+      </button>
+      <div className={publicUi.talaoLabel}>{masterName} · matriz e filiais</div>
+      <div className="contents">
+        {rows.map((s) => {
+          const subtext = s.clientId ? clientSubtext(clientsById[s.clientId]) : null;
+          return (
+            <div key={s.id} className={publicUi.talaoCard} onClick={() => onSelect(s.id)}>
+              <div className={publicUi.talaoInfo}>
+                <span className={publicUi.talaoName}>{s.clientName}</span>
+                {subtext && <span className={publicUi.talaoChannel}>{subtext}</span>}
+              </div>
+              <div className={publicUi.talaoMeta}>
+                <span>{formatBRL(subtotal(s))}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // Painel do talão — referência: Colab da Teceo (imagem enviada pelo
 // usuário). Ao contrário de uma página de vendedora separada, isso abre
 // por cima do catálogo normal (mesmo padrão do CartDrawer): pedido ativo
@@ -288,6 +354,8 @@ export default function TalaoDrawer() {
   const [savingBook, setSavingBook] = useState(false);
   const [bookError, setBookError] = useState<string | null>(null);
   const [isCancelingBook, setCancelingBook] = useState(false);
+  const [isBookMenuOpen, setBookMenuOpen] = useState(false);
+  const [secondaryMasterId, setSecondaryMasterId] = useState<string | null>(null);
 
   const searchResults = useMemo(() => {
     if (!talao) return [];
@@ -298,8 +366,41 @@ export default function TalaoDrawer() {
 
   if (!talao) return null;
 
-  const { isTalaoOpen, closeTalao, activeBookSessions, cancelledBookSessions, activeSession, selectSession, closeSession, reopenSession, createSession, books, activeBook, selectBook, createBook, cancelBook } = talao;
-  const others = activeBookSessions.filter((s) => s.id !== activeSession?.id);
+  const { isTalaoOpen, closeTalao, activeBookSessions, cancelledBookSessions, activeSession, selectSession, closeSession, reopenSession, createSession, books, activeBook, selectBook, createBook, cancelBook, clientsById } = talao;
+
+  // Cliente master (parentClientId nulo) com mais de uma sessão aberta no
+  // grupo (ela + pelo menos uma filial) — colapsa numa linha só + "+".
+  // Filial cuja master também está aberta aqui fica escondida da lista
+  // solta (só aparece dentro do "+"); sem a master aberta, não tem em quem
+  // colapsar, então a filial aparece normal.
+  function masterIdFor(session: OrderSession): string | null {
+    if (!session.clientId) return null;
+    const client = clientsById[session.clientId];
+    if (!client) return null;
+    return client.parentClientId ?? client.id;
+  }
+  const groupCounts = new Map<string, number>();
+  for (const s of activeBookSessions) {
+    const key = masterIdFor(s);
+    if (key) groupCounts.set(key, (groupCounts.get(key) ?? 0) + 1);
+  }
+  function isGroupRepresentative(session: OrderSession): boolean {
+    if (!session.clientId) return false;
+    const client = clientsById[session.clientId];
+    if (!client || client.parentClientId) return false;
+    return (groupCounts.get(client.id) ?? 0) > 1;
+  }
+  function isHiddenFilial(session: OrderSession): boolean {
+    if (!session.clientId) return false;
+    const parentId = clientsById[session.clientId]?.parentClientId;
+    if (!parentId) return false;
+    return activeBookSessions.some((m) => m.clientId === parentId);
+  }
+
+  const others = activeBookSessions.filter((s) => s.id !== activeSession?.id && !isHiddenFilial(s));
+  const secondaryRows = secondaryMasterId
+    ? activeBookSessions.filter((s) => masterIdFor(s) === secondaryMasterId)
+    : [];
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
@@ -365,23 +466,78 @@ export default function TalaoDrawer() {
         </div>
 
         <div className={publicUi.drawerBody}>
+          {secondaryMasterId ? (
+            <MasterGroupPanel
+              masterName={clientsById[secondaryMasterId]?.name ?? ''}
+              rows={secondaryRows}
+              clientsById={clientsById}
+              onBack={() => setSecondaryMasterId(null)}
+              onSelect={(id) => {
+                selectSession(id);
+                setSecondaryMasterId(null);
+              }}
+            />
+          ) : (
+          <>
           <div className={publicUi.talaoLabel}>talão</div>
-          <div className="contents">
+          <div className={publicUi.talaoBookRow}>
             <select
               aria-label="Talão atual"
               value={activeBook?.id || ''}
               onChange={(e) => void handleSelectBook(e.target.value)}
-              className="min-h-10 rounded-control border border-[#ccc] bg-white px-3 text-sm"
+              className="min-h-10 flex-1 rounded-control border border-[#ccc] bg-white px-3 text-sm"
             >
               {books.map((book) => (
                 <option key={book.id} value={book.id}>{book.name}{book.isActive ? ' · atual' : ''}</option>
               ))}
             </select>
-            <button className={publicUi.subtleButton} type="button" onClick={() => setCreatingBook((v) => !v)}>+ novo talão</button>
-            {activeBook?.status === 'aberto' && (
-              <button className={publicUi.subtleButton} type="button" onClick={() => setCancelingBook(true)}>Cancelar talão</button>
-            )}
+            <div className={publicUi.talaoBookMenuWrap}>
+              <button
+                className={publicUi.drawerIconButton}
+                aria-label="Mais ações do talão"
+                onClick={() => setBookMenuOpen((v) => !v)}
+              >
+                <MoreHorizontal className="size-4" aria-hidden="true" />
+              </button>
+              {isBookMenuOpen && (
+                <>
+                  <button
+                    className="fixed inset-0 z-10 cursor-default"
+                    aria-hidden="true"
+                    tabIndex={-1}
+                    onClick={() => setBookMenuOpen(false)}
+                  />
+                  <div className={publicUi.talaoBookMenuList}>
+                    <button
+                      className={publicUi.talaoBookMenuItem}
+                      type="button"
+                      onClick={() => {
+                        setCreatingBook((v) => !v);
+                        setBookMenuOpen(false);
+                      }}
+                    >
+                      + novo talão
+                    </button>
+                    {activeBook?.status === 'aberto' && (
+                      <button
+                        className={[publicUi.talaoBookMenuItem, publicUi.talaoBookMenuItemDanger].join(' ')}
+                        type="button"
+                        onClick={() => {
+                          setCancelingBook(true);
+                          setBookMenuOpen(false);
+                        }}
+                      >
+                        Cancelar talão
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
+          <TenantLink href="/workspace/talao" className={publicUi.talaoViewLink}>
+            ver talão completo →
+          </TenantLink>
 
           {isCreatingBook && (
             <form className="contents" onSubmit={handleCreateBook}>
@@ -406,9 +562,9 @@ export default function TalaoDrawer() {
                   pedido — reinicia a animação de "troquei de cliente"
                   (talaoActiveSwap, ver globals.css) e limpa qualquer busca/
                   estado aberto do cadastro que era da cliente anterior. */}
-              <button
+              <div
                 key={`${activeSession.id}-card`}
-                className="contents"
+                className={[publicUi.talaoCard, publicUi.talaoActive].join(' ')}
                 onClick={() => {
                   closeTalao();
                   openCart();
@@ -417,17 +573,33 @@ export default function TalaoDrawer() {
               >
                 <div className={publicUi.talaoInfo}>
                   <span className={publicUi.talaoName}>{activeSession.clientName}</span>
-                  <span className={publicUi.talaoChannel}>{CHANNEL_LABELS[activeSession.channel]}</span>
+                  <span className={publicUi.talaoChannel}>
+                    {(activeSession.clientId && clientSubtext(clientsById[activeSession.clientId])) || CHANNEL_LABELS[activeSession.channel]}
+                  </span>
                   {activeSession.status === 'aguardando_pagamento' && (
                     <span className={publicUi.talaoStatus}>aguardando pagamento</span>
                   )}
                 </div>
-                <div className={publicUi.talaoMeta}>
+                <div className={publicUi.talaoMetaActive}>
                   <span>{itemCount(activeSession)} itens</span>
-                  <span className="contents">{formatBRL(subtotal(activeSession))}</span>
+                  <span>{formatBRL(subtotal(activeSession))}</span>
                 </div>
-                <ArrowRight className="size-4 shrink-0" aria-hidden="true" />
-              </button>
+                {isGroupRepresentative(activeSession) && (
+                  <button
+                    className={publicUi.talaoArrowButton}
+                    aria-label="Ver matriz e filiais"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSecondaryMasterId(activeSession.clientId!);
+                    }}
+                  >
+                    <Plus className="size-4" aria-hidden="true" />
+                  </button>
+                )}
+                <span className={publicUi.talaoArrowButton}>
+                  <ArrowRight className="size-4" aria-hidden="true" />
+                </span>
+              </div>
               <ClientCadastroSection key={`${activeSession.id}-cadastro`} session={activeSession} />
             </>
           ) : (
@@ -442,15 +614,25 @@ export default function TalaoDrawer() {
                   <div key={s.id} className={publicUi.talaoCard} onClick={() => selectSession(s.id)}>
                     <div className={publicUi.talaoInfo}>
                       <span className={publicUi.talaoName}>{s.clientName}</span>
-                      <span className={publicUi.talaoChannel}>{CHANNEL_LABELS[s.channel]}</span>
                       {s.status === 'aguardando_pagamento' && (
                         <span className={publicUi.talaoStatus}>aguardando pagamento</span>
                       )}
                     </div>
                     <div className={publicUi.talaoMeta}>
-                      <span>{itemCount(s)} itens</span>
-                      <span className="contents">{formatBRL(subtotal(s))}</span>
+                      <span>{formatBRL(subtotal(s))}</span>
                     </div>
+                    {isGroupRepresentative(s) && (
+                      <button
+                        className={publicUi.drawerIconButton}
+                        aria-label="Ver matriz e filiais"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSecondaryMasterId(s.clientId!);
+                        }}
+                      >
+                        <Plus className="size-4" aria-hidden="true" />
+                      </button>
+                    )}
                     <button
                       className={publicUi.drawerIconButton}
                       aria-label="Fechar pedido"
@@ -472,10 +654,9 @@ export default function TalaoDrawer() {
               <div className={publicUi.talaoLabel}>cancelados</div>
               <div className="contents">
                 {cancelledBookSessions.map((s) => (
-                  <div key={s.id} className={publicUi.talaoCard}>
+                  <div key={s.id} className={[publicUi.talaoCard, publicUi.talaoCardClosed].join(' ')}>
                     <div className={publicUi.talaoInfo}>
                       <span className={publicUi.talaoName}>{s.clientName || 'Sem cliente'}</span>
-                      <span className={publicUi.talaoChannel}>{CHANNEL_LABELS[s.channel]}</span>
                     </div>
                     <button className={publicUi.subtleButton} type="button" onClick={() => reopenSession(s.id)}>
                       Reativar no talão
@@ -487,18 +668,27 @@ export default function TalaoDrawer() {
           )}
 
           <div className={publicUi.talaoLabel}>adicionar mais pedidos ao talão</div>
-          <div className="contents">
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="buscar existentes" />
-            <button className={publicUi.primaryButton} type="button" onClick={() => setShowNewForm((v) => !v)}>
-              + criar novo
+          <div className={publicUi.talaoAddRow}>
+            <div className={publicUi.talaoSearchWrap}>
+              <Search className={publicUi.talaoSearchIcon} aria-hidden="true" />
+              <input
+                className={publicUi.talaoSearchInput}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="buscar existentes"
+              />
+            </div>
+            <button className={publicUi.talaoAddButton} type="button" onClick={() => setShowNewForm((v) => !v)}>
+              <Plus className="size-4" aria-hidden="true" />
+              criar novo
             </button>
           </div>
 
           {searchResults.length > 0 && (
-            <div className="contents">
+            <div className={publicUi.talaoSearchResults}>
               {searchResults.map((s) => (
-                <button key={s.id} className="contents" onClick={() => handlePickExisting(s)}>
-                  <span>{s.clientName}</span>
+                <button key={s.id} className={publicUi.talaoSearchResult} onClick={() => handlePickExisting(s)}>
+                  <span className={publicUi.talaoName}>{s.clientName}</span>
                   <span className={publicUi.talaoChannel}>{s.status === 'fechado' ? 'fechado — reabrir' : 'aberto'}</span>
                 </button>
               ))}
@@ -519,6 +709,8 @@ export default function TalaoDrawer() {
               </select>
               <button className={publicUi.primaryButton} type="submit">Criar pedido</button>
             </form>
+          )}
+          </>
           )}
         </div>
       </aside>

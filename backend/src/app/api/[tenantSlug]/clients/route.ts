@@ -24,6 +24,10 @@ export async function GET(
     );
     if (!session)
         return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+    const parentId = request.nextUrl.searchParams.get("parentId");
+    if (parentId) {
+        return execute(() => clients.listClientBranches(route.tenant, session.user, parentId));
+    }
     return execute(() =>
         clients.searchTenantClients(
             route.tenant,

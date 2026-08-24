@@ -160,7 +160,11 @@ export async function customerActiveSession(tenant: Tenant, user: AuthUser): Pro
 
 const EnsureCustomerOrderSessionSchema = z.object({ items: z.array(CartItemSchema).optional() });
 
-/** Cria uma sessão online para a cliente somente quando ela tem peças no carrinho. */
+// Cria (ou recupera) a sessão online da cliente assim que ela loga — a
+// vendedora precisa vê-la no talão antes mesmo de montar carrinho, pra
+// poder iniciar o atendimento. Itens são opcionais: chamada sem nenhum
+// (ver ClientSessionProvider.tsx, disparada no login) cria uma sessão
+// vazia; getOrCreateOpenOrder/syncOrderItems já toleram lista vazia.
 export async function ensureCustomerOrderSession(
     tenant: Tenant,
     user: AuthUser,
@@ -171,7 +175,6 @@ export async function ensureCustomerOrderSession(
     const parsed = EnsureCustomerOrderSessionSchema.safeParse(body);
     if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
     const requestedItems = parsed.data.items ?? [];
-    if (!requestedItems.some((item) => item.qty > 0)) return null;
 
     const result = await withTenantTransaction(tenant, user, async (client) => {
         const registration = await findClientRow(client, user.clientId!);

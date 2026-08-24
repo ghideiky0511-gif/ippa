@@ -1,5 +1,6 @@
 'use client';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import type { Client } from '@/domain/clients/types';
 import type { CartItem, OrderBook, OrderSession, ShippingOption } from '@/domain/orders/types';
 import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
 import { usePedidoRealtime, type PedidoParticipant, type PedidoPresence } from '@/lib/realtime/usePedidoRealtime';
@@ -44,6 +45,11 @@ interface TalaoContextValue {
   cancelBook: (id: string) => Promise<void>;
   presence: PedidoPresence[];
   participants: PedidoParticipant[];
+  // Cadastro completo (inclui parentClientId) dos clientes com sessão
+  // aberta no talão ativo — usado pra agrupar conta master + filiais e
+  // pro subtexto de documento no drawer (ver TalaoDrawer.tsx). Só cobre
+  // quem está com pedido aberto agora, não o histórico inteiro.
+  clientsById: Record<string, Client>;
 }
 
 const TalaoContext = createContext<TalaoContextValue | null>(null);
@@ -61,6 +67,7 @@ export function TalaoProvider({ children }: { children: ReactNode }) {
   const [activeBookId, setActiveBookId] = useState<string | null>(null);
   const [presence, setPresence] = useState<PedidoPresence[]>([]);
   const [participants, setParticipants] = useState<PedidoParticipant[]>([]);
+  const [clientsById, setClientsById] = useState<Record<string, Client>>({});
 
   function refetchSessions() {
     return fetch('/api/sessions', { cache: 'no-store' })
@@ -113,6 +120,28 @@ export function TalaoProvider({ children }: { children: ReactNode }) {
   const activeBook = books.find((b) => b.id === activeBookId) || null;
   const activeBookSessions = sessions.filter((s) => s.orderBookId === activeBookId && (s.status === 'aberto' || s.status === 'aguardando_pagamento'));
   const cancelledBookSessions = sessions.filter((s) => s.orderBookId === activeBookId && s.status === 'cancelado');
+
+  // Busca o cadastro completo (parentClientId incluso) de quem tem pedido
+  // aberto agora — só o necessário pro agrupamento master/filial e pro
+  // subtexto de documento (ver TalaoDrawer.tsx), não o talão inteiro.
+  const openClientIds = [...new Set(activeBookSessions.map((s) => s.clientId).filter((id): id is string => Boolean(id)))].sort().join(',');
+  useEffect(() => {
+    const ids = openClientIds ? openClientIds.split(',') : [];
+    const missing = ids.filter((id) => !(id in clientsById));
+    if (missing.length === 0) return;
+    Promise.all(missing.map((id) => fetch(`/api/clients/${id}`).then((r) => (r.ok ? r.json() : null)).catch(() => null)))
+      .then((fetched) => {
+        setClientsById((current) => {
+          const next = { ...current };
+          fetched.forEach((client: Client | null, index) => {
+            if (client) next[missing[index]] = client;
+          });
+          return next;
+        });
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openClientIds]);
+
   const realtime = usePedidoRealtime({
     sessionId: activeSession?.id,
     onSession: (session) => setSessions((prev) => prev.map((item) => item.id === session.id ? session : item)),
@@ -255,8 +284,9 @@ export function TalaoProvider({ children }: { children: ReactNode }) {
       cancelBook,
       presence,
       participants,
+      clientsById,
     }),
-    [sessions, activeSessionId, isTalaoOpen, books, activeBookId, activeBook, activeBookSessions, cancelledBookSessions, presence, participants]
+    [sessions, activeSessionId, isTalaoOpen, books, activeBookId, activeBook, activeBookSessions, cancelledBookSessions, presence, participants, clientsById]
   );
 
   return <TalaoContext.Provider value={value}>{children}</TalaoContext.Provider>;

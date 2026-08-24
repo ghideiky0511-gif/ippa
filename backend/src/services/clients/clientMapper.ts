@@ -17,6 +17,7 @@ export function toClient(row: ClientRow): Client {
         companyResponsible: row.company_responsible ?? undefined,
         storeName: row.store_name ?? undefined,
         lastSellerId: row.last_seller_id ?? undefined,
+        parentClientId: row.parent_client_id ?? undefined,
         createdAt: row.created_at.toISOString(),
         updatedAt: row.updated_at.toISOString(),
     };

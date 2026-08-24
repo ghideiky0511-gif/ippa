@@ -1,8 +1,10 @@
 import {
   ClientLookupResultSchema,
+  ClientSchema,
   ClientSyncResultSchema,
   ClientWithLoginSchema,
   ClientsPageSchema,
+  type Client,
   type ClientLookupResult,
   type ClientSyncResult,
   type ClientWithLogin,
@@ -32,4 +34,16 @@ export function fetchClient(id: string): Promise<ClientWithLogin> {
 
 export function syncClientFromErp(id: string): Promise<ClientSyncResult> {
   return adminJson(`/api/clients/${encodeURIComponent(id)}/sync-erp`, ClientSyncResultSchema, { method: 'POST' }, 'Não foi possível sincronizar com o ERP.');
+}
+
+export function fetchClientBranches(parentId: string): Promise<Client[]> {
+  return adminJson(`/api/clients?parentId=${encodeURIComponent(parentId)}`, ClientSchema.array(), {}, 'Não foi possível carregar as filiais.');
+}
+
+export function setClientParent(id: string, parentClientId: string | null): Promise<Client> {
+  return adminJson(`/api/clients/${encodeURIComponent(id)}/parent`, ClientSchema, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ parentClientId }),
+  }, 'Não foi possível vincular o cliente master.');
 }

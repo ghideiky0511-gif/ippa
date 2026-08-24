@@ -13,8 +13,10 @@ import {
     findClientRow,
     findClientRowByDocumentDigits,
     insertClientRow,
+    listClientRowsByParent,
     searchClientRows,
     searchClientRowsPage,
+    setClientParentRow,
     updateClientRow,
 } from "@/models/clientsModel";
 import { findUserRowByClientId } from "@/models/usersModel";
@@ -45,6 +47,35 @@ export async function searchTenantClients(tenant: Tenant, user: AuthUser, query?
     return withTenantTransaction(tenant, user, async (client) =>
         (await searchClientRows(client, query?.trim() || null)).map(toClient),
     );
+}
+
+/** Filiais vinculadas a um cliente master — ver setClientParent. */
+export async function listClientBranches(tenant: Tenant, user: AuthUser, parentId: string): Promise<Client[]> {
+    if (!canManageClients(user)) throw new ForbiddenError();
+    return withTenantTransaction(tenant, user, async (client) =>
+        (await listClientRowsByParent(client, parentId)).map(toClient),
+    );
+}
+
+// Vínculo manual de cliente master/filial — qualquer papel interno pode
+// fazer (é parte do atendimento, não back-office; diferente de
+// updateAdministrativeClient, que é admin-only). Hierarquia de 1 nível só:
+// o alvo (parentClientId) precisa ser uma conta raiz, sem master próprio.
+export async function setClientParent(tenant: Tenant, user: AuthUser, clientId: string, parentClientId: string | null): Promise<Client> {
+    if (!canManageClients(user)) throw new ForbiddenError();
+    if (parentClientId === clientId) throw new ValidationError("CLIENT_CANNOT_BE_OWN_PARENT");
+    return withTenantTransaction(tenant, user, async (client) => {
+        const current = await findClientRow(client, clientId);
+        if (!current) throw new NotFoundError("CLIENT_NOT_FOUND");
+        if (parentClientId) {
+            const parent = await findClientRow(client, parentClientId);
+            if (!parent) throw new NotFoundError("CLIENT_NOT_FOUND");
+            if (parent.parent_client_id) throw new ValidationError("PARENT_CLIENT_MUST_BE_ROOT");
+        }
+        const updated = await setClientParentRow(client, clientId, parentClientId);
+        if (!updated) throw new NotFoundError("CLIENT_NOT_FOUND");
+        return toClient(updated);
+    });
 }
 
 export type AdministrativeClientsPage = ClientsPage;

@@ -4,6 +4,7 @@ import {
   FolderKanban,
   LayoutDashboard,
   LayoutTemplate,
+  NotebookText,
   Percent,
   Plug,
   Settings2,
@@ -35,6 +36,7 @@ export const WORKSPACE_NAV_GROUPS: WorkspaceNavGroup[] = [
     label: 'Vendas',
     items: [
       { href: '/workspace/pedidos', label: 'Pedidos', icon: ShoppingBag },
+      { href: '/workspace/talao', label: 'Talão', icon: NotebookText },
       { href: '/workspace/clientes', label: 'Clientes', icon: Users },
       { href: '/catalogo', label: 'Catálogo', icon: ClipboardList },
     ],

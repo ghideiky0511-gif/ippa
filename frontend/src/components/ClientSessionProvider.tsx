@@ -49,8 +49,16 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
       .catch(() => undefined);
   }
 
+  // Assim que a cliente loga (não só quando adiciona a primeira peça), já
+  // garante uma sessão online vinculada a uma vendedora — combinado com o
+  // usuário: o talão precisa mostrar quem está logada mesmo de carrinho
+  // vazio, pra vendedora poder iniciar o atendimento. Sem sessão nenhuma
+  // ainda (refetch veio vazio), dispara createActiveSession([]) — mesmo
+  // caminho de atribuição que addToCart já usa, só que sem itens.
   useEffect(() => {
-    refetch();
+    refetch().then((session) => {
+      if (!session) void createActiveSession([]);
+    });
   }, []);
 
   // O socket aplica o snapshot da sessão sem F5: itens, frete e status;

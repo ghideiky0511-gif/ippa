@@ -5,17 +5,18 @@ export interface ClientRow {
     cep: string | null; street: string | null; number: string | null;
     complement: string | null; neighborhood: string | null; city: string | null;
     state: string | null; company_responsible: string | null; store_name: string | null;
-    last_seller_id: string | null; created_at: Date; updated_at: Date;
+    last_seller_id: string | null; parent_client_id: string | null; created_at: Date; updated_at: Date;
 }
 
 export interface ClientWriteRow {
     name: string; cpfCnpj?: string; email?: string; cep?: string; street?: string;
     number?: string; complement?: string; neighborhood?: string; city?: string;
     state?: string; companyResponsible?: string; storeName?: string; lastSellerId?: string;
+    parentClientId?: string;
 }
 
 const clientFields =
-    "id, name, cpf_cnpj, email, cep, street, number, complement, neighborhood, city, state, company_responsible, store_name, last_seller_id, created_at, updated_at";
+    "id, name, cpf_cnpj, email, cep, street, number, complement, neighborhood, city, state, company_responsible, store_name, last_seller_id, parent_client_id, created_at, updated_at";
 
 export interface ClientSearchPage {
     rows: ClientRow[];
@@ -78,15 +79,38 @@ export async function findClientRowByDocumentDigits(client: PoolClient, document
 
 export async function insertClientRow(client: PoolClient, value: ClientWriteRow): Promise<ClientRow> {
     const result = await client.query<ClientRow>(
-        `INSERT INTO clients (tenant_id, name, cpf_cnpj, email, cep, street, number, complement, neighborhood, city, state, company_responsible, store_name, last_seller_id)
-         VALUES (app_tenant_id(), $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        `INSERT INTO clients (tenant_id, name, cpf_cnpj, email, cep, street, number, complement, neighborhood, city, state, company_responsible, store_name, last_seller_id, parent_client_id)
+         VALUES (app_tenant_id(), $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
          RETURNING ${clientFields}`,
         [value.name, value.cpfCnpj ?? null, value.email ?? null, value.cep ?? null,
          value.street ?? null, value.number ?? null, value.complement ?? null,
          value.neighborhood ?? null, value.city ?? null, value.state ?? null,
-         value.companyResponsible ?? null, value.storeName ?? null, value.lastSellerId ?? null],
+         value.companyResponsible ?? null, value.storeName ?? null, value.lastSellerId ?? null,
+         value.parentClientId ?? null],
     );
     return result.rows[0];
+}
+
+/** Filiais vinculadas a um cliente master — ver setClientParentRow. */
+export async function listClientRowsByParent(client: PoolClient, parentId: string): Promise<ClientRow[]> {
+    const result = await client.query<ClientRow>(
+        `SELECT ${clientFields} FROM clients
+         WHERE tenant_id = app_tenant_id() AND parent_client_id = $1 ORDER BY name`, [parentId],
+    );
+    return result.rows;
+}
+
+// Update de coluna única, dedicado — updateClientRow acima não usa COALESCE
+// na maioria dos campos (todo caller precisa reenviar o cadastro inteiro,
+// ver clientAccountService.ts), então reaproveitá-lo aqui apagaria o resto
+// do cadastro sem querer.
+export async function setClientParentRow(client: PoolClient, id: string, parentClientId: string | null): Promise<ClientRow | null> {
+    const result = await client.query<ClientRow>(
+        `UPDATE clients SET parent_client_id = $2, updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND id = $1 RETURNING ${clientFields}`,
+        [id, parentClientId],
+    );
+    return result.rows[0] ?? null;
 }
 
 export async function updateClientRow(client: PoolClient, id: string, value: Partial<ClientWriteRow>): Promise<ClientRow | null> {
