@@ -1,4 +1,5 @@
 import type { ExternalApiCallReporter } from "@/lib/externalApiCall";
+import { documentDigits } from "@/contracts/shared";
 import type {
     ErpFetchOptions,
     ErpFetchResult,
@@ -24,6 +25,7 @@ import {
     type TotvsModaOrder,
     type TotvsModaPriceRow,
     type TotvsModaProductRow,
+    type TotvsModaRelated,
 } from "./mapper";
 
 const PAGE_SIZE = 100;
@@ -123,6 +125,19 @@ function buildClientCursor(phase: ClientSearchPhase, page: number): string {
 
 function onlyDigits(value: string): string {
     return value.replace(/\D/g, "");
+}
+
+// Um coligado só é útil pra vínculo de grupo comercial se tiver documento —
+// sem CPF/CNPJ não dá pra rodar findOrImportTenantClientByDocument por ele
+// depois (ver commercialGroupMemberService.addCommercialGroupMember).
+// Documento normalizado pro mesmo formato (só dígitos) que o resto do
+// sistema usa (clients.cpf_cnpj), em vez do que a TOTVS devolver cru.
+function toRelatedParty(raw: TotvsModaRelated): { cpfCnpj: string; name: string } | null {
+    const cpfCnpj = documentDigits(trim(raw.cpfCnpj));
+    const name = trim(raw.name);
+    if (!cpfCnpj || !name) return null;
+    if (cpfCnpj.length !== 11 && cpfCnpj.length !== 14) return null;
+    return { cpfCnpj, name };
 }
 
 // Provider real: autentica e consome a API do TOTVS Moda via TotvsModaClient,
@@ -316,6 +331,37 @@ export function createTotvsModaErpProvider(
                       data: mapTotvsModaLegalEntityClient(raw),
                   }
                 : null;
+        },
+
+        // Coligados (RelatedModel, expand "relateds") da pessoa física/jurídica
+        // já cadastrada no TOTVS sob este documento — usado para propor o
+        // preenchimento de um grupo comercial a partir da composição que já
+        // existe no ERP (ver services/commercialGroups/commercialGroupMemberService.
+        // listErpRelatedPartiesForClient). Cada item ainda passa por
+        // addCommercialGroupMember({document}) pra registrar/vincular, igual a
+        // qualquer outro documento buscado manualmente — este método só lista.
+        async lookupRelatedPartiesByDocument(document) {
+            const digits = onlyDigits(document);
+            if (digits.length !== 11 && digits.length !== 14) {
+                throw new Error(
+                    "Documento inválido: informe um CPF (11 dígitos) ou CNPJ (14 dígitos).",
+                );
+            }
+
+            const result =
+                digits.length === 11
+                    ? await client.searchIndividualRelateds(digits)
+                    : await client.searchLegalEntityRelateds(digits);
+            const raw = result.items[0] as
+                | (TotvsModaIndividual & TotvsModaLegalEntity)
+                | undefined;
+            const relateds = raw?.relateds ?? [];
+            const parties: Array<{ cpfCnpj: string; name: string }> = [];
+            for (const related of relateds) {
+                const party = toRelatedParty(related);
+                if (party && party.cpfCnpj !== digits) parties.push(party);
+            }
+            return parties;
         },
     };
 }

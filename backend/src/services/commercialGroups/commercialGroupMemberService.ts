@@ -1,6 +1,6 @@
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
-import type { AuthUser, CommercialGroupMemberWithClient } from "@/lib/types";
+import type { AuthUser, CommercialGroupMemberWithClient, ErpRelatedParty } from "@/lib/types";
 import type { ClientLookupSource } from "@/contracts/clients";
 import { AddCommercialGroupMemberInputSchema } from "@/contracts/commercialGroups";
 import { findClientRow } from "@/models/clientsModel";
@@ -16,6 +16,9 @@ import {
     deactivateCommercialGroupMemberRow,
     setCommercialGroupMemberPrimaryRow,
 } from "@/models/commercialGroupMembersModel";
+import { findActiveErpIntegrationRow } from "@/models/erpIntegrationsModel";
+import { createErpProvider } from "@/erp/registry";
+import { createExternalApiCallReporter } from "@/services/erp/externalApiLogService";
 import { findOrImportTenantClientByDocument } from "@/services/clients/clientService";
 import { recordAuditEvent, COMMERCIAL_GROUP_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
@@ -50,6 +53,59 @@ export async function listCommercialGroupMembershipsByClientIds(tenant: Tenant, 
             if (clientRow) members.push(toCommercialGroupMemberWithClient(row, clientRow));
         }
         return members;
+    });
+}
+
+// Checagem leve (sem chamar o ERP, só olha a integração ativa no banco) pra
+// decidir se a tela de detalhe da cliente deve sequer oferecer a seção de
+// coligados — evita mostrar o botão "Buscar coligados" pra tenants sem
+// TOTVS Moda configurado. Deliberadamente não checa clientId nenhum: é uma
+// pergunta sobre o tenant ("tem um provider com esse lookup ativo?"), não
+// sobre uma cliente específica.
+export async function hasErpRelatedPartiesCapability(tenant: Tenant, user: AuthUser): Promise<boolean> {
+    if (!canManageCommercialGroups(user)) throw new ForbiddenError();
+    return withTenantTransaction(tenant, user, async (client) => {
+        const integration = await findActiveErpIntegrationRow(client);
+        if (!integration) return false;
+        const provider = createErpProvider(
+            integration.provider, integration.credentials,
+            createExternalApiCallReporter(tenant, user, integration.provider),
+        );
+        return Boolean(provider.lookupRelatedPartiesByDocument);
+    });
+}
+
+// Coligados do TOTVS Moda (ver erp/types.ts:lookupRelatedPartiesByDocument)
+// pro documento de um client já cadastrado — usado pela tela de grupo
+// comercial pra sugerir quem já é "coligado" no ERP antes de o usuário
+// escolher quem entra no grupo. Não anexa nada sozinho: cada relacionado
+// escolhido ainda passa por addCommercialGroupMember({document}), que já
+// trata registro local/import via ERP e dedupe.
+//
+// Ausência de integração ativa, provider sem esse lookup (só o TOTVS Moda
+// implementa hoje) ou client sem documento cadastrado não são erros — são
+// simplesmente "sem coligados disponíveis pra mostrar", o mesmo espírito de
+// findOrImportTenantClientByDocument tratando "não encontrado" como
+// resultado válido. Uma falha real da chamada ao ERP (auth, rede, resposta
+// malformada) continua propagando, já que aí a tela pediu explicitamente e
+// merece ver o erro.
+export async function listErpRelatedPartiesForClient(tenant: Tenant, user: AuthUser, clientId: string): Promise<ErpRelatedParty[]> {
+    if (!canManageCommercialGroups(user)) throw new ForbiddenError();
+    return withTenantTransaction(tenant, user, async (client) => {
+        const clientRow = await findClientRow(client, clientId);
+        if (!clientRow) throw new NotFoundError("CLIENT_NOT_FOUND");
+        if (!clientRow.cpf_cnpj) return [];
+
+        const integration = await findActiveErpIntegrationRow(client);
+        if (!integration) return [];
+
+        const provider = createErpProvider(
+            integration.provider, integration.credentials,
+            createExternalApiCallReporter(tenant, user, integration.provider),
+        );
+        if (!provider.lookupRelatedPartiesByDocument) return [];
+
+        return provider.lookupRelatedPartiesByDocument(clientRow.cpf_cnpj);
     });
 }
 

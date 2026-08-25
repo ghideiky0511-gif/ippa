@@ -23,6 +23,39 @@ const allowedOrigins = (process.env.REALTIME_ALLOWED_ORIGINS ?? "http://localhos
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
+const devLanAccess = process.env.DEV_LAN_ACCESS === "true";
+
+function isPrivateNetworkHostname(hostname: string): boolean {
+    if (hostname === "localhost" || hostname === "::1") return true;
+    const octets = hostname.split(".").map(Number);
+    if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
+        return false;
+    }
+    return octets[0] === 10
+        || octets[0] === 127
+        || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31)
+        || (octets[0] === 192 && octets[1] === 168);
+}
+
+function isAllowedOrigin(origin: string): boolean {
+    if (allowedOrigins.includes(origin)) return true;
+    if (!devLanAccess) return false;
+    try {
+        const url = new URL(origin);
+        return url.protocol === "http:"
+            && url.port === "3010"
+            && isPrivateNetworkHostname(url.hostname);
+    } catch {
+        return false;
+    }
+}
+
+function allowSocketOrigin(
+    origin: string | undefined,
+    callback: (error: Error | null, allow?: boolean) => void,
+): void {
+    callback(null, origin === undefined || isAllowedOrigin(origin));
+}
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
@@ -30,7 +63,7 @@ const handle = app.getRequestHandler();
 app.prepare().then(() => {
     const httpServer = createServer((req, res) => {
         const origin = req.headers.origin;
-        if (origin && allowedOrigins.includes(origin)) {
+        if (origin && isAllowedOrigin(origin)) {
             res.setHeader("Access-Control-Allow-Origin", origin);
             res.setHeader("Access-Control-Allow-Credentials", "true");
             res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
@@ -46,7 +79,7 @@ app.prepare().then(() => {
     });
 
     const io = new Server(httpServer, {
-        cors: { origin: allowedOrigins, credentials: false },
+        cors: { origin: allowSocketOrigin, credentials: false },
     });
     setupPedidosNamespace(io);
     setupUpdatesNamespace(io);

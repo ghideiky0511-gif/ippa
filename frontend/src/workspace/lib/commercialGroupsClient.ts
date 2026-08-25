@@ -3,15 +3,17 @@ import {
   CommercialGroupSchema,
   CommercialGroupWithMembersSchema,
   CommercialGroupMemberWithClientSchema,
+  ErpRelatedPartySchema,
   type CommercialGroup,
   type CommercialGroupWithMembers,
   type CommercialGroupMemberWithClient,
   type AddCommercialGroupMemberInput,
+  type ErpRelatedParty,
 } from '@/domain/commercialGroups/types';
 import { ClientLookupSourceSchema, type ClientLookupSource } from '@/domain/clients/types';
 import { adminJson } from './http';
 
-export type { CommercialGroup, CommercialGroupWithMembers, CommercialGroupMemberWithClient };
+export type { CommercialGroup, CommercialGroupWithMembers, CommercialGroupMemberWithClient, ErpRelatedParty };
 
 const AddCommercialGroupMemberResponseSchema = z.object({
   member: CommercialGroupMemberWithClientSchema,
@@ -67,6 +69,25 @@ export function setCommercialGroupActive(id: string, isActive: boolean): Promise
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ isActive }),
   }, 'Não foi possível atualizar o status do grupo comercial.');
+}
+
+const ErpRelatedPartiesAvailabilitySchema = z.object({ available: z.boolean() });
+
+// Checagem leve (sem chamar o ERP) de se o tenant tem uma integração ativa
+// capaz de listar coligados — ver hasErpRelatedPartiesCapability no backend.
+// Usado pra decidir se a seção de coligados aparece na tela de detalhe da
+// cliente; tenant sem TOTVS Moda configurado nunca chega a ver o botão.
+export function fetchErpRelatedPartiesAvailable(): Promise<boolean> {
+  return adminJson('/api/commercial-groups/erp-related-parties/available', ErpRelatedPartiesAvailabilitySchema, {}, 'Não foi possível verificar a integração com o ERP.')
+    .then((result) => result.available);
+}
+
+// Coligados do TOTVS Moda pro documento desta cliente — ver
+// listErpRelatedPartiesForClient no backend. Lista vazia tanto quando não
+// há coligados quanto quando não há integração ativa (ou o provider não
+// suporta esse lookup) — a tela decide como tratar ambos os casos.
+export function fetchErpRelatedPartiesForClient(clientId: string): Promise<ErpRelatedParty[]> {
+  return adminJson(`/api/commercial-groups/erp-related-parties?clientId=${encodeURIComponent(clientId)}`, ErpRelatedPartySchema.array(), {}, 'Não foi possível buscar coligados no ERP.');
 }
 
 export function addCommercialGroupMember(groupId: string, input: AddCommercialGroupMemberInput): Promise<AddCommercialGroupMemberResponse> {

@@ -45,6 +45,8 @@ services:
     environment:
       ADMIN_ORIGIN: ${APP_URL:-http://localhost:3010}
       REALTIME_ALLOWED_ORIGINS: ${APP_URL:-http://localhost:3010}
+      DEV_LAN_ACCESS: ${DEV_LAN_ACCESS:-true}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
       EMAIL_FROM: ${EMAIL_FROM:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-luna}
@@ -62,7 +64,7 @@ services:
       CONTROL_DATABASE_URL: postgresql://ippa_control:${POSTGRES_CONTROL_PASSWORD:-ippa_control_dev_only}@postgres:5432/${POSTGRES_DB:-ippa}
       DATABASE_SSL: "false"
     ports:
-      - "127.0.0.1:3011:3011"
+      - "${APP_BIND_ADDRESS:-0.0.0.0}:3011:3011"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -79,16 +81,14 @@ services:
       context: ./frontend
       args:
         BACKEND_INTERNAL_URL: http://backend:3011
-        NEXT_PUBLIC_APP_URL: ${APP_URL:-http://localhost:3010}
-        NEXT_PUBLIC_REALTIME_URL: ${REALTIME_URL:-http://localhost:3011}
-        NEXT_PUBLIC_BACKEND_URL: ${BACKEND_PUBLIC_URL:-http://localhost:3011}
+        NEXT_PUBLIC_APP_URL: ${APP_URL:-}
+        NEXT_PUBLIC_REALTIME_URL: ${REALTIME_URL:-}
     environment:
       BACKEND_INTERNAL_URL: http://backend:3011
-      NEXT_PUBLIC_APP_URL: ${APP_URL:-http://localhost:3010}
-      NEXT_PUBLIC_REALTIME_URL: ${REALTIME_URL:-http://localhost:3011}
-      NEXT_PUBLIC_BACKEND_URL: ${BACKEND_PUBLIC_URL:-http://localhost:3011}
+      NEXT_PUBLIC_APP_URL: ${APP_URL:-}
+      NEXT_PUBLIC_REALTIME_URL: ${REALTIME_URL:-}
     ports:
-      - "3010:3010"
+      - "${APP_BIND_ADDRESS:-0.0.0.0}:3010:3010"
     depends_on:
       backend:
         condition: service_healthy

@@ -53,6 +53,15 @@ export interface ErpProvider {
     ): Promise<ErpRecord<
         Omit<Client, "id" | "createdAt" | "updatedAt">
     > | null>;
+    // Coligados de uma pessoa física/jurídica já cadastrada no ERP sob este
+    // documento (hoje só o TOTVS Moda expõe isso, via expand "relateds") —
+    // usado para propor a composição de um grupo comercial a partir do que já
+    // existe no ERP (ver services/commercialGroups). Opcional pelo mesmo
+    // motivo de lookupClientByDocument: ausência não é falha, é "sem esse
+    // dado disponível".
+    lookupRelatedPartiesByDocument?(
+        document: string,
+    ): Promise<Array<{ cpfCnpj: string; name: string }>>;
 }
 
 // reporter é opcional e não carrega tenant/banco (ver lib/externalApiCall.ts)

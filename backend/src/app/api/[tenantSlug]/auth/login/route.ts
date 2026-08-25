@@ -8,6 +8,7 @@ import {
     tooManyRequests,
     AUTH_RATE_LIMIT,
 } from "@/lib/http/apiHelpers";
+import { logger } from "@/lib/logger";
 import * as authentication from "@/services/auth";
 
 type RouteContext = { params: Promise<{ tenantSlug: string }> };
@@ -24,24 +25,37 @@ export async function POST(
 ): Promise<Response> {
     const route = await resolveTenantRoute(request, context.params);
     if (isTenantRouteError(route)) return route;
+    const contextData = auditContext(request);
     const limitResult = rateLimit(
         "auth-login",
         clientIp(request),
         AUTH_RATE_LIMIT.limit,
         AUTH_RATE_LIMIT.windowMs,
     );
-    if (!limitResult.allowed) return tooManyRequests(limitResult.retryAfterSeconds);
+    if (!limitResult.allowed) {
+        logger.warn("customer-login", "Login bloqueado pelo rate limit", {
+            tenantId: route.tenant.id,
+            tenantSlug: route.tenant.slug,
+            requestId: contextData.requestId,
+            ipAddress: contextData.ipAddress,
+        });
+        return tooManyRequests(limitResult.retryAfterSeconds);
+    }
     const body = (await request.json().catch(() => ({}))) as Record<
         string,
         unknown
     >;
-    const contextData = auditContext(request);
-
     const usesDocumentLogin = typeof body.document === "string";
     if (
         typeof body.password !== "string" ||
         (!usesDocumentLogin && typeof body.email !== "string")
     ) {
+        logger.warn("customer-login", "Login recebeu payload invalido", {
+            tenantId: route.tenant.id,
+            tenantSlug: route.tenant.slug,
+            requestId: contextData.requestId,
+            ipAddress: contextData.ipAddress,
+        });
         return NextResponse.json(
             {
                 error: usesDocumentLogin
@@ -62,6 +76,13 @@ export async function POST(
           )
         : await authentication.login(route.tenant, email, password, contextData);
     if (!result) {
+        logger.warn("customer-login", "Credenciais de login rejeitadas", {
+            tenantId: route.tenant.id,
+            tenantSlug: route.tenant.slug,
+            requestId: contextData.requestId,
+            ipAddress: contextData.ipAddress,
+            loginType: usesDocumentLogin ? "document" : "email",
+        });
         return NextResponse.json(
             { error: "Dados de acesso ou permissão inválidos." },
             { status: 401 },
@@ -73,5 +94,14 @@ export async function POST(
         result.token,
         cookieOptions(),
     );
+    logger.info("customer-login", "Login concluido", {
+        tenantId: route.tenant.id,
+        tenantSlug: route.tenant.slug,
+        requestId: contextData.requestId,
+        ipAddress: contextData.ipAddress,
+        userId: result.user.id,
+        role: result.user.role,
+        loginType: usesDocumentLogin ? "document" : "email",
+    });
     return response;
 }

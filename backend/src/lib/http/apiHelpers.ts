@@ -64,10 +64,13 @@ export const ERROR_MESSAGES: Record<string, string> = {
 };
 
 export function cookieOptions() {
+    const configuredSecure = process.env.COOKIE_SECURE;
     return {
         httpOnly: true,
         sameSite: "lax" as const,
-        secure: process.env.NODE_ENV === "production",
+        secure: configuredSecure === undefined
+            ? process.env.NODE_ENV === "production"
+            : configuredSecure === "true",
         path: "/",
         maxAge: 60 * 60 * 24 * 7,
     };

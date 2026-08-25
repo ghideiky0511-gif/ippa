@@ -62,3 +62,14 @@ export const AddCommercialGroupMemberInputSchema = z.object({
     message: "Informe clientId ou document, nunca os dois.",
 });
 export type AddCommercialGroupMemberInput = z.infer<typeof AddCommercialGroupMemberInputSchema>;
+
+// Coligado do TOTVS Moda (ver erp/types.ts:lookupRelatedPartiesByDocument) —
+// ainda não é um client local, só um CPF/CNPJ + nome vindos do ERP. Cada um
+// vira membro de fato só quando escolhido e enviado a
+// POST .../members com { document }, que reaproveita o mesmo fluxo
+// local-then-ERP de findOrImportTenantClientByDocument.
+export const ErpRelatedPartySchema = z.object({
+    cpfCnpj: RequiredTextSchema,
+    name: RequiredTextSchema,
+});
+export type ErpRelatedParty = z.infer<typeof ErpRelatedPartySchema>;

@@ -10,11 +10,15 @@ import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import { ResponsiveDataTable } from '@/workspace/components/shared/ResponsiveDataTable';
 import { syncClientFromErp } from '@/workspace/lib/customersClient';
 import {
+  addCommercialGroupMember,
   fetchCommercialGroup,
   fetchCommercialGroupMembershipsByClientIds,
+  fetchErpRelatedPartiesAvailable,
+  fetchErpRelatedPartiesForClient,
   removeCommercialGroupMember,
   type CommercialGroupMemberWithClient,
   type CommercialGroupWithMembers,
+  type ErpRelatedParty,
 } from '@/workspace/lib/commercialGroupsClient';
 import { fetchOrders } from '@/lib/ordersClient';
 import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
@@ -48,6 +52,95 @@ function InfoField({ label, value }: { label: string; value?: string }) {
   );
 }
 
+function digitsOnly(value: string | undefined | null): string {
+  return (value ?? '').replace(/\D/g, '');
+}
+
+// Coligados do TOTVS Moda pro documento desta cliente (ver
+// fetchErpRelatedPartiesForClient) — só faz sentido depois que a cliente já
+// tem um grupo comercial (é nele que os coligados entram), por isso esta
+// seção só aparece dentro do bloco "com grupo" de GroupMembershipSection.
+// Busca sob demanda: nada de chamar o ERP em toda visita à página, só
+// quando a vendedora clica em "Buscar". Adicionar um coligado reaproveita
+// addCommercialGroupMember({document}) — o mesmo fluxo de registrar/importar
+// e vincular já usado pela busca manual por documento na aba "Grupos
+// comerciais" (ver CommercialGroupsPanel.tsx); nada de lógica nova aqui.
+function RelatedPartiesSection({ clientId, groupId, memberDocuments, onAdded }: { clientId: string; groupId: string; memberDocuments: Set<string>; onAdded: () => Promise<void> }) {
+  const [parties, setParties] = useState<ErpRelatedParty[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [addingDocument, setAddingDocument] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function search() {
+    setSearching(true);
+    setError(null);
+    try {
+      setParties(await fetchErpRelatedPartiesForClient(clientId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível buscar coligados no ERP.');
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  async function add(party: ErpRelatedParty) {
+    setAddingDocument(party.cpfCnpj);
+    setError(null);
+    try {
+      await addCommercialGroupMember(groupId, { document: party.cpfCnpj });
+      await onAdded();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível adicionar o coligado ao grupo.');
+    } finally {
+      setAddingDocument(null);
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border border-border bg-surface-muted p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold text-foreground">Coligados no TOTVS</p>
+          <p className="text-xs text-muted-foreground">Consulta os coligados desta cliente no ERP e vincula ao mesmo grupo comercial.</p>
+        </div>
+        <button type="button" className={adminUi.button} onClick={() => void search()} disabled={searching}>
+          {searching ? 'Buscando...' : 'Buscar coligados'}
+        </button>
+      </div>
+
+      {parties && (
+        parties.length === 0 ? (
+          <p className="mt-2 text-sm text-muted-foreground">Nenhum coligado encontrado no TOTVS para esta cliente.</p>
+        ) : (
+          <ul className="mt-2 flex flex-col gap-1">
+            {parties.map((party) => {
+              const already = memberDocuments.has(digitsOnly(party.cpfCnpj));
+              return (
+                <li key={party.cpfCnpj} className="flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+                  <div>
+                    <p className="font-medium text-foreground">{party.name}</p>
+                    <p className="text-xs text-muted-foreground">{party.cpfCnpj}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className={adminUi.button}
+                    disabled={already || addingDocument === party.cpfCnpj}
+                    onClick={() => void add(party)}
+                  >
+                    {already ? 'Já no grupo' : addingDocument === party.cpfCnpj ? 'Adicionando...' : 'Adicionar ao grupo'}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )
+      )}
+
+      {error && <p className="mt-2 text-sm text-[#b00020]">{error}</p>}
+    </div>
+  );
+}
+
 // Composição de matriz/filiais pra clientes de atacado que compram por
 // várias lojas de uma vez — vem de commercial_group_members (ver migration
 // 028, que aposentou clients.parent_client_id em favor disso). Só leitura +
@@ -60,6 +153,10 @@ function GroupMembershipSection({ client }: { client: ClientWithLogin }) {
   const [loaded, setLoaded] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Tenant tem TOTVS Moda configurado e ativo? Checagem leve (sem chamar o
+  // ERP, ver hasErpRelatedPartiesCapability), independente da cliente
+  // aberta — por isso não entra em `reload` (que é por client.id).
+  const [erpAvailable, setErpAvailable] = useState(false);
 
   const reload = useCallback(async () => {
     setError(null);
@@ -80,6 +177,10 @@ function GroupMembershipSection({ client }: { client: ClientWithLogin }) {
     void reload();
   }, [reload]);
 
+  useEffect(() => {
+    fetchErpRelatedPartiesAvailable().then(setErpAvailable).catch(() => {});
+  }, []);
+
   async function unlink() {
     if (!membership) return;
     setRemoving(true);
@@ -95,6 +196,7 @@ function GroupMembershipSection({ client }: { client: ClientWithLogin }) {
   }
 
   const siblings = group?.members.filter((member) => member.clientId !== client.id) ?? [];
+  const memberDocuments = new Set((group?.members ?? []).map((member) => digitsOnly(member.client.cpfCnpj)));
 
   return (
     <section className="rounded-brand border border-border bg-surface p-4">
@@ -125,6 +227,9 @@ function GroupMembershipSection({ client }: { client: ClientWithLogin }) {
                 ))}
               </ul>
             </div>
+          )}
+          {erpAvailable && (
+            <RelatedPartiesSection clientId={client.id} groupId={membership.groupId} memberDocuments={memberDocuments} onAdded={reload} />
           )}
         </div>
       ) : loaded ? (

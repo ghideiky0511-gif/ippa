@@ -391,6 +391,47 @@ export class TotvsModaClient {
         );
     }
 
+    // Busca do próprio registro com expand "relateds" (RelatedModel) à parte
+    // de searchIndividuals (que nunca pede esse expand — ver mapper.ts) —
+    // filter de um único cpf, page 1/pageSize 1, só pra não pesar o sync em
+    // lote com um dado que só a tela de grupo comercial usa. Extração de
+    // ".relateds" do primeiro item fica em index.ts, junto com os outros
+    // casts para os tipos de mapper.ts.
+    async searchIndividualRelateds(
+        cpf: string,
+    ): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
+        const payload = {
+            filter: { cpfList: [cpf] },
+            page: 1,
+            pageSize: 1,
+            expand: "relateds",
+        };
+        return this.searchAndValidate(
+            "searchIndividualRelateds",
+            INDIVIDUALS_SEARCH_PATH,
+            payload,
+            "Busca de coligados (pessoa física) retornou formato inválido.",
+        );
+    }
+
+    // Mesmo papel de searchIndividualRelateds, para pessoa jurídica.
+    async searchLegalEntityRelateds(
+        cnpj: string,
+    ): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
+        const payload = {
+            filter: { cnpjList: [cnpj] },
+            page: 1,
+            pageSize: 1,
+            expand: "relateds",
+        };
+        return this.searchAndValidate(
+            "searchLegalEntityRelateds",
+            LEGAL_ENTITIES_SEARCH_PATH,
+            payload,
+            "Busca de coligados (pessoa jurídica) retornou formato inválido.",
+        );
+    }
+
     // RepresentativeSearchInDto — ainda não tem consumidor no provider (não
     // existe conceito de "representante" no domínio interno hoje), exposto
     // para uso futuro direto via TotvsModaClient.

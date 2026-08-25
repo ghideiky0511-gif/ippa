@@ -81,6 +81,18 @@ export interface TotvsModaEmail {
     isDefault?: boolean;
 }
 
+// RelatedModel (person/v2/.../search com expand "relateds") — coligados do
+// PESFM010 (PESFM024), cada um já com o próprio CPF/CNPJ. Só vem quando
+// pedido explicitamente no expand (ver TotvsModaClient.searchIndividualRelateds/
+// searchLegalEntityRelateds) — nenhuma busca em lote (searchIndividuals/
+// searchLegalEntities, usadas por getClients) pede esse campo, pra não
+// pesar o sync de clientes com um dado que só a tela de grupo comercial usa.
+export interface TotvsModaRelated {
+    code?: number;
+    cpfCnpj?: string;
+    name?: string;
+}
+
 function primaryAddress(addresses: TotvsModaAddress[] | undefined): TotvsModaAddress | undefined {
     return addresses?.[0];
 }
@@ -98,6 +110,7 @@ export interface TotvsModaIndividual {
     isInactive?: boolean;
     addresses?: TotvsModaAddress[];
     emails?: TotvsModaEmail[];
+    relateds?: TotvsModaRelated[];
 }
 
 // LegalEntityDataModel (person/v2/legal-entities/search) — mesmo papel, para
@@ -110,6 +123,7 @@ export interface TotvsModaLegalEntity {
     isInactive?: boolean;
     addresses?: TotvsModaAddress[];
     emails?: TotvsModaEmail[];
+    relateds?: TotvsModaRelated[];
 }
 
 // BranchListModel (person/v2/branchesList) — não tem os campos que
