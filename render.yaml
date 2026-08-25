@@ -1,31 +1,86 @@
-# Blueprint do Render. Conecta este repositório em Render → New → Blueprint
-# para sincronizar com os serviços existentes (o Render casa pelo campo
-# `name`, então os nomes abaixo têm que bater com os serviços já criados no
-# painel). Variáveis de ambiente NÃO listadas aqui continuam do jeito que
-# estão configuradas no painel — este arquivo só cuida da conexão automática
-# entre frontend e backend.
+envVarGroups:
+  - name: ippa-env-prod
+    envVars:
+      - key: DATABASE_SSL
+        value: "true"
+      - key: DATABASE_URL
+        sync: false
+      - key: CONTROL_DATABASE_URL
+        sync: false
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: DEV_LAN_ACCESS
+        value: "false"
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-5.6-luna
+      - key: OPENAI_API_KEY_BIPPA_CATALOG_ORDER_RESUME
+        sync: false
+      - key: OPENAI_MODEL_BIPPA_CATALOG_ORDER_RESUME
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET_CATALOG_MEDIA
+        sync: false
+      - key: PUSH_ENABLED
+        value: "true"
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false
+      - key: NOTIFICATION_DISPATCH_SECRET
+        sync: false
+
 services:
   - type: web
     name: ippa-backend
     runtime: docker
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    envVars:
+      - fromGroup: ippa-env-prod
+      # Mesmo valor no compose local é APP_URL — aqui cada serviço declara sua
+      # própria chave (render.yaml não permite importar uma única var de um
+      # group sob outro nome), preenchida uma vez no painel com a URL pública
+      # do frontend.
+      - key: ADMIN_ORIGIN
+        sync: false
+      - key: REALTIME_ALLOWED_ORIGINS
+        sync: false
 
   - type: web
     name: ippa-frontend
     runtime: docker
-    dockerfilePath: ./frontend/Dockerfile
-    dockerContext: ./frontend
+    rootDir: frontend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
     envVars:
-      # Resolvidos automaticamente pelo Render a partir do serviço
-      # `ippa-backend` a cada deploy — nada de host/porta hardcoded.
-      - key: BACKEND_INTERNAL_HOST
-        fromService:
-          type: web
-          name: ippa-backend
-          property: host
-      - key: BACKEND_INTERNAL_PORT
-        fromService:
-          type: web
-          name: ippa-backend
-          property: port
+      - fromGroup: ippa-env-prod
+      # ippa-backend/ippa-frontend estão no plano Free do Render, que não tem
+      # rede privada (isso não existe fora de Starter+) — por isso aqui é a
+      # URL pública do backend, não "http://ippa-backend:10000" como no
+      # AI_ASSISTANT_INTERNAL_URL do bippa (aquele projeto está em Starter).
+      # Local continua via docker-compose.yml (http://backend:3011). Se
+      # migrar pra um plano pago, troque para o hostname interno.
+      - key: BACKEND_INTERNAL_URL
+        value: https://ippa-backend.onrender.com
+      # URL pública do próprio frontend — vai pro navegador (client bundle),
+      # por isso não pode vir de rede privada. Preenchida uma vez no painel.
+      - key: NEXT_PUBLIC_APP_URL
+        sync: false
+      - key: NEXT_PUBLIC_REALTIME_URL
+        sync: false
