@@ -1,0 +1,31 @@
+# Enviar pedido para o ERP
+
+Origem: `PLANO-PROXIMOS-PASSOS.md`, seção "Integração ERP / dado real".
+
+Problema: `orderService.createCustomerOrder`
+(`backend/src/services/orders/orderService.ts`) grava o pedido só no Postgres
+e dispara SSE/notificação — não chama nenhum provider de ERP. O único código
+que liga pedido↔ERP é `syncTenantOrders`, e vai no sentido contrário (puxar
+pedido do ERP pra cá); está implementado mas não é chamado (ver
+[[erp_sync_totvs]]).
+
+Depende da decisão de qual pipeline de ERP fica ativo (Vesti vs TOTVS Moda,
+ver [[erp_sync_totvs]]) antes de valer a pena implementar o envio.
+
+## Passos
+
+- [ ] Definir contrato de envio de pedido para o provider ativo (TOTVS Moda ou
+      outro) — o que precisa ir: itens, cliente, forma de pagamento, frete.
+- [ ] Implementar a chamada ao provider em `createCustomerOrder` (ou em um
+      passo assíncrono pós-criação, para não travar o fechamento do pedido em
+      caso de indisponibilidade do ERP).
+- [ ] Tratar falha do ERP sem perder o pedido local: pedido deve continuar
+      válido no Postgres mesmo se o envio ao ERP falhar, com forma de
+      reenviar/retentar.
+- [ ] Expor status de sincronização do pedido com o ERP (enviado, pendente,
+      falhou) em algum lugar visível (talão, Control ou ambos).
+- [ ] Testes cobrindo sucesso, falha do provider e reenvio.
+
+## Bloqueado por
+
+- [[erp_sync_totvs]] — decisão de qual ERP fica ativo.

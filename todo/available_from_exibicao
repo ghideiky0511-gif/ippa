@@ -1,0 +1,16 @@
+# Exibir data de disponibilidade (`availableFrom`) pro cliente
+
+Origem: `PLANO-PROXIMOS-PASSOS.md`, seção "Ferramentas do catálogo ainda sem UI".
+
+Problema: o campo `availableFrom` por variante já existe e é editável no
+workspace, mas não aparece pro cliente final — falta exibição/filtro na
+grade de cor×tamanho da loja.
+
+## Passos
+
+- [ ] Definir como exibir (badge "disponível a partir de X", desabilitar
+      seleção da variante antes da data, ou ambos).
+- [ ] Implementar exibição na grade de cor×tamanho da página do produto e no
+      quick-view.
+- [ ] Decidir se entra filtro/ordenação por disponibilidade no catálogo.
+- [ ] Testes cobrindo variante disponível, indisponível e na data exata.

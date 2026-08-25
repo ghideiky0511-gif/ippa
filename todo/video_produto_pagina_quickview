@@ -1,0 +1,16 @@
+# Vídeo por produto na página e no quick-view
+
+Origem: `PLANO-PROXIMOS-PASSOS.md`, seção "Ferramentas do catálogo ainda sem UI".
+
+Problema: `videoUrl` já funciona no card da grade
+(`CatalogProductCard.tsx`), mas falta em `produto/[id]/page.tsx` e em
+`ProductQuickView.tsx`.
+
+## Passos
+
+- [ ] Reaproveitar o mesmo componente/lógica de exibição de vídeo usado no
+      `CatalogProductCard.tsx`.
+- [ ] Adicionar exibição do vídeo em `produto/[id]/page.tsx`.
+- [ ] Adicionar exibição do vídeo em `ProductQuickView.tsx`.
+- [ ] Conferir comportamento quando não há `videoUrl` (fallback pra imagem,
+      como já ocorre no card).

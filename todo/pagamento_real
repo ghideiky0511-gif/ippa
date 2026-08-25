@@ -1,0 +1,26 @@
+# Pagamento real (sair do mock)
+
+Origem: `PLANO-PROXIMOS-PASSOS.md`, seção "Frete e pagamento (hoje mock)".
+
+Problema: `/pagamento` só grava a forma escolhida e fecha o pedido, sem
+gateway nenhum — não existe Pix, cartão ou boleto reais.
+
+## Passos
+
+- [ ] Escolher gateway de pagamento (Pix/cartão/boleto).
+- [ ] Definir fluxo por forma de pagamento: Pix (QR code + confirmação),
+      cartão (tokenização, autorização), boleto (geração, vencimento).
+- [ ] Implementar integração no backend, mantendo a transação de banco curta
+      (padrão já usado no motor de IA, ver [[ideia_resumo_compra]] como
+      referência de princípio, não de código).
+- [ ] Tratar confirmação assíncrona (webhook do gateway) e atualização de
+      status do pedido.
+- [ ] Tratar falha/expiração de pagamento sem deixar pedido em limbo.
+- [ ] Testes cobrindo sucesso, falha e webhook de confirmação por forma de
+      pagamento.
+
+## Relacionado
+
+- Reenvio/expiração de link de pagamento do talão está fora de escopo por
+  enquanto (ver `PLANO-PROXIMOS-PASSOS.md`, "Fora de escopo por enquanto") —
+  não incluir nesta tarefa a menos que o escopo mude.

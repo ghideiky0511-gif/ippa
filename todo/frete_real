@@ -1,0 +1,19 @@
+# Frete real (sair do mock)
+
+Origem: `PLANO-PROXIMOS-PASSOS.md`, seção "Frete e pagamento (hoje mock)".
+
+Problema: `frontend/src/lib/shipping.ts` retorna uma lista fixa de opções de
+frete; o CEP informado não influencia o cálculo.
+
+## Passos
+
+- [ ] Escolher transportadora/API de cotação (Correios, Melhor Envio, etc.).
+- [ ] Implementar cálculo real a partir do CEP de entrega, peso/dimensões dos
+      itens do carrinho.
+- [ ] Substituir a lista fixa em `frontend/src/lib/shipping.ts` (ou mover o
+      cálculo pro backend, se fizer mais sentido dado que peso/dimensão dos
+      produtos vive lá).
+- [ ] Tratar indisponibilidade da API de frete sem travar o checkout (fallback
+      ou mensagem clara).
+- [ ] Testes cobrindo cotação com CEPs válidos/inválidos e indisponibilidade
+      da API.

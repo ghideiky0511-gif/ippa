@@ -1,0 +1,32 @@
+# Ligar o sync do ERP (TOTVS Moda)
+
+Origem: `PLANO-PROXIMOS-PASSOS.md`, seção "Integração ERP / dado real".
+
+Problema: `erpSyncService.ts` (`syncTenantProducts`, `syncTenantClients`,
+`syncTenantCompanies`, `syncTenantOrders`) já implementa a importação real de
+produtos, clientes, empresas e pedidos do TOTVS Moda pro Postgres, mas nenhuma
+dessas funções é chamada por rota, cron ou script hoje. O provider
+`totvsmoda` (`backend/src/erp/providers/totvsmoda/`) só é usado hoje para
+ativar/testar credenciais (`erp-integration/activate|test`). `catalogService.listCatalog`
+lê só a tabela local `products` e nunca reflete o TOTVS Moda automaticamente.
+
+Existe hoje um segundo pipeline de catálogo que funciona de verdade: o painel
+de plataforma `/control/[tenant]/detail` importa catálogo via Vesti
+(`vestiCatalogService.importVestiCatalog`), grava direto em
+`products`/`product_variants`, e é o caminho realmente conectado e usado.
+
+## Decisão pendente (antes de codar)
+
+- [ ] Decidir se o plano é migrar tenants do Vesti para o TOTVS Moda, manter
+      os dois pipelines em paralelo, ou terminar de ligar o sync do TOTVS
+      Moda como alternativa/complemento.
+
+## Se for ligar o sync do TOTVS Moda
+
+- [ ] Escolher o gatilho: rota manual (ex. botão "sincronizar agora" no
+      Control), webhook do TOTVS, ou cron periódico.
+- [ ] Chamar `syncTenantProducts`, `syncTenantClients`, `syncTenantCompanies`
+      e `syncTenantOrders` a partir desse gatilho, por tenant.
+- [ ] Definir tratamento de erro/parcial (produto falhou mas cliente sincronizou,
+      etc.) e onde isso fica visível para quem opera o Control.
+- [ ] Testes cobrindo o gatilho novo e isolamento por tenant.

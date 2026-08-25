@@ -1,0 +1,19 @@
+# Fase 3 — IA (geração de imagem/descrição + carrinho por texto livre)
+
+Origem: `PLANO-PROXIMOS-PASSOS.md`, seção "Fase 3 — IA (não iniciado)".
+
+Escopo: geração de imagem↔descrição e montagem de carrinho a partir de texto
+livre do WhatsApp.
+
+## Bloqueado por
+
+- [[erp_sync_totvs]] — ERP real precisa estar no ar.
+- [[pedido_para_erp]] — fluxo pedido→ERP precisa estar no ar.
+
+Não vale investir nesta fase antes desses dois estarem resolvidos (dito
+explicitamente no plano).
+
+## Passos (quando desbloqueado)
+
+- [ ] Revisitar este escopo com o negócio antes de desenhar — pode ter
+      mudado desde que o plano foi escrito.

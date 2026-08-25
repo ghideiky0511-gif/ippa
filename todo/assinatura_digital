@@ -1,0 +1,18 @@
+# Ferramenta "assinatura digital"
+
+Origem: `PLANO-PROXIMOS-PASSOS.md`, seção "Ferramentas do catálogo ainda sem UI".
+
+Problema: nunca foi implementada — nem tipo, nem toggle, nem UI. Diferente
+das outras ferramentas em `/ferramentas`, essa é liga/desliga por cliente,
+não por loja inteira.
+
+## Passos
+
+- [ ] Definir o que "assinatura digital" significa no fluxo (o que é assinado,
+      quando, por quem) — falta esclarecer o requisito antes de modelar.
+- [ ] Modelar o toggle por cliente (não por tenant) — decidir onde essa flag
+      fica persistida e como se relaciona com o cadastro de cliente.
+- [ ] Implementar tipo e liga/desliga no workspace.
+- [ ] Implementar UI de assinatura no ponto do fluxo onde ela deve aparecer
+      (a definir junto com o requisito acima).
+- [ ] Testes cobrindo o toggle por cliente e o fluxo de assinatura.

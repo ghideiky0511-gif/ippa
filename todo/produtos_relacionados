@@ -1,0 +1,17 @@
+# Produtos relacionados ("complete o look")
+
+Origem: `PLANO-PROXIMOS-PASSOS.md`, seção "Ferramentas do catálogo ainda sem UI".
+
+Problema: `relatedProductIds` existe só no tipo — sem UI de edição no
+workspace nem de exibição na página do produto. Campo declarado e morto.
+
+## Passos
+
+- [ ] Implementar UI de edição no workspace (selecionar produtos relacionados
+      por produto, provavelmente reaproveitando o seletor de produtos já
+      usado em coleções/catálogo).
+- [ ] Implementar exibição na página do produto ("complete o look" ou nome
+      equivalente).
+- [ ] Decidir comportamento quando um produto relacionado é removido do
+      catálogo (limpar referência ou ocultar silenciosamente).
+- [ ] Testes cobrindo edição, exibição e produto relacionado removido.

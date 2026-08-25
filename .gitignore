@@ -7,4 +7,3 @@ admin\.next\dev
 /node_modules/
 js
 sockets
-backend/db/certs

@@ -1,0 +1,24 @@
+# Catálogo dinâmico por regra
+
+Origem: `PLANO-PROXIMOS-PASSOS.md`, seção "Ferramentas do catálogo ainda sem UI".
+
+Problema: hoje toda curadoria (coleções, ordem do catálogo) é lista manual de
+IDs. Falta um motor de regra automática (ex. "tipo de entrega = pré-venda" +
+"coleção X" atualiza sozinho). É um paradigma novo, não extensão do que
+existe — exige desenho antes de codar.
+
+## Passos
+
+- [ ] Levantar os casos de regra que realmente importam pro negócio (não
+      generalizar demais antes de ter exemplos concretos).
+- [ ] Desenhar o modelo de regra (campos elegíveis, operadores, como
+      resolve conflito entre regra automática e curadoria manual existente).
+- [ ] Decidir se regra roda em tempo de leitura (query dinâmica) ou em job
+      que materializa a lista — tem implicação de performance e de cache.
+- [ ] Implementar motor de regra no backend.
+- [ ] Implementar UI de criação/edição de regra no workspace.
+- [ ] Migrar/compatibilizar com coleções e ordenação manual já existentes.
+- [ ] Testes cobrindo avaliação de regra e interação com curadoria manual.
+
+Nota: este item é maior que os demais desta lista — vale tratar como projeto
+próprio com desenho antes de virar tarefas menores.

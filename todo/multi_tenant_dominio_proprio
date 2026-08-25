@@ -1,0 +1,19 @@
+# Multi-tenant por domínio/subdomínio próprio
+
+Origem: `PLANO-PROXIMOS-PASSOS.md`, seção "Multi-tenant".
+
+Situação: multi-tenant funcional hoje é por path (`tenantSlug` na URL,
+`backend/src/lib/http/tenantRoute.ts`). Não existe lookup de tenant por
+`host`. Isso só é necessário se cada loja precisar de domínio/subdomínio
+próprio (ex. `loja.com` em vez de `app.com/loja`) — confirmar necessidade
+antes de implementar.
+
+## Passos (se confirmado que é necessário)
+
+- [ ] Confirmar com o negócio se isso é realmente necessário agora ou pode
+      continuar por path.
+- [ ] Desenhar resolução de tenant por `host` (mapa domínio→tenant,
+      provisionamento de domínio, certificado TLS por domínio).
+- [ ] Implementar middleware de resolução por `host` ao lado do atual por
+      path, sem quebrar tenants que continuam usando path.
+- [ ] Testes cobrindo resolução por domínio próprio e fallback por path.
