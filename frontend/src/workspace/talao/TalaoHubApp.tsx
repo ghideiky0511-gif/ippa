@@ -2,12 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import type { Client } from '@/domain/clients/types';
 import type { OrderBook, OrderSession } from '@/domain/orders/types';
 import { adminUi } from '@/workspace/lib/ui';
 import { clientSubtext } from '@/lib/document';
 import { createOrderSession, fetchActiveOrderBook, fetchOrderBooks, fetchOrderSessions } from '@/lib/ordersClient';
-import { fetchClient, fetchClientBranches } from '@/workspace/lib/customersClient';
+import {
+  fetchCommercialGroup,
+  fetchCommercialGroupMembershipsByClientIds,
+  type CommercialGroupWithMembers,
+} from '@/workspace/lib/commercialGroupsClient';
 import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import { KpiCard } from '@/workspace/components/shared/KpiCard';
 import { ResponsiveDataTable } from '@/workspace/components/shared/ResponsiveDataTable';
@@ -38,11 +41,12 @@ const BOOK_STATUS_LABELS: Record<OrderBook['status'], string> = {
   fechado: 'Fechado',
 };
 
-// Cliente master (atacado) compra por si e por várias filiais de uma vez
-// — a vendedora chega aqui (em vez de ficar no drawer) pra montar o
-// atendimento de todo o grupo com mais espaço. Decisão combinada com o
-// usuário: o redirecionamento acontece ao vincular a master num pedido
-// (ver TalaoDrawer.tsx, ClientCadastroSection.redirectIfMaster).
+// Cliente master (membro principal de um grupo comercial) compra por si e
+// por várias filiais (os demais membros do grupo) de uma vez — a vendedora
+// chega aqui (em vez de ficar no drawer) pra montar o atendimento de todo o
+// grupo com mais espaço. Decisão combinada com o usuário: o redirecionamento
+// acontece ao vincular a master num pedido (ver TalaoDrawer.tsx,
+// ClientCadastroSection.redirectIfMaster).
 function GroupSetupSection({
   masterId,
   sessions,
@@ -52,26 +56,27 @@ function GroupSetupSection({
   sessions: OrderSession[];
   onCreated: (session: OrderSession) => void;
 }) {
-  const [master, setMaster] = useState<Client | null>(null);
-  const [branches, setBranches] = useState<Client[]>([]);
+  const [group, setGroup] = useState<CommercialGroupWithMembers | null>(null);
   const [bookId, setBookId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [creatingId, setCreatingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
-    Promise.all([fetchClient(masterId), fetchClientBranches(masterId), fetchActiveOrderBook()])
-      .then(([masterClient, branchClients, activeBook]) => {
-        setMaster(masterClient);
-        setBranches(branchClients);
+    Promise.all([fetchCommercialGroupMembershipsByClientIds([masterId]), fetchActiveOrderBook()])
+      .then(async ([memberships, activeBook]) => {
+        const own = memberships[0];
+        setGroup(own ? await fetchCommercialGroup(own.groupId) : null);
         setBookId(activeBook.id);
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Não foi possível carregar o grupo.'))
       .finally(() => setLoading(false));
   }, [masterId]);
 
-  const accounts = master ? [master, ...branches] : [];
+  const members = group?.members ?? [];
+  const primary = members.find((member) => member.isPrimary) ?? null;
   const sessionByClientId = useMemo(() => {
     const map = new Map<string, OrderSession>();
     for (const session of sessions) {
@@ -82,12 +87,12 @@ function GroupSetupSection({
     return map;
   }, [sessions]);
 
-  async function createFor(client: Client) {
+  async function createFor(clientId: string, clientName: string) {
     if (!bookId) return;
-    setCreatingId(client.id);
+    setCreatingId(clientId);
     setError(null);
     try {
-      onCreated(await createOrderSession({ clientId: client.id, clientName: client.name, channel: 'presencial', orderBookId: bookId }));
+      onCreated(await createOrderSession({ clientId, clientName, channel: 'presencial', orderBookId: bookId }));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível criar o pedido.');
     } finally {
@@ -96,36 +101,36 @@ function GroupSetupSection({
   }
 
   async function createForAll() {
-    for (const client of accounts) {
-      if (!sessionByClientId.has(client.id)) await createFor(client);
+    for (const member of members) {
+      if (!sessionByClientId.has(member.clientId)) await createFor(member.clientId, member.client.name);
     }
   }
 
-  if (loading || !master) return null;
+  if (loading || !group || !primary) return null;
 
   return (
     <section className="rounded-brand border-2 border-brand-primary bg-surface p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="font-bold">Atendimento em grupo — {master.name}</h2>
+          <h2 className="font-bold">Atendimento em grupo — {primary.client.name}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Cliente master com {branches.length} filial{branches.length === 1 ? '' : 'is'} — crie o pedido de cada
-            uma pra montar o talão do grupo inteiro de uma vez.
+            Cliente master com {members.length - 1} filial{members.length - 1 === 1 ? '' : 'is'} — crie o pedido de
+            cada uma pra montar o talão do grupo inteiro de uma vez.
           </p>
         </div>
         <button type="button" className={adminUi.button} onClick={() => void createForAll()}>Criar pedido pra todas</button>
       </div>
 
       <ul className="mt-3 flex flex-col gap-2">
-        {accounts.map((account) => {
-          const existing = sessionByClientId.get(account.id);
-          const subtext = clientSubtext(account);
+        {members.map((member) => {
+          const existing = sessionByClientId.get(member.clientId);
+          const subtext = clientSubtext(member.client);
           return (
-            <li key={account.id} className="flex items-center justify-between gap-2 rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm">
+            <li key={member.id} className="flex items-center justify-between gap-2 rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm">
               <div className="min-w-0">
                 <p className="truncate font-semibold text-foreground">
-                  {account.name}
-                  {account.id === master.id && (
+                  {member.client.name}
+                  {member.isPrimary && (
                     <span className="ml-2 rounded-full bg-brand-background px-2 py-0.5 text-xs font-semibold text-brand-primary">matriz</span>
                   )}
                 </p>
@@ -134,8 +139,8 @@ function GroupSetupSection({
               {existing ? (
                 <Link href={`/catalogo?session=${encodeURIComponent(existing.id)}`} className={adminUi.button}>Já no talão · continuar</Link>
               ) : (
-                <button type="button" className={adminUi.button} onClick={() => void createFor(account)} disabled={creatingId === account.id}>
-                  {creatingId === account.id ? 'Criando…' : 'Criar pedido'}
+                <button type="button" className={adminUi.button} onClick={() => void createFor(member.clientId, member.client.name)} disabled={creatingId === member.clientId}>
+                  {creatingId === member.clientId ? 'Criando…' : 'Criar pedido'}
                 </button>
               )}
             </li>

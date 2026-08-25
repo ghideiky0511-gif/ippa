@@ -45,11 +45,15 @@ interface TalaoContextValue {
   cancelBook: (id: string) => Promise<void>;
   presence: PedidoPresence[];
   participants: PedidoParticipant[];
-  // Cadastro completo (inclui parentClientId) dos clientes com sessão
-  // aberta no talão ativo — usado pra agrupar conta master + filiais e
+  // Cadastro completo dos clientes com sessão aberta no talão ativo — usado
   // pro subtexto de documento no drawer (ver TalaoDrawer.tsx). Só cobre
   // quem está com pedido aberto agora, não o histórico inteiro.
   clientsById: Record<string, Client>;
+  // Membership ativa em grupo comercial (ver commercial_group_members) de
+  // quem está com sessão aberta agora — usado pra agrupar matriz + filiais
+  // no drawer (client sem grupo não entra neste map). isPrimary marca quem
+  // é a "matriz" da composição.
+  groupMembershipByClientId: Record<string, { groupId: string; isPrimary: boolean } | null>;
 }
 
 const TalaoContext = createContext<TalaoContextValue | null>(null);
@@ -68,6 +72,7 @@ export function TalaoProvider({ children }: { children: ReactNode }) {
   const [presence, setPresence] = useState<PedidoPresence[]>([]);
   const [participants, setParticipants] = useState<PedidoParticipant[]>([]);
   const [clientsById, setClientsById] = useState<Record<string, Client>>({});
+  const [groupMembershipByClientId, setGroupMembershipByClientId] = useState<Record<string, { groupId: string; isPrimary: boolean } | null>>({});
 
   function refetchSessions() {
     return fetch('/api/sessions', { cache: 'no-store' })
@@ -121,9 +126,9 @@ export function TalaoProvider({ children }: { children: ReactNode }) {
   const activeBookSessions = sessions.filter((s) => s.orderBookId === activeBookId && (s.status === 'aberto' || s.status === 'aguardando_pagamento'));
   const cancelledBookSessions = sessions.filter((s) => s.orderBookId === activeBookId && s.status === 'cancelado');
 
-  // Busca o cadastro completo (parentClientId incluso) de quem tem pedido
-  // aberto agora — só o necessário pro agrupamento master/filial e pro
-  // subtexto de documento (ver TalaoDrawer.tsx), não o talão inteiro.
+  // Busca o cadastro completo de quem tem pedido aberto agora — só o
+  // necessário pro subtexto de documento (ver TalaoDrawer.tsx), não o
+  // talão inteiro.
   const openClientIds = [...new Set(activeBookSessions.map((s) => s.clientId).filter((id): id is string => Boolean(id)))].sort().join(',');
   useEffect(() => {
     const ids = openClientIds ? openClientIds.split(',') : [];
@@ -139,6 +144,29 @@ export function TalaoProvider({ children }: { children: ReactNode }) {
           return next;
         });
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openClientIds]);
+
+  // Membership ativa em grupo comercial de quem tem pedido aberto agora —
+  // é o que permite o drawer colapsar matriz + filiais (ver masterIdFor em
+  // TalaoDrawer.tsx). Client sem grupo não aparece na resposta, então cada
+  // id buscado sem match vira `null` no map — sentinela "já buscado, sem
+  // grupo" pra não reconsultar de novo enquanto a sessão continuar aberta.
+  useEffect(() => {
+    const ids = openClientIds ? openClientIds.split(',') : [];
+    const missing = ids.filter((id) => !(id in groupMembershipByClientId));
+    if (missing.length === 0) return;
+    fetch(`/api/commercial-groups/memberships?clientIds=${missing.join(',')}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((members: Array<{ clientId: string; groupId: string; isPrimary: boolean }>) => {
+        setGroupMembershipByClientId((current) => {
+          const next = { ...current };
+          for (const id of missing) next[id] = null;
+          for (const member of members) next[member.clientId] = { groupId: member.groupId, isPrimary: member.isPrimary };
+          return next;
+        });
+      })
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openClientIds]);
 
@@ -285,8 +313,9 @@ export function TalaoProvider({ children }: { children: ReactNode }) {
       presence,
       participants,
       clientsById,
+      groupMembershipByClientId,
     }),
-    [sessions, activeSessionId, isTalaoOpen, books, activeBookId, activeBook, activeBookSessions, cancelledBookSessions, presence, participants, clientsById]
+    [sessions, activeSessionId, isTalaoOpen, books, activeBookId, activeBook, activeBookSessions, cancelledBookSessions, presence, participants, clientsById, groupMembershipByClientId]
   );
 
   return <TalaoContext.Provider value={value}>{children}</TalaoContext.Provider>;

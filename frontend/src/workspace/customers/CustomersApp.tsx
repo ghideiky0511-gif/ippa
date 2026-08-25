@@ -9,6 +9,13 @@ import { KpiCard } from '@/workspace/components/shared/KpiCard';
 import { ResponsiveDataTable } from '@/workspace/components/shared/ResponsiveDataTable';
 import { addClientByDocument, fetchClientsPage, type ClientsPage } from '@/workspace/lib/customersClient';
 import { CpfCnpjSchema } from '@/contracts/shared';
+import CommercialGroupsPanel from './CommercialGroupsPanel';
+
+const TABS = [
+  { id: 'clientes', label: 'Clientes' },
+  { id: 'grupos', label: 'Grupos comerciais' },
+] as const;
+type TabId = typeof TABS[number]['id'];
 
 function AddClientByDocumentModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => Promise<void> }) {
   const [document, setDocument] = useState('');
@@ -79,6 +86,7 @@ export default function CustomersApp({ initialPage }: { initialPage: ClientsPage
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isAdding, setAdding] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabId>('clientes');
 
   async function load(page: number, nextQuery = query) {
     setLoading(true);
@@ -111,10 +119,27 @@ export default function CustomersApp({ initialPage }: { initialPage: ClientsPage
       <HubHeader
         title="Hub de clientes"
         description="Consulte a base e importe novos cadastros pelo CPF ou CNPJ."
-        primaryAction={{ label: 'Adicionar pelo documento', onClick: () => setAdding(true) }}
+        primaryAction={activeTab === 'clientes' ? { label: 'Adicionar pelo documento', onClick: () => setAdding(true) } : undefined}
       />
 
       <main className={`${adminUi.productsEditor} flex flex-col gap-6`}>
+        <div className="contents">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className={activeTab === tab.id ? adminUi.primaryButton : adminUi.button}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === 'grupos' ? (
+          <CommercialGroupsPanel />
+        ) : (
+        <>
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <KpiCard label="Clientes cadastrados" value={pagination.total.toLocaleString('pt-BR')} hint={query ? 'resultado da busca' : 'base total'} />
           <KpiCard label="Novos este mês" value={kpis.newThisMonth.toLocaleString('pt-BR')} hint="no resultado atual" />
@@ -168,6 +193,8 @@ export default function CustomersApp({ initialPage }: { initialPage: ClientsPage
             </div>
           </div>
         </section>
+        </>
+        )}
       </main>
       {isAdding && <AddClientByDocumentModal onClose={() => setAdding(false)} onAdded={refreshAfterAdd} />}
     </div>

@@ -55,6 +55,12 @@ export const ERROR_MESSAGES: Record<string, string> = {
     CLIENT_WITHOUT_DOCUMENT:
         "Esta cliente não tem CPF/CNPJ salvo nem vínculo com o ERP — não é possível sincronizar.",
     ERP_CLIENT_NOT_FOUND: "Cliente não encontrada no ERP ativo.",
+    COMMERCIAL_GROUP_NOT_FOUND: "Grupo comercial não encontrado.",
+    COMMERCIAL_GROUP_INACTIVE: "Este grupo comercial está inativo.",
+    COMMERCIAL_GROUP_MEMBER_NOT_FOUND: "Membro não encontrado neste grupo comercial.",
+    CLIENT_NOT_FOUND_FOR_DOCUMENT: "Nenhuma cliente encontrada (local ou no ERP) para este documento.",
+    CLIENT_ALREADY_GROUP_MEMBER: "Esta cliente já é membro deste grupo comercial.",
+    CLIENT_ALREADY_IN_ANOTHER_GROUP: "Esta cliente já pertence a outro grupo comercial ativo.",
 };
 
 export function cookieOptions() {

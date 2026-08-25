@@ -7,6 +7,10 @@ export type { Availability, Variant, PackScope, PackItem, Pack, Product } from '
 export type { CartItem, ShippingOption } from '@/contracts/shared';
 export type { Client } from '@/contracts/clients';
 export type {
+  CommercialGroup, CommercialGroupType, CommercialGroupMember,
+  CommercialGroupMemberWithClient, CommercialGroupWithMembers,
+} from '@/contracts/commercialGroups';
+export type {
   AuthPermissions, AuthUser, CatalogArea, UserRole,
   UserCredentials, ClientRegistration, ClientRegistrationUpdate,
 } from '@/contracts/auth';

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveTenantRoute, isTenantRouteError } from "@/lib/http/tenantRoute";
-import { execute, requestToken } from "@/lib/http/apiHelpers";
+import { auditContext, execute, requestToken } from "@/lib/http/apiHelpers";
 import * as authentication from "@/services/auth";
-import * as clients from "@/services/clients";
+import * as commercialGroups from "@/services/commercialGroups";
 
-type RouteContext = { params: Promise<{ tenantSlug: string; id: string }> };
+type RouteContext = { params: Promise<{ tenantSlug: string; id: string; memberId: string }> };
 
 export const dynamic = "force-dynamic";
 
@@ -24,15 +24,14 @@ export async function PUT(
     );
     if (!authenticated)
         return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-    const body = (await request.json().catch(() => null)) as { parentClientId?: string | null } | null;
-    if (!body || (body.parentClientId !== null && typeof body.parentClientId !== "string"))
-        return NextResponse.json({ error: "Corpo inválido." }, { status: 400 });
+    const mutationContext = { ...auditContext(request), sessionId: authenticated.sessionId };
     return execute(() =>
-        clients.setClientParent(
+        commercialGroups.setPrimaryCommercialGroupMember(
             route.tenant,
             authenticated.user,
             route.params.id,
-            body.parentClientId ?? null,
+            route.params.memberId,
+            mutationContext,
         ),
     );
 }

@@ -7,8 +7,9 @@ O fluxo do backend é `route -> service -> model`.
 - `models` executam somente operações de persistência e devolvem registros do banco.
 - O `index.ts` de cada domínio expõe a API pública usada pelas routes ou por outros services.
 
-Domínios atuais: `audit`, `auth`, `catalog`, `clients`, `companies`, `erp`, `home`,
-`notifications`, `orders`, `platform`, `recommendations`, `settings` e `users`.
+Domínios atuais: `audit`, `auth`, `catalog`, `clients`, `commercialGroups`,
+`companies`, `erp`, `home`, `notifications`, `orders`, `platform`,
+`recommendations`, `settings` e `users`.
 
 Integrações técnicas reutilizáveis, como o transporte de e-mail e o hub Socket.IO,
 permanecem em `lib`; a decisão de quando acioná-las pertence aos services.

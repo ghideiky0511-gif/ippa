@@ -2,14 +2,21 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, RefreshCw } from 'lucide-react';
-import type { Client, ClientWithLogin } from '@/domain/clients/types';
+import type { ClientWithLogin } from '@/domain/clients/types';
 import type { Order } from '@/domain/orders/types';
 import Link from '@/components/TenantLink';
 import { adminUi } from '@/workspace/lib/ui';
 import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import { ResponsiveDataTable } from '@/workspace/components/shared/ResponsiveDataTable';
-import { fetchClient, fetchClientBranches, setClientParent, syncClientFromErp } from '@/workspace/lib/customersClient';
-import { fetchOrders, searchOrderClients } from '@/lib/ordersClient';
+import { syncClientFromErp } from '@/workspace/lib/customersClient';
+import {
+  fetchCommercialGroup,
+  fetchCommercialGroupMembershipsByClientIds,
+  removeCommercialGroupMember,
+  type CommercialGroupMemberWithClient,
+  type CommercialGroupWithMembers,
+} from '@/workspace/lib/commercialGroupsClient';
+import { fetchOrders } from '@/lib/ordersClient';
 import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
 
 function formatCurrency(value: number) {
@@ -41,124 +48,88 @@ function InfoField({ label, value }: { label: string; value?: string }) {
   );
 }
 
-// Cliente master (atacado) que compra por si e por várias filiais de uma
-// vez — hierarquia de 1 nível só, vínculo manual por enquanto (ver
-// setClientParent no backend; a importação do TOTVS preenche a mesma
-// coluna depois). Uma conta que já tem filiais não pode virar filial de
-// outra (o formulário de vínculo só aparece quando `branches` está vazio).
-function MasterFilialSection({ client, onLinked }: { client: ClientWithLogin; onLinked: (updated: Client) => void }) {
-  const [branches, setBranches] = useState<Client[]>([]);
-  const [parentClient, setParentClient] = useState<Client | null>(null);
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Client[]>([]);
-  const [linking, setLinking] = useState(false);
+// Composição de matriz/filiais pra clientes de atacado que compram por
+// várias lojas de uma vez — vem de commercial_group_members (ver migration
+// 028, que aposentou clients.parent_client_id em favor disso). Só leitura +
+// remoção aqui; criar grupo, adicionar membro por busca/documento e marcar
+// principal já têm CRUD completo na aba "Grupos comerciais" do hub de
+// clientes (ver CommercialGroupsPanel.tsx) — não duplicar esse fluxo aqui.
+function GroupMembershipSection({ client }: { client: ClientWithLogin }) {
+  const [membership, setMembership] = useState<CommercialGroupMemberWithClient | null>(null);
+  const [group, setGroup] = useState<CommercialGroupWithMembers | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchClientBranches(client.id).then(setBranches).catch(() => {});
+  const reload = useCallback(async () => {
+    setError(null);
+    try {
+      const memberships = await fetchCommercialGroupMembershipsByClientIds([client.id]);
+      const own = memberships[0] ?? null;
+      setMembership(own);
+      setGroup(own ? await fetchCommercialGroup(own.groupId) : null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível carregar o grupo comercial.');
+    } finally {
+      setLoaded(true);
+    }
   }, [client.id]);
 
   useEffect(() => {
-    if (!client.parentClientId) {
-      setParentClient(null);
-      return;
-    }
-    fetchClient(client.parentClientId).then(setParentClient).catch(() => {});
-  }, [client.parentClientId]);
-
-  useEffect(() => {
-    const q = query.trim();
-    const timeout = window.setTimeout(() => {
-      if (!q) {
-        setResults([]);
-        return;
-      }
-      searchOrderClients(q).then((found) => setResults(found.filter((c) => c.id !== client.id))).catch(() => {});
-    }, q ? 250 : 0);
-    return () => window.clearTimeout(timeout);
-  }, [query, client.id]);
-
-  async function link(parentId: string) {
-    setLinking(true);
-    setError(null);
-    try {
-      onLinked(await setClientParent(client.id, parentId));
-      setQuery('');
-      setResults([]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Não foi possível vincular.');
-    } finally {
-      setLinking(false);
-    }
-  }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void reload();
+  }, [reload]);
 
   async function unlink() {
-    setLinking(true);
+    if (!membership) return;
+    setRemoving(true);
     setError(null);
     try {
-      onLinked(await setClientParent(client.id, null));
+      await removeCommercialGroupMember(membership.groupId, membership.id);
+      await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível desvincular.');
     } finally {
-      setLinking(false);
+      setRemoving(false);
     }
   }
+
+  const siblings = group?.members.filter((member) => member.clientId !== client.id) ?? [];
 
   return (
     <section className="rounded-brand border border-border bg-surface p-4">
       <h2 className="font-bold">Cliente master / filiais</h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        Pra clientes de atacado que compram por várias lojas de uma vez — vincule filiais a uma conta master.
+        Pra clientes de atacado que compram por várias lojas de uma vez — gerencie a composição na aba &quot;Grupos comerciais&quot; do hub de clientes.
       </p>
 
-      {branches.length > 0 ? (
-        <div className="mt-3">
-          <p className="text-xs text-muted-foreground">Filiais desta conta</p>
-          <ul className="mt-1 flex flex-col gap-1">
-            {branches.map((branch) => (
-              <li key={branch.id}>
-                <Link href={`/workspace/clientes/${branch.id}`} className="text-sm font-semibold text-brand-primary hover:underline">
-                  {branch.name}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : parentClient ? (
-        <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm">
-          <span>
-            Filial de{' '}
-            <Link href={`/workspace/clientes/${parentClient.id}`} className="font-semibold text-brand-primary hover:underline">
-              {parentClient.name}
-            </Link>
-          </span>
-          <button type="button" className={adminUi.button} onClick={unlink} disabled={linking}>Desvincular</button>
-        </div>
-      ) : (
-        <div className="mt-3">
-          <div className={`${adminUi.field} max-w-sm`}>
-            <label>Vincular a um cliente master</label>
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por nome ou CPF/CNPJ..." />
+      {loaded && membership && group ? (
+        <div className="mt-3 flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm">
+            <span>
+              {membership.isPrimary ? 'Matriz do grupo' : 'Filial do grupo'}{' '}
+              <span className="font-semibold">{group.name}</span>
+            </span>
+            <button type="button" className={adminUi.button} onClick={unlink} disabled={removing}>Desvincular</button>
           </div>
-          {results.length > 0 && (
-            <ul className="mt-2 flex max-w-sm flex-col gap-1">
-              {results.map((result) => (
-                <li key={result.id}>
-                  <button
-                    type="button"
-                    className="flex w-full items-center justify-between rounded-lg border border-border bg-surface px-3 py-2 text-left text-sm hover:border-brand-primary"
-                    onClick={() => link(result.id)}
-                    disabled={linking}
-                  >
-                    <span>{result.name}</span>
-                    <span className="text-xs text-muted-foreground">{result.cpfCnpj || 'sem CPF/CNPJ'}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+          {siblings.length > 0 && (
+            <div>
+              <p className="text-xs text-muted-foreground">Outros membros do grupo</p>
+              <ul className="mt-1 flex flex-col gap-1">
+                {siblings.map((sibling) => (
+                  <li key={sibling.id}>
+                    <Link href={`/workspace/clientes/${sibling.clientId}`} className="text-sm font-semibold text-brand-primary hover:underline">
+                      {sibling.client.name}{sibling.isPrimary ? ' · matriz' : ''}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
-      )}
+      ) : loaded ? (
+        <p className="mt-3 text-sm text-muted-foreground">Esta cliente não faz parte de nenhum grupo comercial.</p>
+      ) : null}
 
       {error && <p className="mt-2 text-sm text-[#b00020]">{error}</p>}
     </section>
@@ -260,7 +231,7 @@ export default function ClientDetailApp({
           </div>
         </section>
 
-        <MasterFilialSection client={client} onLinked={(updated) => setClient((current) => ({ ...current, ...updated }))} />
+        <GroupMembershipSection client={client} />
 
         <section className="rounded-brand border border-border bg-surface p-4">
           <div>

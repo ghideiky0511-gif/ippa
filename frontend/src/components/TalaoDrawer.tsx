@@ -158,21 +158,25 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
     return () => window.clearTimeout(timeout);
   }, [query]);
 
-  // Cliente master (compra por várias filiais de uma vez) — em vez de
-  // seguir no drawer, a vendedora vai direto pra página cheia do talão pra
-  // montar o atendimento de todo o grupo (decisão combinada com o
-  // usuário). Sem filiais, é uma cliente normal, segue no drawer como
-  // sempre.
+  // Cliente master (membro principal de um grupo comercial com mais de um
+  // membro ativo) — em vez de seguir no drawer, a vendedora vai direto pra
+  // página cheia do talão pra montar o atendimento de todo o grupo (decisão
+  // combinada com o usuário). Sem grupo (ou grupo sem outros membros), é
+  // uma cliente normal, segue no drawer como sempre.
   async function redirectIfMaster(client: Client) {
     try {
-      const res = await fetch(`/api/clients?parentId=${encodeURIComponent(client.id)}`);
-      const branches = res.ok ? await res.json() : [];
-      if (Array.isArray(branches) && branches.length > 0) {
+      const membershipRes = await fetch(`/api/commercial-groups/memberships?clientIds=${encodeURIComponent(client.id)}`);
+      const memberships = membershipRes.ok ? await membershipRes.json() : [];
+      const membership = Array.isArray(memberships) ? memberships[0] : null;
+      if (!membership?.isPrimary) return;
+      const groupRes = await fetch(`/api/commercial-groups/${encodeURIComponent(membership.groupId)}`);
+      const group = groupRes.ok ? await groupRes.json() : null;
+      if (Array.isArray(group?.members) && group.members.length > 1) {
         talao.closeTalao();
         router.push(href(`/workspace/talao?masterId=${client.id}`));
       }
     } catch {
-      // Sem confirmação de filiais, segue no drawer normalmente.
+      // Sem confirmação do grupo, segue no drawer normalmente.
     }
   }
 
@@ -366,18 +370,18 @@ export default function TalaoDrawer() {
 
   if (!talao) return null;
 
-  const { isTalaoOpen, closeTalao, activeBookSessions, cancelledBookSessions, activeSession, selectSession, closeSession, reopenSession, createSession, books, activeBook, selectBook, createBook, cancelBook, clientsById } = talao;
+  const { isTalaoOpen, closeTalao, activeBookSessions, cancelledBookSessions, activeSession, selectSession, closeSession, reopenSession, createSession, books, activeBook, selectBook, createBook, cancelBook, clientsById, groupMembershipByClientId } = talao;
 
-  // Cliente master (parentClientId nulo) com mais de uma sessão aberta no
-  // grupo (ela + pelo menos uma filial) — colapsa numa linha só + "+".
-  // Filial cuja master também está aberta aqui fica escondida da lista
-  // solta (só aparece dentro do "+"); sem a master aberta, não tem em quem
-  // colapsar, então a filial aparece normal.
+  // Membro principal (matriz) de um grupo comercial com mais de uma sessão
+  // aberta no grupo (ela + pelo menos uma filial) — colapsa numa linha só +
+  // "+". Filial cujo membro principal também está aberto aqui fica escondida
+  // da lista solta (só aparece dentro do "+"); sem a matriz aberta, não tem
+  // em quem colapsar, então a filial aparece normal. Client sem grupo usa o
+  // próprio id como chave — nunca colide com outro grupo, então nunca colapsa.
   function masterIdFor(session: OrderSession): string | null {
     if (!session.clientId) return null;
-    const client = clientsById[session.clientId];
-    if (!client) return null;
-    return client.parentClientId ?? client.id;
+    const membership = groupMembershipByClientId[session.clientId];
+    return membership ? membership.groupId : session.clientId;
   }
   const groupCounts = new Map<string, number>();
   for (const s of activeBookSessions) {
@@ -386,21 +390,28 @@ export default function TalaoDrawer() {
   }
   function isGroupRepresentative(session: OrderSession): boolean {
     if (!session.clientId) return false;
-    const client = clientsById[session.clientId];
-    if (!client || client.parentClientId) return false;
-    return (groupCounts.get(client.id) ?? 0) > 1;
+    const membership = groupMembershipByClientId[session.clientId];
+    if (membership && !membership.isPrimary) return false;
+    return (groupCounts.get(masterIdFor(session)!) ?? 0) > 1;
   }
   function isHiddenFilial(session: OrderSession): boolean {
     if (!session.clientId) return false;
-    const parentId = clientsById[session.clientId]?.parentClientId;
-    if (!parentId) return false;
-    return activeBookSessions.some((m) => m.clientId === parentId);
+    const membership = groupMembershipByClientId[session.clientId];
+    if (!membership || membership.isPrimary) return false;
+    return activeBookSessions.some((m) => {
+      if (!m.clientId) return false;
+      const other = groupMembershipByClientId[m.clientId];
+      return other?.isPrimary && other.groupId === membership.groupId;
+    });
   }
 
   const others = activeBookSessions.filter((s) => s.id !== activeSession?.id && !isHiddenFilial(s));
   const secondaryRows = secondaryMasterId
     ? activeBookSessions.filter((s) => masterIdFor(s) === secondaryMasterId)
     : [];
+  const secondaryMasterName = secondaryRows.find((s) => s.clientId && groupMembershipByClientId[s.clientId]?.isPrimary)?.clientName
+    ?? secondaryRows[0]?.clientName
+    ?? '';
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
@@ -468,7 +479,7 @@ export default function TalaoDrawer() {
         <div className={publicUi.drawerBody}>
           {secondaryMasterId ? (
             <MasterGroupPanel
-              masterName={clientsById[secondaryMasterId]?.name ?? ''}
+              masterName={secondaryMasterName}
               rows={secondaryRows}
               clientsById={clientsById}
               onBack={() => setSecondaryMasterId(null)}
@@ -590,7 +601,7 @@ export default function TalaoDrawer() {
                     aria-label="Ver matriz e filiais"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setSecondaryMasterId(activeSession.clientId!);
+                      setSecondaryMasterId(masterIdFor(activeSession));
                     }}
                   >
                     <Plus className="size-4" aria-hidden="true" />
@@ -627,7 +638,7 @@ export default function TalaoDrawer() {
                         aria-label="Ver matriz e filiais"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setSecondaryMasterId(s.clientId!);
+                          setSecondaryMasterId(masterIdFor(s));
                         }}
                       >
                         <Plus className="size-4" aria-hidden="true" />

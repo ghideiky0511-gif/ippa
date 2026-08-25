@@ -75,9 +75,6 @@ export type UpdateClientInput = z.infer<typeof UpdateClientInputSchema>;
 export const ClientSchema = ClientProfileSchema.extend({
     id: EntityIdSchema,
     lastSellerId: EntityIdSchema.optional(),
-    // Cliente master (holding) que compra por essa filial junto — hierarquia
-    // de 1 nível só, vínculo manual por enquanto (ver setClientParent).
-    parentClientId: EntityIdSchema.optional(),
     createdAt: IsoDateTimeSchema,
     updatedAt: IsoDateTimeSchema,
 });

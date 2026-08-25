@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveTenantRoute, isTenantRouteError } from "@/lib/http/tenantRoute";
 import { auditContext, execute, requestToken } from "@/lib/http/apiHelpers";
 import * as authentication from "@/services/auth";
-import * as clients from "@/services/clients";
+import * as commercialGroups from "@/services/commercialGroups";
 
 type RouteContext = { params: Promise<{ tenantSlug: string }> };
 
@@ -25,10 +25,11 @@ export async function GET(
     if (!session)
         return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
     return execute(() =>
-        clients.searchTenantClients(
+        commercialGroups.listCommercialGroups(
             route.tenant,
             session.user,
             request.nextUrl.searchParams.get("q") ?? undefined,
+            request.nextUrl.searchParams.get("includeInactive") === "1",
         ),
     );
 }
@@ -39,10 +40,7 @@ export async function POST(
 ): Promise<Response> {
     const route = await resolveTenantRoute(request, context.params);
     if (isTenantRouteError(route)) return route;
-    const body = (await request.json().catch(() => ({}))) as Record<
-        string,
-        unknown
-    >;
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const contextData = auditContext(request);
     const authenticated = await authentication.getAuthenticatedSession(
         route.tenant,
@@ -50,13 +48,10 @@ export async function POST(
     );
     if (!authenticated)
         return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-    const mutationContext = {
-        ...contextData,
-        sessionId: authenticated.sessionId,
-    };
+    const mutationContext = { ...contextData, sessionId: authenticated.sessionId };
     return execute(
         () =>
-            clients.createTenantClient(
+            commercialGroups.createCommercialGroup(
                 route.tenant,
                 authenticated.user,
                 body,
