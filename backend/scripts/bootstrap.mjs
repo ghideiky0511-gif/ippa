@@ -1,5 +1,6 @@
 import { Client } from 'pg';
 import { hash } from '@node-rs/argon2';
+import { sslConfig } from './pgSsl.mjs';
 
 const connectionString = process.env.MIGRATIONS_DATABASE_URL || process.env.DATABASE_URL;
 const optionalValue = (value) => value?.trim() || '';
@@ -27,7 +28,7 @@ if (!shouldBootstrapTenant && !shouldBootstrapPlatformAdmin) {
   process.exit(0);
 }
 
-const client = new Client({ connectionString, application_name: 'ippa-bootstrap' });
+const client = new Client({ connectionString, application_name: 'ippa-bootstrap', ssl: sslConfig() });
 await client.connect();
 try {
   await client.query('BEGIN');

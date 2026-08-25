@@ -16,6 +16,7 @@ import { findUserRowById } from "@/models/usersModel";
 import { findStoreSettingsRow } from "@/models/settingsModel";
 import { notifyOrder, notifyOrderBook, notifySession } from "@/services/realtime/updateBroadcast";
 import { notifyNewOrderForSeller, notifyOrderConfirmed } from "@/services/notifications";
+import { enqueueOrderPush } from "@/services/erp/orderPushService";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
 import { toOrder, toOrderSession } from "./orderMapper";
 import { closeOrderBookWhenFinished } from "./orderBookLifecycle";
@@ -137,5 +138,6 @@ export async function createCustomerOrder(
     notifyOrder(tenant.id, order);
     notifyOrderConfirmed(tenant, user, order);
     if (sellerRecipient) notifyNewOrderForSeller(tenant, sellerRecipient, order);
+    await enqueueOrderPush(tenant, user, order.id);
     return order;
 }

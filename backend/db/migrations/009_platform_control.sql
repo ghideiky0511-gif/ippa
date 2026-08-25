@@ -1,7 +1,7 @@
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ippa_control') THEN
-    CREATE ROLE ippa_control NOINHERIT NOBYPASSRLS;
+    CREATE ROLE ippa_control LOGIN NOINHERIT NOBYPASSRLS;
   END IF;
 END $$;
 

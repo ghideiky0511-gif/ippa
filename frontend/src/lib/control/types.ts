@@ -34,3 +34,23 @@ export interface ControlTenant {
   userCount: number;
   contract: ControlTenantContract | null;
 }
+
+export type ControlAiPromptVersionStatus = 'draft' | 'active' | 'archived';
+
+export interface ControlAiPromptVersion {
+  id: string;
+  version: number;
+  instructions: string;
+  status: ControlAiPromptVersionStatus;
+  createdAt: string;
+  activatedAt: string | null;
+}
+
+export interface ControlAiPromptTool {
+  key: string;
+  label: string;
+  description: string;
+  defaultInstructions: string;
+  activeVersion: number | null;
+  versions: ControlAiPromptVersion[];
+}

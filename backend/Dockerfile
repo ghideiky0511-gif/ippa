@@ -25,6 +25,7 @@ RUN npm ci --omit=dev
 COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
 COPY --chown=nextjs:nodejs server.ts next.config.ts tsconfig.json ./
 COPY --chown=nextjs:nodejs src ./src
+COPY --chown=nextjs:nodejs db/certs ./db/certs
 USER nextjs
 EXPOSE 3011
 CMD ["npm", "start"]

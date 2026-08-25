@@ -3,6 +3,7 @@ import { documentDigits } from "@/contracts/shared";
 import type {
     ErpFetchOptions,
     ErpFetchResult,
+    ErpOrderPushContext,
     ErpProvider,
     ErpProviderCredentials,
 } from "../../types";
@@ -14,6 +15,8 @@ import {
 import { TotvsModaAuthError } from "./errors";
 import {
     groupTotvsModaProducts,
+    mapCancelOrderInput,
+    mapOrderToTotvsModaOrderInDto,
     mapTotvsModaCompany,
     mapTotvsModaIndividualClient,
     mapTotvsModaLegalEntityClient,
@@ -39,6 +42,12 @@ function toNumberArray(value: unknown): number[] {
     return value
         .map((item) => Number(item))
         .filter((item) => Number.isFinite(item));
+}
+
+function toOptionalNumber(value: unknown): number | undefined {
+    if (value === undefined || value === null || value === "") return undefined;
+    const num = Number(value);
+    return Number.isFinite(num) ? num : undefined;
 }
 
 function normalizeCredentials(
@@ -73,6 +82,11 @@ function normalizeCredentials(
             "Configuração do TOTVS Moda incompleta: branchCode, priceCodeList e stockCodeList são obrigatórios para consultar produtos.",
         );
     }
+    // Os campos abaixo (parâmetros de negócio de envio/cancelamento de
+    // pedido) não são validados aqui de propósito: só passam a ser
+    // obrigatórios quando o tenant usa essa capacidade específica (ver
+    // mapOrderToTotvsModaOrderInDto/mapCancelOrderInput em mapper.ts), não
+    // para as demais operações deste provider.
     return {
         clientId,
         clientSecret,
@@ -81,6 +95,13 @@ function normalizeCredentials(
         branchCode,
         priceCodeList,
         stockCodeList,
+        defaultDiscountTypeCode: toOptionalNumber(credentials.defaultDiscountTypeCode ?? credentials.default_discount_type_code),
+        defaultOperationCode: toOptionalNumber(credentials.defaultOperationCode ?? credentials.default_operation_code),
+        defaultPaymentConditionCode: toOptionalNumber(credentials.defaultPaymentConditionCode ?? credentials.default_payment_condition_code),
+        defaultPriorityCode: toOptionalNumber(credentials.defaultPriorityCode ?? credentials.default_priority_code),
+        representativeCode: toOptionalNumber(credentials.representativeCode ?? credentials.representative_code),
+        representativeCpfCnpj: trim(credentials.representativeCpfCnpj ?? credentials.representative_cpf_cnpj) || undefined,
+        defaultReasonCancellationCode: toOptionalNumber(credentials.defaultReasonCancellationCode ?? credentials.default_reason_cancellation_code),
     };
 }
 
@@ -147,10 +168,8 @@ export function createTotvsModaErpProvider(
     credentials: ErpProviderCredentials,
     reporter?: ExternalApiCallReporter,
 ): ErpProvider {
-    const client = new TotvsModaClient(
-        normalizeCredentials(credentials),
-        reporter,
-    );
+    const normalized = normalizeCredentials(credentials);
+    const client = new TotvsModaClient(normalized, reporter);
 
     return {
         code: "totvsmoda",
@@ -362,6 +381,36 @@ export function createTotvsModaErpProvider(
                 if (party && party.cpfCnpj !== digits) parties.push(party);
             }
             return parties;
+        },
+
+        // Cria o pedido (POST b2c-orders) -- toda a tradução Order+context ->
+        // OrderInDto fica em mapOrderToTotvsModaOrderInDto (mapper.ts), que
+        // lança TotvsModaOrderMappingError (não-repetível) quando falta
+        // config/dado obrigatório. orderCode (o número que o TOTVS atribui) é
+        // o externalId que orderPushService guarda como "id do ERP".
+        async sendOrder(
+            order,
+            context: ErpOrderPushContext,
+            options,
+        ) {
+            const orderId = options?.idempotencyKey || order.id;
+            const payload = mapOrderToTotvsModaOrderInDto(order, context, normalized, orderId);
+            const result = await client.createB2COrder(payload);
+            return {
+                externalId: String(result.orderCode),
+                raw: result as unknown as Record<string, unknown>,
+            };
+        },
+
+        // Cancela (POST orders/cancel) por branchCode+orderCode -- externalId
+        // aqui é sempre o orderCode que sendOrder devolveu (ver
+        // mapCancelOrderInput em mapper.ts para o porquê de não usar orderId).
+        // Um 400 já chega aqui como TotvsModaOrderRejectedError (client.ts),
+        // então não precisa de tratamento especial: só deixa propagar.
+        async cancelOrder(externalId, options) {
+            const payload = mapCancelOrderInput(externalId, normalized, options?.reason);
+            await client.cancelOrder(payload);
+            return {};
         },
     };
 }

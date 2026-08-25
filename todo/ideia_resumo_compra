@@ -1,0 +1,192 @@
+# Resumo IA da última compra
+
+Objetivo: durante o atendimento no talão, dar à vendedora uma segunda visão
+operacional da última compra da cliente vinculada: valor, data, quantidade de
+peças, grade, cores, categorias e comparação com o ticket médio da cliente e
+do tenant.
+
+Princípios:
+
+- números e agrupamentos são calculados pelo backend; a IA interpreta e sugere;
+- nenhuma identificação pessoal entra no prompt ou na saída da ferramenta;
+- toda leitura e persistência é isolada por tenant;
+- a transação de banco termina antes da chamada à OpenAI;
+- a execução acontece somente por uma rota específica e autorizada;
+- o talão continua funcionando mesmo se a IA estiver indisponível.
+
+## Fase 1 — fundação do motor
+
+### Concluído no código
+
+- [x] Domínio tipado `backend/src/services/ai`.
+- [x] Definição genérica de ferramenta com schemas Zod de entrada e saída.
+- [x] Runner obrigatório por tenant e ator.
+- [x] Provider OpenAI injetável usando Responses API, Structured Outputs e
+      `store: false`.
+- [x] Timeout de 20 segundos e uma repetição para falhas transitórias.
+- [x] Perfil `catalogOrderResume` com chave e modelo dedicados.
+- [x] Cache opt-in por tenant, ferramenta, versão, modelo e hash do input.
+- [x] Histórico interno sem input, prompt, resposta bruta, nome ou documento.
+- [x] Migration `030_ai_tool_executions.sql` com RLS e retenção de 90 dias.
+- [x] Erros internos normalizados sem detalhes do provider.
+- [x] Testes do motor com provider/store falsos, sem chave real.
+- [x] Build, TypeScript, lint direcionado e teste da migration/RLS validados.
+
+### Pendente para disponibilizar em ambiente
+
+- [ ] Revisar e versionar as alterações locais da fase 1.
+- [ ] Aplicar a migration 030 nos ambientes de homologação e produção.
+- [ ] Configurar `OPENAI_API_KEY_BIPPA_CATALOG_ORDER_RESUME` como secret do
+      backend nesses ambientes.
+- [ ] Fazer um smoke test em homologação com uma ferramenta real e conferir o
+      histórico em `ai_tool_executions`.
+
+## Administração de prompts no Control
+
+### Concluído no código
+
+- [x] Migration `031_ai_tool_prompt_versions.sql` com histórico de versões,
+      rascunho, ativação, arquivamento e uma única versão ativa por tenant e
+      ferramenta.
+- [x] Migration incremental `033_ai_tool_prompt_version_guards.sql` restringe
+      a leitura do runtime à versão ativa e torna imutável o conteúdo das
+      versões já criadas.
+- [x] RLS permite ao runtime ler somente o prompt ativo do tenant corrente;
+      alterações ficam restritas ao papel interno do Control.
+- [x] Módulo `control/[tenant]/ai` para editar, salvar uma nova versão, ativar
+      e reativar uma versão anterior como rollback.
+- [x] Catálogo interno de ferramentas gerenciadas, inicialmente com
+      `catalog.last_order_resume` e suas instruções padrão.
+- [x] Runner consulta a versão ativa no banco antes de chamar o provider e usa
+      a definição em código como fallback quando ainda não houver configuração.
+- [x] Revisão do prompt participa da identidade do cache, impedindo que uma
+      versão nova reutilize resultado produzido por instruções antigas.
+- [x] Execuções referenciam a versão de prompt utilizada sem duplicar o texto
+      do prompt no histórico operacional.
+- [x] Migration/RLS, TypeScript, testes do motor, lint direcionado e builds de
+      backend e frontend validados.
+
+### Pendente para disponibilizar em ambiente
+
+- [ ] Aplicar as migrations 031 e 033 em homologação e produção, respeitando a
+      ordem do migrador e sem alterar migrations já aplicadas.
+- [ ] Criar e ativar a primeira versão do prompt pelo Control em homologação.
+- [ ] Repetir o smoke test depois que a ferramenta real da fase 2 estiver
+      conectada ao talão.
+
+## Fase 2 — análise da última compra
+
+### Fonte de verdade
+
+- A análise consulta exclusivamente as tabelas `orders` e `order_items`.
+- A cliente é obtida pelo `client_id` da sessão ativa do talão.
+- A última compra é o registro mais recente de `orders` da cliente com
+  `status = 'pago'`, ordenado por `created_at DESC`.
+- Pedidos `aberto`, `aguardando_pagamento` e `cancelado` não participam da
+  análise nem dos cálculos de ticket médio.
+- Os itens analisados são somente os `order_items` vinculados ao `order_id`
+  encontrado.
+- Quantidade e preço unitário vêm das colunas `order_items.qty` e
+  `order_items.unit_price`; produto, variante, categoria, cor e tamanho são
+  enriquecidos pelas relações locais quando disponíveis, mantendo o snapshot
+  apenas como fallback de exibição.
+- Não há consulta direta ao ERP e `vesti_order.json` não participa deste fluxo.
+
+### Domínio, ferramenta, API e talão
+
+#### 1. Leitura e agregação determinística
+
+- [ ] Criar models pequenos e tenant-scoped para:
+  - localizar o último pedido pago da cliente em `orders`;
+  - carregar somente os itens desse pedido enriquecidos pelo catálogo;
+  - calcular ticket médio da cliente e do tenant usando somente pedidos pagos
+    no mesmo período.
+- [ ] Criar `catalogOrderResumeService` para validar acesso à sessão do talão,
+      ler os dados em uma transação curta e fechá-la antes de chamar a IA.
+- [ ] Usar como referência inicial uma janela de 12 meses para os tickets,
+      sempre retornando a quantidade de pedidos da amostra.
+- [ ] Calcular no backend, sem IA:
+  - data, valor e dias desde a última compra;
+  - total de peças e produtos distintos;
+  - ticket médio da cliente e do tenant;
+  - diferença percentual do último pedido para os dois tickets;
+  - quantidade e participação por categoria/subcategoria, cor e tamanho;
+  - itens sem classificação suficiente.
+- [ ] Se não existir pedido pago anterior, retornar `no_history` sem chamar a
+      OpenAI.
+
+#### 2. Ferramenta de IA
+
+- [ ] Definir a ferramenta versionada `catalog.last_order_resume`.
+- [ ] Criar schemas Zod estritos para o payload operacional e para a resposta.
+- [ ] Enviar somente métricas agregadas e rótulos de produto necessários; não
+      enviar `clientId`, `sessionId`, nome, CPF/CNPJ, e-mail ou endereço.
+- [ ] Pedir uma resposta curta, acionável e sustentada pelos números recebidos:
+  - resumo de uma frase;
+  - até três insights de grade, cor, categoria, recência ou ticket;
+  - leitura do mix entre parte de cima, parte de baixo, peça inteira e outros,
+    sempre derivada das categorias recebidas e marcada como interpretação;
+  - evidência objetiva de cada insight;
+  - sugestão de ação para a vendedora;
+  - aviso de amostra pequena quando aplicável.
+- [ ] Habilitar cache (sugestão inicial: 24 horas). Mudanças no pedido ou nas
+      métricas alteram o hash e invalidam o resultado naturalmente.
+- [ ] Validar novamente a saída antes de devolvê-la ao domínio.
+
+#### 3. Rota específica e autorização
+
+- [ ] Criar `POST /api/[tenantSlug]/sessions/[id]/last-order-summary`.
+- [ ] Não aceitar `clientId` arbitrário no body: a cliente deve ser obtida da
+      sessão informada.
+- [ ] Permitir somente a vendedora responsável pela sessão e administradores
+      com acesso administrativo.
+- [ ] Exigir que a sessão tenha um cadastro de cliente vinculado.
+- [ ] Retornar um contrato explícito:
+  - `available`: métricas exatas + análise + `executionId` + origem do cache;
+  - `no_history`: cliente vinculada, mas sem pedido pago anterior.
+- [ ] Aplicar os erros normalizados do motor sem expor mensagem do provider.
+- [ ] Não criar endpoint genérico de prompts ou de execução de ferramentas.
+
+#### 4. Experiência no talão
+
+- [ ] Criar contrato Zod equivalente no frontend.
+- [ ] Adicionar um card `Resumo da última compra` à sessão ativa do
+      `TalaoDrawer` somente quando houver `clientId` vinculado.
+- [ ] Fazer a geração sob demanda por botão, evitando custo ao apenas alternar
+      entre atendimentos.
+- [ ] Exibir primeiro os fatos exatos: data, peças, valor e comparação de ticket.
+- [ ] Exibir abaixo os insights curtos de grade, cor e categoria.
+- [ ] Tratar separadamente carregamento, sem histórico, falha temporária e nova
+      tentativa, sem bloquear carrinho, frete ou pagamento.
+- [ ] Limpar o estado visual ao trocar de sessão para nunca mostrar a análise de
+      outra cliente.
+- [ ] Manter o card utilizável no drawer estreito e na navegação por teclado.
+
+#### 5. Testes e aceite
+
+- [ ] Testar agregações e percentuais sem depender da IA.
+- [ ] Testar a ferramenta com provider falso, incluindo cache e saída inválida.
+- [ ] Testar isolamento por tenant e autorização por sessão/vendedora.
+- [ ] Testar `no_history` e confirmar que não cria execução de IA.
+- [ ] Testar que prompt e histórico não contêm identificação pessoal.
+- [ ] Testar a rota com cliente vinculada, sem cliente e sessão de outra
+      vendedora.
+- [ ] Testar o card ao gerar, trocar sessão, repetir via cache e receber erro.
+- [ ] Rodar `test:ai`, testes de pedidos, lint, build backend, contratos e
+      build frontend.
+- [ ] Validar em homologação com uma cliente fictícia que tenha pelo menos dois
+      pedidos e grades variadas.
+
+## Fora da fase 2
+
+- análise do carrinho atual contra a última compra em tempo real;
+- recomendação automática de SKUs ou produtos disponíveis;
+- comparação entre matriz e filiais de um grupo comercial;
+- histórico/tela administrativa de execuções de IA;
+- execução assíncrona em fila ou notificações;
+- migração do `homeAiService` para o novo motor.
+- correção ou reconciliação da importação de pedidos do ERP; a ferramenta apenas
+  consome o que já estiver persistido corretamente em `orders` e `order_items`.
+
+Esses itens podem virar uma fase 3 depois que a vendedora usar o resumo e houver
+feedback suficiente para decidir quais recomendações realmente ajudam a venda.

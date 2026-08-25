@@ -19,6 +19,7 @@ import {
 import { findUserRowByClientId, findUserRowById } from "@/models/usersModel";
 import { notifyOrder, notifyOrderBook, notifySession } from "@/services/realtime/updateBroadcast";
 import { notifyNewOrderForSeller, notifyOrderConfirmed } from "@/services/notifications";
+import { enqueueOrderPush } from "@/services/erp/orderPushService";
 import { GoneError, NotFoundError } from "@/services/shared/errors";
 import { getCartDiscount } from "@/services/settings";
 import { PAYMENT_LINK_EXPIRATION_DEFAULT_MINUTES } from "@/services/settings";
@@ -137,5 +138,6 @@ export async function confirmPayment(
   notifyOrder(tenant.id, order);
   if (recipient) notifyOrderConfirmed(tenant, recipient, order);
   if (sellerRecipient) notifyNewOrderForSeller(tenant, sellerRecipient, order);
+  await enqueueOrderPush(tenant, {}, order.id);
   return { ok: true, order };
 }
