@@ -1,5 +1,15 @@
 import type { CartItem, Client, Company, Order, Product, Variant } from "@/lib/types";
 import { OrderChannelSchema } from "@/contracts/orders";
+import type { ErpOrderPushContext, NonRetryableErpOrderError } from "@/erp/types";
+import type {
+    TotvsModaCancelOrderInput,
+    TotvsModaCredentials,
+    TotvsModaDocumentType,
+    TotvsModaOrderDiscountInput,
+    TotvsModaOrderInput,
+    TotvsModaOrderItemInput,
+    TotvsModaOrderPaymentInput,
+} from "./client";
 
 // Adequação do formato bruto do TOTVS Moda para os tipos internos — só aqui,
 // igual mock/mapper.ts faz para o mock. Os tipos de produto (prefixo
@@ -290,6 +300,164 @@ export function mapTotvsModaLegalEntityClient(raw: TotvsModaLegalEntity): Omit<C
         neighborhood: address?.neighborhood,
         city: address?.cityName,
         state: address?.stateAbbreviation,
+    };
+}
+
+// Erro de MAPEAMENTO (antes de qualquer chamada HTTP): falta dado que o
+// TOTVS exige e que não existe no nosso lado ainda -- credenciais/config
+// incompletas, cliente sem documento, produto sem reference_id sincronizado.
+// Retentar sem corrigir o cadastro nunca resolve sozinho, por isso implementa
+// NonRetryableErpOrderError (mesmo motivo de TotvsModaOrderRejectedError em
+// errors.ts, só que detectado antes de chamar a API, não depois).
+export class TotvsModaOrderMappingError extends Error implements NonRetryableErpOrderError {
+    readonly nonRetryable = true as const;
+    constructor(message: string) {
+        super(message);
+        this.name = "TotvsModaOrderMappingError";
+    }
+}
+
+// Meio de pagamento ainda é texto livre/mockado no domínio interno (ver
+// CreateCustomerOrderInputSchema em contracts/orders.ts — frete e pagamento
+// reais ainda não existem) — esta é uma heurística por palavra-chave, não
+// uma integração de verdade com o meio de pagamento. "Invoice" (fatura) é o
+// fallback quando nada bate, por ser o tipo mais neutro (não exige dado de
+// cartão/NSU que não temos).
+function mapPaymentMethodToDocumentType(paymentMethod: string | undefined): TotvsModaDocumentType {
+    const normalized = (paymentMethod ?? "").toLowerCase();
+    if (normalized.includes("pix")) return "Pix";
+    if (normalized.includes("boleto")) return "Billet";
+    if (normalized.includes("debito") || normalized.includes("débito")) return "DebitCard";
+    if (normalized.includes("credito") || normalized.includes("crédito") || normalized.includes("cartao") || normalized.includes("cartão")) return "CreditCard";
+    if (normalized.includes("dinheiro") || normalized.includes("cash")) return "Cash";
+    return "Invoice";
+}
+
+// OrderInDto exige branchCode/operationCode/paymentConditionCode/priorityCode/
+// representative(Code|CpfCnpj) -- parâmetros de negócio do TOTVS sem
+// equivalente no domínio interno (Order), por isso vêm de credentials
+// (configurados por tenant, ver providerCatalog.ts), não do pedido.
+// customerCpfCnpj e o reference_id de cada item vêm de `context`, resolvido
+// por quem tem acesso a banco (orderPushService) -- este mapper não consulta
+// nada, só transforma o que já chegou pronto.
+export function mapOrderToTotvsModaOrderInDto(
+    order: Order,
+    context: ErpOrderPushContext,
+    credentials: TotvsModaCredentials,
+    orderId: string,
+): TotvsModaOrderInput {
+    if (!credentials.defaultOperationCode || !credentials.defaultPaymentConditionCode || !credentials.defaultPriorityCode) {
+        throw new TotvsModaOrderMappingError(
+            "Configuração do TOTVS Moda incompleta: código de operação, condição de pagamento ou prioridade não definidos.",
+        );
+    }
+    if (!credentials.representativeCode && !credentials.representativeCpfCnpj) {
+        throw new TotvsModaOrderMappingError(
+            "Configuração do TOTVS Moda incompleta: representante (código ou CPF/CNPJ) não definido.",
+        );
+    }
+    // "Um dos dois, nunca os dois" -- mesma regra que customerCode/
+    // customerCpfCnpj e branchCode/orderCode/orderId têm na doc do TOTVS;
+    // configurar os dois é ambíguo (qual prevalece?), então falha alto em
+    // vez de silenciosamente preferir representativeCode.
+    if (credentials.representativeCode && credentials.representativeCpfCnpj) {
+        throw new TotvsModaOrderMappingError(
+            "Configuração do TOTVS Moda ambígua: defina representante por código OU por CPF/CNPJ, não os dois.",
+        );
+    }
+    if (!context.clientDocument) {
+        throw new TotvsModaOrderMappingError(
+            "Cliente do pedido não tem CPF/CNPJ cadastrado -- necessário para enviar o pedido ao TOTVS Moda.",
+        );
+    }
+    if (order.items.length === 0) {
+        throw new TotvsModaOrderMappingError("Pedido sem itens -- nada para enviar ao TOTVS Moda.");
+    }
+
+    const items: TotvsModaOrderItemInput[] = order.items.map((item) => {
+        const productSku = context.productReferenceIds[item.id];
+        if (!productSku) {
+            throw new TotvsModaOrderMappingError(
+                `Produto "${item.name}" (${item.id}) sem reference_id do TOTVS Moda sincronizado -- não é possível enviar este item.`,
+            );
+        }
+        return { productSku, quantity: item.qty, price: item.price };
+    });
+
+    // Simplificação deliberada: um pagamento à vista pelo total do pedido
+    // (já líquido de desconto e com frete somado). O domínio interno não
+    // rastreia parcelas nem múltiplos meios de pagamento por pedido hoje
+    // (ver comentário de mapPaymentMethodToDocumentType) -- revisar quando/se
+    // isso passar a existir. LIMITAÇÃO CONHECIDA, não validada contra um
+    // TOTVS real: a doc não deixa claro se o valor esperado em payments para
+    // reconciliar com totalAmountOrder é o total líquido (o que mandamos
+    // aqui) ou o bruto dos itens sem o desconto -- best-effort até termos
+    // confirmação/acesso a sandbox para testar um pedido com desconto de
+    // verdade.
+    const payments: TotvsModaOrderPaymentInput[] | undefined = order.total > 0
+        ? [{ documentType: mapPaymentMethodToDocumentType(order.paymentMethod), installment: 1, paymentValue: order.total }]
+        : undefined;
+
+    // totalAmountOrder é conferido pelo TOTVS contra a soma de items e
+    // payments (doc: "utilizado para conferência da soma dos itens e dos
+    // pagamentos") -- e order.total = Σ(item.price×qty) - discount + frete
+    // (ver paymentService.confirmPayment). Sem freightValue/discounts abaixo,
+    // qualquer pedido com frete ou desconto manda um totalAmountOrder que não
+    // bate com a soma dos itens sozinha, e o TOTVS rejeitaria o pedido.
+    const freightValue = order.shipping?.price;
+    let discounts: TotvsModaOrderDiscountInput[] | undefined;
+    if (order.discount && order.discount.amount > 0) {
+        if (!credentials.defaultDiscountTypeCode) {
+            throw new TotvsModaOrderMappingError(
+                "Configuração do TOTVS Moda incompleta: código de tipo de desconto (defaultDiscountTypeCode) não definido, e este pedido tem desconto.",
+            );
+        }
+        discounts = [{ typeDiscountCode: credentials.defaultDiscountTypeCode, discountValue: order.discount.amount }];
+    }
+
+    return {
+        orderId,
+        branchCode: credentials.branchCode,
+        orderDate: order.date,
+        customerCpfCnpj: context.clientDocument,
+        representativeCode: credentials.representativeCode,
+        representativeCpfCnpj: credentials.representativeCode ? undefined : credentials.representativeCpfCnpj,
+        operationCode: credentials.defaultOperationCode,
+        paymentConditionCode: credentials.defaultPaymentConditionCode,
+        priorityCode: credentials.defaultPriorityCode,
+        statusOrder: 1,
+        totalAmountOrder: order.total,
+        items,
+        payments,
+        discounts,
+        freightValue,
+    };
+}
+
+// CancelOrderInDto: identifica por branchCode+orderCode (ver comentário em
+// TotvsModaCancelOrderInput, client.ts, sobre por que não usamos orderId).
+// reasonCancellationCode é catálogo do próprio TOTVS do tenant (Motivo
+// canc.) -- sem valor configurado não há como cancelar corretamente, então
+// lança TotvsModaOrderMappingError em vez de adivinhar um código.
+export function mapCancelOrderInput(
+    externalOrderCode: string,
+    credentials: TotvsModaCredentials,
+    reason?: string,
+): TotvsModaCancelOrderInput {
+    if (!credentials.defaultReasonCancellationCode) {
+        throw new TotvsModaOrderMappingError(
+            "Configuração do TOTVS Moda incompleta: motivo de cancelamento (defaultReasonCancellationCode) não definido.",
+        );
+    }
+    const orderCode = Number(externalOrderCode);
+    if (!Number.isFinite(orderCode)) {
+        throw new TotvsModaOrderMappingError(`external_id "${externalOrderCode}" não é um orderCode válido do TOTVS Moda.`);
+    }
+    return {
+        branchCode: credentials.branchCode,
+        orderCode,
+        reasonCancellationCode: credentials.defaultReasonCancellationCode,
+        ReasonCancellationDescription: reason?.slice(0, 80),
     };
 }
 

@@ -25,6 +25,16 @@ export interface ErpFetchResult<T> {
 
 export type ErpProviderCredentials = Record<string, unknown>;
 
+// Dado auxiliar de um pedido que só existe no banco (não em Order/CartItem),
+// resolvido pelo motor (services/erp/orderPushService) antes de chamar
+// sendOrder -- ver comentário em ErpProvider.sendOrder. productReferenceIds
+// é indexado pelo mesmo id que aparece em order.items[].id (o product_id do
+// CartItem), nunca pela chave do item no carrinho (item.key).
+export interface ErpOrderPushContext {
+    clientDocument?: string;
+    productReferenceIds: Record<string, string>;
+}
+
 export interface ErpProvider {
     readonly code: string;
     getProducts(
@@ -62,6 +72,31 @@ export interface ErpProvider {
     lookupRelatedPartiesByDocument?(
         document: string,
     ): Promise<Array<{ cpfCnpj: string; name: string }>>;
+    // Envia um pedido fechado do nosso lado para o ERP. Opcional pelo mesmo
+    // motivo dos demais: um provider sem isso não é erro, é "não suporta
+    // envio de pedido ainda" (ver services/erp/orderPushService, que trata a
+    // ausência como falha terminal do envio, não como bug). idempotencyKey
+    // (tipicamente o id do pedido local) deixa o provider evitar duplicar o
+    // pedido do lado dele se a mesma chamada for repetida. `context` carrega
+    // dado auxiliar que só quem tem acesso a banco consegue resolver (este
+    // arquivo não conhece banco — ver comentário no topo): documento do
+    // cliente e reference_id por produto, hoje; um provider que não precisa
+    // de algo aqui simplesmente ignora o campo.
+    sendOrder?(
+        order: Order,
+        context: ErpOrderPushContext,
+        options?: { idempotencyKey?: string },
+    ): Promise<{ externalId: string; raw?: Record<string, unknown> }>;
+    // Cancela um pedido já enviado (ver orderPushService: cancelar-antes-de-
+    // recriar é como o motor trata resend, sem saber por que o provider
+    // exige isso). Deve rejeitar com um erro reconhecível como definitivo
+    // (não repetível) quando o cancelamento é impossível no destino — ex.
+    // pedido já aceito/processado do outro lado — para o motor não tentar de
+    // novo nem criar um pedido duplicado por cima.
+    cancelOrder?(
+        externalId: string,
+        options?: { reason?: string },
+    ): Promise<{ raw?: Record<string, unknown> }>;
 }
 
 // reporter é opcional e não carrega tenant/banco (ver lib/externalApiCall.ts)
@@ -71,3 +106,23 @@ export type ErpProviderFactory = (
     credentials: ErpProviderCredentials,
     reporter?: ExternalApiCallReporter,
 ) => ErpProvider;
+
+// Marca um erro de sendOrder/cancelOrder como definitivo — o motor
+// (services/erp/orderPushService) não tenta de novo nem avança para o
+// próximo passo da máquina de estados (ex.: se cancelar falhou assim, não
+// tenta criar um pedido novo por cima, evitando duplicar reserva de
+// estoque). Duck-typing por propriedade, não por classe: cada provider já
+// tem sua própria hierarquia de erro (ver providers/totvsmoda/errors.ts) e
+// só precisa marcar a instância, não herdar de algo definido aqui.
+export interface NonRetryableErpOrderError {
+    readonly nonRetryable: true;
+}
+
+export function isNonRetryableErpOrderError(
+    error: unknown,
+): error is Error & NonRetryableErpOrderError {
+    return (
+        error instanceof Error &&
+        (error as Partial<NonRetryableErpOrderError>).nonRetryable === true
+    );
+}

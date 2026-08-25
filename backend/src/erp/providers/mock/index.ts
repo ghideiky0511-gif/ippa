@@ -34,5 +34,20 @@ export function createMockErpProvider(_credentials: ErpProviderCredentials): Erp
             const found = MOCK_RAW_CLIENTS.find(({ raw }) => raw.documento.replace(/\D/g, "") === digits);
             return found ? { externalId: found.externalId, data: mapMockClient(found.raw) } : null;
         },
+
+        // Sem backend real por trás: gera um id novo a cada chamada (inclui
+        // um sufixo aleatório, não só o id do pedido) para que um resend
+        // (cancelar + criar de novo) produza um external_id diferente do
+        // anterior — é o que orderPushService espera poder observar.
+        async sendOrder(order, _context) {
+            const suffix = Math.random().toString(36).slice(2, 8);
+            return { externalId: `mock-order-${order.id}-${suffix}` };
+        },
+
+        // Fake sem estado: não há pedido nenhum do outro lado para checar,
+        // então cancelar sempre "funciona".
+        async cancelOrder() {
+            return {};
+        },
     };
 }

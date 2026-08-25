@@ -21,6 +21,8 @@ export const BRANCHES_LIST_PATH = "/api/totvsmoda/person/v2/branchesList";
 export const BRANCHES_PATH = "/api/totvsmoda/person/v2/branches";
 export const SALES_ORDER_SEARCH_PATH =
     "/api/totvsmoda/sales-order/v2/orders/search";
+export const B2C_ORDERS_PATH = "/api/totvsmoda/sales-order/v2/b2c-orders";
+export const ORDERS_CANCEL_PATH = "/api/totvsmoda/sales-order/v2/orders/cancel";
 export const PRODUCTS_SEARCH_PATH = "/api/totvsmoda/product/v2/products/search";
 export const PRODUCT_PRICES_SEARCH_PATH =
     "/api/totvsmoda/product/v2/prices/search";

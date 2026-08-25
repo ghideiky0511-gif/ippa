@@ -7,29 +7,37 @@
 // balances/search, e dos endpoints person/v2 abaixo (individuals/search,
 // legal-entities/search, representatives/search, classifications, email-types,
 // phone-types) segue o contrato documentado em docs/products.json e
-// docs/person.json (OpenAPI oficial do TOTVS Moda) — não é um guess.
-// Orders (sales-order/v2) ainda não tem documentação equivalente disponível:
-// segue o mesmo formato de envelope por consistência com os endpoints
-// documentados, mas os nomes de campo do payload propriamente dito (ver
-// mapper.ts) continuam best-effort. person-statistics não segue o envelope
-// count/totalPages/hasNext/totalItems/items — devolve um objeto único, por
-// isso tem seu próprio método (getPersonStatistics) fora de searchAndValidate.
+// docs/person.json (OpenAPI oficial do TOTVS Moda) — não é um guess. Orders
+// (sales-order/v2) segue o mesmo padrão a partir de
+// docs/erp/totvsmoda/sales-order.json (OpenAPI oficial, cobre GET
+// orders/search e os DTOs de criação/cancelamento usados por
+// createB2COrder/cancelOrder) — a exceção é searchOrders (GET de leitura,
+// usado só pelo sync de importação em erpSyncService), cujos nomes de campo
+// no payload de busca em si (ver mapper.ts:mapTotvsModaOrder) continuam
+// best-effort por não termos precisado validar contra o schema ainda.
+// person-statistics não segue o envelope count/totalPages/hasNext/totalItems/
+// items — devolve um objeto único, por isso tem seu próprio método
+// (getPersonStatistics) fora de searchAndValidate.
 
 import type { ExternalApiCallReporter } from "@/lib/externalApiCall";
 import { logger } from "@/lib/logger";
 import {
     TotvsModaAuthError,
+    TotvsModaClientError,
     TotvsModaNotFoundError,
+    TotvsModaOrderRejectedError,
     TotvsModaResponseError,
 } from "./errors";
 import {
     AUTH_TOKEN_PATH,
+    B2C_ORDERS_PATH,
     BRANCHES_LIST_PATH,
     BRANCHES_PATH,
     CLASSIFICATIONS_PATH,
     EMAIL_TYPES_PATH,
     INDIVIDUALS_SEARCH_PATH,
     LEGAL_ENTITIES_SEARCH_PATH,
+    ORDERS_CANCEL_PATH,
     PERSON_STATISTICS_PATH,
     PHONE_TYPES_PATH,
     PRODUCT_BALANCES_SEARCH_PATH,
@@ -57,6 +65,28 @@ export interface TotvsModaCredentials {
     // Códigos de tipo de saldo a somar (BalanceInfoModel.stockCodeList) —
     // somados formam Variant.stockQty.
     stockCodeList: number[];
+    // Parâmetros de negócio exigidos por OrderInDto (envio de pedido, ver
+    // mapper.ts:mapOrderToTotvsModaOrderInDto) sem equivalente no domínio
+    // interno -- cada tenant configura os códigos válidos no TOTVS deles.
+    // Opcionais aqui (client não valida) porque só passam a ser obrigatórios
+    // quando o tenant realmente usa envio de pedido, não para as demais
+    // operações deste client (leitura de produto/pessoa/pedido).
+    defaultOperationCode?: number;
+    defaultPaymentConditionCode?: number;
+    defaultPriorityCode?: number;
+    // TypeDiscountInDto.typeDiscountCode -- só passa a ser obrigatório
+    // quando o PEDIDO tem desconto (order.discount); pedido sem desconto
+    // nunca usa este campo (ver mapOrderToTotvsModaOrderInDto).
+    defaultDiscountTypeCode?: number;
+    // "Um dos dois, nunca os dois" -- mesma regra de customerCode/
+    // customerCpfCnpj (ver mapOrderToTotvsModaOrderInDto).
+    representativeCode?: number;
+    representativeCpfCnpj?: string;
+    // CancelOrderInDto.reasonCancellationCode -- motivo de cancelamento
+    // padrão usado pelo motor ao cancelar um pedido para reenviar (ver
+    // orderPushService, estado 'cancelling'). Default aplicado em index.ts
+    // quando ausente (ver DEFAULT_CANCELLATION_REASON_CODE).
+    defaultReasonCancellationCode?: number;
 }
 
 interface TotvsModaTokenResponse {
@@ -102,8 +132,117 @@ export interface TotvsModaRepresentativeSearchOptions extends TotvsModaPersonSea
     cpfCnpjList?: string[];
 }
 
+// DocumentInputType (docs/erp/totvsmoda/sales-order.json) — forma de
+// pagamento de uma parcela em PaymentInDto.
+export type TotvsModaDocumentType =
+    | "InvoiceMarketplace" | "Cash" | "Billet" | "CreditCard" | "DebitCard"
+    | "RecebimentoPdv" | "Paypal" | "ReceiptCheck" | "Credev" | "Invoice"
+    | "Advance" | "Voucher" | "Pix" | "PicPay";
+
+// ItemInDto (só os campos que mapper.ts preenche — a lista completa aceita
+// bem mais, ver a doc).
+export interface TotvsModaOrderItemInput {
+    productCode?: number;
+    productSku?: string;
+    quantity: number;
+    price: number;
+}
+
+// PaymentInDto (idem — subconjunto usado).
+export interface TotvsModaOrderPaymentInput {
+    documentType: TotvsModaDocumentType;
+    installment: number;
+    paymentValue: number;
+}
+
+// TypeDiscountInDto: discountValue é a variante "valor" (não percentual) —
+// é o que bate com order.discount.amount, já um valor absoluto no domínio
+// interno, não um percentual.
+export interface TotvsModaOrderDiscountInput {
+    typeDiscountCode: number;
+    discountValue: number;
+}
+
+// OrderInDto (subconjunto que mapper.ts preenche). branchCode/customerCode/
+// customerCpfCnpj/representativeCode/representativeCpfCnpj têm a mesma
+// regra "só um dos dois" documentada na doc; o client não valida isso, só
+// serializa o que o mapper montou.
+export interface TotvsModaOrderInput {
+    orderId: string;
+    branchCode: number;
+    orderDate: string;
+    customerCode?: number;
+    customerCpfCnpj?: string;
+    representativeCode?: number;
+    representativeCpfCnpj?: string;
+    operationCode: number;
+    paymentConditionCode: number;
+    // StatusOrderInputType: 1=InProgress, 5=Blocked, 8=InAnalysis (a doc
+    // nomeia os valores, mas o formato no wire é o inteiro).
+    statusOrder: 1 | 5 | 8;
+    priorityCode: number;
+    // totalAmountOrder é conferido pelo TOTVS contra a soma de items e
+    // payments (ver mapOrderToTotvsModaOrderInDto) -- freightValue/discounts
+    // abaixo existem justamente para essa soma bater quando o pedido tem
+    // frete e/ou desconto, não são cosméticos.
+    totalAmountOrder: number;
+    items: TotvsModaOrderItemInput[];
+    payments?: TotvsModaOrderPaymentInput[];
+    discounts?: TotvsModaOrderDiscountInput[];
+    freightValue?: number;
+    customerOrderCode?: string;
+}
+
+// OrderOutDto: resposta do 201 ao criar. orderCode é o número sequencial
+// que o TOTVS atribui -- é o "id do ERP" que orderPushService guarda como
+// external_id; orderId é só o eco do que nós mandamos (chave de
+// idempotência do lado deles).
+export interface TotvsModaOrderOutput {
+    branchCode?: number | null;
+    orderCode?: number | null;
+    orderId?: string | null;
+}
+
+// CancelOrderInDto: identifica o pedido por orderId OU por
+// branchCode+orderCode (nunca os dois). Usamos branchCode+orderCode porque
+// orderCode é o que orderPushService.external_id guarda (o "id do ERP" de
+// verdade, o número sequencial que o TOTVS atribuiu -- orderId é só o eco
+// do identificador que NÓS geramos ao criar, não serve pra reidentificar o
+// pedido a partir do external_id guardado).
+export interface TotvsModaCancelOrderInput {
+    orderId?: string;
+    branchCode?: number;
+    orderCode?: number;
+    reasonCancellationCode: number;
+    ReasonCancellationDescription?: string;
+}
+
 function trim(value: unknown): string {
     return String(value ?? "").trim();
+}
+
+// createB2COrder/cancelOrder só: um 4xx nesses dois endpoints é a API
+// recusando a OPERAÇÃO por regra de negócio (payload inválido, pedido já
+// aceito na retaguarda etc.) -- repetir a mesma chamada não muda nada, então
+// vira TotvsModaOrderRejectedError (não-repetível, ver erp/types.ts). 401/
+// 403/404/5xx/timeout continuam com o tipo que totvsModaRequest já lança —
+// esses SÃO potencialmente passageiros (token expirado, instabilidade).
+function toOrderRequestError(error: unknown): Error {
+    if (
+        error instanceof TotvsModaClientError &&
+        typeof error.statusCode === "number" &&
+        error.statusCode >= 400 &&
+        error.statusCode < 500 &&
+        !(error instanceof TotvsModaAuthError) &&
+        !(error instanceof TotvsModaNotFoundError)
+    ) {
+        return new TotvsModaOrderRejectedError(error.message, {
+            statusCode: error.statusCode,
+            endpoint: error.endpoint,
+            payload: error.payload,
+        });
+    }
+    return error instanceof Error ? error : new Error(String(error));
 }
 
 export class TotvsModaClient {
@@ -337,6 +476,40 @@ export class TotvsModaClient {
             payload,
             "Busca de pedidos retornou formato inválido.",
         );
+    }
+
+    // POST b2c-orders (OrderInDto -> 201 OrderOutDto): cria um pedido de
+    // venda. orderCode (o id que o TOTVS atribui) precisa vir preenchido —
+    // sem ele não há "id do ERP" nenhum pra guardar, então uma resposta 201
+    // sem orderCode é tratada como formato inválido, não como sucesso.
+    async createB2COrder(payload: TotvsModaOrderInput): Promise<TotvsModaOrderOutput> {
+        const result = await this.request<TotvsModaOrderOutput>(
+            "POST",
+            B2C_ORDERS_PATH,
+            "createB2COrder",
+            { jsonBody: payload },
+        ).catch((exc) => { throw toOrderRequestError(exc); });
+        if (!result || typeof result !== "object" || result.orderCode === undefined || result.orderCode === null) {
+            throw new TotvsModaResponseError(
+                "TOTVS Moda não retornou orderCode ao criar o pedido.",
+                { payload: result },
+            );
+        }
+        return result;
+    }
+
+    // POST orders/cancel (CancelOrderInDto -> 200 SuccessProcessingModel).
+    // A doc avisa: "Somente os pedidos que ainda não foram aceitos na
+    // retaguarda podem ser cancelados" -- um 400 aqui vira
+    // TotvsModaOrderRejectedError (ver toOrderRequestError), não uma falha
+    // passageira.
+    async cancelOrder(payload: TotvsModaCancelOrderInput): Promise<void> {
+        await this.request<unknown>(
+            "POST",
+            ORDERS_CANCEL_PATH,
+            "cancelOrder",
+            { jsonBody: payload },
+        ).catch((exc) => { throw toOrderRequestError(exc); });
     }
 
     // IndividualSearchInDto: filter.cpfList busca pessoas físicas por CPF —

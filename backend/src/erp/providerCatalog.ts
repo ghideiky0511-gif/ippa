@@ -40,6 +40,18 @@ export const ERP_PROVIDER_CATALOG: ErpProviderCatalogEntry[] = [
             { key: "branchCode", label: "Código da filial", type: "number", required: true },
             { key: "priceCodeList", label: "Códigos de tabela de preço (separados por vírgula)", type: "number-list", required: true },
             { key: "stockCodeList", label: "Códigos de depósito/estoque (separados por vírgula)", type: "number-list", required: true },
+            // Abaixo: só usados ao ENVIAR pedido ao TOTVS (ver
+            // erp/providers/totvsmoda/mapper.ts) -- não required aqui porque
+            // um tenant pode usar só a importação de produtos/clientes/pedidos
+            // sem nunca enviar pedido; a falta é detectada e explicada no
+            // momento do envio, não bloqueia salvar/ativar a integração.
+            { key: "defaultOperationCode", label: "Código de operação (pedido de venda)", type: "number", required: false },
+            { key: "defaultPaymentConditionCode", label: "Código de condição de pagamento", type: "number", required: false },
+            { key: "defaultPriorityCode", label: "Código de prioridade do pedido", type: "number", required: false },
+            { key: "representativeCode", label: "Código do representante", type: "number", required: false },
+            { key: "representativeCpfCnpj", label: "CPF/CNPJ do representante (alternativa ao código)", type: "text", required: false },
+            { key: "defaultReasonCancellationCode", label: "Código do motivo de cancelamento", type: "number", required: false },
+            { key: "defaultDiscountTypeCode", label: "Código do tipo de desconto (só se houver pedidos com desconto)", type: "number", required: false },
         ],
     },
 ];

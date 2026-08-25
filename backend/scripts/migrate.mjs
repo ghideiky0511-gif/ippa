@@ -2,6 +2,7 @@ import { Client } from 'pg';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { sslConfig } from './pgSsl.mjs';
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDirectory = path.join(currentDirectory, '..', 'db', 'migrations');
@@ -9,7 +10,7 @@ const connectionString = process.env.MIGRATIONS_DATABASE_URL || process.env.DATA
 
 if (!connectionString) throw new Error('Defina MIGRATIONS_DATABASE_URL ou DATABASE_URL para executar migrations.');
 
-const client = new Client({ connectionString, application_name: 'ippa-migrations' });
+const client = new Client({ connectionString, application_name: 'ippa-migrations', ssl: sslConfig() });
 await client.connect();
 
 try {

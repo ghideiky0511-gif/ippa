@@ -60,6 +60,21 @@ export async function listProductRows(client: PoolClient): Promise<ProductRow[]>
     return result.rows;
 }
 
+// Só os pares (id, reference_id) de um lote pontual de produtos -- usada
+// pelo envio de pedido ao ERP (ver services/erp/orderPushService), que
+// precisa do código bruto do ERP por item do pedido sem carregar o
+// catálogo inteiro (listProductRows) só para isso.
+export async function findProductReferenceIdsByIds(client: PoolClient, productIds: string[]): Promise<Record<string, string>> {
+    if (productIds.length === 0) return {};
+    const result = await client.query<{ id: string; reference_id: string | null }>(
+        `SELECT id, reference_id FROM products WHERE tenant_id = app_tenant_id() AND id = ANY($1::uuid[])`,
+        [productIds],
+    );
+    const map: Record<string, string> = {};
+    for (const row of result.rows) if (row.reference_id) map[row.id] = row.reference_id;
+    return map;
+}
+
 export async function listProductVariantRows(client: PoolClient): Promise<ProductVariantRow[]> {
     const result = await client.query<ProductVariantRow>(
         `SELECT product_id, id, color, size, price, availability, available_from, track_inventory
