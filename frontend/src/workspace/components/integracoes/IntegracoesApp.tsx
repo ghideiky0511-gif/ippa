@@ -115,7 +115,7 @@ export default function IntegracoesApp({ initialOptions }) {
                     />
                   )}
                   <strong>{option.label}</strong>
-                  {option.active && <span className={adminUi.status}>Ativo</span>}
+                  {option.active && <span className={adminUi.chipSuccess}>Ativo</span>}
                 </div>
                 <p className={adminUi.hint}>{option.description}</p>
                 {option.configured && (
@@ -129,7 +129,7 @@ export default function IntegracoesApp({ initialOptions }) {
                   </p>
                 )}
 
-                <div className={adminUi.fieldRow}>
+                <div className={`${adminUi.fieldRow} flex-wrap`}>
                   <button type="button" className={adminUi.button} onClick={() => setEditingProvider(option.provider)}>
                     {option.configured ? 'Editar credenciais' : 'Configurar'}
                   </button>

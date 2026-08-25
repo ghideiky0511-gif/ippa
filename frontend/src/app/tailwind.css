@@ -48,6 +48,10 @@
     0% { transform: scale(.94); opacity: 0; }
     100% { transform: scale(1); opacity: 1; }
   }
+  @keyframes tap-ring {
+    0% { box-shadow: 0 0 0 0 rgb(24 24 27 / .18); }
+    100% { box-shadow: 0 0 0 10px rgb(24 24 27 / 0); }
+  }
 }
 
 @layer base {
@@ -65,6 +69,14 @@
   select:focus-visible,
   textarea:focus-visible {
     @apply outline-2 outline-offset-2 outline-brand-primary;
+  }
+
+  /* Feedback de clique padronizado: todo <button> e [role="button"] do app
+     ganha um pulso instantâneo ao pressionar, sem depender de classes
+     específicas nem do tempo que a ação em si leva pra responder. */
+  button:active,
+  [role='button']:active {
+    animation: tap-ring .4s ease-out;
   }
 }
 

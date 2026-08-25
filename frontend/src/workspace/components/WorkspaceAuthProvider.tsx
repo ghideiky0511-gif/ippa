@@ -26,7 +26,7 @@ export function WorkspaceAuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     fetch('/api/workspace-session/me', { cache: 'no-store' })
-      .then((r): Promise<AuthUser | null> | null => (r.ok ? r.json().then(({ user }) => user) : null))
+      .then((r): Promise<AuthUser | null> | null => (r.ok ? r.json() : null))
       .then(setWorkspaceUser)
       .catch(() => {});
   }, []);
