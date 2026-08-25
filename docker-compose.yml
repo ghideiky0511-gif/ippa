@@ -1,0 +1,104 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ippa}
+      POSTGRES_USER: ${POSTGRES_MIGRATOR_USER:-ippa_migrator}
+      POSTGRES_PASSWORD: ${POSTGRES_MIGRATOR_PASSWORD:-ippa_migrator_dev_only}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:-ippa_app_dev_only}
+      POSTGRES_DEV_PASSWORD: ${POSTGRES_DEV_PASSWORD:-ippa_dev_local_only}
+      POSTGRES_CONTROL_PASSWORD: ${POSTGRES_CONTROL_PASSWORD:-ippa_control_dev_only}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./backend/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5433:5432"
+
+  migrate:
+    build:
+      context: ./backend
+      target: builder
+    environment:
+      MIGRATIONS_DATABASE_URL: postgresql://${POSTGRES_MIGRATOR_USER:-ippa_migrator}:${POSTGRES_MIGRATOR_PASSWORD:-ippa_migrator_dev_only}@postgres:5432/${POSTGRES_DB:-ippa}
+      INITIAL_TENANT_SLUG: ${INITIAL_TENANT_SLUG:-}
+      INITIAL_TENANT_NAME: ${INITIAL_TENANT_NAME:-}
+      INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:-}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
+      PLATFORM_ADMIN_EMAIL: ${PLATFORM_ADMIN_EMAIL:-}
+      PLATFORM_ADMIN_NAME: ${PLATFORM_ADMIN_NAME:-}
+      PLATFORM_ADMIN_PASSWORD: ${PLATFORM_ADMIN_PASSWORD:-}
+    command: npm run db:setup
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      ADMIN_ORIGIN: ${APP_URL:-http://localhost:3010}
+      REALTIME_ALLOWED_ORIGINS: ${APP_URL:-http://localhost:3010}
+      DEV_LAN_ACCESS: ${DEV_LAN_ACCESS:-true}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-luna}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_BUCKET_CATALOG_MEDIA: ${R2_BUCKET_CATALOG_MEDIA:-}
+      PUSH_ENABLED: ${PUSH_ENABLED:-true}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+      NOTIFICATION_DISPATCH_SECRET: ${NOTIFICATION_DISPATCH_SECRET:-}
+      DATABASE_URL: postgresql://ippa_app:${POSTGRES_APP_PASSWORD:-ippa_app_dev_only}@postgres:5432/${POSTGRES_DB:-ippa}
+      CONTROL_DATABASE_URL: postgresql://ippa_control:${POSTGRES_CONTROL_PASSWORD:-ippa_control_dev_only}@postgres:5432/${POSTGRES_DB:-ippa}
+      DATABASE_SSL: "false"
+    ports:
+      - "${APP_BIND_ADDRESS:-0.0.0.0}:3011:3011"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3011/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        BACKEND_INTERNAL_URL: http://backend:3011
+        NEXT_PUBLIC_APP_URL: ${APP_URL:-}
+        NEXT_PUBLIC_REALTIME_URL: ${REALTIME_URL:-}
+    environment:
+      BACKEND_INTERNAL_URL: http://backend:3011
+      NEXT_PUBLIC_APP_URL: ${APP_URL:-}
+      NEXT_PUBLIC_REALTIME_URL: ${REALTIME_URL:-}
+    ports:
+      - "${APP_BIND_ADDRESS:-0.0.0.0}:3010:3010"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3010/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

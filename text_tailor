@@ -1,0 +1,27 @@
+Integração com ERP
+Conecte seu ERP para sincronizar o catálogo. Selecione abaixo.
+
+Dapic
+Disponível
+Sincroniza produtos, estoque e preço por filial (pull a cada 30 min).
+
+Miré
+Disponível
+O Miré envia as atualizações de produto, estoque e preço (webhook). Gere aqui o token de acesso.
+
+Bling
+Disponível
+Sincroniza produtos, estoque e preço via webhooks do Bling (OAuth).
+
+GCWeb
+Disponível
+Sincroniza produtos, estoque e preço (pull a cada 30 min).
+
+Tiny
+Disponível
+Sincroniza produtos, estoque e preço do Tiny ERP (pull a cada 30 min).
+
+Shopify
+Em breve
+Em breve.
+

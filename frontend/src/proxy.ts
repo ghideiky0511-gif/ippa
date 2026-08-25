@@ -1,0 +1,160 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getBackendUrl } from '@/lib/api-config';
+import type { AuthUser } from '@/domain/clients/types';
+
+const BACKEND_URL = getBackendUrl();
+const CUSTOMER_PUBLIC_PREFIXES = ['/login', '/cadastro', '/confirmar-conta', '/pagar', '/em-construcao'];
+
+function catalogAreaForPath(pathname: string): 'talao' | 'pedidos' {
+  return pathname.startsWith('/pedidos') ? 'pedidos' : 'talao';
+}
+
+function tenantFromPath(pathname: string): string | null {
+  const first = pathname.split('/')[1]?.toLowerCase();
+  return first && /^[a-z0-9][a-z0-9-]{1,62}$/.test(first) ? first : null;
+}
+
+function tenantFromReferer(request: NextRequest): string | null {
+  const referer = request.headers.get('referer');
+  if (!referer) return null;
+  try { return tenantFromPath(new URL(referer).pathname); } catch { return null; }
+}
+
+async function validateWorkspaceAccess(request: NextRequest, tenantSlug: string): Promise<boolean> {
+  const token = request.cookies.get('ippa_workspace_session')?.value;
+  if (!token) return false;
+
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/${tenantSlug}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    });
+    if (!response.ok) return false;
+    const payload = await response.json() as { user?: AuthUser | null };
+    return Boolean(payload.user && payload.user.role !== 'cliente');
+  } catch {
+    return false;
+  }
+}
+
+async function validateControl(request: NextRequest): Promise<boolean> {
+  const token = request.cookies.get('ippa_control_session')?.value;
+  if (!token) return false;
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/control/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function getCustomer(request: NextRequest, tenantSlug: string): Promise<AuthUser | null> {
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/${tenantSlug}/auth/me`, {
+      headers: { cookie: request.headers.get('cookie') || '' },
+      cache: 'no-store',
+    });
+    if (!response.ok) return null;
+    const payload = await response.json() as { user: AuthUser | null };
+    return payload.user;
+  } catch {
+    return null;
+  }
+}
+
+export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  // O navegador exige que o script do Service Worker seja servido sem
+  // redirecionamentos. Ele fica na raiz para poder atender cada tenant.
+  if (pathname.startsWith('/_next') || pathname === '/favicon.ico' || pathname === '/push-sw.js') return NextResponse.next();
+
+  if (pathname.startsWith('/api/control-session/')) return NextResponse.next();
+
+  // A raiz pertence ao site institucional. Ela não deve escolher nem expor
+  // um tenant de demonstração (ou qualquer tenant da plataforma).
+  if (pathname === '/') {
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set('x-ippa-institutional', '1');
+    return NextResponse.next({ request: { headers: requestHeaders } });
+  }
+
+  if (pathname === '/control' || pathname.startsWith('/control/')) {
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set('x-ippa-control', '1');
+    if (pathname === '/control/login' || pathname.startsWith('/control/login/')) {
+      return NextResponse.next({ request: { headers: requestHeaders } });
+    }
+    return await validateControl(request)
+      ? NextResponse.next({ request: { headers: requestHeaders } })
+      : NextResponse.redirect(new URL('/control/login', request.url));
+  }
+
+  const slugFromPath = tenantFromPath(pathname);
+
+  // Chamadas do navegador continuam usando /api por compatibilidade; o slug
+  // vem da página de origem e é convertido antes de alcançar o backend.
+  if (pathname.startsWith('/api/')) {
+    if (pathname.startsWith('/api/workspace-session/')) return NextResponse.next();
+    const tenantSlug = tenantFromReferer(request);
+    if (!tenantSlug) return NextResponse.json({ error: 'Tenant ausente.' }, { status: 404 });
+    const target = new URL(`${BACKEND_URL}/api/${tenantSlug}${pathname.slice(4)}`);
+    target.search = request.nextUrl.search;
+    return NextResponse.rewrite(target);
+  }
+
+  if (!slugFromPath) return NextResponse.redirect(new URL('/', request.url));
+  const tenantPrefix = `/${slugFromPath}`;
+  const tenantPath = pathname.slice(tenantPrefix.length) || '/';
+
+  if (tenantPath.startsWith('/api/')) {
+    const target = new URL(`${BACKEND_URL}/api/${slugFromPath}${tenantPath.slice(4)}`);
+    target.search = request.nextUrl.search;
+    return NextResponse.rewrite(target);
+  }
+
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-ippa-tenant', slugFromPath);
+
+  // Compatibilidade: painel antigo vivia em /admin, hoje é o workspace
+  // interno do tenant em /workspace. Redireciona preservando sub-rota e
+  // querystring — os slugs de folha (produtos, catalogo, etc.) não mudaram.
+  if (tenantPath.startsWith('/admin') && (tenantPath === '/admin' || tenantPath.startsWith('/admin/'))) {
+    const rest = tenantPath.slice('/admin'.length);
+    const target = new URL(`${tenantPrefix}/workspace${rest}`, request.url);
+    target.search = request.nextUrl.search;
+    return NextResponse.redirect(target, 307);
+  }
+
+  if (tenantPath.startsWith('/workspace')) {
+    if (tenantPath.startsWith('/workspace/login')) return NextResponse.rewrite(new URL('/workspace/login', request.url), { request: { headers: requestHeaders } });
+    const authenticated = await validateWorkspaceAccess(request, slugFromPath);
+    return authenticated
+      ? NextResponse.rewrite(new URL(tenantPath, request.url), { request: { headers: requestHeaders } })
+      : NextResponse.redirect(new URL(`${tenantPrefix}/workspace/login`, request.url));
+  }
+
+  if (
+    CUSTOMER_PUBLIC_PREFIXES.some((prefix) => tenantPath.startsWith(prefix)) ||
+    tenantPath.startsWith('/_next') ||
+    tenantPath === '/favicon.ico'
+  ) {
+    return NextResponse.rewrite(new URL(tenantPath, request.url), { request: { headers: requestHeaders } });
+  }
+
+  const user = await getCustomer(request, slugFromPath);
+  if (!user || user.role === 'vendedora' || user.role === 'cliente' || user.permissions?.adminAccess === true) {
+    return NextResponse.rewrite(new URL(tenantPath, request.url), { request: { headers: requestHeaders } });
+  }
+
+  const allowed = user.permissions?.catalogAreas?.includes(catalogAreaForPath(tenantPath));
+  return allowed
+    ? NextResponse.rewrite(new URL(tenantPath, request.url), { request: { headers: requestHeaders } })
+    : NextResponse.redirect(new URL(`${tenantPrefix}/em-construcao`, request.url));
+}
+
+export const config = {
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+};

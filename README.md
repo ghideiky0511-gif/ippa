@@ -1,98 +1,100 @@
-# Catálogo — MVP (Bippa/IPA)
+# Catálogo IPPA/Bippa
 
-Catálogo populado com dados reais da Fashion Girl Atacado (feed público `catalogo.xml`, formato Google Merchant), usado como massa de teste para validar o produto antes de plugar dados/loja reais.
+Aplicação de catálogo e pedidos com duas experiências no mesmo frontend, dentro do
+tenant (`http://localhost:3010/{tenant}/`):
 
-Stack: **Next.js (React) + rotas de API em Node**, em `web/`. Não existe mais versão estática — o `index.html`/`catalog.json` da raiz foi removido depois da migração.
+- loja e fluxo do cliente em `http://localhost:3010/{tenant}/`;
+- workspace interno da equipe do tenant em `http://localhost:3010/{tenant}/workspace`.
 
-- `apresentacao-catalogo-ipa.pdf`: deck de apresentação (dores, proposta, IA planejada, roadmap por fases, print do MVP). Fonte editável em `apresentacao-catalogo-ipa.html`.
-- `PLANO-PROXIMOS-PASSOS.md`: plano da parte do cliente do catálogo (detalhe de produto, meus pedidos, o que falta pra virar produto real).
+As regras, autenticação, dados e endpoints ficam em um backend separado, disponível em `http://localhost:3011/api`. O frontend encaminha chamadas `/api/*` para esse serviço, mantendo cookies e navegador na mesma origem.
 
-## Como rodar
+## Estrutura
 
-Requer Node.js instalado (usado aqui: v24 LTS, instalado via `winget install OpenJS.NodeJS.LTS`).
+```text
+frontend/
+  src/app/              loja e rotas /workspace
+  src/workspace/        componentes e clientes do workspace interno
+  src/components/       componentes da loja
+  Dockerfile
+
+backend/
+  src/app/api/          Route Handlers da API
+  src/lib/              regras de negócio e persistência
+  src/data/             dados JSON do MVP
+  Dockerfile
+
+docker-compose.yml
+```
+
+O `frontend` é um único projeto Next.js. O painel que antes ficava em `admin/` foi incorporado sob `/admin` e depois reorganizado como o workspace interno do tenant, em `/{tenant}/workspace` (rotas antigas em `/{tenant}/admin` continuam funcionando via redirect). O antigo `web/` foi dividido: a interface foi para `frontend/`, enquanto APIs e dados foram para `backend/`.
+
+## Executar com Docker
+
+Opcionalmente, copie `.env.example` para `.env` e preencha as integrações externas. Depois execute:
 
 ```bash
-cd web
-npm install   # só na primeira vez
+docker compose up --build
+```
+
+Endereços:
+
+- loja: `http://localhost:3010/{tenant}`;
+- workspace interno: `http://localhost:3010/{tenant}/workspace`;
+- control plane: `http://localhost:3010/control`;
+- API: `http://localhost:3011/api/{tenant}/catalog`.
+
+## Control plane
+
+O acesso de plataforma fica em `/control`, fora de qualquer tenant. Em um ambiente novo,
+o bootstrap não cria dados fictícios. Para criar o primeiro acesso, configure
+`PLATFORM_ADMIN_EMAIL`, `PLATFORM_ADMIN_NAME` e `PLATFORM_ADMIN_PASSWORD`; para
+criar também um tenant inicial, configure todos os quatro valores `INITIAL_*`.
+
+O control plane cria tenants com administrador inicial e depósito padrão, além de permitir
+ativar, inativar e arquivar tenants. Altere as senhas de exemplo antes de usar qualquer
+ambiente compartilhado ou de produção.
+
+O volume `backend-data` mantém os JSONs alterados em runtime entre recriações dos containers. Para encerrar os serviços sem apagar os dados:
+
+```bash
+docker compose down
+```
+
+Para também apagar o volume persistente e recomeçar com os dados da imagem:
+
+```bash
+docker compose down --volumes
+```
+
+## Executar sem Docker
+
+Use dois terminais:
+
+```bash
+cd backend
+npm ci
 npm run dev
 ```
 
-Abra `http://localhost:3000`. Os dados vêm de Server Components que importam `src/data/catalog.json` direto e também ficam expostos em `GET /api/catalog` — esse endpoint é o ponto de troca para a Fase 2 (dado real da Bippa/ERP) sem mexer no front.
-
-### Estrutura
-
-- `src/app/page.js` — Server Component, home de vitrine: banner/carrossel e produtos em destaque (`<HomeApp>`). O menu de categorias não aparece mais aqui — vive no menu lateral global (ver `SideMenu.js`).
-- `src/app/catalogo/page.js` — grade completa com filtros (`<CatalogApp>`) — a antiga home.
-- `src/app/produto/[id]/page.js` — página de detalhe de um produto (grade completa de cor x tamanho, descrição, tipo de entrega).
-- `src/app/carrinho/page.js` — confirmação do carrinho em página cheia (passo 1 do checkout pelo site).
-- `src/app/frete/page.js` — escolha de frete (mock: CEP não influencia o cálculo, é lista fixa em `src/lib/shipping.js`).
-- `src/app/pagamento/page.js` — escolha de forma de pagamento (Pix/Cartão/Boleto) + confirmação do pedido (mock: nenhuma cobrança real).
-- `src/app/pedido-confirmado/page.js` — tela de sucesso depois de confirmar o pedido pelo site.
-- `src/app/pedidos/page.js` — "Meus pedidos": histórico de pedidos (WhatsApp ou site), salvo em localStorage.
-- `src/app/api/catalog/route.js` — Route Handler que serve o catálogo (hoje estático, amanhã vindo de uma API real); também é o que o menu lateral consome sob demanda pra busca (ver `SideMenu.js`).
-- `src/app/layout.js` — Server Component raiz; calcula a árvore categoria→subcategoria (`getCategoryTree`) e passa pro `AppShell`, que é global (todas as páginas têm o mesmo menu lateral).
-- `src/components/AppShell.js` — top nav (hamburguer + logo centralizado + links + carrinho) + carrinho global (fica disponível em todas as páginas).
-- `src/components/SideMenu.js` — menu lateral (drawer da esquerda, aberto pelo hamburguer): busca com sugestão ao vivo (por prefixo do nome, busca o catálogo completo sob demanda em `/api/catalog` na primeira vez que abre), destaques de coleção (`CONFIG.home.highlights`) e públicos (`CONFIG.home.audiences`, ex. "Moda teen") — clicar num público abre um segundo painel com a árvore de categorias filtrada por ele, linkando pra `/catalogo?publico=...&categoria=...&subcategoria=...`.
-- `src/components/CartProvider.js` — estado do carrinho (Context + localStorage), frete escolhido (`shipping`, transitório) e histórico de pedidos (`saveOrderToHistory(items, total, extra)`, onde `extra` guarda `channel`/`shipping`/`paymentMethod`).
-- `src/components/CartDrawer.js` / `CartItemRow.js` — drawer lateral do carrinho; a linha de item é compartilhada com a página `/carrinho`.
-- `src/components/CheckoutSteps.js` — indicador "1. Carrinho — 2. Frete — 3. Pagamento" usado nas 3 páginas do checkout pelo site.
-- `src/components/CatalogApp.js` — grade de produtos + filtros + abertura do quick-view. Lê `?categoria=`/`?subcategoria=` (menu de categorias) e `?destaque=`/`?publico=` (menu lateral) da URL pra pré-selecionar o filtro.
-- `src/components/HomeApp.js` — monta a home: `HomeBanner` + seção "Produtos em destaque" (mesmos `ProductCard`/`ProductQuickView` da grade).
-- `src/components/HomeBanner.js` — carrossel de banners (`CONFIG.home.banners`, imagem ou vídeo por slide, setas + bolinhas); sem banners configurados, cai num slide de texto com o `storeName`.
-- `src/components/CategoryMenu.js` — menu horizontal de categorias com dropdown por hover/clique; não está mais em uso ativo (o menu de categorias vive no `SideMenu` agora), mantido no código pra referência.
-- `src/components/ProductCard.js` — card da grade: imagem, nome, preço, bolinhas de cor disponíveis e botão **+** (abre o quick-view). Não tem mais "adicionar ao carrinho" — isso só existe na página/quick-view de detalhe.
-- `src/components/ProductQuickView.js` — painel lateral (anima da direita) aberto pelo **+** do card, com o conteúdo de `ProductDetailContent`.
-- `src/components/ProductDetailContent.js` — conteúdo compartilhado entre o quick-view e a página `/produto/[id]`: cores (disponíveis e indisponíveis), grade de tamanhos, tipo de entrega (pronta entrega / pré-venda / esgotado), quantidade e adicionar ao carrinho.
-- `src/lib/variants.js` — monta a matriz cor x tamanho de um produto e traduz `availability` em rótulo de entrega.
-- `src/lib/catalogFacets.js` — deriva categorias/cores/tamanhos e a árvore categoria→subcategoria do catálogo (categorias cujo nome é uma variação de outra, ex. "BODY ALCA", viram subcategoria dela automaticamente); `getProductsByIds` resolve uma lista de IDs pra produtos (usado por destaques/públicos/featured — `ids: null` é a convenção pra "sem filtro, catálogo inteiro").
-- `src/lib/search.js` — sugestão de busca por prefixo do nome (`getSearchSuggestions`), usada pelo menu lateral; ordem de hoje é a do catálogo, pronta pra virar ranking por popularidade depois.
-- `src/lib/shipping.js` — mock das opções de frete (`calculateShipping(cep)` ignora o CEP hoje; é o ponto de troca pra uma cotação real de transportadora depois).
-- `src/lib/config.js` — `CONFIG` (nome/logo da loja, WhatsApp, banners, produtos em destaque, destaques de coleção e públicos da home) e `COLOR_MAP` (swatches por nome de cor).
-- `src/data/catalog.json` — cópia do dataset real (285 produtos) usada pelo app.
-
-## Configuração rápida
-
-Em `web/src/lib/config.js`:
-
-```js
-export const CONFIG = {
-  storeName: 'Fashion Girl Atacado',
-  logoUrl: '', // opcional; sem logo, mostra o storeName como texto no topo
-  whatsappNumber: '', // número da loja em formato internacional só números, ex: '5511999999999'
-  home: {
-    banners: [{ id: 'b1', type: 'image', mediaUrl: '...', title: '...', subtitle: '...' }], // type: 'image' | 'video'
-    featuredProductIds: ['<ids de web/src/data/catalog.json>'], // curadoria manual da vitrine
-    highlights: [{ id: 'verao-2027', label: 'Verão 2027', productIds: ['<ids>'] }], // destaques de coleção no menu lateral
-    audiences: [{ id: 'moda-teen', label: 'Moda teen', productIds: null }], // públicos no menu lateral; productIds: null = catálogo inteiro
-  },
-};
+```bash
+cd frontend
+npm ci
+npm run dev
 ```
 
-- Sem `whatsappNumber` preenchido, o botão "Finalizar pedido via WhatsApp" avisa para configurar em vez de abrir um link quebrado.
-- Cores fora de `COLOR_MAP` aparecem só como texto (sem swatch colorido).
-- Sem `home.banners`, a home cai num banner de texto só com o `storeName`. Sem `home.featuredProductIds`, a seção de destaques simplesmente não aparece.
-- `highlights`/`audiences` são listas — a loja pode cadastrar quantos quiser sem mexer em componente. `productIds: null` num público é a convenção pra "sem filtro" (mostra o catálogo inteiro); uma lista de IDs filtra de verdade.
+Os valores padrão usam frontend na porta `3010` e backend na `3011`. Para outros endereços, configure `BACKEND_INTERNAL_URL` no frontend e `ADMIN_ORIGIN` no backend.
 
-## O que já resolve das dores mapeadas
+## Variáveis opcionais
 
-- Home de vitrine própria (banners/vídeo em carrossel, produtos em destaque) separada da busca (`/catalogo`); logo centralizado no topo e navegação (busca, destaques de coleção, públicos com categorias) num menu lateral (hamburguer), acessível em qualquer página.
-- Filtros reais por categoria/cor/tamanho (não só busca por texto).
-- Identidade visual via variáveis CSS (`--brand-primary` etc.) e conteúdo (`CONFIG`) em vez de layout fixo — ainda um arquivo por deploy, não multi-tenant de verdade (ver `PLANO-PROXIMOS-PASSOS.md`).
-- Pedido pode ser criado remotamente (carrinho + WhatsApp), não só no showroom.
-- Página própria por produto, com a grade completa de cor x tamanho e tipo de entrega — pré-requisito pra "produtos similares".
-- Carrinho persiste entre navegação e reload (localStorage), e cada pedido enviado fica visível em "Meus pedidos".
-- Fluxo alternativo de checkout direto no site (carrinho → frete → pagamento), sem sair pro WhatsApp — frete e pagamento são mock (sem transportadora nem gateway reais ainda).
+Consulte [.env.example](.env.example). As integrações com OpenAI e Resend só são necessárias para os recursos que as utilizam; catálogo, loja e workspace funcionam sem essas chaves.
 
-## Fora de escopo por enquanto (fases futuras)
+## Verificação
 
-Ver `PLANO-PROXIMOS-PASSOS.md` para o detalhe. Resumo:
+Em cada serviço estão disponíveis:
 
-- Integração real de estoque/API (Bippa, ERP) — `/api/catalog` hoje só devolve o `catalog.json` estático, mas já é o lugar certo para plugar isso na Fase 2.
-- Frete e pagamento no site são mock (`src/lib/shipping.js` e a seleção de método em `/pagamento`) — sem cotação de transportadora nem gateway de pagamento reais.
-- "Meus pedidos" hoje é por navegador (localStorage), sem login nem confirmação do lado do servidor.
-- "Produtos similares" na página de produto.
-- IA (imagem↔descrição, carrinho por texto livre do WhatsApp).
+```bash
+npm run build
+npm run lint
+```
 
-## Origem dos dados
-
-Extraídos de `https://vesti.co/fashiongirlatacado/catalogo.xml` (feed fornecido para teste, formato RSS/Google Merchant). O `FASHION GIRL ATACADO.html` salvo localmente é uma SPA (React) sem dados embutidos no HTML — por isso o feed XML foi usado como fonte real dos 285 produtos.
+O roadmap funcional continua em [PLANO-PROXIMOS-PASSOS.md](PLANO-PROXIMOS-PASSOS.md).

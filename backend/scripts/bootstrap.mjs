@@ -1,0 +1,89 @@
+import { Client } from 'pg';
+import { hash } from '@node-rs/argon2';
+
+const connectionString = process.env.MIGRATIONS_DATABASE_URL || process.env.DATABASE_URL;
+const optionalValue = (value) => value?.trim() || '';
+const slug = optionalValue(process.env.INITIAL_TENANT_SLUG);
+const name = optionalValue(process.env.INITIAL_TENANT_NAME);
+const adminEmail = optionalValue(process.env.INITIAL_ADMIN_EMAIL);
+const adminPassword = optionalValue(process.env.INITIAL_ADMIN_PASSWORD);
+const platformAdminEmail = optionalValue(process.env.PLATFORM_ADMIN_EMAIL);
+const platformAdminName = optionalValue(process.env.PLATFORM_ADMIN_NAME) || 'Administrador da Plataforma';
+const platformAdminPassword = optionalValue(process.env.PLATFORM_ADMIN_PASSWORD);
+const initialTenantValues = [slug, name, adminEmail, adminPassword];
+const platformAdminValues = [platformAdminEmail, platformAdminPassword];
+const shouldBootstrapTenant = initialTenantValues.some(Boolean);
+const shouldBootstrapPlatformAdmin = platformAdminValues.some(Boolean);
+
+if (!connectionString) throw new Error('Defina MIGRATIONS_DATABASE_URL ou DATABASE_URL.');
+if (shouldBootstrapTenant && !initialTenantValues.every(Boolean)) {
+  throw new Error('Defina INITIAL_TENANT_SLUG, INITIAL_TENANT_NAME, INITIAL_ADMIN_EMAIL e INITIAL_ADMIN_PASSWORD.');
+}
+if (shouldBootstrapPlatformAdmin && !platformAdminValues.every(Boolean)) {
+  throw new Error('Defina PLATFORM_ADMIN_EMAIL e PLATFORM_ADMIN_PASSWORD.');
+}
+if (!shouldBootstrapTenant && !shouldBootstrapPlatformAdmin) {
+  console.log('Bootstrap sem dados iniciais: nenhum tenant ou usuário de plataforma foi criado.');
+  process.exit(0);
+}
+
+const client = new Client({ connectionString, application_name: 'ippa-bootstrap' });
+await client.connect();
+try {
+  await client.query('BEGIN');
+  if (shouldBootstrapTenant) {
+    const tenantResult = await client.query(
+    `INSERT INTO tenants (slug, name) VALUES ($1, $2)
+     ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
+     RETURNING id`,
+    [slug, name],
+  );
+    const tenantId = tenantResult.rows[0].id;
+    await client.query("SELECT set_config('app.tenant_id', $1, true)", [tenantId]);
+    await client.query("SELECT set_config('app.role', 'administrador', true)");
+    const passwordHash = await hash(adminPassword);
+    await client.query(
+    `INSERT INTO users (tenant_id, email, name, role, password_hash, permissions)
+     VALUES ($1, $2, $3, 'administrador', $4, '{"adminAccess": true, "catalogAreas": []}'::jsonb)
+     ON CONFLICT (tenant_id, email) WHERE deleted_at IS NULL DO UPDATE
+       SET name = EXCLUDED.name, role = EXCLUDED.role, password_hash = EXCLUDED.password_hash,
+           permissions = EXCLUDED.permissions`,
+      [tenantId, adminEmail.toLowerCase(), 'Administrador', passwordHash],
+    );
+    await client.query(
+    `INSERT INTO store_settings (tenant_id)
+     VALUES ($1) ON CONFLICT (tenant_id) DO NOTHING`,
+      [tenantId],
+    );
+    const locationResult = await client.query(
+    `INSERT INTO inventory_locations (tenant_id, code, name, kind, is_default)
+     VALUES ($1, 'default', 'Depósito padrão', 'warehouse', true)
+     ON CONFLICT (tenant_id, code) DO UPDATE SET name = EXCLUDED.name
+     RETURNING id`,
+      [tenantId],
+    );
+    await client.query(
+    `UPDATE store_settings
+     SET default_inventory_location_id = COALESCE(default_inventory_location_id, $2)
+     WHERE tenant_id = $1`,
+      [tenantId, locationResult.rows[0].id],
+    );
+  }
+  if (shouldBootstrapPlatformAdmin) {
+    const platformPasswordHash = await hash(platformAdminPassword);
+    await client.query(
+    `INSERT INTO platform_users (email, name, password_hash)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (email) DO UPDATE
+       SET name = EXCLUDED.name, password_hash = EXCLUDED.password_hash, active = true, updated_at = now()`,
+      [platformAdminEmail.toLowerCase(), platformAdminName, platformPasswordHash],
+    );
+  }
+  await client.query('COMMIT');
+  console.log(`Bootstrap concluído${shouldBootstrapTenant ? ` para o tenant ${slug}` : ''}${shouldBootstrapPlatformAdmin ? ' com usuário de plataforma' : ''}.`);
+} catch (error) {
+  await client.query('ROLLBACK');
+  throw error;
+} finally {
+  await client.end();
+}
