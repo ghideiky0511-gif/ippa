@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState, type FormEvent } from 'react';
 import type { ControlTenant } from '@/lib/control/types';
+import { SkeletonList } from '@/components/ui/skeleton';
 
 const emptyForm = { name: '', slug: '', adminName: '', adminEmail: '', adminPassword: '' };
 
@@ -51,7 +52,7 @@ export default function ControlPage() {
     </form></section>}
     {error && <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
     <section className="overflow-hidden rounded-brand bg-white shadow-sm"><div className="border-b p-5"><h2 className="text-lg font-semibold">Tenants</h2></div>
-      {loading ? <p className="p-5 text-sm text-brand-muted">Carregando...</p> : <div className="divide-y">{tenants.map((tenant) => <article className="flex flex-wrap items-center justify-between gap-3 p-5" key={tenant.id}>
+      {loading ? <div className="p-5"><SkeletonList count={4} itemClassName="h-16" /></div> : <div className="divide-y">{tenants.map((tenant) => <article className="flex flex-wrap items-center justify-between gap-3 p-5" key={tenant.id}>
         <div><p className="font-medium">{tenant.name}</p><p className="text-sm text-brand-muted">/{tenant.slug} - {tenant.status} - {tenant.userCount} usuario(s)</p><p className="mt-1 text-sm text-brand-muted">{tenant.contract ? `${tenant.contract.plan.name} - ${tenant.contract.status}` : 'Sem plano ou contrato definido'}</p></div>
         <Link className="rounded border px-3 py-1.5 text-sm" href={`/control/${encodeURIComponent(tenant.slug)}/detail`}>Abrir tenant</Link>
       </article>)}</div>}

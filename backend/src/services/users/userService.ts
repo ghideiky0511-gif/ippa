@@ -1,5 +1,6 @@
-import { hash } from "@node-rs/argon2";
+import { hash, verify } from "@node-rs/argon2";
 import {
+    ChangeOwnPasswordInputSchema,
     CreateTenantUserInputSchema,
     DEFAULT_SELLER_CATALOG_AREAS,
     UpdateOwnProfileInputSchema,
@@ -188,6 +189,38 @@ export async function updateOwnProfile(
             metadata: { fields: Object.keys(parsed.data) },
         });
         return user;
+    });
+}
+
+/** Troca a senha da própria conta autenticada, exigindo a senha atual. */
+export async function changeOwnPassword(
+    tenant: Tenant,
+    actor: AuthUser,
+    body: unknown,
+    context: AuditRequestContext,
+): Promise<void> {
+    const parsed = ChangeOwnPasswordInputSchema.safeParse(body);
+    if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
+    const { currentPassword, newPassword } = parsed.data;
+
+    await withTenantTransaction(tenant, actor, async (client) => {
+        const current = await findUserRowById(client, actor.id);
+        if (!current) throw new NotFoundError("USER_NOT_FOUND");
+        if (!(await verify(current.password_hash, currentPassword))) {
+            throw new ValidationError("WRONG_PASSWORD", "Senha atual incorreta.");
+        }
+        const updated = await updateUserRow(client, actor.id, {
+            passwordHash: await hash(newPassword, PASSWORD_OPTIONS),
+        });
+        if (!updated) throw new NotFoundError("USER_NOT_FOUND");
+        await revokeUserSessionRows(client, actor.id);
+        await recordAuditEvent(client, {
+            action: USER_AUDIT_ACTIONS.UPDATED,
+            entityId: actor.id,
+            actor,
+            context,
+            metadata: { fields: ["password"] },
+        });
     });
 }
 

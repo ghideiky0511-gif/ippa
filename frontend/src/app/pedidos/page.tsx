@@ -9,6 +9,7 @@ import { formatBRL } from '@/lib/format';
 import { useAuthUser } from '@/components/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import { SkeletonList } from '@/components/ui/skeleton';
 import { z } from 'zod';
 import { OrderSchema, type CartItem, type Order } from '@/domain/orders/types';
 import { ProductSchema, type Product } from '@/domain/products/types';
@@ -131,7 +132,7 @@ export default function PedidosPage() {
           : 'Pedidos da sua conta — valem em qualquer navegador ou aparelho que você usar pra entrar.'}
       </p>
 
-      {orders === null && <p>Carregando...</p>}
+      {orders === null && <SkeletonList count={3} itemClassName="rounded-brand" />}
       {orders !== null && orders.length === 0 && (
         <p className={publicUi.empty}>{isVendedora ? 'Nenhuma venda fechada ainda.' : 'Nenhum pedido enviado ainda.'}</p>
       )}

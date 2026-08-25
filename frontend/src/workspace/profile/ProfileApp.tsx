@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/card';
 import { Dialog, DialogCloseButton, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { HubHeader } from '@/workspace/components/shared/HubHeader';
+import { useTenant } from '@/components/TenantProvider';
 import { useWorkspaceAuth } from '@/workspace/components/WorkspaceAuthProvider';
 
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
@@ -43,8 +44,14 @@ async function cropImage(source: string, crop: Area, type: AvatarType): Promise<
 }
 
 export default function ProfileApp() {
+  const { href } = useTenant();
   const { workspaceUser, updateWorkspaceUser } = useWorkspaceAuth();
   const [nameDraft, setNameDraft] = useState<string | undefined>();
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [removeAvatar, setRemoveAvatar] = useState(false);
@@ -151,6 +158,33 @@ export default function ProfileApp() {
     }
   }
 
+  async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPasswordError('');
+    if (newPassword !== confirmPassword) {
+      setPasswordError('A confirmação não confere com a nova senha.');
+      return;
+    }
+    setPasswordSaving(true);
+    try {
+      const response = await fetch('/api/workspace-session/password', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || 'Não foi possível trocar sua senha.');
+      }
+      // Trocar a senha revoga todas as sessões (inclusive a atual), então
+      // é preciso logar de novo.
+      window.location.href = href('/workspace/login');
+    } catch (reason) {
+      setPasswordError(reason instanceof Error ? reason.message : 'Não foi possível trocar sua senha. Tente novamente.');
+      setPasswordSaving(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-brand-background">
       <HubHeader title="Meu perfil" description="Atualize como seu nome e sua foto aparecem para a equipe." />
@@ -179,6 +213,29 @@ export default function ProfileApp() {
             {error && <p className="text-sm font-medium text-danger" role="alert">{error}</p>}
             {saved && <p className="flex items-center gap-1.5 text-sm font-medium text-success"><CheckCircle2 className="size-4" aria-hidden="true" />Perfil atualizado.</p>}
             <div className="flex justify-end"><Button type="submit" loading={saving}>Salvar alterações</Button></div>
+          </form>
+        </Card>
+
+        <Card className="p-5 sm:p-6 md:col-start-2">
+          <form className="flex flex-col gap-5" onSubmit={handlePasswordSubmit}>
+            <div>
+              <p className="font-bold text-foreground">Alterar senha</p>
+              <p className="mt-1 text-sm text-muted-foreground">Você precisará entrar novamente depois de trocar a senha.</p>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-semibold text-foreground" htmlFor="current-password">Senha atual</label>
+              <Input id="current-password" type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" required />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-semibold text-foreground" htmlFor="new-password">Nova senha</label>
+              <Input id="new-password" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password" minLength={6} required />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-semibold text-foreground" htmlFor="confirm-password">Confirmar nova senha</label>
+              <Input id="confirm-password" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" minLength={6} required />
+            </div>
+            {passwordError && <p className="text-sm font-medium text-danger" role="alert">{passwordError}</p>}
+            <div className="flex justify-end"><Button type="submit" loading={passwordSaving}>Trocar senha</Button></div>
           </form>
         </Card>
       </main>

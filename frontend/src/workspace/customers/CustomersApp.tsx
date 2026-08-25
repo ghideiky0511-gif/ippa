@@ -166,6 +166,7 @@ export default function CustomersApp({ initialPage }: { initialPage: ClientsPage
           <ResponsiveDataTable
             rows={clients}
             rowKey={(client) => client.id}
+            loading={loading}
             emptyMessage="Nenhuma cliente encontrada."
             columns={[
               { key: 'name', header: 'Nome', cell: (client) => <Link href={`/workspace/clientes/${client.id}`} className="font-semibold text-foreground hover:text-brand-primary">{client.name}</Link> },

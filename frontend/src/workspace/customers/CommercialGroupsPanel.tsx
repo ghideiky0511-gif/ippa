@@ -353,7 +353,8 @@ export default function CommercialGroupsPanel() {
       <ResponsiveDataTable
         rows={filtered}
         rowKey={(group) => group.id}
-        emptyMessage={loading ? 'Carregando...' : 'Nenhum grupo comercial encontrado.'}
+        loading={loading}
+        emptyMessage="Nenhum grupo comercial encontrado."
         columns={[
           {
             key: 'name',

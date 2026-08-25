@@ -11,6 +11,7 @@ export const ERROR_MESSAGES: Record<string, string> = {
     INCOMPLETE_SIGNUP:
         "Preencha nome, e-mail, senha, CPF/CNPJ, CEP, Rua, Número, Bairro, Cidade e Estado.",
     WEAK_PASSWORD: "A senha precisa ter pelo menos 6 caracteres.",
+    WRONG_PASSWORD: "Senha atual incorreta.",
     CNPJ_REQUIRED: "Informe um CNPJ com 14 dígitos.",
     INVALID_DOCUMENT: "Informe um CPF ou CNPJ válido.",
     EMAIL_TAKEN: "Já existe uma conta com esse e-mail.",
