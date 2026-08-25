@@ -101,6 +101,10 @@ export async function activateControlAiToolPromptVersionRow(
     },
 ): Promise<AiToolPromptVersionRow> {
     await client.query(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+        [`${params.tenantId}:${params.toolKey}`],
+    );
+    await client.query(
         `UPDATE ai_tool_prompt_versions
          SET status = 'archived'
          WHERE tenant_id = $1 AND tool_key = $2 AND status = 'active' AND id <> $3`,

@@ -41,6 +41,39 @@ Princípios:
 - [ ] Fazer um smoke test em homologação com uma ferramenta real e conferir o
       histórico em `ai_tool_executions`.
 
+## Administração de prompts no Control
+
+### Concluído no código
+
+- [x] Migration `031_ai_tool_prompt_versions.sql` com histórico de versões,
+      rascunho, ativação, arquivamento e uma única versão ativa por tenant e
+      ferramenta.
+- [x] Migration incremental `033_ai_tool_prompt_version_guards.sql` restringe
+      a leitura do runtime à versão ativa e torna imutável o conteúdo das
+      versões já criadas.
+- [x] RLS permite ao runtime ler somente o prompt ativo do tenant corrente;
+      alterações ficam restritas ao papel interno do Control.
+- [x] Módulo `control/[tenant]/ai` para editar, salvar uma nova versão, ativar
+      e reativar uma versão anterior como rollback.
+- [x] Catálogo interno de ferramentas gerenciadas, inicialmente com
+      `catalog.last_order_resume` e suas instruções padrão.
+- [x] Runner consulta a versão ativa no banco antes de chamar o provider e usa
+      a definição em código como fallback quando ainda não houver configuração.
+- [x] Revisão do prompt participa da identidade do cache, impedindo que uma
+      versão nova reutilize resultado produzido por instruções antigas.
+- [x] Execuções referenciam a versão de prompt utilizada sem duplicar o texto
+      do prompt no histórico operacional.
+- [x] Migration/RLS, TypeScript, testes do motor, lint direcionado e builds de
+      backend e frontend validados.
+
+### Pendente para disponibilizar em ambiente
+
+- [ ] Aplicar as migrations 031 e 033 em homologação e produção, respeitando a
+      ordem do migrador e sem alterar migrations já aplicadas.
+- [ ] Criar e ativar a primeira versão do prompt pelo Control em homologação.
+- [ ] Repetir o smoke test depois que a ferramenta real da fase 2 estiver
+      conectada ao talão.
+
 ## Fase 2 — análise da última compra
 
 ### Fonte de verdade

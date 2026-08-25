@@ -39,6 +39,7 @@ class FakeExecutionStore implements AiExecutionStore {
             && item.completedAt >= completedAfter
             && item.toolKey === identity.toolKey
             && item.toolVersion === identity.toolVersion
+            && item.promptRevision === identity.promptRevision
             && item.provider === identity.provider
             && item.model === identity.model
             && item.inputHash === identity.inputHash,
@@ -135,6 +136,11 @@ function runner(provider: AiStructuredProvider, stores: Map<string, FakeExecutio
             return created;
         },
         resolveProfile: () => profile,
+        resolvePrompt: async (_tenant, _actor, currentTool) => ({
+            instructions: currentTool.instructions,
+            revision: "code:test",
+            source: "definition",
+        }),
         now: () => now,
         sleep: async () => undefined,
     });
@@ -200,6 +206,11 @@ test("normaliza perfil sem chave antes de qualquer acesso à rede", async () => 
             return created;
         },
         resolveProfile: () => ({ provider: "openai", apiKey: "", model: "test-model" }),
+        resolvePrompt: async (_tenant, _actor, currentTool) => ({
+            instructions: currentTool.instructions,
+            revision: "code:test",
+            source: "definition",
+        }),
         now: () => TEST_NOW,
         sleep: async () => undefined,
     });
@@ -252,6 +263,7 @@ test("cache é opt-in e separado por input, versão, modelo e tenant", async () 
     const provider = new FakeProvider(async (_request, call) => ({ data: { summary: `call-${call}` } }));
     const stores = new Map<string, FakeExecutionStore>();
     let activeProfile = profile;
+    let promptRevision = "database:prompt-1";
     const run = createAiToolRunner({
         provider,
         storeFactory: (currentTenant) => {
@@ -262,6 +274,11 @@ test("cache é opt-in e separado por input, versão, modelo e tenant", async () 
             return created;
         },
         resolveProfile: () => activeProfile,
+        resolvePrompt: async () => ({
+            instructions: `Prompt ${promptRevision}`,
+            revision: promptRevision,
+            source: "database",
+        }),
         now: () => TEST_NOW,
         sleep: async () => undefined,
     });
@@ -288,7 +305,10 @@ test("cache é opt-in e separado por input, versão, modelo e tenant", async () 
     await run(firstTenant, actor, cachedTool, input);
     activeProfile = profile;
     await run(tenant("7"), actor, cachedTool, input);
-    assert.equal(provider.requests.length, 6);
+    promptRevision = "database:prompt-2";
+    await run(firstTenant, actor, cachedTool, input);
+    assert.equal(provider.requests.at(-1)?.instructions, "Prompt database:prompt-2");
+    assert.equal(provider.requests.length, 7);
 });
 
 test("agenda limpeza de 90 dias no máximo uma vez ao dia por tenant", async () => {

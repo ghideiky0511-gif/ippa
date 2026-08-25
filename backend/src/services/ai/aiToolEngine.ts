@@ -5,6 +5,7 @@ import { ServiceError, ValidationError } from "@/services/shared/errors";
 import { resolveAiProviderProfile } from "./config";
 import { createDatabaseAiExecutionStore, type AiExecutionIdentity, type AiExecutionStore } from "./executionStore";
 import { OpenAiStructuredProvider } from "./openAiStructuredProvider";
+import { resolveAiToolPrompt, type ResolvedAiToolPrompt } from "./promptManagementService";
 import type {
     AiProviderFailureKind,
     AiProviderProfile,
@@ -63,6 +64,11 @@ export interface AiToolRunnerDependencies {
     provider: AiStructuredProvider;
     storeFactory: (tenant: Tenant, actor: ActorContext) => AiExecutionStore;
     resolveProfile: (profile: AiProviderProfileKey) => AiProviderProfile;
+    resolvePrompt: <TInput, TOutput>(
+        tenant: Tenant,
+        actor: ActorContext,
+        tool: AiToolDefinition<TInput, TOutput>,
+    ) => Promise<ResolvedAiToolPrompt>;
     now: () => Date;
     sleep: (milliseconds: number) => Promise<void>;
 }
@@ -72,6 +78,7 @@ export function createAiToolRunner(overrides: Partial<AiToolRunnerDependencies> 
         provider: overrides.provider ?? new OpenAiStructuredProvider(),
         storeFactory: overrides.storeFactory ?? createDatabaseAiExecutionStore,
         resolveProfile: overrides.resolveProfile ?? resolveAiProviderProfile,
+        resolvePrompt: overrides.resolvePrompt ?? resolveAiToolPrompt,
         now: overrides.now ?? (() => new Date()),
         sleep: overrides.sleep ?? sleep,
     };
@@ -93,9 +100,12 @@ export function createAiToolRunner(overrides: Partial<AiToolRunnerDependencies> 
 
         const startedAt = dependencies.now();
         const profile = dependencies.resolveProfile(tool.providerProfile);
+        const prompt = await dependencies.resolvePrompt(tenant, actor, tool);
         const identity: AiExecutionIdentity = {
             toolKey: tool.key,
             toolVersion: tool.version,
+            promptRevision: prompt.revision,
+            promptVersionId: prompt.promptVersionId,
             provider: profile.provider,
             model: profile.model,
             inputHash: hashAiToolInput(parsedInput.data),
@@ -135,7 +145,7 @@ export function createAiToolRunner(overrides: Partial<AiToolRunnerDependencies> 
                         model: profile.model,
                         schemaName: tool.key.replace(/[^a-zA-Z0-9_-]/g, "_"),
                         outputSchema: tool.outputSchema,
-                        instructions: tool.instructions,
+                        instructions: prompt.instructions,
                         prompt: tool.buildPrompt(parsedInput.data),
                         maxOutputTokens: tool.maxOutputTokens,
                     });

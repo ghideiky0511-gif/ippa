@@ -16,6 +16,8 @@ export interface CachedAiToolExecutionRow {
 interface AiToolExecutionIdentity {
     toolKey: string;
     toolVersion: string;
+    promptRevision: string;
+    promptVersionId?: string;
     provider: string;
     model: string;
     inputHash: string;
@@ -29,14 +31,15 @@ export async function findCachedAiToolExecutionRow(
         `SELECT id, output FROM ai_tool_executions
          WHERE tenant_id = app_tenant_id()
            AND tool_key = $1 AND tool_version = $2 AND provider = $3
-           AND model = $4 AND input_hash = $5 AND status = 'succeeded'
-           AND completed_at >= $6 AND output IS NOT NULL
+           AND prompt_revision = $4 AND model = $5 AND input_hash = $6
+           AND status = 'succeeded' AND completed_at >= $7 AND output IS NOT NULL
          ORDER BY completed_at DESC
          LIMIT 1`,
         [
             identity.toolKey,
             identity.toolVersion,
             identity.provider,
+            identity.promptRevision,
             identity.model,
             identity.inputHash,
             identity.completedAfter,
@@ -52,14 +55,16 @@ export async function insertProcessingAiToolExecutionRow(
     const result = await client.query<{ id: string }>(
         `INSERT INTO ai_tool_executions (
             tenant_id, actor_id, actor_role, tool_key, tool_version,
-            provider, model, input_hash, status
-         ) VALUES (app_tenant_id(), $1, $2, $3, $4, $5, $6, $7, 'processing')
+            prompt_revision, prompt_version_id, provider, model, input_hash, status
+         ) VALUES (app_tenant_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, 'processing')
          RETURNING id`,
         [
             identity.actorId ?? null,
             identity.actorRole ?? null,
             identity.toolKey,
             identity.toolVersion,
+            identity.promptRevision,
+            identity.promptVersionId ?? null,
             identity.provider,
             identity.model,
             identity.inputHash,
@@ -80,16 +85,20 @@ export async function insertCachedAiToolExecutionRow(
     const result = await client.query<{ id: string }>(
         `INSERT INTO ai_tool_executions (
             tenant_id, actor_id, actor_role, tool_key, tool_version,
-            provider, model, input_hash, status, source_execution_id,
+            prompt_revision, prompt_version_id, provider, model, input_hash,
+            status, source_execution_id,
             attempt_count, duration_ms, completed_at
          ) VALUES (
-            app_tenant_id(), $1, $2, $3, $4, $5, $6, $7, 'cached', $8, 0, $9, now()
+            app_tenant_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9,
+            'cached', $10, 0, $11, now()
          ) RETURNING id`,
         [
             identity.actorId ?? null,
             identity.actorRole ?? null,
             identity.toolKey,
             identity.toolVersion,
+            identity.promptRevision,
+            identity.promptVersionId ?? null,
             identity.provider,
             identity.model,
             identity.inputHash,

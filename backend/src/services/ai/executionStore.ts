@@ -13,6 +13,8 @@ import type { AiProviderUsage } from "./types";
 export interface AiExecutionIdentity {
     toolKey: string;
     toolVersion: string;
+    promptRevision: string;
+    promptVersionId?: string;
     provider: string;
     model: string;
     inputHash: string;
