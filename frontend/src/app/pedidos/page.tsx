@@ -125,8 +125,8 @@ export default function PedidosPage() {
 
   return (
     <main className={`${publicUi.container} py-8 pb-14 sm:py-10`}>
-      <h1>{isVendedora ? 'Minhas vendas' : 'Meus pedidos'}</h1>
-      <p className="contents">
+      <h1 className="mb-1 text-2xl font-bold tracking-[-0.03em] text-foreground sm:text-3xl">{isVendedora ? 'Minhas vendas' : 'Meus pedidos'}</h1>
+      <p className="mb-5 text-sm text-brand-muted">
         {isVendedora
           ? 'Vendas suas fechadas pela cliente através do link de pagamento (ver talão).'
           : 'Pedidos da sua conta — valem em qualquer navegador ou aparelho que você usar pra entrar.'}
@@ -145,11 +145,11 @@ export default function PedidosPage() {
           return (
             <div className={publicUi.orderCard} key={order.id}>
               <div className={publicUi.orderCardHeader}>
-                <span>
+                <span className="text-sm">
                   Pedido nº {order.orderNumber}
                   <span className="contents">·</span>
                   {new Date(order.date).toLocaleString('pt-BR')}
-                  <span className="contents">
+                  <span className="ml-2 text-xs text-brand-muted">
                     {order.channel === 'online'
                       ? 'via site'
                       : order.channel === 'whatsapp'
@@ -157,45 +157,45 @@ export default function PedidosPage() {
                         : 'presencial'}
                   </span>
                 </span>
-                <span className="contents">{formatBRL(order.total)}</span>
+                <span className="text-sm font-bold">{formatBRL(order.total)}</span>
               </div>
-              {isVendedora && order.clientName && <div className="contents"><span>Cliente: {order.clientName}</span></div>}
+              {isVendedora && order.clientName && (
+                <div className="mb-1.5 text-sm text-brand-muted">Cliente: {order.clientName}</div>
+              )}
               {(order.shipping || order.paymentMethod || order.discount) && (
-                <div className="contents">
+                <div className="mb-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-brand-muted">
                   {order.shipping && <span>Frete: {order.shipping.label}</span>}
                   {order.paymentMethod && <span>Pagamento: {order.paymentMethod}</span>}
                   {order.discount && (
-                    <span className="contents">
-                      Desconto: {order.discount.label} (-{formatBRL(order.discount.amount)})
-                    </span>
+                    <span>Desconto: {order.discount.label} (-{formatBRL(order.discount.amount)})</span>
                   )}
                 </div>
               )}
 
-              <div className="contents">
+              <div className="mb-2 flex flex-col gap-1">
                 {categories.map((c) => (
-                  <div className="contents" key={c.category}>
-                    <span className="contents">{c.category}</span>
-                    <span className="contents">{c.qty} peça{c.qty === 1 ? '' : 's'}</span>
-                    <span className="contents">{formatBRL(c.total)}</span>
+                  <div className="flex items-center justify-between gap-2 text-xs text-brand-muted" key={c.category}>
+                    <span className="flex-1 truncate">{c.category}</span>
+                    <span>{c.qty} peça{c.qty === 1 ? '' : 's'}</span>
+                    <span className="font-medium text-brand-text">{formatBRL(c.total)}</span>
                   </div>
                 ))}
               </div>
 
-              <button type="button" className="contents" onClick={() => toggleExpanded(order.id)}>
+              <button type="button" className={publicUi.linkButton} onClick={() => toggleExpanded(order.id)}>
                 {isExpanded
                   ? 'Ocultar itens ▲'
                   : `Ver ${totalQty} peça${totalQty === 1 ? '' : 's'} · ${order.items.length} item${order.items.length === 1 ? '' : 'ns'} ▼`}
               </button>
 
               {isExpanded && (
-                <div className={publicUi.orderItems}>
+                <div className={`${publicUi.orderItems} mt-3`}>
                   {order.items.map((item) => (
                     <div className={publicUi.orderItem} key={item.key}>
                       <ProductImage src={item.image} alt={item.name} className={publicUi.orderItemImage} />
                       <div>
-                        <div className="contents">{item.name}</div>
-                        <div className="contents">
+                        <div className="text-[13px] font-semibold">{item.name}</div>
+                        <div className="text-xs text-brand-muted">
                           {[item.color, item.size].filter(Boolean).join(' · ')} — {item.qty}x {formatBRL(item.price)}
                         </div>
                       </div>

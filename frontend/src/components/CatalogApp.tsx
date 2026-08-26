@@ -1,7 +1,7 @@
 "use client";
 import { publicUi } from "@/lib/ui";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Filters from "./Filters";
 import ProductCard from "./ProductCard";
@@ -11,8 +11,13 @@ import { Button } from "@/components/ui/button";
 import { enableImageCache } from "@/lib/image-cache";
 import { takeCatalogScrollPosition } from "@/lib/catalog-scroll";
 import { useTalao } from "./TalaoProvider";
+import { useCart } from "./CartProvider";
 import type { CatalogPage, CatalogSectionsResult } from "@/domain/catalog/types";
 import type { Product } from "@/domain/products/types";
+
+// Mesmo formato dos outros filtros (Select com "tanto faz"/"sim"/"não") em
+// vez de um toggle avulso — ver Filters.tsx.
+export type TriFilter = "" | "sim" | "nao";
 
 export interface CatalogFilters {
     term: string;
@@ -20,6 +25,10 @@ export interface CatalogFilters {
     subcategory: string;
     color: string;
     size: string;
+    // Client-side: recortam pelos ids do carrinho (ver ProductCard.tsx). Não
+    // viram parâmetro de facet próprio — são mesclados em restrictIds/excludeIds.
+    selected: TriFilter;
+    suggested: TriFilter;
 }
 
 export interface CatalogFilterOptions {
@@ -28,7 +37,7 @@ export interface CatalogFilterOptions {
     sizes: string[];
 }
 
-const EMPTY_FILTERS: CatalogFilters = { term: "", category: "", subcategory: "", color: "", size: "" };
+const EMPTY_FILTERS: CatalogFilters = { term: "", category: "", subcategory: "", color: "", size: "", selected: "", suggested: "" };
 const LOAD_MORE_ROOT_MARGIN = "600px 0px";
 const REFETCH_DEBOUNCE_MS = 350;
 // Scroll infinito nunca "esquece" o que já carregou — sem isso, uma sessão
@@ -45,7 +54,7 @@ const FIRST_ROW_PRIORITY_COUNT = 4;
 // Monta os parâmetros de filtro (não pagina/não escolhe seção) — reutilizado
 // tanto pra pedir um novo recorte de vitrines (mudança de filtro) quanto pra
 // pedir mais uma página da grade de baixo (scroll infinito).
-function facetParams(filters: CatalogFilters, restrictIds?: string[]): URLSearchParams {
+function facetParams(filters: CatalogFilters, restrictIds?: string[], excludeIds?: string[]): URLSearchParams {
     const params = new URLSearchParams();
     if (filters.term) params.set("term", filters.term);
     if (filters.category) params.set("category", filters.category);
@@ -53,6 +62,7 @@ function facetParams(filters: CatalogFilters, restrictIds?: string[]): URLSearch
     if (filters.color) params.set("color", filters.color);
     if (filters.size) params.set("size", filters.size);
     if (restrictIds && restrictIds.length > 0) params.set("restrictIds", restrictIds.join(","));
+    if (excludeIds && excludeIds.length > 0) params.set("excludeIds", excludeIds.join(","));
     return params;
 }
 
@@ -125,6 +135,60 @@ export default function CatalogApp({
         hasResumedSession.current = true;
     }, [requestedSessionId, talao]);
 
+    // "Selecionados"/"sugeridos" (Filters.tsx, mesmo formato Select dos outros
+    // filtros: "" | "sim" | "nao") recortam pelos ids do carrinho —
+    // puramente client-side (o carrinho não é dado de catálogo). "sim" vira
+    // restrição (só esses ids); "nao" vira exclusão — mesclados aqui em cima
+    // do restrictIds normal (prop, usado por catálogo de público-alvo) em
+    // vez de virarem mais facets no backend.
+    const { cart } = useCart();
+    const cartFilterIds = useMemo(() => {
+        if (!filters.selected && !filters.suggested) return null;
+        const selectedIds = new Set(cart.map((item) => item.id));
+        const suggestedIds = new Set(cart.filter((item) => item.suggested).map((item) => item.id));
+
+        let restrict: Set<string> | null = null;
+        const exclude = new Set<string>();
+        function intersect(base: Set<string> | null, extra: Set<string>): Set<string> {
+            if (base === null) return new Set(extra);
+            const next = new Set<string>();
+            for (const id of base) if (extra.has(id)) next.add(id);
+            return next;
+        }
+
+        if (filters.selected === "sim") restrict = intersect(restrict, selectedIds);
+        if (filters.selected === "nao") selectedIds.forEach((id) => exclude.add(id));
+        if (filters.suggested === "sim") restrict = intersect(restrict, suggestedIds);
+        if (filters.suggested === "nao") suggestedIds.forEach((id) => exclude.add(id));
+
+        return { restrict, exclude };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [filters.selected, filters.suggested, cart]);
+    const cartFilterKey = cartFilterIds
+        ? `${cartFilterIds.restrict ? Array.from(cartFilterIds.restrict).sort().join(",") : ""}|${Array.from(cartFilterIds.exclude).sort().join(",")}`
+        : "";
+
+    function effectiveIds(): { restrictIds?: string[]; excludeIds?: string[] } {
+        let restrict = restrictIds;
+        let exclude: string[] | undefined;
+
+        if (cartFilterIds) {
+            if (cartFilterIds.restrict !== null) {
+                const cartRestrictArr = Array.from(cartFilterIds.restrict);
+                restrict = restrict ? restrict.filter((id) => cartFilterIds.restrict!.has(id)) : cartRestrictArr;
+            }
+            if (cartFilterIds.exclude.size > 0) exclude = Array.from(cartFilterIds.exclude);
+        }
+
+        // facetParams()/parseIdsParam() (backend) tratam uma lista vazia como
+        // "sem restrição" (parâmetro nem é enviado) — um id que nunca existe
+        // de verdade força a API a bater zero produtos em vez de devolver o
+        // catálogo inteiro quando o filtro não bate com nada no carrinho.
+        if (restrict && restrict.length === 0) restrict = ["__none__"];
+
+        return { restrictIds: restrict, excludeIds: exclude };
+    }
+
     // O primeiro paint já vem pronto do server component (catalogo/page.tsx
     // chama /api/catalog-sections com os filtros da URL) — só refaz a busca
     // quando o usuário de fato muda um filtro depois de montado, com um
@@ -138,7 +202,8 @@ export default function CatalogApp({
         setLoadingSections(true);
         const timeout = setTimeout(async () => {
             try {
-                const params = facetParams(filters, restrictIds);
+                const { restrictIds: rIds, excludeIds: eIds } = effectiveIds();
+                const params = facetParams(filters, rIds, eIds);
                 const response = await fetch(`/api/catalog-sections?${params.toString()}`);
                 const result: CatalogSectionsResult = await response.json();
                 setSectionsResult(result);
@@ -149,13 +214,14 @@ export default function CatalogApp({
         }, REFETCH_DEBOUNCE_MS);
         return () => clearTimeout(timeout);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filters.term, filters.category, filters.subcategory, filters.color, filters.size]);
+    }, [filters.term, filters.category, filters.subcategory, filters.color, filters.size, cartFilterKey]);
 
     async function loadMore() {
         if (loadingMore || bottomGrid.pagination.page >= bottomGrid.pagination.totalPages) return;
         setLoadingMore(true);
         try {
-            const params = facetParams(filters, restrictIds);
+            const { restrictIds: rIds, excludeIds: eIds } = effectiveIds();
+            const params = facetParams(filters, rIds, eIds);
             if (bottomGrid.mode === "outros") params.set("excludeFeatured", "1");
             params.set("page", String(bottomGrid.pagination.page + 1));
             params.set("pageSize", String(bottomGrid.pagination.pageSize));
@@ -180,7 +246,7 @@ export default function CatalogApp({
         observer.observe(sentinel);
         return () => observer.disconnect();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [bottomGrid, filters, restrictIds, loadingMore]);
+    }, [bottomGrid, filters, restrictIds, cartFilterKey, loadingMore]);
 
     // Ao subir na página, libera memória cortando o excesso de itens já
     // carregados no fim da grade de baixo — eles ficaram pra trás na

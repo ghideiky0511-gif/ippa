@@ -268,13 +268,19 @@ export interface CatalogSectionsQuery {
     color?: string;
     size?: string;
     restrictIds?: string[];
+    excludeIds?: string[];
     pageSize?: number;
 }
 
 export async function listCatalogSections(tenant: Tenant, query: CatalogSectionsQuery): Promise<CatalogSectionsResult> {
     const [products, highlights] = await Promise.all([listCatalog(tenant), listHighlights(tenant)]);
     const matching = products.filter((p) => matchesCatalogFacets(p, query));
-    const highlightSections = highlights.map((h) => ({ id: h.id, label: h.label, items: pickByIds(matching, h.productIds) }));
+    // Só coleções publicadas (showInCatalog) viram vitrine — mas featuredIds
+    // abaixo usa `highlights` inteiro (sem esse filtro), então produto de
+    // coleção ainda oculta continua fora de "outros produtos".
+    const highlightSections = highlights
+        .filter((h) => h.showInCatalog)
+        .map((h) => ({ id: h.id, label: h.label, items: pickByIds(matching, h.productIds) }));
     const promoSection = { id: "promocoes", label: "Promoções", items: matching.filter((p) => !!p.activeDiscount) };
     const sections = [...highlightSections, promoSection].filter((s) => s.items.length > 0);
     const featuredIds = featuredProductIds(matching, highlights);

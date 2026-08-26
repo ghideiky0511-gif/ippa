@@ -47,6 +47,12 @@ const TOOLS = [
     description:
       'Quando uma vendedora monta o pedido no talão e vincula o cadastro da cliente, essa ferramenta decide se a cliente pode confirmar o pedido sozinha pela plataforma (ligada) ou só a vendedora pode fechar — pelo link de pagamento (desligada). Não afeta compra sem talão nenhum (cliente comprando sozinha, sem vendedora envolvida).',
   },
+  {
+    id: 'suggestedPieces',
+    label: 'Peças sugeridas pela equipe',
+    description:
+      'Duplo-clique de qualquer colaboradora (administradora, vendedora, expedição, entregador) no "+" do card do catálogo marca a peça como sugestão pra cliente (fundo amarelo). Desligada: o botão só seleciona/desseleciona, sem o gesto de duplo-clique nem o filtro "sugeridos".',
+  },
 ];
 
 const ASSIGNMENT_STRATEGIES = [

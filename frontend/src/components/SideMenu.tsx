@@ -24,6 +24,11 @@ export default function SideMenu({ categoryTree, authUser }: { categoryTree: Cat
   const [catalog, setCatalog] = useState<Product[] | null>(null);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
+  // /api/highlights devolve toda coleção cadastrada (é o mesmo endpoint que
+  // o editor de /workspace/colecoes usa pra listar rascunhos ainda ocultos)
+  // — o menu só deve linkar as que a vendedora publicou, igual a barra de
+  // abas do catálogo (ver listCatalogSections em catalogService.ts).
+  const visibleHighlights = highlights.filter((h) => h.showInCatalog);
 
   useEffect(() => {
     // Portal rendering must wait until document.body exists after hydration.
@@ -79,7 +84,7 @@ export default function SideMenu({ categoryTree, authUser }: { categoryTree: Cat
               </div>
             </> : <button type="button" className="flex min-h-11 w-full items-center gap-2 rounded-control border border-border px-3 text-sm text-muted-foreground hover:border-brand-primary hover:text-brand-primary" onClick={openSearch}><Search className="size-4" />Buscar no catálogo</button>}
           </div>
-          {highlights.length > 0 && <div className="border-b border-border px-5 py-3">{highlights.map((h) => <Link key={h.id} href={`/catalogo?destaque=${encodeURIComponent(h.id)}`} className="flex min-h-11 items-center text-sm font-semibold hover:text-brand-primary" onClick={closeMenu}>{h.label}</Link>)}</div>}
+          {visibleHighlights.length > 0 && <div className="border-b border-border px-5 py-3">{visibleHighlights.map((h) => <Link key={h.id} href={`/catalogo?destaque=${encodeURIComponent(h.id)}`} className="flex min-h-11 items-center text-sm font-semibold hover:text-brand-primary" onClick={closeMenu}>{h.label}</Link>)}</div>}
           {audiences.length > 0 && <div className="border-b border-border px-5 py-3">{audiences.map((a) => <button key={a.id} type="button" className={`flex min-h-11 w-full items-center justify-between text-left text-sm ${panel === 'categories' && activeAudience === a.id ? 'font-bold text-brand-primary' : 'font-semibold text-foreground'}`} onClick={() => toggleAudience(a.id)}>{a.label}<ChevronRight className="size-4" /></button>)}</div>}
           <div className="px-5 py-3"><Link href="/catalogo" className="flex min-h-11 items-center text-sm font-semibold hover:text-brand-primary" onClick={closeMenu}>Catálogo completo</Link>{!isInternal && <Link href="/pedidos" className="flex min-h-11 items-center text-sm font-semibold hover:text-brand-primary" onClick={closeMenu}>Meus pedidos</Link>}</div>
         </div>

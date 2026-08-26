@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader } from '@/components/ui/sheet';
 import { publicUi } from '@/lib/ui';
+import { useAuthUser } from './AuthProvider';
 import type { CatalogFilters } from './CatalogApp';
 
 interface FilterOptions {
@@ -21,10 +22,11 @@ export default function Filters({ options, filters, onChange, onClear }: {
   onChange: (filters: CatalogFilters) => void;
   onClear: () => void;
 }) {
+  const { suggestedPiecesEnabled } = useAuthUser();
   const [mobileOpen, setMobileOpen] = useState(false);
   const activeFilterCount = useMemo(
-    () => [filters.category, filters.color, filters.size].filter(Boolean).length,
-    [filters.category, filters.color, filters.size]
+    () => [filters.category, filters.color, filters.size].filter(Boolean).length + (filters.selected ? 1 : 0) + (filters.suggested ? 1 : 0),
+    [filters.category, filters.color, filters.size, filters.selected, filters.suggested]
   );
   const hasActiveFilters = Boolean(filters.term || activeFilterCount);
 
@@ -42,6 +44,18 @@ export default function Filters({ options, filters, onChange, onClear }: {
         <option value="">{options.sizes.length === 0 ? 'Sem tamanhos disponíveis' : 'Todos os tamanhos'}</option>
         {options.sizes.map((s) => <option key={s} value={s}>{s}</option>)}
       </Select>
+      <Select value={filters.selected} onChange={(e) => onChange({ ...filters, selected: e.target.value as CatalogFilters['selected'] })}>
+        <option value="">Selecionados</option>
+        <option value="sim">Sim</option>
+        <option value="nao">Não</option>
+      </Select>
+      {suggestedPiecesEnabled && (
+        <Select value={filters.suggested} onChange={(e) => onChange({ ...filters, suggested: e.target.value as CatalogFilters['suggested'] })}>
+          <option value="">Sugeridos</option>
+          <option value="sim">Sim</option>
+          <option value="nao">Não</option>
+        </Select>
+      )}
     </>
   );
 

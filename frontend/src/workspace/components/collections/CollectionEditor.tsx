@@ -13,6 +13,11 @@ export default function CollectionEditor({ collection, products, onUpdate }) {
     onUpdate((h) => ({ ...h, label }));
   }
 
+  function handleShowInCatalogChange(e) {
+    const showInCatalog = e.target.checked;
+    onUpdate((h) => ({ ...h, showInCatalog }));
+  }
+
   function addProduct(productId) {
     onUpdate((h) => (h.productIds.includes(productId) ? h : { ...h, productIds: [...h.productIds, productId] }));
   }
@@ -27,6 +32,11 @@ export default function CollectionEditor({ collection, products, onUpdate }) {
         <label>Nome da coleção</label>
         <input value={collection.label} onChange={handleLabelChange} />
       </div>
+
+      <label className="contents">
+        <input type="checkbox" checked={!!collection.showInCatalog} onChange={handleShowInCatalogChange} />
+        Mostrar no catálogo (vitrine na barra de coleções)
+      </label>
 
       <SharePanel collectionId={collection.id} />
 

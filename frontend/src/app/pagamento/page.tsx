@@ -34,9 +34,9 @@ export default function PagamentoPage() {
 
   if (cart.length === 0) {
     return (
-      <main className="contents">
+      <main className={`${publicUi.container} py-5 pb-14`}>
         <CheckoutSteps current="/pagamento" reachable={1} />
-        <h1>Pagamento</h1>
+        <h1 className="mb-5 text-2xl font-extrabold tracking-[-0.03em]">Pagamento</h1>
         <div className={publicUi.empty}>
           Seu carrinho está vazio. <Link href="/carrinho">Voltar ao carrinho</Link>
         </div>
@@ -46,9 +46,9 @@ export default function PagamentoPage() {
 
   if (!shipping) {
     return (
-      <main className="contents">
+      <main className={`${publicUi.container} py-5 pb-14`}>
         <CheckoutSteps current="/pagamento" reachable={2} />
-        <h1>Pagamento</h1>
+        <h1 className="mb-5 text-2xl font-extrabold tracking-[-0.03em]">Pagamento</h1>
         <div className={publicUi.empty}>
           Escolha o frete primeiro. <Link href="/frete">Voltar para o frete</Link>
         </div>
@@ -62,11 +62,11 @@ export default function PagamentoPage() {
   // digitar /pagamento direto na URL e confirmar por ela.
   if (activeSession) {
     return (
-      <main className="contents">
+      <main className={`${publicUi.container} py-5 pb-14`}>
         <CheckoutSteps current="/pagamento" reachable={2} />
-        <h1>Pagamento</h1>
-        <div className="contents">
-          Pagamento agora é feito pela cliente através do link — volte pro frete pra gerar/copiar.
+        <h1 className="mb-5 text-2xl font-extrabold tracking-[-0.03em]">Pagamento</h1>
+        <div className="max-w-[420px]">
+          <p className="mb-4 text-sm text-brand-muted">Pagamento agora é feito pela cliente através do link — volte pro frete pra gerar/copiar.</p>
           <Link href="/frete" className={publicUi.primaryButton}>Voltar para o frete</Link>
         </div>
       </main>
@@ -75,15 +75,17 @@ export default function PagamentoPage() {
 
   if (gate.blocked) {
     return (
-      <main className="contents">
+      <main className={`${publicUi.container} py-5 pb-14`}>
         <CheckoutSteps current="/pagamento" reachable={2} />
-        <h1>Pagamento</h1>
-        <div className="contents">
-          {gate.reason === 'no-client'
-            ? 'Vincule um cadastro de cliente (nome, CPF/CNPJ, e-mail, CEP) no talão antes de continuar.'
-            : gate.reason === 'no-login'
-              ? 'A cliente ainda não tem login — crie um pra ela no talão antes de continuar.'
-              : 'Complete o cadastro da cliente (CPF/CNPJ, e-mail, CEP) no talão antes de continuar.'}
+        <h1 className="mb-5 text-2xl font-extrabold tracking-[-0.03em]">Pagamento</h1>
+        <div className="max-w-[420px]">
+          <p className="mb-4 text-sm text-brand-muted">
+            {gate.reason === 'no-client'
+              ? 'Vincule um cadastro de cliente (nome, CPF/CNPJ, e-mail, CEP) no talão antes de continuar.'
+              : gate.reason === 'no-login'
+                ? 'A cliente ainda não tem login — crie um pra ela no talão antes de continuar.'
+                : 'Complete o cadastro da cliente (CPF/CNPJ, e-mail, CEP) no talão antes de continuar.'}
+          </p>
           <button className={publicUi.primaryButton} onClick={gate.openTalao}>Abrir talão</button>
         </div>
       </main>
@@ -95,11 +97,11 @@ export default function PagamentoPage() {
   // chegar a qualquer etapa de checkout.
   if (!authUser) {
     return (
-      <main className="contents">
+      <main className={`${publicUi.container} py-5 pb-14`}>
         <CheckoutSteps current="/pagamento" reachable={2} />
-        <h1>Pagamento</h1>
-        <div className="contents">
-          Pra finalizar o pedido você precisa entrar ou criar uma conta — seu carrinho continua salvo.
+        <h1 className="mb-5 text-2xl font-extrabold tracking-[-0.03em]">Pagamento</h1>
+        <div className="max-w-[420px]">
+          <p className="mb-4 text-sm text-brand-muted">Pra finalizar o pedido você precisa entrar ou criar uma conta — seu carrinho continua salvo.</p>
           <div className={publicUi.checkoutActions}>
             <Link href={`/login?redirect=${encodeURIComponent('/pagamento')}`} className={publicUi.primaryButton}>Entrar</Link>
             <Link href={`/cadastro?redirect=${encodeURIComponent('/pagamento')}`} className={publicUi.subtleButton}>Criar conta</Link>
@@ -115,12 +117,12 @@ export default function PagamentoPage() {
   // vendedora feche o pedido (link de pagamento ou fechamento manual).
   if (selfCheckoutBlocked) {
     return (
-      <main className="contents">
+      <main className={`${publicUi.container} py-5 pb-14`}>
         <CheckoutSteps current="/pagamento" reachable={2} />
-        <h1>Pagamento</h1>
-        <div className="contents">
+        <h1 className="mb-5 text-2xl font-extrabold tracking-[-0.03em]">Pagamento</h1>
+        <p className="max-w-[420px] text-sm text-brand-muted">
           Esta loja finaliza pedidos de talão só pela vendedora — peça pra ela gerar o link de pagamento ou fechar o pedido.
-        </div>
+        </p>
       </main>
     );
   }
@@ -144,9 +146,9 @@ export default function PagamentoPage() {
   }
 
   return (
-    <main className="contents">
+    <main className={`${publicUi.container} py-5 pb-14`}>
       <CheckoutSteps current="/pagamento" reachable={3} />
-      <h1>Pagamento</h1>
+      <h1 className="mb-5 text-2xl font-extrabold tracking-[-0.03em]">Pagamento</h1>
 
       <div className={publicUi.paymentOptions}>
         {PAYMENT_METHODS.map((method) => (
@@ -163,7 +165,7 @@ export default function PagamentoPage() {
           <span>{formatBRL(cartSubtotal)}</span>
         </div>
         {cartDiscountTotal > 0 && (
-          <div className="contents">
+          <div className={`${publicUi.summaryLine} text-[#2e8b57]`}>
             <span>Desconto ({cartDiscountLabel})</span>
             <span>-{formatBRL(cartDiscountTotal)}</span>
           </div>
@@ -172,7 +174,7 @@ export default function PagamentoPage() {
           <span>Frete ({shipping.label})</span>
           <span>{shipping.price === 0 ? 'Grátis' : formatBRL(shipping.price)}</span>
         </div>
-        <div className="contents">
+        <div className={`${publicUi.summaryLine} border-t border-border/60 pt-1.5 text-sm font-bold text-brand-text`}>
           <span>Total</span>
           <span>{formatBRL(total)}</span>
         </div>

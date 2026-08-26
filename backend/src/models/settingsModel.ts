@@ -10,7 +10,7 @@ export interface StoreSettingsRow {
 export interface DiscountRow { id: string; label: string; active: boolean; type: DiscountType; percent: string }
 export interface DiscountTierRow { discount_id: string; min_qty: number; percent: string }
 export interface DiscountProductRow { discount_id: string; product_id: string }
-export interface HighlightRow { id: string; label: string }
+export interface HighlightRow { id: string; label: string; show_in_catalog: boolean }
 export interface HighlightProductRow { highlight_id: string; product_id: string }
 export interface HomeSectionRow { id: string; type: HomeSectionType; product_id: string | null; layout: Record<string, number> }
 export interface HomeBannerRow {
@@ -62,7 +62,7 @@ export async function listDiscountProductRows(client: PoolClient): Promise<Disco
 }
 export async function listHighlightRows(client: PoolClient): Promise<HighlightRow[]> {
     const result = await client.query<HighlightRow>(
-        "SELECT id, label FROM highlights WHERE tenant_id = app_tenant_id() ORDER BY label",
+        "SELECT id, label, show_in_catalog FROM highlights WHERE tenant_id = app_tenant_id() ORDER BY label",
     );
     return result.rows;
 }
@@ -143,8 +143,8 @@ export async function deleteHighlightRows(client: PoolClient): Promise<void> {
 
 export async function insertHighlightRow(client: PoolClient, value: HighlightRow): Promise<void> {
     await client.query(
-        `INSERT INTO highlights (id, tenant_id, label) VALUES ($1, app_tenant_id(), $2)`,
-        [value.id, value.label],
+        `INSERT INTO highlights (id, tenant_id, label, show_in_catalog) VALUES ($1, app_tenant_id(), $2, $3)`,
+        [value.id, value.label, value.show_in_catalog],
     );
 }
 
