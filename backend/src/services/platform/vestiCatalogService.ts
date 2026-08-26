@@ -71,13 +71,32 @@ export async function importVestiCatalog(tenantId: string): Promise<VestiImportS
             const definedPrices = productVariants.map((variant) => variant.price).filter((price): price is number => price !== undefined);
             const basePrice = definedPrices.length ? Math.min(...definedPrices) : 0;
 
+            // O feed traz uma imagem por variante (cada cor/tamanho tem seu
+            // próprio g:image_link) — sem isso, quickview/página do produto
+            // só teriam a foto única do produto, nunca a galeria por cor
+            // (ver resolveGallery/resolveImageForColor em frontend/src/lib/images.ts).
+            const imagesByColor: Record<string, string> = {};
+            const images: string[] = [];
+            for (const variant of productVariants) {
+                if (!variant.imageUrl) continue;
+                if (!imagesByColor[variant.color]) imagesByColor[variant.color] = variant.imageUrl;
+                if (!images.includes(variant.imageUrl)) images.push(variant.imageUrl);
+            }
+            const primaryImage = product.imageUrl || images[0];
+
             const writeRow: ProductWriteRow & { referenceId: string } = {
                 name: product.catalogTitle || product.name,
                 category: product.externalCategory || "Sem categoria",
                 brand: product.brand || undefined,
                 referenceId: product.ref,
                 price: basePrice,
-                media: product.imageUrl ? { image: product.imageUrl } : undefined,
+                media: primaryImage
+                    ? {
+                        image: primaryImage,
+                        images: images.length ? images : undefined,
+                        imagesByColor: Object.keys(imagesByColor).length ? imagesByColor : undefined,
+                    }
+                    : undefined,
                 attributes: product.productUrl ? { vestiProductUrl: product.productUrl } : undefined,
             };
             const { row, created } = await upsertProductByReferenceIdRow(client, writeRow);

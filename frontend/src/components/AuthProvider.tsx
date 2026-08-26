@@ -7,13 +7,16 @@ interface AuthContextValue {
   // false só quando ninguém está logado e o tenant desligou a exibição de
   // preços no catálogo público.
   showPrices: boolean;
+  // Ferramenta "peças sugeridas" (/ferramentas, storeSettings.features.suggestedPieces)
+  // — liga/desliga o gesto de duplo-clique no "+" do card (ver ProductCard.tsx).
+  suggestedPiecesEnabled: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-// As duas informações chegam prontas do servidor. Assim, a primeira pintura
+// As informações chegam prontas do servidor. Assim, a primeira pintura
 // do catálogo já respeita o tenant, sem mostrar o preço por um instante.
-export function AuthProvider({ authUser, publicCatalogPrices, children }: { authUser: AuthUser | null; publicCatalogPrices: boolean; children: ReactNode }) {
+export function AuthProvider({ authUser, publicCatalogPrices, suggestedPiecesEnabled, children }: { authUser: AuthUser | null; publicCatalogPrices: boolean; suggestedPiecesEnabled: boolean; children: ReactNode }) {
   // Links públicos gerados no atendimento podem solicitar uma versão de
   // vitrine sem preços. É uma escolha da apresentação do link, independente
   // da regra global que já esconde preço para visitantes sem login.
@@ -23,7 +26,7 @@ export function AuthProvider({ authUser, publicCatalogPrices, children }: { auth
 
   const showPrices = !forceHiddenPrices && (!!authUser || publicCatalogPrices);
 
-  return <AuthContext.Provider value={{ authUser, showPrices }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ authUser, showPrices, suggestedPiecesEnabled }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuthUser() {

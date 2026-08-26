@@ -26,6 +26,7 @@ export async function GET(
             color: params.get("color") || undefined,
             size: params.get("size") || undefined,
             restrictIds: parseIdsParam(params.get("restrictIds")),
+            excludeIds: parseIdsParam(params.get("excludeIds")),
             pageSize: Number(params.get("pageSize")) || undefined,
         }),
     );

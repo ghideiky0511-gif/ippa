@@ -28,7 +28,7 @@ export default function CollectionsApp({ initialHighlights, products }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   function addCollection(label) {
-    const collection = { id: newId(), label, productIds: [] };
+    const collection = { id: newId(), label, productIds: [], showInCatalog: false };
     setHighlights((prev) => [...prev, collection]);
     setSelectedId(collection.id);
     setDirty(true);

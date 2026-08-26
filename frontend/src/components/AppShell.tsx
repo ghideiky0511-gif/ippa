@@ -109,18 +109,19 @@ function TopNav({ categoryTree, authUser }: { categoryTree: CategoryTreeEntry[];
   );
 }
 
-export default function AppShell({ children, categoryTree, authUser, publicCatalogPrices }: {
+export default function AppShell({ children, categoryTree, authUser, publicCatalogPrices, suggestedPiecesEnabled }: {
   children: ReactNode;
   categoryTree: CategoryTreeEntry[];
   authUser: AuthUser | null;
   publicCatalogPrices: boolean;
+  suggestedPiecesEnabled: boolean;
 }) {
   // Mesmo bypass do proxy.ts: vendedora sempre opera o talão; administradora
   // só quando tem adminAccess (ver isAdministrator no backend).
   const hasTalaoAccess = authUser?.role === 'vendedora' || authUser?.permissions?.adminAccess === true;
   const isCliente = authUser?.role === 'cliente';
   const body = (
-    <AuthProvider authUser={authUser} publicCatalogPrices={publicCatalogPrices}>
+    <AuthProvider authUser={authUser} publicCatalogPrices={publicCatalogPrices} suggestedPiecesEnabled={suggestedPiecesEnabled}>
       <QuickViewProvider>
         <CartProvider>
           <LayoutGroup id="product-detail">

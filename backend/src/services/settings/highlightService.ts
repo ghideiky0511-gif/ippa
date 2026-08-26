@@ -21,6 +21,7 @@ export async function listHighlights(tenant: Tenant): Promise<Highlight[]> {
             label: highlight.label,
             productIds: products.filter((product) => product.highlight_id === highlight.id)
                 .map((product) => product.product_id),
+            showInCatalog: highlight.show_in_catalog,
         }));
     });
 }
@@ -35,7 +36,7 @@ export async function replaceHighlights(tenant: Tenant, actor: AuthUser, value: 
     await withTenantTransaction(tenant, actor, async (client) => {
         await deleteHighlightRows(client);
         for (const highlight of highlights) {
-            await insertHighlightRow(client, highlight);
+            await insertHighlightRow(client, { id: highlight.id, label: highlight.label, show_in_catalog: highlight.showInCatalog });
             for (const [position, productId] of highlight.productIds.entries()) {
                 await insertHighlightProductRow(client, highlight.id, productId, position);
             }

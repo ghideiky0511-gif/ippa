@@ -75,6 +75,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             categoryTree={categoryTree}
             authUser={authPayload.user}
             publicCatalogPrices={storeSettings.features?.publicCatalogPrices !== false}
+            suggestedPiecesEnabled={storeSettings.features?.suggestedPieces !== false}
           >
             {children}
           </ConditionalShell>

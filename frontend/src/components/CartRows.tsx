@@ -355,9 +355,9 @@ function CartProductBlock({
           />
         ))}
         {removedEntries.map(({ key, group }) => (
-          <div key={key} className="contents">
+          <div key={key} className={publicUi.removedNotice}>
             <span>{group.color ? `Cor ${group.color} removida.` : 'Removida do carrinho.'}</span>
-            <button className="contents" onClick={() => onUndo(key)}>desfazer</button>
+            <button type="button" className={publicUi.linkButton} onClick={() => onUndo(key)}>desfazer</button>
           </div>
         ))}
       </div>

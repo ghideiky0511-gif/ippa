@@ -130,6 +130,10 @@ export const publicUi = {
   cartHeader: 'flex items-center justify-between border-b border-[#eee] p-4 [&>button]:cursor-pointer [&>button]:border-0 [&>button]:bg-transparent [&>button]:text-xl',
   cartItems: 'flex-1 overflow-y-auto px-4 py-2',
   remove: 'ml-2.5 cursor-pointer border-0 bg-transparent text-xs text-[#b00020] hover:underline',
+  removedNotice: 'flex items-center justify-between gap-3 rounded-brand bg-brand-background px-4 py-2.5 text-sm text-brand-muted',
+  // Botão de texto genérico (desfazer, "usar meu CEP", "ver itens" etc.) —
+  // qualquer ação secundária que deve parecer link clicável, não caixa cheia.
+  linkButton: 'cursor-pointer border-0 bg-transparent p-0 text-sm font-semibold text-brand-primary hover:underline disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:no-underline',
   cartGroup: 'border-b border-[#f0f0f0] py-3',
   cartGroupSummary: 'flex items-center gap-2.5',
   cartGroupImage: 'h-16 w-12 shrink-0 rounded-md bg-[#eee]',

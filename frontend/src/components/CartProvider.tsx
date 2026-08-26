@@ -53,11 +53,13 @@ interface CartContextValue {
     size: string,
     qty: number,
     stockQty?: number,
-    backorderDate?: string
+    backorderDate?: string,
+    suggested?: boolean
   ) => void;
   // Guarda o produto no carrinho sem comprometer cor/tamanho. A grade é
   // escolhida depois, a partir do item marcado como "Selecione a grade".
-  addProductDraft: (product: Product) => void;
+  // `suggested` marca a peça como sugestão da vendedora (ver ProductCard.tsx).
+  addProductDraft: (product: Product, suggested?: boolean) => void;
   // Tira todas as linhas daquele produto do pedido.
   removeProduct: (productId: string) => void;
   changeQty: (key: string, qty: number) => void;
@@ -176,28 +178,31 @@ export function CartProvider({ children }: { children: ReactNode }) {
     size: string,
     qty: number,
     stockQty?: number,
-    backorderDate?: string
+    backorderDate?: string,
+    suggested?: boolean
   ) {
     const key = [product.id, color, size].join('|');
     function apply(base: CartItem[]): CartItem[] {
       const existing = base.find((i) => i.key === key);
       if (existing) {
         return base.map((i) =>
-          i.key === key ? { ...i, qty: i.qty + qty, backorderDate: backorderDate ?? i.backorderDate } : i
+          i.key === key
+            ? { ...i, qty: i.qty + qty, backorderDate: backorderDate ?? i.backorderDate, suggested: suggested || i.suggested }
+            : i
         );
       }
       return [
         ...base,
-        { key, id: product.id, name: product.name, image: product.image, color, size, price: product.price, qty, stockQty, backorderDate },
+        { key, id: product.id, name: product.name, image: product.image, color, size, price: product.price, qty, stockQty, backorderDate, suggested },
       ];
     }
     updateItems(apply(activeSession?.items ?? personalCart));
   }
 
-  function addProductDraft(product: Product) {
+  function addProductDraft(product: Product, suggested?: boolean) {
     // Cor e tamanho vazios identificam um rascunho no contrato do carrinho.
     // A quantidade fica em zero até a cliente definir a grade.
-    addToCart(product, '', '', 0);
+    addToCart(product, '', '', 0, undefined, undefined, suggested);
   }
 
   function removeProduct(productId: string) {

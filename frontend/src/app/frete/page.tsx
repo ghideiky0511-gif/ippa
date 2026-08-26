@@ -97,9 +97,9 @@ export default function FretePage() {
 
   if (cart.length === 0) {
     return (
-      <main className="contents">
+      <main className={`${publicUi.container} py-5 pb-14`}>
         <CheckoutSteps current="/frete" reachable={1} />
-        <h1>Frete</h1>
+        <h1 className="mb-5 text-2xl font-extrabold tracking-[-0.03em]">Frete</h1>
         <div className={publicUi.empty}>
           Seu carrinho está vazio. <Link href="/carrinho">Voltar ao carrinho</Link>
         </div>
@@ -111,11 +111,11 @@ export default function FretePage() {
   // sessão online dela.
   if (!authUser) {
     return (
-      <main className="contents">
+      <main className={`${publicUi.container} py-5 pb-14`}>
         <CheckoutSteps current="/frete" reachable={1} />
-        <h1>Frete</h1>
-        <div className="contents">
-          Pra continuar pro frete você precisa entrar ou criar uma conta — seu carrinho continua salvo.
+        <h1 className="mb-5 text-2xl font-extrabold tracking-[-0.03em]">Frete</h1>
+        <div className="max-w-[420px]">
+          <p className="mb-4 text-sm text-brand-muted">Pra continuar pro frete você precisa entrar ou criar uma conta — seu carrinho continua salvo.</p>
           <div className={publicUi.checkoutActions}>
             <Link href={`/login?redirect=${encodeURIComponent('/frete')}`} className={publicUi.primaryButton}>Entrar</Link>
             <Link href={`/cadastro?redirect=${encodeURIComponent('/frete')}`} className={publicUi.subtleButton}>Criar conta</Link>
@@ -127,15 +127,17 @@ export default function FretePage() {
 
   if (gate.blocked) {
     return (
-      <main className="contents">
+      <main className={`${publicUi.container} py-5 pb-14`}>
         <CheckoutSteps current="/frete" reachable={2} />
-        <h1>Frete</h1>
-        <div className="contents">
-          {gate.reason === 'no-client'
-            ? 'Vincule um cadastro de cliente (nome, CPF/CNPJ, e-mail, CEP) no talão antes de continuar pro frete.'
-            : gate.reason === 'no-login'
-              ? 'A cliente ainda não tem login — crie um pra ela no talão antes de continuar pro frete.'
-              : 'Complete o cadastro da cliente (CPF/CNPJ, e-mail, CEP) no talão antes de continuar pro frete.'}
+        <h1 className="mb-5 text-2xl font-extrabold tracking-[-0.03em]">Frete</h1>
+        <div className="max-w-[420px]">
+          <p className="mb-4 text-sm text-brand-muted">
+            {gate.reason === 'no-client'
+              ? 'Vincule um cadastro de cliente (nome, CPF/CNPJ, e-mail, CEP) no talão antes de continuar pro frete.'
+              : gate.reason === 'no-login'
+                ? 'A cliente ainda não tem login — crie um pra ela no talão antes de continuar pro frete.'
+                : 'Complete o cadastro da cliente (CPF/CNPJ, e-mail, CEP) no talão antes de continuar pro frete.'}
+          </p>
           <button className={publicUi.primaryButton} onClick={gate.openTalao}>Abrir talão</button>
         </div>
       </main>
@@ -149,10 +151,10 @@ export default function FretePage() {
   // reportado pelo usuário).
   if (activeSession?.status === 'fechado') {
     return (
-      <main className="contents">
+      <main className={`${publicUi.container} py-5 pb-14`}>
         <CheckoutSteps current="/frete" reachable={3} />
-        <h1>Frete</h1>
-        <div className="contents">
+        <h1 className="mb-5 text-2xl font-extrabold tracking-[-0.03em]">Frete</h1>
+        <div className="mb-4 flex items-center gap-2 text-sm font-semibold">
           <Check className="size-5 text-success" aria-hidden="true" />
           <p>Pagamento confirmado! O pedido de {activeSession.clientName} foi fechado.</p>
         </div>
@@ -164,28 +166,31 @@ export default function FretePage() {
   const paymentLink = linkState.token && typeof window !== 'undefined' ? `${window.location.origin}${href(`/pagar/${linkState.token}`)}` : '';
 
   return (
-    <main className="contents">
+    <main className={`${publicUi.container} py-5 pb-14`}>
       <CheckoutSteps current="/frete" reachable={reachable} />
-      <h1>Frete</h1>
+      <h1 className="mb-5 text-2xl font-extrabold tracking-[-0.03em]">Frete</h1>
 
       {savedCep && (
-        <button type="button" className="contents" onClick={useSavedCep}>
-          Usar meu CEP cadastrado ({savedCep})
-        </button>
+        <div className="mb-3">
+          <button type="button" className={publicUi.linkButton} onClick={useSavedCep}>
+            Usar meu CEP cadastrado ({savedCep})
+          </button>
+        </div>
       )}
 
-      <form className="contents" onSubmit={handleCalculate}>
+      <form className={publicUi.fieldRow} onSubmit={handleCalculate}>
         <input
           type="text"
           placeholder="Digite seu CEP"
           value={cep}
           onChange={(e) => setCep(e.target.value)}
+          className={publicUi.input}
         />
         <button type="submit" className={publicUi.primaryButton}>Calcular</button>
       </form>
 
       {options && (
-        <div className="contents">
+        <div className="my-4 flex flex-col gap-2.5 max-w-[420px]">
           {options.map((opt) => (
             <label key={opt.id} className={[publicUi.paymentOption, shipping?.id === opt.id ? 'border-brand-primary' : ''].join(' ')}>
               <input
@@ -194,11 +199,11 @@ export default function FretePage() {
                 checked={shipping?.id === opt.id}
                 onChange={() => setShipping(opt)}
               />
-              <div className="contents">
-                <div className="contents">{opt.label}</div>
-                <div className="contents">{opt.prazo}</div>
+              <div className="flex flex-1 flex-col gap-0.5">
+                <div>{opt.label}</div>
+                <div className="text-xs font-normal text-brand-muted">{opt.prazo}</div>
               </div>
-              <div className="contents">{opt.price === 0 ? 'Grátis' : formatBRL(opt.price)}</div>
+              <div className="font-semibold">{opt.price === 0 ? 'Grátis' : formatBRL(opt.price)}</div>
             </label>
           ))}
         </div>
@@ -211,7 +216,7 @@ export default function FretePage() {
             <span>{formatBRL(cartSubtotal)}</span>
           </div>
           {cartDiscountTotal > 0 && (
-            <div className="contents">
+            <div className={`${publicUi.summaryLine} text-[#2e8b57]`}>
               <span>Desconto ({cartDiscountLabel})</span>
               <span>-{formatBRL(cartDiscountTotal)}</span>
             </div>
@@ -220,7 +225,7 @@ export default function FretePage() {
             <span>Frete ({shipping.label})</span>
             <span>{shipping.price === 0 ? 'Grátis' : formatBRL(shipping.price)}</span>
           </div>
-          <div className="contents">
+          <div className={`${publicUi.summaryLine} border-t border-border/60 pt-1.5 text-sm font-bold text-brand-text`}>
             <span>Total</span>
             <span>{formatBRL(cartTotal + shipping.price)}</span>
           </div>
@@ -234,13 +239,13 @@ export default function FretePage() {
               {linkState.loading ? 'Gerando link…' : 'Gerar link de pagamento'}
             </button>
           ) : (
-            <div className="contents">
-              <p>Link de pagamento gerado — envie pra cliente:</p>
-              <div className="contents">
-                <input readOnly value={paymentLink} onFocus={(e) => e.target.select()} />
+            <div className="flex flex-col gap-2.5">
+              <p className="text-sm font-semibold">Link de pagamento gerado — envie pra cliente:</p>
+              <div className={publicUi.fieldRow}>
+                <input readOnly value={paymentLink} onFocus={(e) => e.target.select()} className={`${publicUi.input} flex-1`} />
                 <button type="button" className={publicUi.primaryButton} onClick={() => copyLink(paymentLink)}>Copiar</button>
               </div>
-              <p className="contents">Aguardando a cliente pagar — o pedido fecha sozinho assim que ela confirmar.</p>
+              <p className={publicUi.hint}>Aguardando a cliente pagar — o pedido fecha sozinho assim que ela confirmar.</p>
               <button type="button" className={publicUi.subtleButton} disabled={linkState.loading} onClick={handleGenerateLink}>
                 {linkState.loading ? 'Gerando…' : 'Link expirou? Gerar novo'}
               </button>

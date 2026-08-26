@@ -43,6 +43,12 @@ export const HighlightSchema = z.object({
   id: z.string(),
   label: z.string(),
   productIds: z.array(z.string()),
+  // Liga/desliga a vitrine dessa coleção na barra sticky do catálogo
+  // público — coleção nova nasce desmarcada (ver highlightService.ts),
+  // a vendedora publica quando quiser. Não afeta a curadoria em si
+  // (productIds continua valendo pra excluir de "outros produtos" mesmo
+  // com a vitrine oculta, ver featuredProductIds em catalogService.ts).
+  showInCatalog: z.boolean(),
 });
 export type Highlight = z.infer<typeof HighlightSchema>;
 
@@ -198,6 +204,11 @@ export const StoreFeaturesSchema = z.object({
   hidePriceWithoutLogin: z.boolean().optional(),
   allowCpfSignup: z.boolean().optional(),
   clientSelfCheckout: z.boolean().optional(),
+  // Duplo-clique de qualquer colaboradora (todo papel exceto 'cliente') no
+  // "+" do card do catálogo pra marcar a peça como sugestão (fundo amarelo)
+  // — ver ProductCard.tsx. Desligada: o botão só seleciona/desseleciona,
+  // sem o gesto de sugestão nem o filtro "só sugeridos".
+  suggestedPieces: z.boolean().optional(),
 }).strict();
 export type StoreFeatures = z.infer<typeof StoreFeaturesSchema>;
 

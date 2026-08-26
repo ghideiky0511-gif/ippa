@@ -92,6 +92,11 @@ export const CartItemSchema = z.object({
   // que é por loja). Sem valor = ainda não escolhida. Rótulo livre, não é
   // data — não usa z.iso.datetime() de propósito.
   backorderDate: z.string().optional(),
+  // Marcado quando a vendedora dá duplo-clique no "+" do card pra
+  // destacar a peça como sugestão dela pra cliente (fundo amarelo no
+  // botão) — ver ProductCard.tsx. Ausente/false = peça só selecionada,
+  // sem curadoria da vendedora.
+  suggested: z.boolean().optional(),
 });
 export type CartItem = z.infer<typeof CartItemSchema>;
 
