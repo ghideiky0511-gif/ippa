@@ -110,18 +110,22 @@ export const OrderBookSchema = z.object({
 });
 export type OrderBook = z.infer<typeof OrderBookSchema>;
 
-export const OrderStatusSchema = z.enum(['aberto', 'aguardando_pagamento', 'pago', 'cancelado']);
+export const OrderStatusSchema = z.enum(['aberto', 'aguardando_pagamento', 'novo', 'separado', 'pago', 'cancelado']);
 export type OrderStatus = z.infer<typeof OrderStatusSchema>;
 
 export const OrderSchema = z.object({
   id: EntityIdSchema,
   date: IsoDateTimeSchema,
   updatedAt: IsoDateTimeSchema.optional(),
-  // 'aberto'/'aguardando_pagamento': pedido ainda pode ganhar upsell (mais
-  // itens, de um atendimento novo da mesma vendedora ou de um checkout
-  // seguinte da própria cliente) — ver orderId em OrderSession. 'pago' é
-  // o que "pedido" sempre significou até aqui: só existe status explícito
-  // porque agora a linha pode nascer antes do pagamento.
+  // 'aberto': carrinho ainda em montagem, pode ganhar upsell (mais itens,
+  // de um atendimento novo da mesma vendedora ou de um checkout seguinte
+  // da própria cliente) — ver orderId em OrderSession. 'novo': checkout
+  // concluído (talão, link de pagamento ou checkout da cliente), aguardando
+  // separação física — nenhum desses fluxos processa pagamento de verdade
+  // hoje, então nenhum pedido nasce "pago" mais. 'separado': Bippa confirmou
+  // a separação física (ver order_item_fulfillment_events, migration 023).
+  // 'pago': só alcançável a partir de 'separado', quando existir motor de
+  // pagamentos de verdade (fora de escopo por ora).
   status: OrderStatusSchema,
   items: z.array(CartItemSchema),
   total: MoneySchema, // já líquido de desconto

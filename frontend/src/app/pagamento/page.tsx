@@ -1,7 +1,6 @@
 'use client';
 import { publicUi } from '@/lib/ui';
 
-import { useState } from 'react';
 import Link from '@/components/TenantLink';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
@@ -29,7 +28,6 @@ export default function PagamentoPage() {
   const gate = useTalaoClientGate();
   const { authUser } = useAuthUser();
   const selfCheckoutBlocked = useClientSelfCheckoutGate();
-  const [paymentMethod, setPaymentMethod] = useState<string | null>(null);
 
   if (cart.length === 0) {
     return (
@@ -127,11 +125,9 @@ export default function PagamentoPage() {
   const total = cartTotal + shipping.price;
 
   function confirmOrder() {
-    if (!paymentMethod) return;
     saveOrderToHistory(cart, total, {
       channel: 'site',
       shipping,
-      paymentMethod: PAYMENT_METHODS.find((m) => m.id === paymentMethod)?.label,
       discount: cartDiscountTotal > 0 ? { label: cartDiscountLabel!, amount: cartDiscountTotal } : undefined,
     });
     clearCart();
@@ -146,14 +142,9 @@ export default function PagamentoPage() {
 
       <div className={publicUi.paymentOptions}>
         {PAYMENT_METHODS.map((method) => (
-          <label key={method.id} className={[publicUi.paymentOption, paymentMethod === method.id ? 'border-brand-primary' : ''].join(' ')}>
-            <input
-              type="radio"
-              name="payment"
-              checked={paymentMethod === method.id}
-              onChange={() => setPaymentMethod(method.id)}
-            />
-            {method.label}
+          <label key={method.id} className={`${publicUi.paymentOption} opacity-50`}>
+            <input type="radio" name="payment" disabled />
+            {method.label} <span className="text-xs">(em breve)</span>
           </label>
         ))}
       </div>
@@ -180,10 +171,10 @@ export default function PagamentoPage() {
       </div>
 
       <div className={publicUi.checkoutActions}>
-        <button className={publicUi.primaryButton} disabled={!paymentMethod} onClick={confirmOrder}>
+        <button className={publicUi.primaryButton} onClick={confirmOrder}>
           Confirmar pedido
         </button>
-        <div className={publicUi.hint}>Simulação — nenhuma cobrança real é processada.</div>
+        <div className={publicUi.hint}>Pagamento pelo site em breve — a loja entra em contato para combinar o pagamento.</div>
       </div>
 
       <Link href="/frete" className={publicUi.backLink}><ArrowLeft className="size-4" aria-hidden="true" />Voltar para o frete</Link>

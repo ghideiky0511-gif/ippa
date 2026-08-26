@@ -96,32 +96,32 @@ Princípios:
 
 #### 1. Leitura e agregação determinística
 
-- [ ] Criar models pequenos e tenant-scoped para:
+- [x] Criar models pequenos e tenant-scoped para:
   - localizar o último pedido pago da cliente em `orders`;
   - carregar somente os itens desse pedido enriquecidos pelo catálogo;
   - calcular ticket médio da cliente e do tenant usando somente pedidos pagos
     no mesmo período.
-- [ ] Criar `catalogOrderResumeService` para validar acesso à sessão do talão,
+- [x] Criar `catalogOrderResumeService` para validar acesso à sessão do talão,
       ler os dados em uma transação curta e fechá-la antes de chamar a IA.
-- [ ] Usar como referência inicial uma janela de 12 meses para os tickets,
+- [x] Usar como referência inicial uma janela de 12 meses para os tickets,
       sempre retornando a quantidade de pedidos da amostra.
-- [ ] Calcular no backend, sem IA:
+- [x] Calcular no backend, sem IA:
   - data, valor e dias desde a última compra;
   - total de peças e produtos distintos;
   - ticket médio da cliente e do tenant;
   - diferença percentual do último pedido para os dois tickets;
   - quantidade e participação por categoria/subcategoria, cor e tamanho;
   - itens sem classificação suficiente.
-- [ ] Se não existir pedido pago anterior, retornar `no_history` sem chamar a
+- [x] Se não existir pedido pago anterior, retornar `no_history` sem chamar a
       OpenAI.
 
 #### 2. Ferramenta de IA
 
-- [ ] Definir a ferramenta versionada `catalog.last_order_resume`.
-- [ ] Criar schemas Zod estritos para o payload operacional e para a resposta.
-- [ ] Enviar somente métricas agregadas e rótulos de produto necessários; não
+- [x] Definir a ferramenta versionada `catalog.last_order_resume`.
+- [x] Criar schemas Zod estritos para o payload operacional e para a resposta.
+- [x] Enviar somente métricas agregadas e rótulos de produto necessários; não
       enviar `clientId`, `sessionId`, nome, CPF/CNPJ, e-mail ou endereço.
-- [ ] Pedir uma resposta curta, acionável e sustentada pelos números recebidos:
+- [x] Pedir uma resposta curta, acionável e sustentada pelos números recebidos:
   - resumo de uma frase;
   - até três insights de grade, cor, categoria, recência ou ticket;
   - leitura do mix entre parte de cima, parte de baixo, peça inteira e outros,
@@ -129,46 +129,46 @@ Princípios:
   - evidência objetiva de cada insight;
   - sugestão de ação para a vendedora;
   - aviso de amostra pequena quando aplicável.
-- [ ] Habilitar cache (sugestão inicial: 24 horas). Mudanças no pedido ou nas
+- [x] Habilitar cache (sugestão inicial: 24 horas). Mudanças no pedido ou nas
       métricas alteram o hash e invalidam o resultado naturalmente.
-- [ ] Validar novamente a saída antes de devolvê-la ao domínio.
+- [x] Validar novamente a saída antes de devolvê-la ao domínio.
 
 #### 3. Rota específica e autorização
 
-- [ ] Criar `POST /api/[tenantSlug]/sessions/[id]/last-order-summary`.
-- [ ] Não aceitar `clientId` arbitrário no body: a cliente deve ser obtida da
+- [x] Criar `POST /api/[tenantSlug]/sessions/[id]/last-order-summary`.
+- [x] Não aceitar `clientId` arbitrário no body: a cliente deve ser obtida da
       sessão informada.
-- [ ] Permitir somente a vendedora responsável pela sessão e administradores
+- [x] Permitir somente a vendedora responsável pela sessão e administradores
       com acesso administrativo.
-- [ ] Exigir que a sessão tenha um cadastro de cliente vinculado.
-- [ ] Retornar um contrato explícito:
+- [x] Exigir que a sessão tenha um cadastro de cliente vinculado.
+- [x] Retornar um contrato explícito:
   - `available`: métricas exatas + análise + `executionId` + origem do cache;
   - `no_history`: cliente vinculada, mas sem pedido pago anterior.
-- [ ] Aplicar os erros normalizados do motor sem expor mensagem do provider.
-- [ ] Não criar endpoint genérico de prompts ou de execução de ferramentas.
+- [x] Aplicar os erros normalizados do motor sem expor mensagem do provider.
+- [x] Não criar endpoint genérico de prompts ou de execução de ferramentas.
 
 #### 4. Experiência no talão
 
-- [ ] Criar contrato Zod equivalente no frontend.
-- [ ] Adicionar um card `Resumo da última compra` à sessão ativa do
+- [x] Criar contrato Zod equivalente no frontend.
+- [x] Adicionar um card `Resumo da última compra` à sessão ativa do
       `TalaoDrawer` somente quando houver `clientId` vinculado.
-- [ ] Fazer a geração sob demanda por botão, evitando custo ao apenas alternar
+- [x] Fazer a geração sob demanda por botão, evitando custo ao apenas alternar
       entre atendimentos.
-- [ ] Exibir primeiro os fatos exatos: data, peças, valor e comparação de ticket.
-- [ ] Exibir abaixo os insights curtos de grade, cor e categoria.
-- [ ] Tratar separadamente carregamento, sem histórico, falha temporária e nova
+- [x] Exibir primeiro os fatos exatos: data, peças, valor e comparação de ticket.
+- [x] Exibir abaixo os insights curtos de grade, cor e categoria.
+- [x] Tratar separadamente carregamento, sem histórico, falha temporária e nova
       tentativa, sem bloquear carrinho, frete ou pagamento.
-- [ ] Limpar o estado visual ao trocar de sessão para nunca mostrar a análise de
+- [x] Limpar o estado visual ao trocar de sessão para nunca mostrar a análise de
       outra cliente.
-- [ ] Manter o card utilizável no drawer estreito e na navegação por teclado.
+- [x] Manter o card utilizável no drawer estreito e na navegação por teclado.
 
 #### 5. Testes e aceite
 
-- [ ] Testar agregações e percentuais sem depender da IA.
-- [ ] Testar a ferramenta com provider falso, incluindo cache e saída inválida.
+- [x] Testar agregações e percentuais sem depender da IA.
+- [x] Testar a ferramenta com provider falso, incluindo cache e saída inválida.
 - [ ] Testar isolamento por tenant e autorização por sessão/vendedora.
-- [ ] Testar `no_history` e confirmar que não cria execução de IA.
-- [ ] Testar que prompt e histórico não contêm identificação pessoal.
+- [x] Testar `no_history` e confirmar que não cria execução de IA.
+- [x] Testar que prompt e histórico não contêm identificação pessoal.
 - [ ] Testar a rota com cliente vinculada, sem cliente e sessão de outra
       vendedora.
 - [ ] Testar o card ao gerar, trocar sessão, repetir via cache e receber erro.
@@ -176,6 +176,22 @@ Princípios:
       build frontend.
 - [ ] Validar em homologação com uma cliente fictícia que tenha pelo menos dois
       pedidos e grades variadas.
+
+### Validação local desta implementação
+
+- [x] `test:ai`: 17 testes aprovados sem chave real ou acesso à OpenAI.
+- [x] Contratos backend/frontend sincronizados e schema de Structured Output
+      convertido pelo helper Zod do SDK sem erro.
+- [x] Lint direcionado dos arquivos da ferramenta, rota e componentes.
+- [x] Builds de produção do backend e frontend.
+- [x] Migration incremental
+      `037_catalog_paid_order_analysis_indexes.sql`, sem alterar migrations
+      anteriores.
+- [ ] Teste da migration em banco descartável: Docker local indisponível nesta
+      execução.
+- [ ] Lint completo do frontend: ainda bloqueado por erros preexistentes em
+      `ProductQuickView.tsx` e `components/ui/sheet.tsx`; os arquivos desta
+      implementação passam isoladamente.
 
 ## Fora da fase 2
 

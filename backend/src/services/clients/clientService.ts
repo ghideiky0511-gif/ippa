@@ -1,3 +1,4 @@
+import type { PoolClient } from "pg";
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser, Client } from "@/lib/types";
@@ -16,6 +17,8 @@ import {
     searchClientRows,
     searchClientRowsPage,
     updateClientRow,
+    type ClientRow,
+    type ClientWriteRow,
 } from "@/models/clientsModel";
 import { findUserRowByClientId } from "@/models/usersModel";
 import { findActiveErpIntegrationRow } from "@/models/erpIntegrationsModel";
@@ -99,6 +102,38 @@ export async function createTenantClient(
             context,
         });
         return created;
+    });
+}
+
+// Patch seguro de cliente reutilizável por qualquer service: busca o
+// registro atual e só sobrescreve os campos explicitamente presentes em
+// `changes` (mesmo que undefined, o que limpa o campo de propósito) —
+// todo o resto é preservado. Existe porque updateClientRow (camada de
+// modelo) sobrescreve incondicionalmente os campos que recebe, e mais de
+// um call site já reconstruía esse merge manualmente, o que uma vez
+// esqueceu de recompor CPF/e-mail/endereço ao só trocar a vendedora
+// responsável (ver ensureCustomerOrderSession/updateSession).
+export async function patchClientRow(
+    client: PoolClient,
+    id: string,
+    changes: Partial<ClientWriteRow>,
+): Promise<ClientRow | null> {
+    const current = await findClientRow(client, id);
+    if (!current) return null;
+    return updateClientRow(client, id, {
+        name: changes.name ?? current.name,
+        cpfCnpj: Object.hasOwn(changes, "cpfCnpj") ? changes.cpfCnpj : current.cpf_cnpj ?? undefined,
+        email: Object.hasOwn(changes, "email") ? changes.email : current.email ?? undefined,
+        cep: Object.hasOwn(changes, "cep") ? changes.cep : current.cep ?? undefined,
+        street: Object.hasOwn(changes, "street") ? changes.street : current.street ?? undefined,
+        number: Object.hasOwn(changes, "number") ? changes.number : current.number ?? undefined,
+        complement: Object.hasOwn(changes, "complement") ? changes.complement : current.complement ?? undefined,
+        neighborhood: Object.hasOwn(changes, "neighborhood") ? changes.neighborhood : current.neighborhood ?? undefined,
+        city: Object.hasOwn(changes, "city") ? changes.city : current.city ?? undefined,
+        state: Object.hasOwn(changes, "state") ? changes.state : current.state ?? undefined,
+        companyResponsible: Object.hasOwn(changes, "companyResponsible") ? changes.companyResponsible : current.company_responsible ?? undefined,
+        storeName: Object.hasOwn(changes, "storeName") ? changes.storeName : current.store_name ?? undefined,
+        lastSellerId: Object.hasOwn(changes, "lastSellerId") ? changes.lastSellerId : current.last_seller_id ?? undefined,
     });
 }
 

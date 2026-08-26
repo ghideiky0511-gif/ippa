@@ -17,7 +17,6 @@ import { findUserRowById } from "@/models/usersModel";
 import { findStoreSettingsRow } from "@/models/settingsModel";
 import { notifyOrder, notifyOrderBook, notifySession } from "@/services/realtime/updateBroadcast";
 import { notifyNewOrderForSeller, notifyOrderConfirmed } from "@/services/notifications";
-import { enqueueOrderPush } from "@/services/erp/orderPushService";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
 import { toOrder, toOrderSession } from "./orderMapper";
 import { closeOrderBookWhenFinished } from "./orderBookLifecycle";
@@ -126,11 +125,13 @@ export async function createCustomerOrder(
             const currentItems = (await listOrderItemRowsByOrder(client, orderId)).map((item) => item.snapshot);
             await syncOrderItems(client, { orderId, currentItems, nextItems: items, actorId: user.id, actorRole: user.role });
         }
+        // Sem motor de pagamentos de verdade, este checkout só confirma o
+        // pedido (fecha o carrinho pra separação) -- não paga mais (ver
+        // migration 036). paymentMethod fica sem uso até existir cobrança real.
         const row = await updateOrderRow(client, orderId, {
-            status: "pago",
+            status: "novo",
             total: body.total,
             shipping: body.shipping,
-            paymentMethod: body.paymentMethod,
             discount: body.discount,
         });
         if (!row) throw new NotFoundError("ORDER_NOT_FOUND");
@@ -154,6 +155,5 @@ export async function createCustomerOrder(
     notifyOrder(tenant.id, order);
     notifyOrderConfirmed(tenant, user, order);
     if (sellerRecipient) notifyNewOrderForSeller(tenant, sellerRecipient, order);
-    await enqueueOrderPush(tenant, user, order.id);
     return order;
 }

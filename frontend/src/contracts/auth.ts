@@ -55,6 +55,12 @@ export const UpdateOwnProfileInputSchema = z.object({
 );
 export type UpdateOwnProfileInput = z.infer<typeof UpdateOwnProfileInputSchema>;
 
+export const ChangeOwnPasswordInputSchema = z.object({
+  currentPassword: z.string().min(1, 'Informe sua senha atual.'),
+  newPassword: PasswordSchema,
+});
+export type ChangeOwnPasswordInput = z.infer<typeof ChangeOwnPasswordInputSchema>;
+
 // Credenciais reutilizadas na criação e edição de contas. O schema também
 // normaliza o e-mail antes que ele atravesse a fronteira da API.
 export const UserCredentialsSchema = z.object({

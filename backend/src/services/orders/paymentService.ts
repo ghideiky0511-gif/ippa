@@ -19,7 +19,6 @@ import {
 import { findUserRowByClientId, findUserRowById } from "@/models/usersModel";
 import { notifyOrder, notifyOrderBook, notifySession } from "@/services/realtime/updateBroadcast";
 import { notifyNewOrderForSeller, notifyOrderConfirmed } from "@/services/notifications";
-import { enqueueOrderPush } from "@/services/erp/orderPushService";
 import { GoneError, NotFoundError } from "@/services/shared/errors";
 import { getCartDiscount } from "@/services/settings";
 import { PAYMENT_LINK_EXPIRATION_DEFAULT_MINUTES } from "@/services/settings";
@@ -98,7 +97,6 @@ export async function paymentSummary(tenant: Tenant, token: string): Promise<Pay
 export async function confirmPayment(
   tenant: Tenant,
   token: string,
-  paymentMethod?: string,
 ): Promise<{ ok: true; order: Order }> {
   let changedSessions: OrderSession[] = [];
   let changedBooks: OrderBookRow[] = [];
@@ -107,11 +105,12 @@ export async function confirmPayment(
   const order = await withTenantTransaction(tenant, {}, async (client) => {
     const context = await paymentContext(client, token, true);
     const total = context.cartTotal + (context.session.shipping?.price ?? 0);
+    // Sem motor de pagamentos de verdade, este link só confirma o pedido
+    // (fecha o carrinho pra separação) -- não paga mais (ver migration 036).
     const row = await updateOrderRow(client, context.orderId, {
-      status: "pago",
+      status: "novo",
       total,
       shipping: context.session.shipping ?? undefined,
-      paymentMethod,
       discount: context.discount.totalAmount > 0
         ? { label: context.discount.label!, amount: context.discount.totalAmount }
         : undefined,
@@ -138,6 +137,5 @@ export async function confirmPayment(
   notifyOrder(tenant.id, order);
   if (recipient) notifyOrderConfirmed(tenant, recipient, order);
   if (sellerRecipient) notifyNewOrderForSeller(tenant, sellerRecipient, order);
-  await enqueueOrderPush(tenant, {}, order.id);
   return { ok: true, order };
 }

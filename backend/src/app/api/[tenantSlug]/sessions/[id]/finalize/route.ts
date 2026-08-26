@@ -18,10 +18,6 @@ export async function POST(
 ): Promise<Response> {
     const route = await resolveTenantRoute(request, context.params);
     if (isTenantRouteError(route)) return route;
-    const body = (await request.json().catch(() => ({}))) as Record<
-        string,
-        unknown
-    >;
     const authenticated = await authentication.getAuthenticatedSession(
         route.tenant,
         requestToken(request, route.tenant.slug),
@@ -33,7 +29,6 @@ export async function POST(
             route.tenant,
             authenticated.user,
             route.params.id,
-            body,
         ),
     );
 }

@@ -35,7 +35,6 @@ export default function PagarPage({ params }: { params: Promise<{ token: string 
   const [summary, setSummary] = useState<PaySummary | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
-  const [paymentMethod, setPaymentMethod] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [done, setDone] = useState(false);
 
@@ -54,20 +53,15 @@ export default function PagarPage({ params }: { params: Promise<{ token: string 
   }, [token]);
 
   async function handleConfirm() {
-    if (!paymentMethod) return;
     setConfirming(true);
     setError('');
     try {
-      const res = await fetch(`/api/pay/${token}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paymentMethod: PAYMENT_METHODS.find((m) => m.id === paymentMethod)?.label }),
-      });
+      const res = await fetch(`/api/pay/${token}`, { method: 'POST' });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || data.error || 'Não foi possível confirmar o pagamento.');
+      if (!res.ok) throw new Error(data.message || data.error || 'Não foi possível confirmar o pedido.');
       setDone(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Não foi possível confirmar o pagamento.');
+      setError(err instanceof Error ? err.message : 'Não foi possível confirmar o pedido.');
     } finally {
       setConfirming(false);
     }
@@ -83,7 +77,7 @@ export default function PagarPage({ params }: { params: Promise<{ token: string 
         {!loading && error && !done && <p className={publicUi.error}>{error}</p>}
 
         {!loading && done && (
-          <p className="contents">Pagamento confirmado! Obrigado pela compra.</p>
+          <p className="contents">Pedido confirmado! A loja vai entrar em contato para combinar o pagamento.</p>
         )}
 
         {!loading && summary && !done && (
@@ -129,24 +123,19 @@ export default function PagarPage({ params }: { params: Promise<{ token: string 
 
             <div className={publicUi.paymentOptions}>
               {PAYMENT_METHODS.map((method) => (
-                <label key={method.id} className={[publicUi.paymentOption, paymentMethod === method.id ? 'border-brand-primary' : ''].join(' ')}>
-                  <input
-                    type="radio"
-                    name="payment"
-                    checked={paymentMethod === method.id}
-                    onChange={() => setPaymentMethod(method.id)}
-                  />
-                  {method.label}
+                <label key={method.id} className={`${publicUi.paymentOption} opacity-50`}>
+                  <input type="radio" name="payment" disabled />
+                  {method.label} <span className="text-xs">(em breve)</span>
                 </label>
               ))}
             </div>
 
             {error && <p className={publicUi.error}>{error}</p>}
 
-            <button className={publicUi.primaryButton} disabled={!paymentMethod || confirming} onClick={handleConfirm}>
-              {confirming ? 'Confirmando…' : 'Confirmar pagamento'}
+            <button className={publicUi.primaryButton} disabled={confirming} onClick={handleConfirm}>
+              {confirming ? 'Confirmando…' : 'Confirmar pedido'}
             </button>
-            <div className={publicUi.hint}>Simulação — nenhuma cobrança real é processada.</div>
+            <div className={publicUi.hint}>Pagamento pelo site em breve — a loja entra em contato para combinar o pagamento.</div>
           </>
         )}
       </div>

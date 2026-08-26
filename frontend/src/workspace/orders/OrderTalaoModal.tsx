@@ -207,7 +207,6 @@ export function OrderTalaoModal({
   const [items, setItems] = useState<CartItem[]>(session.items);
   const [client, setClient] = useState<Client | null>(session.clientId ? { id: session.clientId, name: session.clientName, createdAt: '', updatedAt: '' } : null);
   const [productQuery, setProductQuery] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('pix');
   const [saving, setSaving] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -283,7 +282,7 @@ export function OrderTalaoModal({
     setFinalizing(true);
     setMessage(null);
     try {
-      const order = await finalizeOrderSession(session.id, paymentMethod);
+      const order = await finalizeOrderSession(session.id);
       onFinalized(order);
       onClose();
     } catch (cause) {
@@ -353,12 +352,7 @@ export function OrderTalaoModal({
           {session.status !== 'fechado' && (
             <>
               <button type="button" className={adminUi.button} onClick={() => void save()} disabled={saving || finalizing}>{saving ? 'Salvando...' : 'Salvar peças'}</button>
-              <select className="rounded-md border border-[#ddd] bg-white px-2 py-2 text-sm" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}>
-                <option value="pix">Pix</option>
-                <option value="cartão">Cartão</option>
-                <option value="dinheiro">Dinheiro</option>
-                <option value="boleto">Boleto</option>
-              </select>
+              <span className="text-xs text-brand-muted">Cobrança pelo app em breve — combine o pagamento direto com a cliente.</span>
               <button type="button" className={adminUi.primaryButton} onClick={() => void finalize()} disabled={!canFinalize || finalizing || saving}>
                 {finalizing ? 'Finalizando...' : 'Finalizar pedido'}
               </button>

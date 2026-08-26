@@ -31,10 +31,11 @@ import {
     markOrderSessionParticipantLeftRow,
     upsertOrderSessionParticipantRow,
 } from "@/models/orderSessionParticipantsModel";
-import { findClientRow, updateClientRow } from "@/models/clientsModel";
+import { findClientRow } from "@/models/clientsModel";
 import { findUserRowById, listOnlineAdministratorIds, listOnlineSellerIds } from "@/models/usersModel";
 import { findStoreSettingsRow } from "@/models/settingsModel";
 import { listUsersByIds } from "@/services/users";
+import { patchClientRow } from "@/services/clients/clientService";
 import { recordAuditEvent, ORDER_SESSION_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
 import { notifyOrder, notifyOrderBook, notifySession } from "@/services/realtime/updateBroadcast";
@@ -236,21 +237,7 @@ export async function ensureCustomerOrderSession(
                 actorRole: user.role,
             });
         }
-        await updateClientRow(client, registration.id, {
-            name: registration.name,
-            cpfCnpj: registration.cpf_cnpj ?? undefined,
-            email: registration.email ?? undefined,
-            cep: registration.cep ?? undefined,
-            street: registration.street ?? undefined,
-            number: registration.number ?? undefined,
-            complement: registration.complement ?? undefined,
-            neighborhood: registration.neighborhood ?? undefined,
-            city: registration.city ?? undefined,
-            state: registration.state ?? undefined,
-            companyResponsible: registration.company_responsible ?? undefined,
-            storeName: registration.store_name ?? undefined,
-            lastSellerId: sellerId,
-        });
+        await patchClientRow(client, registration.id, { lastSellerId: sellerId });
         const session = toOrderSession(row, requestedItems);
         await recordAuditEvent(client, {
             action: ORDER_SESSION_AUDIT_ACTIONS.CREATED,
@@ -382,21 +369,7 @@ export async function updateSession(
                 if (!registration) throw new NotFoundError("CLIENT_NOT_FOUND");
                 clientId = registration.id;
                 clientName = registration.name;
-                await updateClientRow(client, registration.id, {
-                    name: registration.name,
-                    cpfCnpj: registration.cpf_cnpj ?? undefined,
-                    email: registration.email ?? undefined,
-                    cep: registration.cep ?? undefined,
-                    street: registration.street ?? undefined,
-                    number: registration.number ?? undefined,
-                    complement: registration.complement ?? undefined,
-                    neighborhood: registration.neighborhood ?? undefined,
-                    city: registration.city ?? undefined,
-                    state: registration.state ?? undefined,
-                    companyResponsible: registration.company_responsible ?? undefined,
-                    storeName: registration.store_name ?? undefined,
-                    lastSellerId: currentRow.seller_id,
-                });
+                await patchClientRow(client, registration.id, { lastSellerId: currentRow.seller_id });
             }
             if (body.notes !== undefined) notes = body.notes;
             if (body.status !== undefined) status = body.status;
@@ -474,18 +447,12 @@ export async function canAccessOrderSession(
     });
 }
 
-const FinalizeOrderSessionSchema = z.object({ paymentMethod: z.string().optional() });
-
 export async function finalizeOrderSession(
     tenant: Tenant,
     user: AuthUser,
     id: string,
-    rawBody: unknown,
 ): Promise<Order> {
     if (user.role === "cliente") throw new ForbiddenError();
-    const parsedBody = FinalizeOrderSessionSchema.safeParse(rawBody);
-    if (!parsedBody.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsedBody.error.issues);
-    const body = parsedBody.data;
     let changedSessions: OrderSession[] = [];
     let changedBooks: OrderBookRow[] = [];
     const order = await withTenantTransaction(tenant, user, async (client) => {
@@ -518,11 +485,13 @@ export async function finalizeOrderSession(
 
         const total = items.reduce((sum, item) => sum + item.price * item.qty, 0)
             + (session.shipping?.price ?? 0);
+        // Sem motor de pagamentos de verdade, "finalizar" não paga mais o
+        // pedido -- só fecha o carrinho pra separação (ver migration 036).
+        // paymentMethod fica sem uso aqui até existir cobrança real.
         const row = await updateOrderRow(client, orderId, {
-            status: "pago",
+            status: "novo",
             total,
             shipping: session.shipping ?? undefined,
-            paymentMethod: body.paymentMethod,
         });
         if (!row) throw new NotFoundError("ORDER_NOT_FOUND");
         // Fecha TODA sessão irmã ainda aberta que aponte pro mesmo pedido

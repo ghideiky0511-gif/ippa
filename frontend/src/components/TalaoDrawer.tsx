@@ -16,6 +16,7 @@ import type { OrderSession } from '@/domain/orders/types';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import ShareCatalogSheet from './ShareCatalogSheet';
 import TenantLink from './TenantLink';
+import LastOrderAiAnalysis from '@/app/catalogo/_components/LastOrderAiAnalysis';
 
 const ClientWithLoginSchema = ClientSchema.extend({ hasLogin: z.boolean().optional() });
 
@@ -612,6 +613,9 @@ export default function TalaoDrawer() {
                 </span>
               </div>
               <ClientCadastroSection key={`${activeSession.id}-cadastro`} session={activeSession} />
+              {activeSession.clientId && (
+                <LastOrderAiAnalysis key={`${activeSession.id}-last-order-ai`} sessionId={activeSession.id} />
+              )}
             </>
           ) : (
             <p className={publicUi.muted}>Nenhum pedido ativo — crie ou selecione um abaixo.</p>

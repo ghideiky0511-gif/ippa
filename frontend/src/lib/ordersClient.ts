@@ -83,10 +83,8 @@ export function updateOrderSession(id: string, body: UpdateOrderSessionInput): P
   }, 'Não foi possível atualizar o talão.');
 }
 
-export function finalizeOrderSession(id: string, paymentMethod?: string): Promise<Order> {
+export function finalizeOrderSession(id: string): Promise<Order> {
   return adminJson(`/api/sessions/${id}/finalize`, OrderSchema, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ paymentMethod }),
   }, 'Não foi possível finalizar o pedido.');
 }

@@ -12,6 +12,13 @@ export {
     listManagedAiTools,
 } from "./managedTools";
 export { defineAiTool } from "./toolDefinition";
+export { catalogLastOrderResumeTool } from "./catalogLastOrderResumeTool";
+export {
+    buildCatalogLastOrderResumeInput,
+    canRunCatalogOrderResume,
+    catalogOrderResume,
+    createCatalogOrderResumeService,
+} from "./catalogOrderResumeService";
 export type {
     AiProviderFailureKind,
     AiProviderProfile,

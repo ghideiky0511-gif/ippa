@@ -26,17 +26,5 @@ export async function POST(
 ): Promise<Response> {
     const route = await resolveTenantRoute(request, context.params);
     if (isTenantRouteError(route)) return route;
-    const body = (await request.json().catch(() => ({}))) as Record<
-        string,
-        unknown
-    >;
-    return execute(() =>
-        orders.confirmPayment(
-            route.tenant,
-            route.params.id,
-            typeof body.paymentMethod === "string"
-                ? body.paymentMethod
-                : undefined,
-        ),
-    );
+    return execute(() => orders.confirmPayment(route.tenant, route.params.id));
 }
