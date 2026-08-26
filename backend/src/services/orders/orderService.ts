@@ -118,6 +118,15 @@ export async function createCustomerOrder(
         // itens só chegam aqui, completos, no instante do checkout.
         if (!orderId) orderId = (await getOrCreateOpenOrder(client, { clientId: user.clientId!, sellerId, clientName: user.name, channel }))?.id;
         if (!orderId) throw new ValidationError();
+        // Serializa a confirmação com edições do talão e nunca conclui um
+        // cabeçalho vazio. Se uma limpeza/edição ganhar a corrida, o checkout
+        // falha preservando a tela para nova tentativa em vez de gravar um
+        // pedido sem order_items.
+        const currentOrder = await findOrderRowById(client, orderId, true);
+        if (!currentOrder) throw new NotFoundError("ORDER_NOT_FOUND");
+        if (currentOrder.status !== "aberto" && currentOrder.status !== "aguardando_pagamento") {
+            throw new ValidationError("ORDER_ALREADY_FINALIZED");
+        }
         let orderItems = items;
         if (itemsFromSession) {
             orderItems = (await listOrderItemRowsByOrder(client, orderId)).map((item) => item.snapshot);
@@ -125,6 +134,7 @@ export async function createCustomerOrder(
             const currentItems = (await listOrderItemRowsByOrder(client, orderId)).map((item) => item.snapshot);
             await syncOrderItems(client, { orderId, currentItems, nextItems: items, actorId: user.id, actorRole: user.role });
         }
+        if (orderItems.filter((item) => item.qty > 0).length === 0) throw new ValidationError("EMPTY_ORDER");
         // Sem motor de pagamentos de verdade, este checkout só confirma o
         // pedido (fecha o carrinho pra separação) -- não paga mais (ver
         // migration 036). paymentMethod fica sem uso até existir cobrança real.

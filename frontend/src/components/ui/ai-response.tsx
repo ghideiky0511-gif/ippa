@@ -17,6 +17,11 @@ export interface AiResponseInsightItem {
   isInterpretation?: boolean;
 }
 
+export interface AiResponseKpiItem {
+  label: string;
+  value: string;
+}
+
 export interface AiResponseCardProps {
   title: string;
   description: string;
@@ -138,6 +143,32 @@ export function AiResponseInsights({ items }: { items: AiResponseInsightItem[] }
           </p>
         </article>
       ))}
+    </div>
+  );
+}
+
+export function AiResponseKpis({ items }: { items: AiResponseKpiItem[] }) {
+  if (items.length === 0) return null;
+  return (
+    <dl className="grid grid-cols-2 gap-1.5">
+      {items.map((item) => (
+        <div key={item.label} className="rounded-control bg-brand-background px-2.5 py-2">
+          <dt className="text-[10px] font-bold tracking-wide text-muted-foreground uppercase">
+            {item.label}
+          </dt>
+          <dd className="mt-0.5 truncate text-sm font-extrabold text-foreground" title={item.value}>
+            {item.value}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+export function AiResponseText({ children }: { children: ReactNode }) {
+  return (
+    <div className="rounded-control border border-brand-primary/15 bg-brand-primary/5 p-3">
+      <p className="text-sm font-semibold leading-relaxed text-foreground">{children}</p>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
-import type { AuthUser, Order, OrderSession, OrderSessionParticipant } from "@/lib/types";
+import type { AuthUser, CartItem, Order, OrderSession, OrderSessionParticipant } from "@/lib/types";
 import { CartItemSchema } from "@/contracts/shared";
 import {
     CreateOrderSessionInputSchema,
@@ -64,6 +64,19 @@ function notifyReconciledSessions(tenantId: string, reconciled: Awaited<ReturnTy
 
 function canManageSession(user: AuthUser, sellerId: string): boolean {
     return user.role !== "cliente" && (user.role !== "vendedora" || sellerId === user.id);
+}
+
+export function canMutateLinkedOrder(status: Order["status"], isClient: boolean): boolean {
+    if (status === "cancelado") return false;
+    return !isClient || status === "aberto" || status === "aguardando_pagamento";
+}
+
+export function totalAfterItemMutation(
+    items: Array<Pick<CartItem, "price" | "qty">>,
+    order: Pick<NonNullable<Awaited<ReturnType<typeof findOrderRowById>>>, "discount" | "shipping">,
+): number {
+    const subtotal = items.reduce((sum, item) => sum + item.price * item.qty, 0);
+    return Math.max(0, subtotal - (order.discount?.amount ?? 0) + (order.shipping?.price ?? 0));
 }
 
 function toParticipant(
@@ -343,11 +356,10 @@ export async function updateSession(
     const parsedBody = UpdateOrderSessionInputSchema.safeParse(rawBody);
     if (!parsedBody.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsedBody.error.issues);
     const body = parsedBody.data;
-    const changes: { book?: OrderBookRow } = {};
+    const changes: { book?: OrderBookRow; order?: Order } = {};
     const updated = await withTenantTransaction(tenant, user, async (client) => {
         const currentRow = await findOrderSessionRow(client, id);
         if (!currentRow) throw new NotFoundError("SESSION_NOT_FOUND");
-        const currentItems = (await listOrderSessionItemRowsBySession(client, id)).map((item) => item.snapshot);
         const isSeller = canManageSession(user, currentRow.seller_id);
         const isClient = user.role === "cliente" && Boolean(currentRow.client_id) && currentRow.client_id === user.clientId;
         if (!isSeller && !isClient) throw new ForbiddenError();
@@ -377,9 +389,6 @@ export async function updateSession(
         let shipping = currentRow.shipping ?? undefined;
         if (body.shipping === null) shipping = undefined;
         else if (body.shipping) shipping = body.shipping;
-        const items = body.items ?? currentItems;
-        if (body.items !== undefined) await replaceOrderSessionItemRows(client, id, items);
-
         // order_id só falta numa sessão que nunca teve cliente vinculado.
         // Se esta chamada é o momento em que o cliente passa a existir
         // (ex. vendedora identifica quem é depois de já ter lançado peças),
@@ -393,13 +402,28 @@ export async function updateSession(
                 clientId: clientId!, sellerId: currentRow.seller_id, clientName, channel: currentRow.channel,
             }))?.id;
         }
+        let order: Awaited<ReturnType<typeof findOrderRowById>> = null;
         if (orderId) {
-            const order = await findOrderRowById(client, orderId);
-            // Pedido já pago/cancelado não aceita mais upsell -- é
-            // exatamente o limite de "mutável até pago".
-            if (order && (order.status === "pago" || order.status === "cancelado")) {
+            // O pedido é sempre o primeiro lock dos fluxos de checkout e
+            // edição. Além de evitar deadlock com sessões irmãs de upsell,
+            // isso faz cliques rápidos calcularem o diff sobre o snapshot já
+            // confirmado pela transação anterior. A vendedora pode reabrir
+            // o atendimento e fazer upsell mesmo depois da confirmação; a
+            // cliente, porém, não pode mandar uma limpeza tardia do carrinho
+            // contra um pedido que já saiu da etapa de montagem.
+            order = await findOrderRowById(client, orderId, true);
+            if (!order) throw new NotFoundError("ORDER_NOT_FOUND");
+            if (!canMutateLinkedOrder(order.status, isClient)) {
                 throw new ValidationError("ORDER_ALREADY_FINALIZED");
             }
+        }
+        const currentItems = (await listOrderSessionItemRowsBySession(client, id)).map((item) => item.snapshot);
+        const items = body.items ?? currentItems;
+        // O lock/estado do pedido é validado antes de mexer no snapshot da
+        // sessão. Assim um update atrasado falha sem apagar nenhuma das duas
+        // fontes de itens dentro da transação.
+        if (body.items !== undefined) await replaceOrderSessionItemRows(client, id, items);
+        if (orderId) {
             if (justAttached) {
                 await syncOrderItems(client, { orderId, currentItems: [], nextItems: items, actorId: user.id, actorRole: user.role });
             } else if (body.items !== undefined) {
@@ -410,6 +434,14 @@ export async function updateSession(
                 // pedido inteiro os interpretaria como "removidos" só por
                 // não estarem no body desta chamada.
                 await syncOrderItems(client, { orderId, currentItems, nextItems: items, actorId: user.id, actorRole: user.role });
+            }
+            if (order && body.items !== undefined) {
+                const persistedItems = (await listOrderItemRowsByOrder(client, orderId)).map((item) => item.snapshot);
+                const updatedOrder = await updateOrderRow(client, orderId, {
+                    status: order.status,
+                    total: totalAfterItemMutation(persistedItems, order),
+                });
+                if (updatedOrder) changes.order = toOrder(updatedOrder, persistedItems);
             }
         }
         const row = await updateOrderSessionRow(client, id, {
@@ -428,6 +460,7 @@ export async function updateSession(
     });
     notifySession(tenant.id, updated);
     scheduleSessionBroadcast(updated);
+    if (changes.order) notifyOrder(tenant.id, changes.order);
     if (changes.book) notifyOrderBook(tenant.id, {
         sellerId: changes.book.seller_id,
     });
@@ -475,8 +508,8 @@ export async function finalizeOrderSession(
         // Upsell: mais de uma sessão pode apontar pro mesmo pedido. Se
         // outra já pagou, não reprocessa (evita recomputar total/duplicar
         // notificação de "pedido confirmado").
-        const existingOrder = await findOrderRowById(client, orderId);
-        if (existingOrder && (existingOrder.status === "pago" || existingOrder.status === "cancelado")) {
+        const existingOrder = await findOrderRowById(client, orderId, true);
+        if (existingOrder && existingOrder.status !== "aberto" && existingOrder.status !== "aguardando_pagamento") {
             throw new ValidationError("ORDER_ALREADY_FINALIZED");
         }
 

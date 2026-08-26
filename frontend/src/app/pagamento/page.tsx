@@ -3,7 +3,9 @@ import { publicUi } from '@/lib/ui';
 
 import Link from '@/components/TenantLink';
 import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
+import { toast } from 'sonner';
 import { formatBRL } from '@/lib/format';
 import { useCart } from '@/components/CartProvider';
 import { useTalao } from '@/components/TalaoProvider';
@@ -22,12 +24,13 @@ const PAYMENT_METHODS = [
 export default function PagamentoPage() {
   const router = useRouter();
   const { href } = useTenant();
-  const { cart, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, shipping, clearCart, clearShipping, saveOrderToHistory } = useCart();
+  const { cart, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, shipping, saveOrderToHistory } = useCart();
   const talao = useTalao();
   const activeSession = talao?.activeSession ?? null;
   const gate = useTalaoClientGate();
   const { authUser } = useAuthUser();
   const selfCheckoutBlocked = useClientSelfCheckoutGate();
+  const [isConfirming, setConfirming] = useState(false);
 
   if (cart.length === 0) {
     return (
@@ -124,15 +127,20 @@ export default function PagamentoPage() {
 
   const total = cartTotal + shipping.price;
 
-  function confirmOrder() {
-    saveOrderToHistory(cart, total, {
-      channel: 'site',
-      shipping,
-      discount: cartDiscountTotal > 0 ? { label: cartDiscountLabel!, amount: cartDiscountTotal } : undefined,
-    });
-    clearCart();
-    clearShipping();
-    router.push(href('/pedido-confirmado'));
+  async function confirmOrder() {
+    if (isConfirming) return;
+    setConfirming(true);
+    try {
+      await saveOrderToHistory(cart, total, {
+        channel: 'site',
+        shipping: shipping ?? undefined,
+        discount: cartDiscountTotal > 0 ? { label: cartDiscountLabel!, amount: cartDiscountTotal } : undefined,
+      });
+      router.push(href('/pedido-confirmado'));
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Não foi possível confirmar o pedido. Seu carrinho foi preservado.');
+      setConfirming(false);
+    }
   }
 
   return (
@@ -171,8 +179,8 @@ export default function PagamentoPage() {
       </div>
 
       <div className={publicUi.checkoutActions}>
-        <button className={publicUi.primaryButton} onClick={confirmOrder}>
-          Confirmar pedido
+        <button className={publicUi.primaryButton} onClick={() => void confirmOrder()} disabled={isConfirming}>
+          {isConfirming ? 'Confirmando pedido…' : 'Confirmar pedido'}
         </button>
         <div className={publicUi.hint}>Pagamento pelo site em breve — a loja entra em contato para combinar o pagamento.</div>
       </div>

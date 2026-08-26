@@ -39,10 +39,11 @@ function unselectedProductNames(cart: CartItem[]): string[] {
 export default function CarrinhoPage() {
   const router = useRouter();
   const { tenant, href } = useTenant();
-  const { cart, cartCount, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, clearCart, saveOrderToHistory, shipping } = useCart();
+  const { cart, cartCount, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, saveOrderToHistory, shipping } = useCart();
   const { showPrices } = useAuthUser();
   const [pendingAction, setPendingAction] = useState<{ names: string[]; run: () => void } | null>(null);
   const [similar, setSimilar] = useState<Product[]>([]);
+  const [isSendingWhatsapp, setSendingWhatsapp] = useState(false);
 
   // Ids distintos dos produtos já resolvidos no carrinho (rascunho sem
   // grade/qty 0 não conta) — âncoras da regra de "produtos similares" do
@@ -79,7 +80,7 @@ export default function CarrinhoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- cartProductIdsKey já resume cartProductIds pra evitar refetch por mudança de referência sem mudança de conteúdo
   }, [cartProductIdsKey]);
 
-  function sendWhatsapp() {
+  async function sendWhatsapp() {
     if (!CONFIG.contact.whatsappNumber) {
       toast.error('O WhatsApp da loja ainda não foi configurado.');
       return;
@@ -97,13 +98,20 @@ export default function CarrinhoPage() {
     lines.push('', `Total: ${formatBRL(cartTotal)}`);
     const msg = encodeURIComponent(lines.join('\n'));
     window.open(`https://wa.me/${CONFIG.contact.whatsappNumber}?text=${msg}`, '_blank');
-    saveOrderToHistory(resolvedItems, cartTotal, {
-      discount: cartDiscountTotal > 0 ? { label: cartDiscountLabel!, amount: cartDiscountTotal } : undefined,
-    });
-    clearCart();
+    setSendingWhatsapp(true);
+    try {
+      await saveOrderToHistory(resolvedItems, cartTotal, {
+        discount: cartDiscountTotal > 0 ? { label: cartDiscountLabel!, amount: cartDiscountTotal } : undefined,
+      });
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Não foi possível registrar o pedido. Seu carrinho foi preservado.');
+    } finally {
+      setSendingWhatsapp(false);
+    }
   }
 
   function checkoutWhatsapp() {
+    if (isSendingWhatsapp) return;
     if (cartCount === 0) {
       toast.error('Seu carrinho está vazio. Adicione peças e escolha a grade antes de continuar.');
       return;
@@ -165,7 +173,7 @@ export default function CarrinhoPage() {
             <button className={publicUi.primaryButton} disabled={cartCount === 0} onClick={goToFrete}>
               Continuar para o frete
             </button>
-            <button className={publicUi.whatsapp} onClick={checkoutWhatsapp}>Finalizar pedido via WhatsApp</button>
+            <button className={publicUi.whatsapp} onClick={checkoutWhatsapp} disabled={isSendingWhatsapp}>{isSendingWhatsapp ? 'Registrando pedido…' : 'Finalizar pedido via WhatsApp'}</button>
           </div>
         </>
       )}
@@ -180,7 +188,7 @@ export default function CarrinhoPage() {
           onContinue={() => {
             const run = pendingAction.run;
             setPendingAction(null);
-            run();
+            void run();
           }}
           onReview={() => setPendingAction(null)}
         />

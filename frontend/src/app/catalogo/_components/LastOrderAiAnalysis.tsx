@@ -1,15 +1,18 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Clock3 } from 'lucide-react';
 import {
   CatalogLastOrderSummarySchema,
   type CatalogLastOrderSummary,
-  type CatalogOrderBreakdownItem,
 } from '@/contracts/ai';
 import { apiFetch } from '@/lib/api-client';
 import { formatBRL } from '@/lib/format';
-import { AiResponseCard, AiResponseInsights, type AiResponseState } from '@/components/ui/ai-response';
+import {
+  AiResponseCard,
+  AiResponseKpis,
+  AiResponseText,
+  type AiResponseState,
+} from '@/components/ui/ai-response';
 
 interface LastOrderAiAnalysisProps {
   sessionId: string;
@@ -24,14 +27,15 @@ function formatOrderDate(value: string): string {
 }
 
 function formatDifference(value: number | null): string {
-  if (value === null) return 'comparação indisponível';
-  if (value === 0) return 'igual à média';
+  if (value === null) return 'sem base';
+  if (value === 0) return 'na média';
   return `${value > 0 ? '+' : ''}${value.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
 }
 
-function compactBreakdown(items: CatalogOrderBreakdownItem[]): string {
-  if (items.length === 0) return 'sem informação';
-  return items.slice(0, 3).map((item) => `${item.label} ${item.quantity}`).join(' · ');
+function formatRecency(days: number): string {
+  if (days === 0) return 'hoje';
+  if (days === 1) return 'ontem';
+  return `há ${days.toLocaleString('pt-BR')} dias`;
 }
 
 function LastOrderAiAnalysisSession({ sessionId }: LastOrderAiAnalysisProps) {
@@ -82,76 +86,28 @@ function LastOrderAiAnalysisSession({ sessionId }: LastOrderAiAnalysisProps) {
   return (
     <AiResponseCard
       title="Resumo da última compra"
-      description="Uma segunda leitura operacional para apoiar este atendimento."
+      description="Leitura rápida para orientar a próxima oferta."
       state={state}
       onAction={generate}
+      actionLabel="Gerar resumo"
       emptyMessage="Esta cliente ainda não tem uma compra paga no histórico."
       errorMessage={error ?? undefined}
       source={available?.source}
     >
       {available && (
-        <div className="space-y-3">
-          <dl className="grid grid-cols-3 gap-2">
-            <div className="rounded-control bg-brand-background p-2">
-              <dt className="text-[10px] font-bold tracking-wide text-muted-foreground uppercase">Data</dt>
-              <dd className="mt-1 text-xs font-extrabold text-foreground">
-                {formatOrderDate(available.facts.lastOrder.orderDate)}
-              </dd>
-            </div>
-            <div className="rounded-control bg-brand-background p-2">
-              <dt className="text-[10px] font-bold tracking-wide text-muted-foreground uppercase">Peças</dt>
-              <dd className="mt-1 text-xs font-extrabold text-foreground">
-                {available.facts.lastOrder.totalPieces}
-              </dd>
-            </div>
-            <div className="rounded-control bg-brand-background p-2">
-              <dt className="text-[10px] font-bold tracking-wide text-muted-foreground uppercase">Valor</dt>
-              <dd className="mt-1 text-xs font-extrabold text-foreground">
-                {formatBRL(available.facts.lastOrder.totalValue)}
-              </dd>
-            </div>
-          </dl>
+        <div className="space-y-2.5">
+          <AiResponseKpis items={[
+            { label: 'Valor', value: formatBRL(available.facts.lastOrder.totalValue) },
+            { label: 'Peças', value: available.facts.lastOrder.totalPieces.toLocaleString('pt-BR') },
+            { label: 'Recência', value: formatRecency(available.facts.lastOrder.daysSincePurchase) },
+            { label: 'Vs. ticket loja', value: formatDifference(available.facts.tickets.tenant.differencePercent) },
+          ]} />
 
-          <div className="space-y-1 rounded-control border border-border p-2 text-xs">
-            <p className="flex items-center justify-between gap-3">
-              <span className="text-muted-foreground">Ticket da cliente · {available.facts.tickets.client.orderCount} pedidos</span>
-              <strong className="text-right text-foreground">
-                {available.facts.tickets.client.averageValue === null
-                  ? 'sem amostra'
-                  : `${formatBRL(available.facts.tickets.client.averageValue)} · ${formatDifference(available.facts.tickets.client.differencePercent)}`}
-              </strong>
-            </p>
-            <p className="flex items-center justify-between gap-3">
-              <span className="text-muted-foreground">Ticket da loja · {available.facts.tickets.tenant.orderCount} pedidos</span>
-              <strong className="text-right text-foreground">
-                {available.facts.tickets.tenant.averageValue === null
-                  ? 'sem amostra'
-                  : `${formatBRL(available.facts.tickets.tenant.averageValue)} · ${formatDifference(available.facts.tickets.tenant.differencePercent)}`}
-              </strong>
-            </p>
-          </div>
+          <AiResponseText>{available.analysis.text}</AiResponseText>
 
-          <div className="rounded-control border border-border p-2 text-xs leading-relaxed">
-            <p><span className="font-bold text-foreground">Categorias:</span> <span className="text-muted-foreground">{compactBreakdown(available.facts.mix.categories)}</span></p>
-            <p><span className="font-bold text-foreground">Cores:</span> <span className="text-muted-foreground">{compactBreakdown(available.facts.mix.colors)}</span></p>
-            <p><span className="font-bold text-foreground">Grade:</span> <span className="text-muted-foreground">{compactBreakdown(available.facts.mix.sizes)}</span></p>
-          </div>
-
-          <div className="rounded-control bg-brand-primary/5 p-3">
-            <p className="text-sm font-semibold leading-relaxed text-foreground">{available.analysis.summary}</p>
-            <p className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-              <Clock3 className="size-3.5" aria-hidden="true" />
-              Há {available.facts.lastOrder.daysSincePurchase} dias
-            </p>
-          </div>
-
-          <AiResponseInsights items={available.analysis.insights} />
-
-          {available.analysis.sampleWarning && (
-            <p className="text-[11px] leading-relaxed text-muted-foreground">
-              Atenção à amostra: {available.analysis.sampleWarning}
-            </p>
-          )}
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            Compra em {formatOrderDate(available.facts.lastOrder.orderDate)} · ticket da cliente: {formatDifference(available.facts.tickets.client.differencePercent)} em {available.facts.tickets.client.orderCount} pedidos
+          </p>
         </div>
       )}
     </AiResponseCard>

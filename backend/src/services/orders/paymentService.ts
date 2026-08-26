@@ -5,6 +5,7 @@ import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser, CartItem, Discount, Order, OrderSession } from "@/lib/types";
 import {
   closeOpenOrderSessionRowsByOrder,
+  findOrderRowById,
   findOrderSessionRowByPaymentTokenHash,
   listOrderItemRowsByOrder,
   updateOrderRow,
@@ -47,7 +48,7 @@ function expired(createdAt: Date | null, minutes: number): boolean {
 }
 
 async function paymentContext(client: PoolClient, token: string, lock = false) {
-  const session = await findOrderSessionRowByPaymentTokenHash(client, digest(token), lock);
+  let session = await findOrderSessionRowByPaymentTokenHash(client, digest(token));
   if (!session || session.status !== "aguardando_pagamento") throw new NotFoundError("INVALID_PAYMENT_LINK");
   const settings = await findStoreSettingsRow(client);
   const expiration = settings?.payment_link_expiration_minutes ?? PAYMENT_LINK_EXPIRATION_DEFAULT_MINUTES;
@@ -60,6 +61,19 @@ async function paymentContext(client: PoolClient, token: string, lock = false) {
     clientName: session.client_name, channel: session.channel,
   }))?.id;
   if (!orderId) throw new NotFoundError("INVALID_PAYMENT_LINK");
+  if (lock) {
+    const order = await findOrderRowById(client, orderId, true);
+    if (!order || (order.status !== "aberto" && order.status !== "aguardando_pagamento")) {
+      throw new NotFoundError("INVALID_PAYMENT_LINK");
+    }
+    // O lock do pedido vem antes do lock da sessão em todos os caminhos que
+    // fecham/alteram carrinho, evitando ciclo com uma sessão irmã de upsell.
+    const lockedSession = await findOrderSessionRowByPaymentTokenHash(client, digest(token), true);
+    if (!lockedSession || lockedSession.status !== "aguardando_pagamento" || lockedSession.order_id !== orderId) {
+      throw new NotFoundError("INVALID_PAYMENT_LINK");
+    }
+    session = lockedSession;
+  }
   const items = (await listOrderItemRowsByOrder(client, orderId)).map((item) => item.snapshot);
   const subtotal = items.reduce((sum, item) => sum + item.price * item.qty, 0);
   const discount = getCartDiscount(items, await discounts(client));

@@ -52,26 +52,8 @@ export const CatalogLastOrderResumeInputSchema = z.object({
 }).strict();
 export type CatalogLastOrderResumeInput = z.infer<typeof CatalogLastOrderResumeInputSchema>;
 
-export const CatalogLastOrderInsightKindSchema = z.enum([
-  'grade',
-  'color',
-  'category',
-  'recency',
-  'ticket',
-  'mix',
-]);
-export type CatalogLastOrderInsightKind = z.infer<typeof CatalogLastOrderInsightKindSchema>;
-
 export const CatalogLastOrderResumeOutputSchema = z.object({
-  summary: RequiredTextSchema,
-  insights: z.array(z.object({
-    kind: CatalogLastOrderInsightKindSchema,
-    title: RequiredTextSchema,
-    evidence: RequiredTextSchema,
-    action: RequiredTextSchema,
-    isInterpretation: z.boolean(),
-  }).strict()).max(3),
-  sampleWarning: z.string().trim().min(1).nullable(),
+  text: z.string().trim().min(1).max(600),
 }).strict();
 export type CatalogLastOrderResumeOutput = z.infer<typeof CatalogLastOrderResumeOutputSchema>;
 

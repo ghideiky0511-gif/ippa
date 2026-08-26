@@ -13,6 +13,7 @@
     "db:setup": "npm run db:migrate && npm run db:bootstrap",
     "test:r2-catalog-media": "tsx scripts/testar-r2-catalogo-media.ts",
     "test:ai": "tsx --test src/services/ai/*.test.ts",
+    "test:orders": "tsx --test src/services/orders/*.test.ts",
     "sync-contracts": "node ../scripts/sync-contracts.mjs"
   },
   "dependencies": {

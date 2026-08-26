@@ -53,6 +53,7 @@ export const ERROR_MESSAGES: Record<string, string> = {
     AI_PROVIDER_INCOMPLETE: "A ferramenta de IA devolveu uma resposta incompleta.",
     AI_PROVIDER_INVALID_OUTPUT: "A ferramenta de IA devolveu uma resposta inválida.",
     SESSION_ALREADY_FINALIZED: "This order was already finalized.",
+    ORDER_ALREADY_FINALIZED: "Este pedido não aceita esta alteração.",
     SESSION_CANCELLED: "This order is cancelled. Reactivate it before changing or finalizing it.",
     ORDER_BOOK_NOT_FOUND: "Talão não encontrado.",
     ORDER_BOOK_NOT_EMPTY: "Só é possível cancelar um talão quando todos os pedidos pendentes estão vazios.",

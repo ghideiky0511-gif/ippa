@@ -12,18 +12,21 @@ import GroupedCartItems from './GroupedCartItems';
 import { useTenant } from './TenantProvider';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader } from '@/components/ui/sheet';
+import { useState } from 'react';
 
 export default function CartDrawer() {
   const router = useRouter();
-  const { cart, cartCount, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, isCartOpen, closeCart, clearCart, saveOrderToHistory } = useCart();
+  const { cart, cartCount, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, isCartOpen, closeCart, saveOrderToHistory } = useCart();
   const { showPrices } = useAuthUser();
   const { tenant, href } = useTenant();
+  const [isSendingWhatsapp, setSendingWhatsapp] = useState(false);
 
-  function checkoutWhatsapp() {
+  async function checkoutWhatsapp() {
     if (cartCount === 0) {
       toast.error('Seu carrinho está vazio. Adicione peças e escolha a grade antes de continuar.');
       return;
     }
+    if (isSendingWhatsapp) return;
     if (!CONFIG.contact.whatsappNumber) {
       toast.error('O WhatsApp da loja ainda não foi configurado.');
       return;
@@ -38,9 +41,17 @@ export default function CartDrawer() {
     if (cartDiscountTotal > 0) lines.push('', `Desconto (${cartDiscountLabel}): -${formatBRL(cartDiscountTotal)}`);
     lines.push('', `Total: ${formatBRL(cartTotal)}`);
     window.open(`https://wa.me/${CONFIG.contact.whatsappNumber}?text=${encodeURIComponent(lines.join('\n'))}`, '_blank');
-    saveOrderToHistory(resolvedItems, cartTotal, { discount: cartDiscountTotal > 0 ? { label: cartDiscountLabel!, amount: cartDiscountTotal } : undefined });
-    clearCart();
-    closeCart();
+    setSendingWhatsapp(true);
+    try {
+      await saveOrderToHistory(resolvedItems, cartTotal, {
+        discount: cartDiscountTotal > 0 ? { label: cartDiscountLabel!, amount: cartDiscountTotal } : undefined,
+      });
+      closeCart();
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Não foi possível registrar o pedido. Seu carrinho foi preservado.');
+    } finally {
+      setSendingWhatsapp(false);
+    }
   }
 
   function goToCheckout() {
@@ -70,7 +81,7 @@ export default function CartDrawer() {
           )}
           <div className="flex flex-col gap-2">
             <Button type="button" className="w-full" onClick={goToCheckout} disabled={cartCount === 0}>Revisar e continuar</Button>
-            <Button type="button" variant="outline" className="w-full" onClick={checkoutWhatsapp}><MessageCircle className="size-4" aria-hidden="true" />Finalizar pelo WhatsApp</Button>
+            <Button type="button" variant="outline" className="w-full" onClick={() => void checkoutWhatsapp()} disabled={isSendingWhatsapp}><MessageCircle className="size-4" aria-hidden="true" />{isSendingWhatsapp ? 'Registrando…' : 'Finalizar pelo WhatsApp'}</Button>
           </div>
           <p className="mt-3 text-[11px] leading-4 text-muted-foreground">Ao enviar pelo WhatsApp, nada é cobrado automaticamente.</p>
         </div>

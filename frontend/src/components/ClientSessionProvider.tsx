@@ -18,6 +18,7 @@ interface ClientSessionContextValue {
   updateActiveShipping: (shipping: ShippingOption | null) => Promise<void>;
   createActiveSession: (items: CartItem[]) => Promise<OrderSession | null>;
   adoptSession: (session: OrderSession) => void;
+  releaseActiveSession: (sessionId: string) => void;
 }
 
 const ClientSessionContext = createContext<ClientSessionContextValue | null>(null);
@@ -136,8 +137,16 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
     setActiveSession(session);
   }
 
+  // O checkout já encerrou a sessão no backend. Limpa apenas o estado local,
+  // sem emitir um último update com `items: []` contra o pedido concluído.
+  function releaseActiveSession(sessionId: string) {
+    setActiveSession((current) => current?.id === sessionId ? null : current);
+    setPresence([]);
+    setParticipants([]);
+  }
+
   const value = useMemo<ClientSessionContextValue>(
-    () => ({ activeSession, presence, participants, updateActiveItems, updateActiveShipping, createActiveSession, adoptSession }),
+    () => ({ activeSession, presence, participants, updateActiveItems, updateActiveShipping, createActiveSession, adoptSession, releaseActiveSession }),
     [activeSession, participants, presence]
   );
 

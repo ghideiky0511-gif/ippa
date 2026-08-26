@@ -5,10 +5,19 @@ import { useTalao } from './TalaoProvider';
 import { useClientSession } from './ClientSessionProvider';
 import { useAuthUser } from './AuthProvider';
 import { getCartDiscount, type AppliedDiscount } from '@/lib/discounts';
-import { type CartItem, type Order, type ShippingOption } from '@/domain/orders/types';
+import {
+  CreateCustomerOrderInputSchema,
+  OrderSchema,
+  type CartItem,
+  type CreateCustomerOrderInput,
+  type ShippingOption,
+} from '@/domain/orders/types';
 import { DiscountSchema, type Discount } from '@/domain/catalog/types';
 import { ProductSchema, type Product } from '@/domain/products/types';
 import { z } from 'zod';
+import { adminJson } from '@/lib/http';
+
+type OrderSubmissionExtra = Omit<Partial<CreateCustomerOrderInput>, 'items' | 'total' | 'sessionId'>;
 
 interface CartContextValue {
   cart: CartItem[];
@@ -66,7 +75,7 @@ interface CartContextValue {
   // "desfazer" e apagar uma linha (removeKeys sem addItems).
   replaceItems: (removeKeys: string[], addItems: CartItem[]) => void;
   clearCart: () => void;
-  saveOrderToHistory: (items: CartItem[], total: number, extra?: Record<string, unknown>) => Omit<Order, 'status'>;
+  saveOrderToHistory: (items: CartItem[], total: number, extra?: OrderSubmissionExtra) => Promise<void>;
   shipping: ShippingOption | null;
   setShipping: (shipping: ShippingOption | null) => void;
   clearShipping: () => void;
@@ -257,36 +266,38 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setShipping(null);
   }
 
-  // "Meus pedidos" é sempre da conta autenticada; o histórico é gravado no
-  // backend ao concluir o checkout.
-  // Payload de saída pro POST /api/orders — sem `status` porque quem
-  // decide o status real é o backend ao receber o pedido, nunca o
-  // cliente (ver Order.status em backend/src/contracts/orders.ts).
-  function saveOrderToHistory(items: CartItem[], total: number, extra: Record<string, unknown> = {}): Omit<Order, 'status'> {
-    const order: Omit<Order, 'status'> = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      date: new Date().toISOString(),
-      items,
-      total,
-      channel: 'whatsapp',
-      ...extra,
-    };
-    // Fire-and-forget, mesmo espírito despreocupado dos outros fetches
-    // deste arquivo — não trava o checkout se a rede falhar. `sessionId`
-    // (só quando o carrinho vem de uma sessão de talão atribuída à própria
-    // cliente, não da vendedora) deixa POST /api/orders resolver o
-    // sellerId de quem atendeu e fechar aquela sessão — ver
-    // ClientSessionProvider.tsx/AppShell.tsx pra por que só a cliente cai
-    // nesse caminho (vendedora finaliza pelo link de pagamento, não por
-    // aqui).
+  // Confirma primeiro no backend e só então limpa o estado local. Antes, o
+  // POST era fire-and-forget e `clearCart()` enviava `items: []` em paralelo;
+  // dependendo da ordem das transações, isso apagava order_items do pedido.
+  async function saveOrderToHistory(items: CartItem[], total: number, extra: OrderSubmissionExtra = {}): Promise<void> {
+    const sessionId = clientSession?.activeSession?.id;
     if (authUserCtx.authUser?.role === 'cliente') {
-      fetch('/api/orders', {
+      const payload = CreateCustomerOrderInputSchema.parse({
+        items,
+        total,
+        channel: 'whatsapp',
+        ...extra,
+        sessionId,
+      });
+      await adminJson('/api/orders', OrderSchema, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...order, sessionId: clientSession?.activeSession?.id }),
-      }).catch(() => {});
+        body: JSON.stringify(payload),
+      }, 'Não foi possível confirmar o pedido. Seu carrinho foi preservado.');
+
+      if (sessionId) clientSession?.releaseActiveSession(sessionId);
+      setPersonalCart([]);
+      setPersonalShipping(null);
+      return;
     }
-    return order;
+
+    // Visitante finalizando externamente pelo WhatsApp: só existe estado
+    // local. Num talão gerenciado pela vendedora, preservar os itens; limpar
+    // ali seria uma mutação real do pedido, não uma simples limpeza de UI.
+    if (!activeSession) {
+      setPersonalCart([]);
+      setPersonalShipping(null);
+    }
   }
 
   const effectiveCart = activeSession ? activeSession.items : personalCart;

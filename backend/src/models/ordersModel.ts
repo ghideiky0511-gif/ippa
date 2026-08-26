@@ -10,7 +10,7 @@ export interface OrderSessionRow {
 export interface OrderSessionItemRow { session_id: string; snapshot: CartItem }
 export interface OrderRow {
     id: string; created_at: Date; updated_at: Date; client_id: string | null; seller_id: string | null;
-    client_name: string | null; channel: string; status: string; total: string;
+    client_name: string | null; channel: string; status: Order["status"]; total: string;
     shipping: Order["shipping"]; payment_method: string | null; discount: Order["discount"];
 }
 export interface OrderItemRow { order_id: string; item_key: string; snapshot: CartItem }
@@ -279,9 +279,10 @@ export async function insertOrderRow(client: PoolClient, value: OrderWriteRow): 
     return result.rows[0];
 }
 
-export async function findOrderRowById(client: PoolClient, id: string): Promise<OrderRow | null> {
+export async function findOrderRowById(client: PoolClient, id: string, lock = false): Promise<OrderRow | null> {
     const result = await client.query<OrderRow>(
-        `SELECT ${orderFields} FROM orders WHERE tenant_id = app_tenant_id() AND id = $1`, [id],
+        `SELECT ${orderFields} FROM orders
+         WHERE tenant_id = app_tenant_id() AND id = $1${lock ? " FOR UPDATE" : ""}`, [id],
     );
     return result.rows[0] ?? null;
 }

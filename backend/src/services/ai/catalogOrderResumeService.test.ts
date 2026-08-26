@@ -58,15 +58,7 @@ function snapshot() {
 }
 
 const analysis: CatalogLastOrderResumeOutput = {
-  summary: 'A compra teve concentração equilibrada entre camisetas e calças.',
-  insights: [{
-    kind: 'grade',
-    title: 'Grade concentrada',
-    evidence: 'Três peças foram do tamanho P.',
-    action: 'Comece apresentando novidades no tamanho P.',
-    isInterpretation: false,
-  }],
-  sampleWarning: null,
+  text: 'A compra concentrou três peças no tamanho P e dividiu o mix entre camisetas e calças. Comece apresentando novidades no tamanho P e valide interesse nas duas categorias.',
 };
 
 test('calcula fatos, tickets e participações sem depender da IA', () => {
@@ -98,13 +90,15 @@ test('calcula fatos, tickets e participações sem depender da IA', () => {
   assert.equal(input.mix.sizes[0].quantity, 3);
 });
 
-test('contratos da ferramenta rejeitam identificação e mais de três insights', () => {
+test('contratos da ferramenta rejeitam identificação, campos extras e texto excessivo', () => {
   const input = buildCatalogLastOrderResumeInput(snapshot(), NOW);
   assert.equal(catalogLastOrderResumeTool.inputSchema.safeParse({ ...input, clientId: 'não enviar' }).success, false);
   assert.equal(catalogLastOrderResumeTool.outputSchema.safeParse({
     ...analysis,
-    insights: Array.from({ length: 4 }, () => analysis.insights[0]),
+    clientName: 'não retornar',
   }).success, false);
+  assert.equal(catalogLastOrderResumeTool.outputSchema.safeParse({ text: 'a'.repeat(601) }).success, false);
+  assert.equal(catalogLastOrderResumeTool.version, '2');
 
   const prompt = catalogLastOrderResumeTool.buildPrompt(input);
   assert.doesNotMatch(prompt, /seller@example\.test|Vendedora teste|11111111/);
