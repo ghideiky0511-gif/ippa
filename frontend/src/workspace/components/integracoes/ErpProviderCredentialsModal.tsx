@@ -27,8 +27,34 @@ export default function ErpProviderCredentialsModal({ option, onClose, onSaved }
   const [saveState, setSaveState] = useState('idle'); // idle | saving | error
   const [errorMsg, setErrorMsg] = useState('');
 
+  const connectionFields = option.credentialFields.filter((f) => (f.group || 'connection') === 'connection');
+  const publishingFields = option.credentialFields.filter((f) => f.group === 'publishing');
+  const orderFields = option.credentialFields.filter((f) => f.group === 'orders');
+  const orderFieldsFilled = orderFields.some((f) => (form[f.key] || '').trim() !== '');
+  const [ordersExpanded, setOrdersExpanded] = useState(orderFieldsFilled);
+
   function set(key) {
     return (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+  }
+
+  function renderField(field) {
+    return (
+      <div className={adminUi.fieldRow} key={field.key}>
+        <div className={adminUi.field}>
+          <label>
+            {field.label}
+            {field.required ? ' *' : ''}
+          </label>
+          <input
+            type={field.type === 'password' ? 'password' : 'text'}
+            value={form[field.key] || ''}
+            onChange={set(field.key)}
+            autoComplete="off"
+            placeholder={field.type === 'password' && option.configured ? 'Preencha para alterar' : ''}
+          />
+        </div>
+      </div>
+    );
   }
 
   async function handleSubmit(e) {
@@ -60,23 +86,39 @@ export default function ErpProviderCredentialsModal({ option, onClose, onSaved }
               Client secret e senha precisam ser reinformados por completo a cada alteração — nunca ficam
               salvos aqui depois de digitados.
             </p>
-            {option.credentialFields.map((field) => (
-              <div className={adminUi.fieldRow} key={field.key}>
-                <div className={adminUi.field}>
-                  <label>
-                    {field.label}
-                    {field.required ? ' *' : ''}
-                  </label>
-                  <input
-                    type={field.type === 'password' ? 'password' : 'text'}
-                    value={form[field.key] || ''}
-                    onChange={set(field.key)}
-                    autoComplete="off"
-                    placeholder={field.type === 'password' && option.configured ? 'Preencha para alterar' : ''}
-                  />
-                </div>
+            {connectionFields.length > 0 && (
+              <>
+                <h3 className={adminUi.subheading}>Conexão</h3>
+                {connectionFields.map(renderField)}
+              </>
+            )}
+
+            {publishingFields.length > 0 && (
+              <>
+                <h3 className={adminUi.subheading}>Publicação de produtos</h3>
+                <p className={adminUi.hint}>
+                  Só produtos com esta classificação são publicados na loja; preencher os dois campos abaixo liga a
+                  sincronização automática de catálogo.
+                </p>
+                {publishingFields.map(renderField)}
+              </>
+            )}
+
+            {orderFields.length > 0 && (
+              <div className={adminUi.similarField}>
+                <button type="button" className={adminUi.similarToggle} onClick={() => setOrdersExpanded((v) => !v)}>
+                  Envio de pedidos (opcional) {ordersExpanded ? '▾' : '▸'}
+                </button>
+                {ordersExpanded && (
+                  <div className={adminUi.similarBody}>
+                    <p className={adminUi.hint}>
+                      Só necessário se esta loja envia pedidos de venda para o TOTVS.
+                    </p>
+                    {orderFields.map(renderField)}
+                  </div>
+                )}
               </div>
-            ))}
+            )}
           </div>
 
           <div className={adminUi.modalFooter}>

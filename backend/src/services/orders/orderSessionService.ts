@@ -64,7 +64,7 @@ function notifyReconciledSessions(tenantId: string, reconciled: Awaited<ReturnTy
     for (const book of reconciled.books) notifyOrderBook(tenantId, { sellerId: book.seller_id });
 }
 
-function canManageSession(user: AuthUser, sellerId: string): boolean {
+export function canManageSession(user: AuthUser, sellerId: string): boolean {
     return user.role !== "cliente" && (user.role !== "vendedora" || sellerId === user.id);
 }
 

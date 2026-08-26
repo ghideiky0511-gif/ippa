@@ -2,7 +2,6 @@
 import { publicUi } from '@/lib/ui';
 
 import { FormEvent, useEffect, useState } from 'react';
-import { toast } from 'sonner';
 import Link from '@/components/TenantLink';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Check } from 'lucide-react';
@@ -28,11 +27,6 @@ export default function FretePage() {
   const [cep, setCep] = useState('');
   const [options, setOptions] = useState<ShippingOption[] | null>(null);
   const [savedCep, setSavedCep] = useState<string | null>(null);
-  const [linkState, setLinkState] = useState<{ token: string; error: string | null; loading: boolean }>({
-    token: activeSession?.paymentToken || '',
-    error: null,
-    loading: false,
-  });
 
   // CEP salvo no cadastro — atalho pra não digitar de novo (ver
   // GET /api/clients/[id]). Duas origens possíveis: a própria cliente
@@ -54,10 +48,6 @@ export default function FretePage() {
     };
   }, [activeSession?.clientId, authUser?.clientId]);
 
-  useEffect(() => {
-    setLinkState((prev) => ({ ...prev, token: activeSession?.paymentToken || '' }));
-  }, [activeSession?.paymentToken]);
-
   function handleCalculate(e: FormEvent) {
     e.preventDefault();
     setOptions(calculateShipping(cep));
@@ -72,25 +62,6 @@ export default function FretePage() {
   function handleContinue() {
     if (!shipping) return;
     router.push(href('/pagamento'));
-  }
-
-  async function handleGenerateLink() {
-    setLinkState((prev) => ({ ...prev, loading: true, error: null }));
-    try {
-      const token = await talao!.requestPaymentLink();
-      setLinkState({ token, error: null, loading: false });
-    } catch (err) {
-      setLinkState((prev) => ({ ...prev, loading: false, error: err instanceof Error ? err.message : 'Erro ao gerar o link.' }));
-    }
-  }
-
-  async function copyLink(link: string) {
-    try {
-      await navigator.clipboard?.writeText(link);
-      toast.success('Link de pagamento copiado.');
-    } catch {
-      toast.error('Não foi possível copiar o link.');
-    }
   }
 
   const reachable = shipping ? 3 : cart.length > 0 ? 2 : 1;
@@ -144,11 +115,11 @@ export default function FretePage() {
     );
   }
 
-  // A cliente pagou pelo link (outra aba/dispositivo, sem a vendedora fazer
-  // nada aqui) — o Socket.IO já atualizou activeSession.status sozinho (ver
-  // TalaoProvider.tsx), só faltava esta tela reagir em vez de continuar
-  // mostrando "gerar link" como se nada tivesse acontecido (achado
-  // reportado pelo usuário).
+  // O pedido foi finalizado em /pagamento (outra aba/dispositivo, sem a
+  // vendedora fazer nada aqui) — o Socket.IO já atualizou
+  // activeSession.status sozinho (ver TalaoProvider.tsx), só faltava esta
+  // tela reagir em vez de continuar mostrando o formulário de frete como se
+  // nada tivesse acontecido.
   if (activeSession?.status === 'fechado') {
     return (
       <main className={`${publicUi.container} py-5 pb-14`}>
@@ -162,8 +133,6 @@ export default function FretePage() {
       </main>
     );
   }
-
-  const paymentLink = linkState.token && typeof window !== 'undefined' ? `${window.location.origin}${href(`/pagar/${linkState.token}`)}` : '';
 
   return (
     <main className={`${publicUi.container} py-5 pb-14`}>
@@ -232,34 +201,11 @@ export default function FretePage() {
         </div>
       )}
 
-      {activeSession ? (
-        <div className={publicUi.checkoutActions}>
-          {!paymentLink ? (
-            <button className={publicUi.primaryButton} disabled={!shipping || linkState.loading} onClick={handleGenerateLink}>
-              {linkState.loading ? 'Gerando link…' : 'Gerar link de pagamento'}
-            </button>
-          ) : (
-            <div className="flex flex-col gap-2.5">
-              <p className="text-sm font-semibold">Link de pagamento gerado — envie pra cliente:</p>
-              <div className={publicUi.fieldRow}>
-                <input readOnly value={paymentLink} onFocus={(e) => e.target.select()} className={`${publicUi.input} flex-1`} />
-                <button type="button" className={publicUi.primaryButton} onClick={() => copyLink(paymentLink)}>Copiar</button>
-              </div>
-              <p className={publicUi.hint}>Aguardando a cliente pagar — o pedido fecha sozinho assim que ela confirmar.</p>
-              <button type="button" className={publicUi.subtleButton} disabled={linkState.loading} onClick={handleGenerateLink}>
-                {linkState.loading ? 'Gerando…' : 'Link expirou? Gerar novo'}
-              </button>
-            </div>
-          )}
-          {linkState.error && <p className={publicUi.error}>{linkState.error}</p>}
-        </div>
-      ) : (
-        <div className={publicUi.checkoutActions}>
-          <button className={publicUi.primaryButton} disabled={!shipping} onClick={handleContinue}>
-            Continuar para pagamento
-          </button>
-        </div>
-      )}
+      <div className={publicUi.checkoutActions}>
+        <button className={publicUi.primaryButton} disabled={!shipping} onClick={handleContinue}>
+          Continuar para pagamento
+        </button>
+      </div>
 
       <Link href="/carrinho" className={publicUi.backLink}><ArrowLeft className="size-4" aria-hidden="true" />Voltar ao carrinho</Link>
     </main>

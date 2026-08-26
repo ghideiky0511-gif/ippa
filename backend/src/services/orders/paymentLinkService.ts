@@ -10,6 +10,7 @@ import { notifySession } from "@/services/realtime/updateBroadcast";
 import { scheduleSessionBroadcast } from "@/services/realtime/sessionBroadcast";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
 import { toOrderSession } from "./orderMapper";
+import { canManageSession } from "./orderSessionService";
 
 function digest(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -21,13 +22,13 @@ export async function createPaymentLink(
   sessionId: string,
   publicOrigin: string,
 ): Promise<{ token: string }> {
-  if (actor.role !== "vendedora") throw new ForbiddenError();
+  if (actor.role === "cliente") throw new ForbiddenError();
   const token = randomBytes(24).toString("hex");
   let changedSession: OrderSession | undefined;
   const recipient = await withTenantTransaction(tenant, actor, async (client) => {
     const session = await findOrderSessionRow(client, sessionId);
     if (!session) throw new NotFoundError("SESSION_NOT_FOUND");
-    if (session.seller_id !== actor.id) throw new ForbiddenError();
+    if (!canManageSession(actor, session.seller_id)) throw new ForbiddenError();
     if (session.status === "cancelado") throw new ValidationError("SESSION_CANCELLED");
     const items = (await listOrderSessionItemRowsBySession(client, sessionId)).map((item) => item.snapshot)
       .filter((item) => item.qty > 0);

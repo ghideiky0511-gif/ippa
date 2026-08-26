@@ -8,6 +8,8 @@ export interface ErpProviderCredentialField {
     label: string;
     type: "text" | "password" | "number" | "number-list";
     required: boolean;
+    /** Agrupamento visual no formulário de credenciais (ver ErpProviderCredentialsModal). */
+    group?: "connection" | "publishing" | "orders";
 }
 
 export interface ErpProviderCatalogEntry {
@@ -33,27 +35,30 @@ export const ERP_PROVIDER_CATALOG: ErpProviderCatalogEntry[] = [
         description: "Sistema de gestão TOTVS para o varejo de moda: produtos, pedidos, clientes e empresas.",
         logoPath: "/img/integracoes/totvsmoda_icon_400x400.jpeg",
         credentialFields: [
-            { key: "clientId", label: "Client ID", type: "text", required: true },
-            { key: "clientSecret", label: "Client Secret", type: "password", required: true },
-            { key: "username", label: "Usuário", type: "text", required: true },
-            { key: "password", label: "Senha", type: "password", required: true },
-            { key: "branchCode", label: "Código da filial", type: "number", required: true },
-            { key: "priceCodeList", label: "Códigos de tabela de preço (separados por vírgula)", type: "number-list", required: true },
-            { key: "stockCodeList", label: "Códigos de depósito/estoque (separados por vírgula)", type: "number-list", required: true },
-            { key: "classificationTypeCode", label: "Tipo da classificação de publicação", type: "number", required: true },
-            { key: "classificationCodes", label: "Classificações que publicam o produto (separadas por vírgula)", type: "text", required: true },
+            { key: "clientId", label: "Client ID", type: "text", required: true, group: "connection" },
+            { key: "clientSecret", label: "Client Secret", type: "password", required: true, group: "connection" },
+            { key: "username", label: "Usuário", type: "text", required: true, group: "connection" },
+            { key: "password", label: "Senha", type: "password", required: true, group: "connection" },
+            { key: "branchCode", label: "Código da filial", type: "number", required: true, group: "connection" },
+            { key: "priceCodeList", label: "Códigos de tabela de preço (separados por vírgula)", type: "number-list", required: true, group: "connection" },
+            { key: "stockCodeList", label: "Códigos de depósito/estoque (separados por vírgula)", type: "number-list", required: true, group: "connection" },
+            // Estes dois campos são o que liga (ver
+            // erpIntegrationService.ts:saveTenantErpIntegrationCredentials)
+            // catalog_sync_configs.enabled automaticamente ao salvar.
+            { key: "classificationTypeCode", label: "Tipo da classificação de publicação", type: "number", required: true, group: "publishing" },
+            { key: "classificationCodes", label: "Classificações que publicam o produto (separadas por vírgula)", type: "text", required: true, group: "publishing" },
             // Abaixo: só usados ao ENVIAR pedido ao TOTVS (ver
             // erp/providers/totvsmoda/mapper.ts) -- não required aqui porque
             // um tenant pode usar só a importação de produtos/clientes/pedidos
             // sem nunca enviar pedido; a falta é detectada e explicada no
             // momento do envio, não bloqueia salvar/ativar a integração.
-            { key: "defaultOperationCode", label: "Código de operação (pedido de venda)", type: "number", required: false },
-            { key: "defaultPaymentConditionCode", label: "Código de condição de pagamento", type: "number", required: false },
-            { key: "defaultPriorityCode", label: "Código de prioridade do pedido", type: "number", required: false },
-            { key: "representativeCode", label: "Código do representante", type: "number", required: false },
-            { key: "representativeCpfCnpj", label: "CPF/CNPJ do representante (alternativa ao código)", type: "text", required: false },
-            { key: "defaultReasonCancellationCode", label: "Código do motivo de cancelamento", type: "number", required: false },
-            { key: "defaultDiscountTypeCode", label: "Código do tipo de desconto (só se houver pedidos com desconto)", type: "number", required: false },
+            { key: "defaultOperationCode", label: "Código de operação (pedido de venda)", type: "number", required: false, group: "orders" },
+            { key: "defaultPaymentConditionCode", label: "Código de condição de pagamento", type: "number", required: false, group: "orders" },
+            { key: "defaultPriorityCode", label: "Código de prioridade do pedido", type: "number", required: false, group: "orders" },
+            { key: "representativeCode", label: "Código do representante", type: "number", required: false, group: "orders" },
+            { key: "representativeCpfCnpj", label: "CPF/CNPJ do representante (alternativa ao código)", type: "text", required: false, group: "orders" },
+            { key: "defaultReasonCancellationCode", label: "Código do motivo de cancelamento", type: "number", required: false, group: "orders" },
+            { key: "defaultDiscountTypeCode", label: "Código do tipo de desconto (só se houver pedidos com desconto)", type: "number", required: false, group: "orders" },
         ],
     },
 ];

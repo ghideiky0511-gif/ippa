@@ -14,6 +14,7 @@ import { useClientSelfCheckoutGate } from '@/components/useClientSelfCheckoutGat
 import { useAuthUser } from '@/components/AuthProvider';
 import CheckoutSteps from '@/components/CheckoutSteps';
 import { useTenant } from '@/components/TenantProvider';
+import { finalizeOrderSession } from '@/lib/ordersClient';
 
 const PAYMENT_METHODS = [
   { id: 'pix', label: 'Pix' },
@@ -51,23 +52,6 @@ export default function PagamentoPage() {
         <h1 className="mb-5 text-2xl font-extrabold tracking-[-0.03em]">Pagamento</h1>
         <div className={publicUi.empty}>
           Escolha o frete primeiro. <Link href="/frete">Voltar para o frete</Link>
-        </div>
-      </main>
-    );
-  }
-
-  // Pedido de talão: a vendedora monta carrinho + frete, mas quem finaliza
-  // o pagamento é a cliente, através do link gerado em /frete (ver
-  // requestPaymentLink em TalaoProvider.tsx) — fecha esse "atalho" de
-  // digitar /pagamento direto na URL e confirmar por ela.
-  if (activeSession) {
-    return (
-      <main className={`${publicUi.container} py-5 pb-14`}>
-        <CheckoutSteps current="/pagamento" reachable={2} />
-        <h1 className="mb-5 text-2xl font-extrabold tracking-[-0.03em]">Pagamento</h1>
-        <div className="max-w-[420px]">
-          <p className="mb-4 text-sm text-brand-muted">Pagamento agora é feito pela cliente através do link — volte pro frete pra gerar/copiar.</p>
-          <Link href="/frete" className={publicUi.primaryButton}>Voltar para o frete</Link>
         </div>
       </main>
     );
@@ -114,14 +98,14 @@ export default function PagamentoPage() {
   // Ferramenta "cliente finaliza sozinha" desligada (/ferramentas) — a
   // cliente está com uma vendedora atendendo (sessão de talão
   // compartilhada, ver ClientSessionProvider.tsx) e a loja exige que só a
-  // vendedora feche o pedido (link de pagamento ou fechamento manual).
+  // vendedora feche o pedido.
   if (selfCheckoutBlocked) {
     return (
       <main className={`${publicUi.container} py-5 pb-14`}>
         <CheckoutSteps current="/pagamento" reachable={2} />
         <h1 className="mb-5 text-2xl font-extrabold tracking-[-0.03em]">Pagamento</h1>
         <p className="max-w-[420px] text-sm text-brand-muted">
-          Esta loja finaliza pedidos de talão só pela vendedora — peça pra ela gerar o link de pagamento ou fechar o pedido.
+          Esta loja finaliza pedidos de talão só pela vendedora — peça pra ela finalizar o pedido.
         </p>
       </main>
     );
@@ -129,15 +113,24 @@ export default function PagamentoPage() {
 
   const total = cartTotal + shipping.price;
 
+  // Pedido de talão: a vendedora monta carrinho + frete e finaliza aqui
+  // mesmo, sem link de pagamento (mesma finalização usada em
+  // OrderTalaoModal.tsx no workspace) — fecha o carrinho pra separação, o
+  // pedido fica "novo". Sem sessão de talão, é a cliente comprando sozinha
+  // e o pedido vai pro histórico dela.
   async function confirmOrder() {
     if (isConfirming) return;
     setConfirming(true);
     try {
-      await saveOrderToHistory(cart, total, {
-        channel: 'site',
-        shipping: shipping ?? undefined,
-        discount: cartDiscountTotal > 0 ? { label: cartDiscountLabel!, amount: cartDiscountTotal } : undefined,
-      });
+      if (activeSession) {
+        await finalizeOrderSession(activeSession.id);
+      } else {
+        await saveOrderToHistory(cart, total, {
+          channel: 'site',
+          shipping: shipping ?? undefined,
+          discount: cartDiscountTotal > 0 ? { label: cartDiscountLabel!, amount: cartDiscountTotal } : undefined,
+        });
+      }
       router.push(href('/pedido-confirmado'));
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : 'Não foi possível confirmar o pedido. Seu carrinho foi preservado.');
@@ -182,9 +175,13 @@ export default function PagamentoPage() {
 
       <div className={publicUi.checkoutActions}>
         <button className={publicUi.primaryButton} onClick={() => void confirmOrder()} disabled={isConfirming}>
-          {isConfirming ? 'Confirmando pedido…' : 'Confirmar pedido'}
+          {isConfirming ? 'Finalizando…' : activeSession ? 'Finalizar pedido' : 'Confirmar pedido'}
         </button>
-        <div className={publicUi.hint}>Pagamento pelo site em breve — a loja entra em contato para combinar o pagamento.</div>
+        <div className={publicUi.hint}>
+          {activeSession
+            ? 'Cobrança pelo app em breve — combine o pagamento direto com a cliente.'
+            : 'Pagamento pelo site em breve — a loja entra em contato para combinar o pagamento.'}
+        </div>
       </div>
 
       <Link href="/frete" className={publicUi.backLink}><ArrowLeft className="size-4" aria-hidden="true" />Voltar para o frete</Link>
