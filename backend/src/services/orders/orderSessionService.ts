@@ -236,7 +236,21 @@ export async function ensureCustomerOrderSession(
                 actorRole: user.role,
             });
         }
-        await updateClientRow(client, registration.id, { name: registration.name, lastSellerId: sellerId });
+        await updateClientRow(client, registration.id, {
+            name: registration.name,
+            cpfCnpj: registration.cpf_cnpj ?? undefined,
+            email: registration.email ?? undefined,
+            cep: registration.cep ?? undefined,
+            street: registration.street ?? undefined,
+            number: registration.number ?? undefined,
+            complement: registration.complement ?? undefined,
+            neighborhood: registration.neighborhood ?? undefined,
+            city: registration.city ?? undefined,
+            state: registration.state ?? undefined,
+            companyResponsible: registration.company_responsible ?? undefined,
+            storeName: registration.store_name ?? undefined,
+            lastSellerId: sellerId,
+        });
         const session = toOrderSession(row, requestedItems);
         await recordAuditEvent(client, {
             action: ORDER_SESSION_AUDIT_ACTIONS.CREATED,
