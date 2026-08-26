@@ -100,8 +100,8 @@ export async function activeSubscriptionsForUser(client: PoolClient, userId: str
 
 export async function finishNotificationDelivery(client: PoolClient, id: string, status: "sent" | "failed" | "pending", response: Record<string, unknown>, error?: string): Promise<void> {
   await client.query(
-    `UPDATE notifications SET delivery_status = $2, processed_at = CASE WHEN $2 IN ('sent', 'failed') THEN now() ELSE NULL END,
-       next_attempt_at = CASE WHEN $2 = 'pending' THEN now() + (interval '1 minute' * LEAST(60, power(2, attempts))) ELSE next_attempt_at END,
+    `UPDATE notifications SET delivery_status = $2::text, processed_at = CASE WHEN $2::text IN ('sent', 'failed') THEN now() ELSE NULL END,
+       next_attempt_at = CASE WHEN $2::text = 'pending' THEN now() + (interval '1 minute' * LEAST(60, power(2, attempts))) ELSE next_attempt_at END,
        delivery_error = $3, provider_response = $4 WHERE tenant_id = app_tenant_id() AND id = $1`,
     [id, status, error ?? null, JSON.stringify(response)],
   );

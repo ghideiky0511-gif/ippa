@@ -25,6 +25,45 @@ export interface ErpIntegrationTestResult {
   message?: string;
 }
 
+export type ProviderOrderStatus = 'pending' | 'processing' | 'cancelling' | 'sent' | 'failed';
+
+// Estado ATUAL do envio de um pedido ao ERP (provider_orders) -- no máximo
+// uma linha por pedido, sobrescrita a cada tentativa. Ver ProviderOrderAttempt
+// para o histórico de tentativas.
+export interface ProviderOrderRow {
+  id: string;
+  integration_id: string;
+  order_id: string;
+  provider: string;
+  external_id: string | null;
+  status: ProviderOrderStatus;
+  attempts: number;
+  next_attempt_at: string;
+  payload: Record<string, unknown>;
+  response: Record<string, unknown>;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ProviderOrderAttemptOutcome = 'sent' | 'failed' | 'retry_pending' | 'retry_cancelling';
+
+// Uma linha por tentativa de dispatch (provider_order_attempts) -- log
+// append-only, diferente de ProviderOrderRow (estado atual).
+export interface ProviderOrderAttempt {
+  id: string;
+  provider_order_id: string;
+  order_id: string;
+  provider: string;
+  attempt_number: number;
+  outcome: ProviderOrderAttemptOutcome;
+  external_id: string | null;
+  error: string | null;
+  payload: Record<string, unknown>;
+  response: Record<string, unknown>;
+  created_at: string;
+}
+
 // ERP fica fora do escopo da validação Zod na fronteira da API — z.unknown()
 // só preserva o comportamento de hoje (sem validar a resposta) pra
 // continuar compilando com a nova assinatura de adminJson.
@@ -83,4 +122,35 @@ export function activateErpIntegration(provider: string): Promise<ErpIntegration
 
 export function deactivateErpIntegration(): Promise<{ deactivated: boolean }> {
   return adminJson('/api/erp-integration/deactivate', unknown, { method: 'POST' }, 'Não foi possível desativar o provedor.') as Promise<{ deactivated: boolean }>;
+}
+
+export function fetchOrderPushStatus(orderId: string): Promise<ProviderOrderRow | null> {
+  return adminJson(
+    `/api/erp-integration/order-push?orderId=${encodeURIComponent(orderId)}`,
+    unknown,
+    {},
+    'Não foi possível carregar o status de envio ao ERP.'
+  ) as Promise<ProviderOrderRow | null>;
+}
+
+export function fetchOrderPushHistory(orderId: string): Promise<ProviderOrderAttempt[]> {
+  return adminJson(
+    `/api/erp-integration/order-push/history?orderId=${encodeURIComponent(orderId)}`,
+    unknown,
+    {},
+    'Não foi possível carregar o histórico de envio ao ERP.'
+  ) as Promise<ProviderOrderAttempt[]>;
+}
+
+export function requestOrderPushResend(orderId: string): Promise<ProviderOrderRow | null> {
+  return adminJson(
+    '/api/erp-integration/order-push',
+    unknown,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId }),
+    },
+    'Não foi possível reenviar o pedido ao ERP.'
+  ) as Promise<ProviderOrderRow | null>;
 }

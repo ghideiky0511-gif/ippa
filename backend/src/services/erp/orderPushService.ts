@@ -30,7 +30,14 @@ import {
     markProviderOrderForResend,
     type ClaimedProviderOrderRow,
     type ProviderOrderRow,
+    type ProviderOrderStatus,
 } from "@/models/providerOrdersModel";
+import {
+    insertProviderOrderAttemptRow,
+    listProviderOrderAttemptRowsByOrderId,
+    type ProviderOrderAttemptOutcome,
+    type ProviderOrderAttemptRow,
+} from "@/models/providerOrderAttemptsModel";
 
 const maxAttempts = Math.max(1, Number(process.env.ERP_ORDER_PUSH_MAX_ATTEMPTS ?? 5));
 
@@ -102,6 +109,39 @@ export async function orderPushStatus(tenant: Tenant, actor: ActorContext, order
     return withTenantTransaction(tenant, actor, (client) => findProviderOrderRowByOrderId(client, orderId));
 }
 
+// Histórico de tentativas de dispatch deste pedido (migration 035) --
+// diferente de orderPushStatus acima, que só devolve o estado ATUAL
+// (provider_orders tem no máximo uma linha por pedido). Usado pela página
+// de detalhe de pedido no frontend.
+export async function listOrderPushHistory(tenant: Tenant, actor: ActorContext, orderId: string): Promise<ProviderOrderAttemptRow[]> {
+    return withTenantTransaction(tenant, actor, (client) => listProviderOrderAttemptRowsByOrderId(client, orderId));
+}
+
+// Fecha uma tentativa de dispatch e, na mesma transação, grava a linha de
+// histórico correspondente (migration 035) -- `finishProviderOrderAttempt`
+// sozinho só atualiza o estado atual (sobrescreve), então sem isto o
+// histórico de tentativas seria perdido a cada retry.
+async function finishAndLogAttempt(
+    client: PoolClient,
+    row: ClaimedProviderOrderRow,
+    value: {
+        status: ProviderOrderStatus; externalId: string | null;
+        payload?: Record<string, unknown>; response?: Record<string, unknown>; error?: string | null;
+    },
+): Promise<void> {
+    await finishProviderOrderAttempt(client, row.id, value);
+    const outcome: ProviderOrderAttemptOutcome =
+        value.status === "sent" ? "sent"
+        : value.status === "failed" ? "failed"
+        : value.status === "cancelling" ? "retry_cancelling"
+        : "retry_pending";
+    await insertProviderOrderAttemptRow(client, {
+        providerOrderId: row.id, orderId: row.order_id, provider: row.provider, attemptNumber: row.attempts,
+        outcome, externalId: value.externalId, error: value.error ?? null,
+        payload: value.payload, response: value.response,
+    });
+}
+
 async function attemptProviderOrderPush(
     client: PoolClient,
     tenant: Tenant,
@@ -114,7 +154,7 @@ async function attemptProviderOrderPush(
     // trocado de ERP entre o envio e este dispatch.
     const integration = await findErpIntegrationRowByProvider(client, row.provider);
     if (!integration) {
-        await finishProviderOrderAttempt(client, row.id, {
+        await finishAndLogAttempt(client, row, {
             status: "failed", externalId: row.external_id, error: "ERP_INTEGRATION_NOT_FOUND",
         });
         return "failed";
@@ -124,7 +164,7 @@ async function attemptProviderOrderPush(
         createExternalApiCallReporter(tenant, actor, integration.provider),
     );
     if (!provider.sendOrder) {
-        await finishProviderOrderAttempt(client, row.id, {
+        await finishAndLogAttempt(client, row, {
             status: "failed", externalId: row.external_id, error: "PROVIDER_DOES_NOT_SUPPORT_ORDER_PUSH",
         });
         return "failed";
@@ -143,7 +183,7 @@ async function attemptProviderOrderPush(
 
         const orderRow = await findOrderRowById(client, row.order_id);
         if (!orderRow) {
-            await finishProviderOrderAttempt(client, row.id, {
+            await finishAndLogAttempt(client, row, {
                 status: "failed", externalId: activeExternalId, error: "ORDER_NOT_FOUND",
             });
             return "failed";
@@ -158,7 +198,7 @@ async function attemptProviderOrderPush(
         const context = { clientDocument: clientRow?.cpf_cnpj ?? undefined, productReferenceIds };
 
         const result = await provider.sendOrder(order, context, { idempotencyKey: order.id });
-        await finishProviderOrderAttempt(client, row.id, {
+        await finishAndLogAttempt(client, row, {
             status: "sent", externalId: result.externalId,
             payload: order as unknown as Record<string, unknown>, response: result.raw ?? {}, error: null,
         });
@@ -170,7 +210,7 @@ async function attemptProviderOrderPush(
         // um pedido novo por cima -- duplicaria reserva de estoque.
         const terminal = isNonRetryableErpOrderError(error) || row.attempts >= maxAttempts;
         const retryState = activeExternalId ? "cancelling" : "pending";
-        await finishProviderOrderAttempt(client, row.id, {
+        await finishAndLogAttempt(client, row, {
             status: terminal ? "failed" : retryState, externalId: activeExternalId, error: message,
         });
         return terminal ? "failed" : "retry";

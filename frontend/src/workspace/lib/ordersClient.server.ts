@@ -7,6 +7,10 @@ export function fetchOrders(params?: { clientId?: string }): Promise<Order[]> {
   return adminJsonServer(`/api/admin/orders${query}`, z.array(OrderSchema), {}, 'Não foi possível carregar os pedidos.');
 }
 
+export function fetchOrder(id: string): Promise<Order> {
+  return adminJsonServer(`/api/admin/orders/${encodeURIComponent(id)}`, OrderSchema, {}, 'Não foi possível carregar o pedido.');
+}
+
 export function fetchOrderSessions(): Promise<OrderSession[]> {
   return adminJsonServer('/api/sessions', z.array(OrderSessionSchema), {}, 'Não foi possível carregar os talões.');
 }

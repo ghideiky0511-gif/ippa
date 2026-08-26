@@ -47,6 +47,7 @@ export default function ProfileApp() {
   const { href } = useTenant();
   const { workspaceUser, updateWorkspaceUser } = useWorkspaceAuth();
   const [nameDraft, setNameDraft] = useState<string | undefined>();
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -158,6 +159,14 @@ export default function ProfileApp() {
     }
   }
 
+  function closePasswordModal() {
+    setPasswordModalOpen(false);
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setPasswordError('');
+  }
+
   async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPasswordError('');
@@ -212,16 +221,18 @@ export default function ProfileApp() {
             </div>
             {error && <p className="text-sm font-medium text-danger" role="alert">{error}</p>}
             {saved && <p className="flex items-center gap-1.5 text-sm font-medium text-success"><CheckCircle2 className="size-4" aria-hidden="true" />Perfil atualizado.</p>}
-            <div className="flex justify-end"><Button type="submit" loading={saving}>Salvar alterações</Button></div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-5">
+              <Button type="button" variant="outline" onClick={() => setPasswordModalOpen(true)}>Alterar senha</Button>
+              <Button type="submit" loading={saving}>Salvar alterações</Button>
+            </div>
           </form>
         </Card>
+      </main>
 
-        <Card className="p-5 sm:p-6 md:col-start-2">
+      <Dialog open={passwordModalOpen} onOpenChange={(open) => !open && closePasswordModal()}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><div><DialogTitle>Alterar senha</DialogTitle><DialogDescription>Você precisará entrar novamente depois de trocar a senha.</DialogDescription></div><DialogCloseButton /></DialogHeader>
           <form className="flex flex-col gap-5" onSubmit={handlePasswordSubmit}>
-            <div>
-              <p className="font-bold text-foreground">Alterar senha</p>
-              <p className="mt-1 text-sm text-muted-foreground">Você precisará entrar novamente depois de trocar a senha.</p>
-            </div>
             <div>
               <label className="mb-1 block text-sm font-semibold text-foreground" htmlFor="current-password">Senha atual</label>
               <Input id="current-password" type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" required />
@@ -235,10 +246,10 @@ export default function ProfileApp() {
               <Input id="confirm-password" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" minLength={6} required />
             </div>
             {passwordError && <p className="text-sm font-medium text-danger" role="alert">{passwordError}</p>}
-            <div className="flex justify-end"><Button type="submit" loading={passwordSaving}>Trocar senha</Button></div>
+            <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={closePasswordModal}>Cancelar</Button><Button type="submit" loading={passwordSaving}>Trocar senha</Button></div>
           </form>
-        </Card>
-      </main>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={Boolean(cropSource)} onOpenChange={(open) => !open && closeCropper()}>
         <DialogContent className="max-w-xl">

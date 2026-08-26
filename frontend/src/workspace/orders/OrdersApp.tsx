@@ -168,7 +168,10 @@ export default function OrdersApp({
                   const isExpanded = expandedId === order.id;
                   return (
                     <>
-                      <button type="button" className={adminUi.button} onClick={() => setExpandedId(isExpanded ? null : order.id)}>{isExpanded ? 'Ocultar itens' : 'Ver itens'}</button>
+                      <div className="flex gap-2">
+                        <button type="button" className={adminUi.button} onClick={() => setExpandedId(isExpanded ? null : order.id)}>{isExpanded ? 'Ocultar itens' : 'Ver itens'}</button>
+                        <Link href={`/workspace/pedidos/${order.id}`} className={adminUi.button}>Ver detalhes</Link>
+                      </div>
                       {isExpanded && <div className="mt-2 min-w-56 text-xs text-muted-foreground">{order.items.map((item) => <div key={item.key}>{item.qty}× {item.name}{item.color ? ` · ${item.color}` : ''}{item.size ? ` · ${item.size}` : ''}</div>)}</div>}
                     </>
                   );
@@ -188,7 +191,10 @@ export default function OrdersApp({
                   </div>
                   <div className="mt-3 flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">{itemCount(order.items)} peças · {order.paymentMethod || '—'}</span>
-                    <button type="button" className={adminUi.button} onClick={() => setExpandedId(isExpanded ? null : order.id)}>{isExpanded ? 'Ocultar' : 'Ver itens'}</button>
+                    <div className="flex gap-2">
+                      <button type="button" className={adminUi.button} onClick={() => setExpandedId(isExpanded ? null : order.id)}>{isExpanded ? 'Ocultar' : 'Ver itens'}</button>
+                      <Link href={`/workspace/pedidos/${order.id}`} className={adminUi.button}>Ver detalhes</Link>
+                    </div>
                   </div>
                   {isExpanded && <div className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">{order.items.map((item) => <div key={item.key}>{item.qty}× {item.name}{item.color ? ` · ${item.color}` : ''}{item.size ? ` · ${item.size}` : ''}</div>)}</div>}
                 </div>

@@ -4,6 +4,7 @@ import type { AuthUser, Order, OrderChannel, OrderSession } from "@/lib/types";
 import { CreateCustomerOrderInputSchema } from "@/contracts/orders";
 import {
     closeOpenOrderSessionRowsByOrder,
+    findOrderRowById,
     findOrderSessionRow,
     listOrderItemRows,
     listOrderItemRowsByOrder,
@@ -53,6 +54,21 @@ export async function userOrders(
                     .map((item) => item.snapshot),
             ),
         );
+    });
+}
+
+// Pedido único (página de detalhe) -- mesma regra de visibilidade de
+// userOrders (admin vê tudo; vendedora só o que é dela; cliente só o que é
+// dela), só que por id em vez de lista completa.
+export async function orderById(tenant: Tenant, user: AuthUser, orderId: string): Promise<Order> {
+    return withTenantTransaction(tenant, user, async (client) => {
+        const orderRow = await findOrderRowById(client, orderId);
+        if (!orderRow) throw new NotFoundError();
+        const isOwnAsSeller = user.role === "vendedora" && orderRow.seller_id === user.id;
+        const isOwnAsClient = user.role === "cliente" && user.clientId && orderRow.client_id === user.clientId;
+        if (!isAdministrator(user) && !isOwnAsSeller && !isOwnAsClient) throw new ForbiddenError();
+        const items = (await listOrderItemRowsByOrder(client, orderId)).map((item) => item.snapshot);
+        return toOrder(orderRow, items);
     });
 }
 
