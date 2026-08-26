@@ -14,8 +14,13 @@ export interface ProductRow {
     price: string;
     suggested_retail_price: string | null;
     markup: string | null;
-    media: { image?: string; images?: string[]; imagesByColor?: Record<string, string>; videoUrl?: string };
+    media: {
+        image?: string; images?: string[]; imagesByColor?: Record<string, string>; videoUrl?: string;
+        imageKey?: string; imageKeys?: string[]; imageKeysByColor?: Record<string, string>; videoKeys?: string[];
+    };
     attributes: Record<string, unknown>;
+    is_active: boolean;
+    source_origin: "manual" | "bootstrap" | "erp";
 }
 
 export type ProductOverrideRow = ProductOverride;
@@ -29,6 +34,9 @@ export interface ProductVariantRow {
     availability: Availability;
     available_from: string | null;
     track_inventory: boolean;
+    sku: string | null;
+    is_active: boolean;
+    source_origin: "manual" | "bootstrap" | "erp";
 }
 export interface ProductPackRow {
     id: string; product_id: string; scope: import("@/lib/types").PackScope;
@@ -53,8 +61,8 @@ export interface ClassificationRow {
 
 export async function listProductRows(client: PoolClient): Promise<ProductRow[]> {
     const result = await client.query<ProductRow>(
-        `SELECT id, name, description, category, subcategory, collection, brand, reference_id, price, suggested_retail_price, markup, media, attributes
-         FROM products WHERE tenant_id = app_tenant_id()
+        `SELECT id, name, description, category, subcategory, collection, brand, reference_id, price, suggested_retail_price, markup, media, attributes, is_active, source_origin
+         FROM products WHERE tenant_id = app_tenant_id() AND is_active
          ORDER BY display_position NULLS LAST, created_at`,
     );
     return result.rows;
@@ -77,8 +85,11 @@ export async function findProductReferenceIdsByIds(client: PoolClient, productId
 
 export async function listProductVariantRows(client: PoolClient): Promise<ProductVariantRow[]> {
     const result = await client.query<ProductVariantRow>(
-        `SELECT product_id, id, color, size, price, availability, available_from, track_inventory
-         FROM product_variants WHERE tenant_id = app_tenant_id() ORDER BY color, size`,
+        `SELECT product_id, id, color, size, price, availability, available_from,
+                track_inventory, sku, is_active, source_origin
+         FROM product_variants
+         WHERE tenant_id = app_tenant_id() AND is_active
+         ORDER BY color, size`,
     );
     return result.rows;
 }
@@ -169,6 +180,8 @@ export interface ProductWriteRow {
     collection?: string; brand?: string; referenceId?: string; price: number;
     suggestedRetailPrice?: number; markup?: number;
     media?: ProductRow["media"]; attributes?: Record<string, unknown>;
+    isActive?: boolean;
+    sourceOrigin?: ProductRow["source_origin"];
 }
 
 export interface ProductVariantWriteRow {
@@ -176,20 +189,25 @@ export interface ProductVariantWriteRow {
     size: string;
     price: number;
     availability?: Availability;
+    sku?: string;
+    trackInventory?: boolean;
+    isActive?: boolean;
+    sourceOrigin?: ProductVariantRow["source_origin"];
 }
 
 const productFields =
-    "id, name, description, category, subcategory, collection, brand, reference_id, price, suggested_retail_price, markup, media, attributes";
+    "id, name, description, category, subcategory, collection, brand, reference_id, price, suggested_retail_price, markup, media, attributes, is_active, source_origin";
 
 export async function insertProductRow(client: PoolClient, value: ProductWriteRow): Promise<ProductRow> {
     const result = await client.query<ProductRow>(
-        `INSERT INTO products (tenant_id, name, description, category, subcategory, collection, brand, reference_id, price, suggested_retail_price, markup, media, attributes)
-         VALUES (app_tenant_id(), $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        `INSERT INTO products (tenant_id, name, description, category, subcategory, collection, brand, reference_id, price, suggested_retail_price, markup, media, attributes, is_active, source_origin)
+         VALUES (app_tenant_id(), $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
          RETURNING ${productFields}`,
         [value.name, value.description ?? "", value.category, value.subcategory ?? null,
          value.collection ?? null, value.brand ?? null, value.referenceId ?? null, value.price,
          value.suggestedRetailPrice ?? null, value.markup ?? null,
-         JSON.stringify(value.media ?? {}), JSON.stringify(value.attributes ?? {})],
+         JSON.stringify(value.media ?? {}), JSON.stringify(value.attributes ?? {}),
+         value.isActive ?? true, value.sourceOrigin ?? "manual"],
     );
     return result.rows[0];
 }
@@ -201,9 +219,10 @@ export async function insertProductVariantRow(
     value: ProductVariantWriteRow,
 ): Promise<void> {
     await client.query(
-        `INSERT INTO product_variants (tenant_id, product_id, color, size, price, availability)
-         VALUES (app_tenant_id(), $1, $2, $3, $4, $5)`,
-        [productId, value.color, value.size, value.price, value.availability ?? "in_stock"],
+        `INSERT INTO product_variants (tenant_id, product_id, color, size, price, availability, sku, track_inventory, is_active, source_origin)
+         VALUES (app_tenant_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [productId, value.color, value.size, value.price, value.availability ?? "in_stock",
+         value.sku ?? null, value.trackInventory ?? false, value.isActive ?? true, value.sourceOrigin ?? "manual"],
     );
 }
 
@@ -225,18 +244,22 @@ export async function upsertProductByReferenceIdRow(
     value: ProductWriteRow & { referenceId: string },
 ): Promise<{ row: ProductRow; created: boolean }> {
     const result = await client.query<ProductRow & { inserted: boolean }>(
-        `INSERT INTO products (tenant_id, name, description, category, subcategory, collection, brand, reference_id, price, suggested_retail_price, markup, media, attributes)
-         VALUES (app_tenant_id(), $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        `INSERT INTO products (tenant_id, name, description, category, subcategory, collection, brand, reference_id, price, suggested_retail_price, markup, media, attributes, is_active, source_origin)
+         VALUES (app_tenant_id(), $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
          ON CONFLICT (tenant_id, reference_id) DO UPDATE SET
            name = EXCLUDED.name, description = EXCLUDED.description, category = EXCLUDED.category,
            subcategory = EXCLUDED.subcategory, collection = EXCLUDED.collection, brand = EXCLUDED.brand,
            price = EXCLUDED.price, suggested_retail_price = EXCLUDED.suggested_retail_price, markup = EXCLUDED.markup,
-           media = EXCLUDED.media, attributes = EXCLUDED.attributes, updated_at = now()
+            media = CASE WHEN EXCLUDED.media = '{}'::jsonb THEN products.media ELSE EXCLUDED.media END,
+            attributes = products.attributes || EXCLUDED.attributes,
+            is_active = EXCLUDED.is_active, source_origin = EXCLUDED.source_origin,
+            updated_at = now()
          RETURNING ${productFields}, (xmax = 0) AS inserted`,
         [value.name, value.description ?? "", value.category, value.subcategory ?? null,
          value.collection ?? null, value.brand ?? null, value.referenceId, value.price,
          value.suggestedRetailPrice ?? null, value.markup ?? null,
-         JSON.stringify(value.media ?? {}), JSON.stringify(value.attributes ?? {})],
+         JSON.stringify(value.media ?? {}), JSON.stringify(value.attributes ?? {}),
+         value.isActive ?? true, value.sourceOrigin ?? "bootstrap"],
     );
     const { inserted, ...row } = result.rows[0];
     return { row, created: inserted };
@@ -251,14 +274,205 @@ export async function upsertProductVariantRow(
     value: ProductVariantWriteRow,
 ): Promise<{ id: string; created: boolean }> {
     const result = await client.query<{ id: string; inserted: boolean }>(
-        `INSERT INTO product_variants (tenant_id, product_id, color, size, price, availability)
-         VALUES (app_tenant_id(), $1, $2, $3, $4, $5)
+        `INSERT INTO product_variants (tenant_id, product_id, color, size, price, availability, sku, track_inventory, is_active, source_origin)
+         VALUES (app_tenant_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9)
          ON CONFLICT (tenant_id, product_id, color, size)
-         DO UPDATE SET price = EXCLUDED.price, availability = EXCLUDED.availability
+         DO UPDATE SET price = EXCLUDED.price, availability = EXCLUDED.availability,
+           sku = COALESCE(EXCLUDED.sku, product_variants.sku),
+           track_inventory = EXCLUDED.track_inventory,
+           is_active = EXCLUDED.is_active, source_origin = EXCLUDED.source_origin
          RETURNING id, (xmax = 0) AS inserted`,
-        [productId, value.color, value.size, value.price, value.availability ?? "in_stock"],
+        [productId, value.color, value.size, value.price, value.availability ?? "in_stock",
+         value.sku ?? null, value.trackInventory ?? false, value.isActive ?? true,
+         value.sourceOrigin ?? "bootstrap"],
     );
     return { id: result.rows[0].id, created: result.rows[0].inserted };
+}
+
+export async function findProductByReferenceIdRow(
+    client: PoolClient,
+    referenceId: string,
+): Promise<ProductRow | null> {
+    const result = await client.query<ProductRow>(
+        `SELECT ${productFields} FROM products
+         WHERE tenant_id = app_tenant_id() AND reference_id = $1`,
+        [referenceId],
+    );
+    return result.rows[0] ?? null;
+}
+
+/** Upsert do ERP preserva mídia e atributos locais; só o bootstrap escreve mídia. */
+export async function upsertErpProductRow(
+    client: PoolClient,
+    value: ProductWriteRow & { referenceId: string },
+): Promise<{ row: ProductRow; created: boolean }> {
+    const result = await client.query<ProductRow & { inserted: boolean }>(
+        `INSERT INTO products (
+           tenant_id, name, description, category, subcategory, collection, brand,
+           reference_id, price, is_active, source_origin
+         ) VALUES (app_tenant_id(), $1,$2,$3,$4,$5,$6,$7,$8,$9,'erp')
+         ON CONFLICT (tenant_id, reference_id) DO UPDATE SET
+           name = EXCLUDED.name, description = EXCLUDED.description,
+           category = EXCLUDED.category, subcategory = EXCLUDED.subcategory,
+           collection = EXCLUDED.collection, brand = EXCLUDED.brand,
+           price = EXCLUDED.price, is_active = EXCLUDED.is_active,
+           source_origin = 'erp', updated_at = now()
+         RETURNING ${productFields}, (xmax = 0) AS inserted`,
+        [value.name, value.description ?? "", value.category, value.subcategory ?? null,
+         value.collection ?? null, value.brand ?? null, value.referenceId,
+         value.price, value.isActive ?? false],
+    );
+    const { inserted, ...row } = result.rows[0];
+    return { row, created: inserted };
+}
+
+export async function listProductVariantsForSyncRow(
+    client: PoolClient,
+    productId: string,
+): Promise<ProductVariantRow[]> {
+    const result = await client.query<ProductVariantRow>(
+        `SELECT product_id, id, color, size, price, availability, available_from,
+                track_inventory, sku, is_active, source_origin
+         FROM product_variants
+         WHERE tenant_id = app_tenant_id() AND product_id = $1`,
+        [productId],
+    );
+    return result.rows;
+}
+
+export async function upsertErpProductVariantRow(
+    client: PoolClient,
+    input: { id?: string; productId: string; value: ProductVariantWriteRow },
+): Promise<{ id: string; created: boolean }> {
+    if (input.id) {
+        const result = await client.query<{ id: string }>(
+            `UPDATE product_variants SET
+               color = $3, size = $4, price = $5, availability = $6,
+               sku = COALESCE($7, sku), track_inventory = true,
+               is_active = $8, source_origin = 'erp'
+             WHERE tenant_id = app_tenant_id() AND id = $1 AND product_id = $2
+             RETURNING id`,
+            [input.id, input.productId, input.value.color, input.value.size,
+             input.value.price, input.value.availability ?? "out_of_stock",
+             input.value.sku ?? null, input.value.isActive ?? false],
+        );
+        if (result.rows[0]) return { id: result.rows[0].id, created: false };
+    }
+    const result = await client.query<{ id: string }>(
+        `INSERT INTO product_variants (
+           tenant_id, product_id, color, size, price, availability, sku,
+           track_inventory, is_active, source_origin
+         ) VALUES (app_tenant_id(), $1,$2,$3,$4,$5,$6,true,$7,'erp')
+         RETURNING id`,
+        [input.productId, input.value.color, input.value.size, input.value.price,
+         input.value.availability ?? "out_of_stock", input.value.sku ?? null,
+         input.value.isActive ?? false],
+    );
+    return { id: result.rows[0].id, created: true };
+}
+
+export async function deactivateMissingProductVariantsRow(
+    client: PoolClient,
+    productId: string,
+    activeVariantIds: string[],
+): Promise<void> {
+    await client.query(
+        `UPDATE product_variants SET is_active = false, availability = 'out_of_stock', source_origin = 'erp'
+         WHERE tenant_id = app_tenant_id() AND product_id = $1
+           AND NOT (id = ANY($2::uuid[]))`,
+        [productId, activeVariantIds],
+    );
+}
+
+export async function setProductSyncActiveRow(
+    client: PoolClient,
+    productId: string,
+    active: boolean,
+): Promise<void> {
+    await client.query(
+        `UPDATE products SET is_active = $2, source_origin = 'erp', updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND id = $1`,
+        [productId, active],
+    );
+}
+
+export async function setPrimaryProductClassificationKindRow(
+    client: PoolClient,
+    productId: string,
+    kind: ClassificationKind,
+    name?: string,
+    slug?: string,
+): Promise<void> {
+    await client.query(
+        `DELETE FROM product_classifications link
+         USING classification_types type
+         WHERE link.tenant_id = app_tenant_id() AND link.product_id = $1
+           AND link.classification_type_id = type.id AND type.kind = $2`,
+        [productId, kind],
+    );
+    if (!name || !slug) return;
+    await client.query(
+        `WITH selected_type AS (
+           SELECT id FROM classification_types
+           WHERE tenant_id = app_tenant_id() AND kind = $2
+         ), selected_classification AS (
+           INSERT INTO classifications (tenant_id, classification_type_id, name, slug)
+           SELECT app_tenant_id(), id, $3, $4 FROM selected_type
+           ON CONFLICT (tenant_id, classification_type_id, parent_id, slug)
+           DO UPDATE SET name = EXCLUDED.name, updated_at = now()
+           RETURNING id, classification_type_id
+         )
+         INSERT INTO product_classifications (
+           tenant_id, product_id, classification_id, classification_type_id, is_primary
+         )
+         SELECT app_tenant_id(), $1, id, classification_type_id, true
+         FROM selected_classification`,
+        [productId, kind, name, slug],
+    );
+}
+
+export async function setPrimaryProductSubcategorySyncRow(
+    client: PoolClient,
+    productId: string,
+    name?: string,
+    slug?: string,
+): Promise<void> {
+    await client.query(
+        `DELETE FROM product_classifications link
+         USING classification_types type
+         WHERE link.tenant_id = app_tenant_id() AND link.product_id = $1
+           AND link.classification_type_id = type.id AND type.kind = 'subcategory'`,
+        [productId],
+    );
+    if (!name || !slug) return;
+    await client.query(
+        `WITH subcategory_type AS (
+           SELECT id FROM classification_types
+           WHERE tenant_id = app_tenant_id() AND kind = 'subcategory'
+         ), category_parent AS (
+           SELECT link.classification_id AS id
+           FROM product_classifications link
+           JOIN classification_types type ON type.id = link.classification_type_id
+           WHERE link.tenant_id = app_tenant_id() AND link.product_id = $1
+             AND type.kind = 'category' AND link.is_primary
+           LIMIT 1
+         ), selected_classification AS (
+           INSERT INTO classifications (
+             tenant_id, classification_type_id, parent_id, name, slug
+           )
+           SELECT app_tenant_id(), type.id, parent.id, $2, $3
+           FROM subcategory_type type LEFT JOIN category_parent parent ON true
+           ON CONFLICT (tenant_id, classification_type_id, parent_id, slug)
+           DO UPDATE SET name = EXCLUDED.name, updated_at = now()
+           RETURNING id, classification_type_id
+         )
+         INSERT INTO product_classifications (
+           tenant_id, product_id, classification_id, classification_type_id, is_primary
+         )
+         SELECT app_tenant_id(), $1, id, classification_type_id, true
+         FROM selected_classification`,
+        [productId, name, slug],
+    );
 }
 
 /** Mantém a classificação canônica em sincronia com a coluna legada do produto. */

@@ -348,6 +348,7 @@ export default function ClientDetailApp({
             rowKey={(order) => order.id}
             emptyMessage="Nenhum pedido encontrado para esta cliente."
             columns={[
+              { key: 'orderNumber', header: 'Pedido', cell: (order) => `#${order.orderNumber}` },
               { key: 'date', header: 'Data', cell: (order) => new Date(order.date).toLocaleString('pt-BR') },
               { key: 'status', header: 'Status', cell: (order) => order.status },
               { key: 'channel', header: 'Canal', cell: (order) => order.channel },

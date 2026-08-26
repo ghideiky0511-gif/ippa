@@ -11,6 +11,10 @@ export interface VestiExternalProduct {
     externalCategory: string;
     productUrl: string;
     imageUrl: string;
+    /** Imagem principal seguida de todas as additional_image_link do feed. */
+    imageUrls: string[];
+    /** Vídeos publicados indevidamente como additional_image_link no feed. */
+    videoUrls: string[];
     brand: string;
     active: boolean;
 }
@@ -47,6 +51,30 @@ function textOfTag(item: Record<string, unknown>, ...tags: string[]): string {
     return "";
 }
 
+function textValuesOfTag(item: Record<string, unknown>, ...tags: string[]): string[] {
+    const values: string[] = [];
+    for (const tag of tags) {
+        const value = item[tag];
+        const candidates = Array.isArray(value) ? value : [value];
+        for (const candidate of candidates) {
+            if (typeof candidate === "string" && candidate.trim()) values.push(candidate.trim());
+        }
+    }
+    return values;
+}
+
+function uniqueUrls(urls: string[]): string[] {
+    return Array.from(new Set(urls.filter(Boolean)));
+}
+
+function isVideoUrl(value: string): boolean {
+    try {
+        return /\.(?:mp4|m4v|mov|webm)$/i.test(new URL(value).pathname);
+    } catch {
+        return false;
+    }
+}
+
 function parsePrice(valor: string): number | undefined {
     const token = String(valor || "").trim().split(" ")[0].replace(",", ".");
     if (!token) return undefined;
@@ -76,6 +104,12 @@ export function parseVestiCatalogFeed(xmlContent: string): VestiCatalogFeed {
         const category = textOfTag(item, "g:google_product_category");
         const link = textOfTag(item, "g:link");
         const image = textOfTag(item, "g:image_link");
+        const mediaUrls = uniqueUrls([
+            image,
+            ...textValuesOfTag(item, "g:additional_image_link", "additional_image_link"),
+        ]);
+        const imageUrls = mediaUrls.filter((url) => !isVideoUrl(url));
+        const videoUrls = mediaUrls.filter(isVideoUrl);
         const brand = textOfTag(item, "g:brand");
         const color = textOfTag(item, "g:color", "color");
         const size = textOfTag(item, "g:size", "size");
@@ -83,7 +117,8 @@ export function parseVestiCatalogFeed(xmlContent: string): VestiCatalogFeed {
         const price = parsePrice(textOfTag(item, "g:price"));
         const salePrice = parsePrice(textOfTag(item, "g:sale_price"));
 
-        if (!productsByRef.has(ref)) {
+        const existingProduct = productsByRef.get(ref);
+        if (!existingProduct) {
             productsByRef.set(ref, {
                 ref,
                 name: title,
@@ -91,9 +126,16 @@ export function parseVestiCatalogFeed(xmlContent: string): VestiCatalogFeed {
                 externalCategory: category,
                 productUrl: link,
                 imageUrl: image,
+                imageUrls,
+                videoUrls,
                 brand,
                 active: true,
             });
+        } else {
+            // O feed costuma repetir a galeria em cada variante; unimos as
+            // URLs para também cobrir feeds que a distribuem entre variantes.
+            existingProduct.imageUrls = uniqueUrls([...existingProduct.imageUrls, ...imageUrls]);
+            existingProduct.videoUrls = uniqueUrls([...existingProduct.videoUrls, ...videoUrls]);
         }
 
         variants.push({

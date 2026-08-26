@@ -40,6 +40,8 @@ export const ERP_PROVIDER_CATALOG: ErpProviderCatalogEntry[] = [
             { key: "branchCode", label: "Código da filial", type: "number", required: true },
             { key: "priceCodeList", label: "Códigos de tabela de preço (separados por vírgula)", type: "number-list", required: true },
             { key: "stockCodeList", label: "Códigos de depósito/estoque (separados por vírgula)", type: "number-list", required: true },
+            { key: "classificationTypeCode", label: "Tipo da classificação de publicação", type: "number", required: true },
+            { key: "classificationCodes", label: "Classificações que publicam o produto (separadas por vírgula)", type: "text", required: true },
             // Abaixo: só usados ao ENVIAR pedido ao TOTVS (ver
             // erp/providers/totvsmoda/mapper.ts) -- não required aqui porque
             // um tenant pode usar só a importação de produtos/clientes/pedidos

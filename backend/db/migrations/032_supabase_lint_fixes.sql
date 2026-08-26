@@ -8,4 +8,12 @@ ALTER FUNCTION public.app_tenant_id() SET search_path = public, pg_temp;
 ALTER FUNCTION public.app_user_id() SET search_path = public, pg_temp;
 ALTER FUNCTION public.app_role() SET search_path = public, pg_temp;
 
-REVOKE EXECUTE ON FUNCTION public.rls_auto_enable() FROM anon, authenticated;
+-- rls_auto_enable() only exists on the hosted Supabase project (created out-of-band,
+-- not via a migration in this repo); skip the REVOKE on environments without it
+-- (e.g. local/docker Postgres) so this migration stays applicable everywhere.
+DO $$
+BEGIN
+  IF to_regprocedure('public.rls_auto_enable()') IS NOT NULL THEN
+    REVOKE EXECUTE ON FUNCTION public.rls_auto_enable() FROM anon, authenticated;
+  END IF;
+END $$;

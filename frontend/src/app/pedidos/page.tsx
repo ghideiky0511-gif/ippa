@@ -146,6 +146,8 @@ export default function PedidosPage() {
             <div className={publicUi.orderCard} key={order.id}>
               <div className={publicUi.orderCardHeader}>
                 <span>
+                  Pedido nº {order.orderNumber}
+                  <span className="contents">·</span>
                   {new Date(order.date).toLocaleString('pt-BR')}
                   <span className="contents">
                     {order.channel === 'online'
@@ -201,6 +203,11 @@ export default function PedidosPage() {
                   ))}
                 </div>
               )}
+              <div className="mt-3">
+                <Button asChild variant="outline" size="sm">
+                  <Link href={`/pedidos/${order.orderNumber}`}>Ver detalhes</Link>
+                </Button>
+              </div>
             </div>
           );
         })}

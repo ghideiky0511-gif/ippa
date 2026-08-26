@@ -1,13 +1,58 @@
-import type { ErpFetchResult, ErpProvider, ErpProviderCredentials } from "../../types";
+import type { ErpFetchResult, ErpProvider } from "../../types";
 import { MOCK_RAW_CLIENTS, MOCK_RAW_COMPANIES, MOCK_RAW_ORDERS, MOCK_RAW_PRODUCTS } from "./fixtures";
 import { mapMockClient, mapMockCompany, mapMockOrder, mapMockProduct } from "./mapper";
 
 // Provider fake: não autentica nem chama nada externo, só devolve fixtures
 // fixas já adequadas ao formato interno. Serve para validar o contrato
 // ErpProvider ponta a ponta antes de um provider real existir.
-export function createMockErpProvider(_credentials: ErpProviderCredentials): ErpProvider {
+export function createMockErpProvider(): ErpProvider {
     return {
         code: "mock",
+
+        async discoverProductChanges(_window, cursor) {
+            if (cursor) return { referenceCodes: [] };
+            return {
+                referenceCodes: MOCK_RAW_PRODUCTS.map(({ raw }) => raw.referencia ?? raw.codigo),
+            };
+        },
+
+        async fetchReference(referenceCode) {
+            const found = MOCK_RAW_PRODUCTS.find(({ raw }) => (raw.referencia ?? raw.codigo) === referenceCode);
+            if (!found) return null;
+            const data = mapMockProduct(found.raw);
+            return {
+                externalId: referenceCode,
+                name: data.name,
+                description: data.description,
+                category: data.category,
+                brand: data.brand,
+                classifications: [],
+                skus: [{
+                    externalId: found.raw.codigo,
+                    sku: found.raw.codigo,
+                    color: "",
+                    size: "",
+                    isActive: true,
+                    isBlocked: false,
+                }],
+            };
+        },
+
+        async fetchPrices(productCodes) {
+            return productCodes.flatMap((code) => {
+                const found = MOCK_RAW_PRODUCTS.find(({ raw }) => raw.codigo === code);
+                return found ? [{ skuExternalId: code, price: found.raw.precoVenda }] : [];
+            });
+        },
+
+        async fetchStock(productCodes) {
+            return productCodes.map((code) => ({
+                skuExternalId: code,
+                locationExternalId: "mock:default",
+                locationName: "Estoque mock",
+                quantity: 0,
+            }));
+        },
 
         async getProducts(): Promise<ErpFetchResult<ReturnType<typeof mapMockProduct>>> {
             return { items: MOCK_RAW_PRODUCTS.map(({ externalId, raw }) => ({ externalId, data: mapMockProduct(raw) })) };
@@ -39,7 +84,7 @@ export function createMockErpProvider(_credentials: ErpProviderCredentials): Erp
         // um sufixo aleatório, não só o id do pedido) para que um resend
         // (cancelar + criar de novo) produza um external_id diferente do
         // anterior — é o que orderPushService espera poder observar.
-        async sendOrder(order, _context) {
+        async sendOrder(order) {
             const suffix = Math.random().toString(36).slice(2, 8);
             return { externalId: `mock-order-${order.id}-${suffix}` };
         },

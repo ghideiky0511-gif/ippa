@@ -8,12 +8,139 @@ Situação: multi-tenant funcional hoje é por path (`tenantSlug` na URL,
 próprio (ex. `loja.com` em vez de `app.com/loja`) — confirmar necessidade
 antes de implementar.
 
+## Brecha identificada (2026-08-26)
+
+Formato acordado para domínio próprio de cliente mantém o slug no path,
+ex.: `produtos.fashiongirl.com.br/fashiongirl`. Nesse formato, a resolução
+de tenant *continua* funcionando por path sem nenhuma mudança de código
+(`tenantFromPath` em `frontend/src/proxy.ts` não olha pra `Host`).
+
+Só que isso abre uma brecha: hoje nada impede que, uma vez que
+`produtos.fashiongirl.com.br` aponte pro nosso Render,
+`produtos.fashiongirl.com.br/outrotenant` sirva o catálogo de
+**outro** tenant qualquer, ativo na plataforma, sob o domínio da
+fashiongirl. Ou seja, o domínio próprio do cliente vira uma porta de
+entrada pra *qualquer* tenant, não só o dele — problema de branding
+(concorrente aparecendo com a marca da fashiongirl na barra de
+endereço), de confusão pro cliente final, e potencialmente de
+segurança percebida (parece phishing).
+
+Regra que falta: **uma vez que um domínio está associado a um tenant,
+o proxy só pode servir aquele tenant sob aquele domínio** — qualquer
+outro slug no path deve ser bloqueado/rejeitado, nunca silenciosamente
+resolvido.
+
 ## Passos (se confirmado que é necessário)
 
 - [ ] Confirmar com o negócio se isso é realmente necessário agora ou pode
-      continuar por path.
-- [ ] Desenhar resolução de tenant por `host` (mapa domínio→tenant,
-      provisionamento de domínio, certificado TLS por domínio).
-- [ ] Implementar middleware de resolução por `host` ao lado do atual por
-      path, sem quebrar tenants que continuam usando path.
-- [ ] Testes cobrindo resolução por domínio próprio e fallback por path.
+      continuar por path (domínio único da plataforma).
+
+### Modelagem
+
+- [ ] Nova migration: tabela `tenant_domains` (não acoplar direto em
+      `tenants`, pra permitir mais de um domínio por tenant no futuro):
+      `id uuid`, `tenant_id uuid references tenants(id)`,
+      `domain text unique not null` (host normalizado, sem porta, sem
+      protocolo, lowercase), `status` (`pending_verification` |
+      `active` | `disabled`), `created_at`, `updated_at`.
+- [ ] `backend/src/lib/db/tenant.ts`: nova função `findTenantByDomain(host)`
+      análoga a `findActiveTenant(slug)`, só retorna tenant se
+      `status = 'active'` (mesma regra de tenant ativo já aplicada hoje).
+- [ ] CRUD de domínio na área de administração da plataforma
+      (`backend/src/app/api/control/tenants/...`): adicionar/remover
+      domínio de um tenant. Cada domínio novo nasce como
+      `pending_verification`.
+
+### Verificação de propriedade do domínio
+
+- [ ] Mesmo sendo cadastro feito por admin da plataforma (não
+      self-service do cliente), vale exigir prova de posse antes de
+      marcar `active` — evita erro de digitação apontando pro domínio
+      de outro tenant/terceiro por engano. Padrão comum: TXT record
+      (`_ippa-verify.produtos.fashiongirl.com.br` com um token) checado
+      antes de virar `active`.
+- [ ] Enquanto `pending_verification`, o domínio não deve ser aceito
+      pelo proxy (tratar como "domínio desconhecido" — ver abaixo).
+
+### Resolução e trava no proxy (`frontend/src/proxy.ts`)
+
+- [ ] No topo do `proxy()`, extrair `host` normalizado de
+      `request.headers.get('host')` (lowercase, sem porta).
+- [ ] Se `host` for um dos domínios "próprios" da plataforma (o domínio
+      onde ela é servida nativamente — ex. valor de `NEXT_PUBLIC_APP_URL`,
+      mais `localhost` em dev): comportamento **inalterado** — qualquer
+      tenant ativo acessível por path, como hoje.
+- [ ] Se `host` não for um domínio próprio da plataforma: consultar o
+      mapa domínio→tenant (ver cache abaixo).
+  - Domínio não encontrado (nunca cadastrado, ou ainda
+    `pending_verification`) → responder 404 direto, sem cair no fluxo
+    normal de resolução por path.
+  - Domínio encontrado com tenant travado (`lockedSlug`):
+    - Se o slug do path == `lockedSlug` → segue fluxo normal
+      (equivalente ao que já acontece hoje).
+    - Se o slug do path != `lockedSlug` (inclusive tentativa de acessar
+      `/control`, ou slug de outro tenant) → bloquear. Decidir política:
+      404 simples (mais simples, comportamento "esse tenant não existe
+      aqui") vs. redirect 307 para `/${lockedSlug}` (mais amigável, mas
+      esconde o erro — só faz sentido se o usuário errou o link).
+      Recomendação inicial: 404, revisar depois com dado real de uso.
+    - Path raiz (`/`) sob domínio custom: hoje `/` é tratado como site
+      institucional (nunca deveria ser em cima de um domínio de
+      cliente). Decidir: redirect automático pra `/${lockedSlug}`, ou
+      bloquear também. Provavelmente redirect é o certo aqui (é o caso
+      de uso real: cliente digita só `produtos.fashiongirl.com.br`).
+  - `/control*` (painel da plataforma) nunca deve responder sob domínio
+    de cliente, mesmo que o slug bata — adicionar bloqueio explícito.
+
+### Cache do mapa domínio→tenant
+
+- [ ] Consulta por request direto no banco a cada hit é caro e demais
+      pro middleware (roda em praticamente todo path, matcher já é
+      quase universal). Cachear em memória no processo do proxy com TTL
+      curto (ex. 60s) e revalidação em background — mesmo padrão dos
+      `fetch(...)` que já existem em `proxy.ts` pra sessão
+      (`validateWorkspaceAccess`, `validateControl`), só que aqui
+      cacheado porque muda raramente.
+- [ ] Definir política de fail-safe se o lookup falhar (backend fora do
+      ar, timeout): **fail closed** (bloquear/404) é mais seguro que
+      fail open (deixaria a brecha atual voltar), mas verificar impacto
+      em disponibilidade — considerar servir o último valor bom
+      conhecido do cache por uma janela curta antes de falhar fechado.
+
+### Fora de escopo deste item (registrar explicitamente pra não confundir)
+
+- Isso trava apenas o **frontend** (o ponto de entrada do navegador).
+  Não é sobre travar o backend por domínio — a API
+  (`backend/src/app/api/[tenantSlug]/...`) já é isolada por tenant via
+  slug + autenticação, e o backend não decide branding nenhum.
+- Suporte a URL **sem** o slug no path (`produtos.fashiongirl.com.br/`
+  puro, sem `/fashiongirl`) é uma extensão natural da trava (o
+  `lockedSlug` já dá isso de graça pro path raiz), mas o pedido original
+  do cliente mantém o slug — tratar como possível fase 2, não
+  pré-requisito.
+
+### Testes
+
+- [ ] Domínio próprio da plataforma + qualquer slug ativo → OK (regressão
+      do comportamento atual).
+- [ ] Domínio custom ativo + slug correspondente → OK.
+- [ ] Domínio custom ativo + slug de outro tenant → bloqueado.
+- [ ] Domínio custom ativo + `/control` → bloqueado.
+- [ ] Domínio custom `pending_verification` → 404 (tratado como
+      desconhecido).
+- [ ] Domínio desconhecido (nunca cadastrado) → 404.
+- [ ] Lookup do mapa domínio→tenant falhando (simular timeout) → política
+      de fail-closed respeitada.
+- [ ] Cobrir resolução por domínio próprio e fallback por path (item
+      original desta lista).
+
+### Infra
+
+- [ ] TLS por domínio: resolvido pelo Render (custom domain no serviço
+      `ippa-frontend`, certificado automático). Não precisa de proxy
+      reverso próprio (nginx/Caddy) pra isso.
+- [ ] `REALTIME_ALLOWED_ORIGINS` (`backend/server.ts`) precisa incluir
+      cada domínio custom ativo — hoje é uma lista fixa via env var;
+      avaliar se passa a ser derivada da própria tabela `tenant_domains`
+      em vez de mantida manualmente em paralelo (risco de esquecer de
+      atualizar o env e quebrar o realtime silenciosamente).

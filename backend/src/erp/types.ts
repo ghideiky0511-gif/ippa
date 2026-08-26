@@ -23,6 +23,56 @@ export interface ErpFetchResult<T> {
     nextCursor?: string;
 }
 
+export interface ErpProductChangeWindow {
+    startDate?: Date;
+    endDate?: Date;
+}
+
+export interface ErpProductChangePage {
+    referenceCodes: string[];
+    nextCursor?: string;
+}
+
+export interface ErpClassificationSnapshot {
+    typeCode?: number;
+    typeName?: string;
+    code?: string;
+    name?: string;
+}
+
+export interface ErpSkuSnapshot {
+    externalId: string;
+    sku?: string;
+    color: string;
+    size: string;
+    isActive: boolean;
+    isBlocked: boolean;
+}
+
+export interface ErpReferenceSnapshot {
+    externalId: string;
+    name: string;
+    description?: string;
+    category?: string;
+    subcategory?: string;
+    collection?: string;
+    brand?: string;
+    classifications: ErpClassificationSnapshot[];
+    skus: ErpSkuSnapshot[];
+}
+
+export interface ErpPriceSnapshot {
+    skuExternalId: string;
+    price: number;
+}
+
+export interface ErpStockSnapshot {
+    skuExternalId: string;
+    locationExternalId: string;
+    locationName?: string;
+    quantity: number;
+}
+
 export type ErpProviderCredentials = Record<string, unknown>;
 
 // Dado auxiliar de um pedido que só existe no banco (não em Order/CartItem),
@@ -37,12 +87,19 @@ export interface ErpOrderPushContext {
 
 export interface ErpProvider {
     readonly code: string;
+    discoverProductChanges(
+        window: ErpProductChangeWindow,
+        cursor?: string,
+    ): Promise<ErpProductChangePage>;
+    fetchReference(referenceCode: string): Promise<ErpReferenceSnapshot | null>;
+    fetchPrices(productCodes: string[]): Promise<ErpPriceSnapshot[]>;
+    fetchStock(productCodes: string[]): Promise<ErpStockSnapshot[]>;
     getProducts(
         options?: ErpFetchOptions,
     ): Promise<ErpFetchResult<Omit<Product, "id">>>;
     getOrders(
         options?: ErpFetchOptions,
-    ): Promise<ErpFetchResult<Omit<Order, "id">>>;
+    ): Promise<ErpFetchResult<Omit<Order, "id" | "orderNumber">>>;
     getClients(
         options?: ErpFetchOptions,
     ): Promise<ErpFetchResult<Omit<Client, "id" | "createdAt" | "updatedAt">>>;

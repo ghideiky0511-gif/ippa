@@ -24,6 +24,7 @@ import { requireSettingsAdministrator } from "@/services/settings/settingsAuthor
 import { createExternalApiCallReporter } from "@/services/erp/externalApiLogService";
 import { NotFoundError, ValidationError } from "@/services/shared/errors";
 import { errorMeta, logger } from "@/lib/logger";
+import { upsertCatalogSyncConfigRow } from "@/models/catalogSyncModel";
 
 // Uma opção por provider visível no catálogo, com o estado do tenant
 // mesclado por cima. `credentials` só carrega campos não-secretos (ver
@@ -156,11 +157,33 @@ export async function saveTenantErpIntegrationCredentials(
     requireSettingsAdministrator(user);
     const entry = findVisibleCatalogEntry(provider);
     const credentials = parseCredentials(entry, rawCredentials ?? {});
+    if (
+        provider === "totvsmoda"
+        && String(credentials.classificationCodes ?? "").split(",").every((code) => !code.trim())
+    ) {
+        throw new ValidationError(
+            "INVALID_INPUT",
+            "Informe ao menos uma classificação que publica o produto.",
+        );
+    }
     return withTenantTransaction(tenant, user, async (client) => {
         const row = await upsertErpIntegrationCredentialsRow(client, {
             provider,
             credentials,
         });
+        if (provider === "totvsmoda") {
+            const classificationTypeCode = Number(credentials.classificationTypeCode);
+            const classificationCodes = String(credentials.classificationCodes ?? "")
+                .split(",")
+                .map((code) => code.trim())
+                .filter(Boolean);
+            await upsertCatalogSyncConfigRow(client, {
+                integrationId: row.id,
+                enabled: Number.isFinite(classificationTypeCode) && classificationCodes.length > 0,
+                classificationTypeCode,
+                classificationCodes,
+            });
+        }
         await recordAuditEvent(client, {
             action: ERP_INTEGRATION_AUDIT_ACTIONS.CONFIGURED,
             entityId: row.id,

@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import {
   ClientLookupResultSchema,
   ClientSchema,
@@ -21,6 +22,10 @@ import { adminJson } from './http';
 export function fetchOrders(params?: { clientId?: string }): Promise<Order[]> {
   const query = params?.clientId ? `?clientId=${encodeURIComponent(params.clientId)}` : '';
   return adminJson(`/api/admin/orders${query}`, OrderSchema.array(), {}, 'Não foi possível carregar os pedidos.');
+}
+
+export function fetchCustomerOrder(orderNumber: number): Promise<Order> {
+  return adminJson(`/api/orders/${encodeURIComponent(String(orderNumber))}`, OrderSchema, {}, 'NÃ£o foi possÃ­vel carregar o pedido.');
 }
 
 export function fetchOrderSessions(): Promise<OrderSession[]> {
@@ -87,4 +92,24 @@ export function finalizeOrderSession(id: string): Promise<Order> {
   return adminJson(`/api/sessions/${id}/finalize`, OrderSchema, {
     method: 'POST',
   }, 'Não foi possível finalizar o pedido.');
+}
+
+// Registro administrativo manual de pagamento (dinheiro, Pix direto etc.) --
+// sem gateway nenhum por trás, ver comentário em orderService.markOrderPaid.
+export function markOrderPaid(orderId: string, paymentMethod?: string): Promise<Order> {
+  return adminJson(`/api/admin/orders/${orderId}/mark-paid`, OrderSchema, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ paymentMethod }),
+  }, 'Não foi possível marcar o pedido como pago.');
+}
+
+const CancelOrderResultSchema = z.object({ order: OrderSchema, erpWarning: z.string().optional() });
+
+export function cancelOrder(orderId: string): Promise<{ order: Order; erpWarning?: string }> {
+  return adminJson(`/api/admin/orders/${orderId}/cancel`, CancelOrderResultSchema, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  }, 'Não foi possível cancelar o pedido.');
 }

@@ -37,6 +37,8 @@ import { findStoreSettingsRow } from "@/models/settingsModel";
 import { listUsersByIds } from "@/services/users";
 import { patchClientRow } from "@/services/clients/clientService";
 import { recordAuditEvent, ORDER_SESSION_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
+import { enqueueOrderPush, requestProviderOrderResend } from "@/services/erp/orderPushService";
+import { logger, errorMeta } from "@/lib/logger";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
 import { notifyOrder, notifyOrderBook, notifySession } from "@/services/realtime/updateBroadcast";
 import { scheduleSessionBroadcast } from "@/services/realtime/sessionBroadcast";
@@ -356,7 +358,7 @@ export async function updateSession(
     const parsedBody = UpdateOrderSessionInputSchema.safeParse(rawBody);
     if (!parsedBody.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsedBody.error.issues);
     const body = parsedBody.data;
-    const changes: { book?: OrderBookRow; order?: Order } = {};
+    const changes: { book?: OrderBookRow; order?: Order; pushOrderId?: string } = {};
     const updated = await withTenantTransaction(tenant, user, async (client) => {
         const currentRow = await findOrderSessionRow(client, id);
         if (!currentRow) throw new NotFoundError("SESSION_NOT_FOUND");
@@ -441,7 +443,17 @@ export async function updateSession(
                     status: order.status,
                     total: totalAfterItemMutation(persistedItems, order),
                 });
-                if (updatedOrder) changes.order = toOrder(updatedOrder, persistedItems);
+                if (updatedOrder) {
+                    changes.order = toOrder(updatedOrder, persistedItems);
+                    // Upsell num pedido já finalizado (novo/separado/pago) muda o
+                    // que o ERP tem registrado -- reenvia. Edição do carrinho ainda
+                    // "aberto"/"aguardando_pagamento" não conta: o pedido nem chegou
+                    // a ser enviado ao ERP ainda (isso só acontece no checkout, ver
+                    // finalizeOrderSession/confirmPayment/createCustomerOrder).
+                    if (order.status !== "aberto" && order.status !== "aguardando_pagamento") {
+                        changes.pushOrderId = orderId;
+                    }
+                }
             }
         }
         const row = await updateOrderSessionRow(client, id, {
@@ -464,6 +476,15 @@ export async function updateSession(
     if (changes.book) notifyOrderBook(tenant.id, {
         sellerId: changes.book.seller_id,
     });
+    if (changes.pushOrderId) {
+        try {
+            await requestProviderOrderResend(tenant, user, changes.pushOrderId);
+        } catch (error) {
+            logger.error("ERP_ORDER_PUSH", "Falha ao reenviar pedido alterado ao ERP", {
+                orderId: changes.pushOrderId, ...errorMeta(error),
+            });
+        }
+    }
     return updated;
 }
 
@@ -544,5 +565,6 @@ export async function finalizeOrderSession(
     }
     for (const book of changedBooks) notifyOrderBook(tenant.id, { sellerId: book.seller_id });
     notifyOrder(tenant.id, order);
+    await enqueueOrderPush(tenant, user, order.id);
     return order;
 }

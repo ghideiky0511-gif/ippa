@@ -6,6 +6,7 @@
 // auditoria por tentativa só viraria ruído.
 export const PROVIDER_ORDER_AUDIT_ACTIONS = {
   RESEND_REQUESTED: 'provider_order.resend_requested',
+  CANCEL_REQUESTED: 'provider_order.cancel_requested',
 } as const;
 
 export type ProviderOrderAuditAction = (typeof PROVIDER_ORDER_AUDIT_ACTIONS)[keyof typeof PROVIDER_ORDER_AUDIT_ACTIONS];

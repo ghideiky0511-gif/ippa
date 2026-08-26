@@ -38,6 +38,9 @@ const REFETCH_DEBOUNCE_MS = 350;
 // na rolagem); descer de novo até o fim busca essas páginas outra vez.
 const WINDOW_PAGE_COUNT = 2;
 const SCROLL_UP_THRESHOLD_PX = 4;
+// Primeira fileira da grade (4 colunas no desktop) já está no primeiro paint
+// — carrega eager/fetchPriority=high em vez de lazy, pra não atrasar o LCP.
+const FIRST_ROW_PRIORITY_COUNT = 4;
 
 // Monta os parâmetros de filtro (não pagina/não escolhe seção) — reutilizado
 // tanto pra pedir um novo recorte de vitrines (mudança de filtro) quanto pra
@@ -325,12 +328,12 @@ export default function CatalogApp({
         setFilters({ ...EMPTY_FILTERS });
     }
 
-    function renderBottomGrid() {
+    function renderBottomGrid(prioritizeFirstRow: boolean) {
         return (
             <>
                 <div className={publicUi.catalogGrid} ref={bottomGridContainerRef}>
-                    {bottomGrid.items.map((p) => (
-                        <ProductCard key={p.id} product={p} />
+                    {bottomGrid.items.map((p, i) => (
+                        <ProductCard key={p.id} product={p} priority={prioritizeFirstRow && i < FIRST_ROW_PRIORITY_COUNT} />
                     ))}
                     {loadingMore && Array.from({ length: 4 }).map((_, i) => <ProductCardSkeleton key={`more-${i}`} />)}
                 </div>
@@ -388,7 +391,7 @@ export default function CatalogApp({
                                         style={{ transform: `translateX(${underline.left}px)`, width: underline.width }}
                                     />
                                 </nav>
-                                {sections.map((s) => (
+                                {sections.map((s, sectionIndex) => (
                                     <section
                                         key={s.id}
                                         id={s.id}
@@ -401,8 +404,8 @@ export default function CatalogApp({
                                     >
                                         <h2 className={publicUi.catalogSectionTitle}>{s.label}</h2>
                                         <div className={publicUi.catalogGrid}>
-                                            {s.items.map((p) => (
-                                                <ProductCard key={p.id} product={p} />
+                                            {s.items.map((p, i) => (
+                                                <ProductCard key={p.id} product={p} priority={sectionIndex === 0 && i < FIRST_ROW_PRIORITY_COUNT} />
                                             ))}
                                         </div>
                                     </section>
@@ -418,12 +421,12 @@ export default function CatalogApp({
                                         className={publicUi.catalogSection}
                                     >
                                         <h2 className={publicUi.catalogSectionTitle}>Outros produtos</h2>
-                                        {renderBottomGrid()}
+                                        {renderBottomGrid(false)}
                                     </section>
                                 )}
                             </>
                         ) : (
-                            renderBottomGrid()
+                            renderBottomGrid(true)
                         )}
                     </div>
                 </div>

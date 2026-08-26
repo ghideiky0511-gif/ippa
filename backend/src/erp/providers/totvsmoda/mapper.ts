@@ -1,6 +1,10 @@
 import type { CartItem, Client, Company, Order, Product, Variant } from "@/lib/types";
 import { OrderChannelSchema } from "@/contracts/orders";
-import type { ErpOrderPushContext, NonRetryableErpOrderError } from "@/erp/types";
+import type {
+    ErpOrderPushContext,
+    ErpReferenceSnapshot,
+    NonRetryableErpOrderError,
+} from "@/erp/types";
 import type {
     TotvsModaCancelOrderInput,
     TotvsModaCredentials,
@@ -47,6 +51,9 @@ export interface TotvsModaProductRow {
     ReferenceCode?: string;
     referenceId?: number;
     referenceName?: string;
+    description?: string;
+    descriptive?: string;
+    maxChangeFilterDate?: string;
     classifications?: TotvsModaClassification[];
 }
 
@@ -175,6 +182,51 @@ function findClassification(classifications: TotvsModaClassification[] | undefin
     return match?.name;
 }
 
+export function referenceCodeOfTotvsModaProduct(row: TotvsModaProductRow): string {
+    return String(row.ReferenceCode ?? row.referenceId ?? row.productCode ?? "").trim();
+}
+
+export function mapTotvsModaReferenceSnapshot(
+    rows: TotvsModaProductRow[],
+): ErpReferenceSnapshot | null {
+    const first = rows[0];
+    if (!first) return null;
+    const externalId = referenceCodeOfTotvsModaProduct(first);
+    if (!externalId) return null;
+    const classifications = Array.from(new Map(
+        rows.flatMap((row) => row.classifications ?? []).map((classification) => [
+            `${classification.typeCode ?? ""}:${classification.code ?? classification.name ?? ""}`,
+            classification,
+        ]),
+    ).values());
+    return {
+        externalId,
+        name: first.referenceName ?? first.productName ?? externalId,
+        description: first.description ?? first.descriptive ?? "",
+        category: findClassification(classifications, "categoria"),
+        subcategory: findClassification(classifications, "subcategoria"),
+        collection: findClassification(classifications, "coleção", "colecao"),
+        brand: findClassification(classifications, "marca"),
+        classifications: classifications.map((classification) => ({
+            typeCode: classification.typeCode,
+            typeName: classification.typeName,
+            code: classification.code,
+            name: classification.name,
+        })),
+        skus: rows.flatMap((row) => {
+            if (row.productCode === undefined) return [];
+            return [{
+                externalId: String(row.productCode),
+                sku: row.productSku?.trim() || undefined,
+                color: row.colorName ?? row.colorCode ?? "",
+                size: row.size ?? "",
+                isActive: row.isActive !== false,
+                isBlocked: row.isBlocked === true,
+            }];
+        }),
+    };
+}
+
 function sumStock(productCode: number | undefined, balanceByCode: Map<number, TotvsModaBalanceRow>): number {
     if (productCode === undefined) return 0;
     const balances = balanceByCode.get(productCode)?.balances ?? [];
@@ -205,7 +257,7 @@ export function groupTotvsModaProducts(
 
     const groups = new Map<string, TotvsModaProductRow[]>();
     for (const row of rows) {
-        const key = row.ReferenceCode ?? (row.referenceId !== undefined ? String(row.referenceId) : String(row.productCode));
+        const key = referenceCodeOfTotvsModaProduct(row);
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key)!.push(row);
     }
@@ -244,7 +296,7 @@ export function groupTotvsModaProducts(
     });
 }
 
-export function mapTotvsModaOrder(raw: TotvsModaOrder): Omit<Order, "id"> {
+export function mapTotvsModaOrder(raw: TotvsModaOrder): Omit<Order, "id" | "orderNumber"> {
     const items: CartItem[] = (raw.items ?? []).map((item, index) => {
         const key = String(item.productCode ?? index);
         return {

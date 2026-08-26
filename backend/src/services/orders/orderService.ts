@@ -3,8 +3,10 @@ import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser, Order, OrderChannel, OrderSession } from "@/lib/types";
 import { CreateCustomerOrderInputSchema } from "@/contracts/orders";
 import {
+    cancelOpenOrderSessionRowsByOrder,
     closeOpenOrderSessionRowsByOrder,
     findOrderRowById,
+    findOrderRowByNumber,
     findOrderSessionRow,
     listOrderItemRows,
     listOrderItemRowsByOrder,
@@ -17,13 +19,25 @@ import { findUserRowById } from "@/models/usersModel";
 import { findStoreSettingsRow } from "@/models/settingsModel";
 import { notifyOrder, notifyOrderBook, notifySession } from "@/services/realtime/updateBroadcast";
 import { notifyNewOrderForSeller, notifyOrderConfirmed } from "@/services/notifications";
+import { cancelProviderOrderForOrder, enqueueOrderPush, requestProviderOrderResend } from "@/services/erp/orderPushService";
+import { logger, errorMeta } from "@/lib/logger";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
 import { toOrder, toOrderSession } from "./orderMapper";
 import { closeOrderBookWhenFinished } from "./orderBookLifecycle";
 import type { OrderBookRow } from "@/models/orderBooksModel";
+import { ORDER_AUDIT_ACTIONS, recordAuditEvent, type AuditRequestContext } from "@/services/audit";
 
 function isAdministrator(user: AuthUser): boolean {
     return user.role === "administrador" && user.permissions?.adminAccess === true;
+}
+
+// Marcar como pago manualmente e cancelar pedido (abaixo) são ações
+// administrativas mas não exigem admin -- mesmo critério mais permissivo
+// já usado em cancelar talão vazio (orderBookService.requireInternal):
+// qualquer papel interno pode reconciliar um pagamento recebido fora do
+// sistema (dinheiro, Pix direto) ou cancelar um pedido da própria loja.
+function requireInternal(user: AuthUser) {
+    if (user.role === "cliente") throw new ForbiddenError();
 }
 
 export async function userOrders(
@@ -62,13 +76,29 @@ export async function userOrders(
 export async function orderById(tenant: Tenant, user: AuthUser, orderId: string): Promise<Order> {
     return withTenantTransaction(tenant, user, async (client) => {
         const orderRow = await findOrderRowById(client, orderId);
-        if (!orderRow) throw new NotFoundError();
-        const isOwnAsSeller = user.role === "vendedora" && orderRow.seller_id === user.id;
-        const isOwnAsClient = user.role === "cliente" && user.clientId && orderRow.client_id === user.clientId;
-        if (!isAdministrator(user) && !isOwnAsSeller && !isOwnAsClient) throw new ForbiddenError();
-        const items = (await listOrderItemRowsByOrder(client, orderId)).map((item) => item.snapshot);
-        return toOrder(orderRow, items);
+        return visibleOrder(client, user, orderRow);
     });
+}
+
+/** Consulta cliente por número humanizado, sem expor UUIDs na URL. */
+export async function orderByNumber(tenant: Tenant, user: AuthUser, orderNumber: number): Promise<Order> {
+    return withTenantTransaction(tenant, user, async (client) => {
+        const orderRow = await findOrderRowByNumber(client, orderNumber);
+        return visibleOrder(client, user, orderRow);
+    });
+}
+
+async function visibleOrder(
+    client: Parameters<typeof listOrderItemRowsByOrder>[0],
+    user: AuthUser,
+    orderRow: Awaited<ReturnType<typeof findOrderRowById>>,
+): Promise<Order> {
+    if (!orderRow) throw new NotFoundError();
+    const isOwnAsSeller = user.role === "vendedora" && orderRow.seller_id === user.id;
+    const isOwnAsClient = user.role === "cliente" && user.clientId && orderRow.client_id === user.clientId;
+    if (!isAdministrator(user) && !isOwnAsSeller && !isOwnAsClient) throw new ForbiddenError();
+    const items = (await listOrderItemRowsByOrder(client, orderRow.id)).map((item) => item.snapshot);
+    return toOrder(orderRow, items);
 }
 
 export async function createCustomerOrder(
@@ -165,5 +195,98 @@ export async function createCustomerOrder(
     notifyOrder(tenant.id, order);
     notifyOrderConfirmed(tenant, user, order);
     if (sellerRecipient) notifyNewOrderForSeller(tenant, sellerRecipient, order);
+    await enqueueOrderPush(tenant, user, order.id);
     return order;
+}
+
+// Registro administrativo manual de pagamento -- sem gateway nenhum por
+// trás (ver migration 036, "'pago': só alcançável ... quando existir motor
+// de pagamentos de verdade"). É a válvula de escape pra quando a loja
+// recebeu por fora do sistema (dinheiro, Pix direto) e precisa refletir
+// isso no pedido. `paymentMethod` é texto livre por ora -- uma futura
+// orders_payments com múltiplas formas por pedido é evolução natural disto,
+// não escopo aqui. Sessões/talão já foram fechados no checkout que criou o
+// pedido (ver createCustomerOrder acima), por isso não repete esse passo.
+export async function markOrderPaid(
+    tenant: Tenant,
+    user: AuthUser,
+    orderId: string,
+    paymentMethod: string | undefined,
+    auditRequestContext: AuditRequestContext,
+): Promise<Order> {
+    requireInternal(user);
+    const order = await withTenantTransaction(tenant, user, async (client) => {
+        const existing = await findOrderRowById(client, orderId);
+        if (!existing) throw new NotFoundError("ORDER_NOT_FOUND");
+        if (existing.status === "aberto") throw new ValidationError("ORDER_NOT_READY_FOR_PAYMENT");
+        if (existing.status === "pago") throw new ValidationError("ORDER_ALREADY_PAID");
+        if (existing.status === "cancelado") throw new ValidationError("ORDER_ALREADY_CANCELLED");
+        const items = (await listOrderItemRowsByOrder(client, orderId)).map((item) => item.snapshot);
+        const row = await updateOrderRow(client, orderId, { status: "pago", paymentMethod });
+        if (!row) throw new NotFoundError("ORDER_NOT_FOUND");
+        await recordAuditEvent(client, {
+            action: ORDER_AUDIT_ACTIONS.MANUALLY_MARKED_PAID,
+            entityId: orderId,
+            actor: user,
+            context: auditRequestContext,
+            metadata: paymentMethod ? { paymentMethod } : {},
+        });
+        return toOrder(row, items);
+    });
+    notifyOrder(tenant.id, order);
+    // Marcar como pago é uma alteração do pedido como qualquer outra --
+    // reenvia (mesmo mecanismo do upsell pós-checkout em
+    // orderSessionService.updateSession) para o ERP refletir o status atual.
+    // Melhor esforço: uma falha aqui não pode desfazer o pagamento já
+    // registrado localmente, que é a fonte de verdade.
+    try {
+        await requestProviderOrderResend(tenant, user, orderId, auditRequestContext);
+    } catch (error) {
+        logger.error("ERP_ORDER_PUSH", "Falha ao reenviar pedido pago ao ERP", { orderId, ...errorMeta(error) });
+    }
+    return order;
+}
+
+// Cancela o pedido (qualquer estado exceto já pago/já cancelado -- ver
+// decisão de produto: cancelar um pedido pago exigiria estorno, fora de
+// escopo aqui) e cancela junto toda sessão/talão irmão ainda aberto. O
+// cancelamento no ERP é melhor esforço e nunca bloqueia o cancelamento local
+// (que é a fonte de verdade) -- ver cancelProviderOrderForOrder.
+export async function cancelOrder(
+    tenant: Tenant,
+    user: AuthUser,
+    orderId: string,
+    auditRequestContext: AuditRequestContext,
+): Promise<{ order: Order; erpWarning?: string }> {
+    requireInternal(user);
+    let cancelledSessions: OrderSession[] = [];
+    let changedBooks: OrderBookRow[] = [];
+    const order = await withTenantTransaction(tenant, user, async (client) => {
+        const existing = await findOrderRowById(client, orderId);
+        if (!existing) throw new NotFoundError("ORDER_NOT_FOUND");
+        if (existing.status === "pago") throw new ValidationError("ORDER_ALREADY_PAID");
+        if (existing.status === "cancelado") throw new ValidationError("ORDER_ALREADY_CANCELLED");
+        const items = (await listOrderItemRowsByOrder(client, orderId)).map((item) => item.snapshot);
+        const row = await updateOrderRow(client, orderId, { status: "cancelado" });
+        if (!row) throw new NotFoundError("ORDER_NOT_FOUND");
+        const cancelledRows = await cancelOpenOrderSessionRowsByOrder(client, orderId);
+        cancelledSessions = cancelledRows.map((cancelledRow) => toOrderSession(cancelledRow, items));
+        const bookIds = new Set(cancelledRows.map((cancelledRow) => cancelledRow.order_book_id));
+        changedBooks = (await Promise.all(
+            [...bookIds].map((bookId) => closeOrderBookWhenFinished(client, bookId)),
+        )).filter((book): book is OrderBookRow => Boolean(book));
+        await recordAuditEvent(client, {
+            action: ORDER_AUDIT_ACTIONS.MANUALLY_CANCELLED,
+            entityId: orderId,
+            actor: user,
+            context: auditRequestContext,
+            metadata: {},
+        });
+        return toOrder(row, items);
+    });
+    for (const cancelledSession of cancelledSessions) notifySession(tenant.id, cancelledSession);
+    for (const book of changedBooks) notifyOrderBook(tenant.id, { sellerId: book.seller_id });
+    notifyOrder(tenant.id, order);
+    const erpResult = await cancelProviderOrderForOrder(tenant, user, orderId, auditRequestContext);
+    return { order, erpWarning: erpResult.cancelled ? undefined : erpResult.error };
 }

@@ -18,10 +18,12 @@ interface CatalogProductCardProps {
   /** Link público ou botão interno para abrir o produto. */
   title: ReactNode;
   price: ReactNode;
+  /** Card já visível no primeiro paint — ver ProductImage. */
+  priority?: boolean;
 }
 
 /** A apresentação do produto é única; carrinho e talão injetam apenas suas ações. */
-export default function CatalogProductCard({ product, onOpen, imageAction, title, price }: CatalogProductCardProps) {
+export default function CatalogProductCard({ product, onOpen, imageAction, title, price, priority }: CatalogProductCardProps) {
   const colors = product.colors || [];
   const shownColors = colors.slice(0, MAX_COLOR_DOTS);
   const extraColors = colors.length - shownColors.length;
@@ -53,7 +55,7 @@ export default function CatalogProductCard({ product, onOpen, imageAction, title
           {product.videoUrl ? (
             <video ref={videoRef} className="block size-full bg-brand-background object-cover transition-transform duration-[250ms] group-hover:scale-[1.04]" src={product.videoUrl} preload="metadata" loop muted playsInline disablePictureInPicture />
           ) : (
-            <ProductImage src={product.image} alt={product.name} className="size-full bg-brand-background transition-transform duration-[250ms] group-hover:scale-[1.04]" />
+            <ProductImage src={product.image} alt={product.name} priority={priority} className="size-full bg-brand-background transition-transform duration-[250ms] group-hover:scale-[1.04]" />
           )}
         </button>
         {imageAction}

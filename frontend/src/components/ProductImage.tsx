@@ -8,6 +8,8 @@ const FALLBACK_IMAGE = 'https://via.placeholder.com/500x620?text=Sem+imagem';
 
 type ProductImageProps = Omit<ComponentProps<'img'>, 'src'> & {
   src?: string | null;
+  /** Imagem já visível no primeiro paint (ex.: primeira fileira da grade) — carrega eager/high em vez de lazy, pra não atrasar o LCP. */
+  priority?: boolean;
 };
 
 /**
@@ -18,14 +20,15 @@ type ProductImageProps = Omit<ComponentProps<'img'>, 'src'> & {
  * URL externa e variável, sem controle de tamanho) ainda não carregou, em
  * vez de cada tela precisar lidar com isso na mão.
  */
-export default function ProductImage({ src, alt, className, onLoad, onError, ...props }: ProductImageProps) {
+export default function ProductImage({ src, alt, className, priority, onLoad, onError, ...props }: ProductImageProps) {
   const [loaded, setLoaded] = useState(false);
   return (
     <span className={cn('relative block max-w-full overflow-hidden', className)}>
       {!loaded && <Skeleton className="absolute inset-0 size-full rounded-none" />}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        loading="lazy"
+        loading={priority ? 'eager' : 'lazy'}
+        fetchPriority={priority ? 'high' : 'auto'}
         decoding="async"
         {...props}
         src={src || FALLBACK_IMAGE}

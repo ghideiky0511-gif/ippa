@@ -9,7 +9,7 @@ import { useAuthUser } from './AuthProvider';
 import CatalogProductCard from './CatalogProductCard';
 import type { Product } from '@/domain/products/types';
 
-export default function ProductCard({ product }: { product: Product }) {
+export default function ProductCard({ product, priority }: { product: Product; priority?: boolean }) {
   const { addProductDraft, cart } = useCart();
   const { openQuickView } = useQuickView();
   const { showPrices } = useAuthUser();
@@ -48,5 +48,5 @@ export default function ProductCard({ product }: { product: Product }) {
     </div>
   ) : <div className="text-base font-bold text-foreground">{formatBRL(product.price)}</div>;
 
-  return <CatalogProductCard product={product} onOpen={() => openQuickView(product)} imageAction={imageAction} title={title} price={price} />;
+  return <CatalogProductCard product={product} onOpen={() => openQuickView(product)} imageAction={imageAction} title={title} price={price} priority={priority} />;
 }

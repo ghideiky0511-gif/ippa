@@ -25,7 +25,7 @@ export interface ErpIntegrationTestResult {
   message?: string;
 }
 
-export type ProviderOrderStatus = 'pending' | 'processing' | 'cancelling' | 'sent' | 'failed';
+export type ProviderOrderStatus = 'pending' | 'processing' | 'cancelling' | 'sent' | 'failed' | 'cancelled';
 
 // Estado ATUAL do envio de um pedido ao ERP (provider_orders) -- no máximo
 // uma linha por pedido, sobrescrita a cada tentativa. Ver ProviderOrderAttempt

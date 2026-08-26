@@ -14,6 +14,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   } catch (error) {
     if (error instanceof Error && error.message === 'TENANT_NOT_FOUND') return NextResponse.json({ error: 'Tenant não encontrado.' }, { status: 404 });
     if (error instanceof Error && error.message === 'VESTI_SLUG_NOT_CONFIGURED') return NextResponse.json({ error: 'Configure o slug da Vesti antes de importar.' }, { status: 400 });
+    if (error instanceof Error && error.message === 'VESTI_BOOTSTRAP_AFTER_ERP') return NextResponse.json({ error: 'O bootstrap da Vesti só pode ser executado antes da ativação do ERP.' }, { status: 409 });
     if (error instanceof VestiCatalogFeedError) {
       logger.warn('vesti-import', 'Feed da Vesti indisponível', { tenantId: id, ...errorMeta(error), statusCode: error.statusCode, endpoint: error.endpoint });
       return NextResponse.json({ error: error.message }, { status: 502 });

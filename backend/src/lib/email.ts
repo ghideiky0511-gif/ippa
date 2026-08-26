@@ -131,7 +131,9 @@ export async function sendPaymentLinkEmail(params: { to: string; name: string; l
 // Disparado por POST /api/pay/[token] (pagamento pelo link) e por
 // POST /api/orders (cliente finaliza sozinha, com ou sem talão) — os dois
 // terminam em Order gravado, só muda o caminho até ali.
-export async function sendOrderConfirmedEmail(params: { to: string; name: string; total: number; orderId: string; storeName?: string }): Promise<void> {
+export async function sendOrderConfirmedEmail(params: {
+  to: string; name: string; total: number; orderNumber: number; link: string; storeName?: string;
+}): Promise<void> {
   const storeName = params.storeName || DEFAULT_STORE_NAME;
   await sendEmail({
     to: params.to,
@@ -142,7 +144,9 @@ export async function sendOrderConfirmedEmail(params: { to: string; name: string
       'Pedido confirmado',
       `<p>Olá, ${params.name}! Seu pedido foi confirmado.</p>
        <p><strong>Total:</strong> ${formatBRL(params.total)}</p>
-       <p style="font-size: 13px; color: #767676;">Pedido nº ${params.orderId}</p>`
+       <p><a href="${params.link}" style="display: inline-block; background: #2f7a6c; color: #fff; padding: 10px 16px; border-radius: 6px; text-decoration: none;">Conferir meu pedido</a></p>
+       <p style="font-size: 13px; color: #767676;">Pedido nº ${params.orderNumber}</p>
+       <p style="font-size: 13px; color: #767676;">Ou copie e cole: ${params.link}</p>`
     ),
   });
 }

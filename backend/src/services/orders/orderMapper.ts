@@ -24,6 +24,7 @@ export function toOrderSession(row: OrderSessionRow, items: CartItem[]): OrderSe
 export function toOrder(row: OrderRow, items: CartItem[]): Order {
     return {
         id: row.id,
+        orderNumber: row.order_number,
         date: row.created_at.toISOString(),
         updatedAt: row.updated_at?.toISOString(),
         status: row.status as Order["status"],

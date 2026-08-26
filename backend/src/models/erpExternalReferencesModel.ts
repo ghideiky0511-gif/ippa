@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 
-export type ErpEntityType = "product" | "order" | "client" | "company";
+export type ErpEntityType = "product" | "product_variant" | "order" | "client" | "company";
 
 export interface ErpExternalReferenceRow {
     id: string; integration_id: string; entity_type: ErpEntityType;
@@ -36,6 +36,20 @@ export async function findExternalIdByInternalId(
     return result.rows[0]?.external_id ?? null;
 }
 
+export async function listExternalReferencesByEntityRow(
+    client: PoolClient,
+    integrationId: string,
+    entityType: ErpEntityType,
+): Promise<ErpExternalReferenceRow[]> {
+    const result = await client.query<ErpExternalReferenceRow>(
+        `SELECT id, integration_id, entity_type, internal_id, external_id, metadata, created_at, updated_at
+         FROM erp_external_references
+         WHERE tenant_id = app_tenant_id() AND integration_id = $1 AND entity_type = $2`,
+        [integrationId, entityType],
+    );
+    return result.rows;
+}
+
 export async function upsertExternalReferenceRow(
     client: PoolClient,
     value: { integrationId: string; entityType: ErpEntityType; internalId: string; externalId: string; metadata?: Record<string, unknown> },
@@ -44,7 +58,9 @@ export async function upsertExternalReferenceRow(
         `INSERT INTO erp_external_references (tenant_id, integration_id, entity_type, internal_id, external_id, metadata)
          VALUES (app_tenant_id(), $1, $2, $3, $4, $5)
          ON CONFLICT (tenant_id, integration_id, entity_type, external_id)
-         DO UPDATE SET internal_id = EXCLUDED.internal_id, metadata = EXCLUDED.metadata, updated_at = now()
+         DO UPDATE SET internal_id = EXCLUDED.internal_id,
+                       metadata = erp_external_references.metadata || EXCLUDED.metadata,
+                       updated_at = now()
          RETURNING id, integration_id, entity_type, internal_id, external_id, metadata, created_at, updated_at`,
         [value.integrationId, value.entityType, value.internalId, value.externalId, JSON.stringify(value.metadata ?? {})],
     );

@@ -41,6 +41,8 @@ envVarGroups:
         sync: false
       - key: NOTIFICATION_DISPATCH_SECRET
         sync: false
+      - key: CATALOG_SYNC_SECRET
+        sync: false
 
 services:
   - type: web

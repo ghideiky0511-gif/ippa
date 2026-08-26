@@ -111,7 +111,11 @@ export interface TotvsModaProductSearchOptions {
     page: number;
     pageSize: number;
     updatedSince?: string;
+    changedUntil?: string;
     productCodeList?: number[];
+    referenceCodeList?: string[];
+    includeCatalogChanges?: boolean;
+    order?: string;
 }
 
 export interface TotvsModaPersonSearchOptions {
@@ -398,13 +402,32 @@ export class TotvsModaClient {
         const payload = {
             filter: {
                 change: options.updatedSince
-                    ? { startDate: options.updatedSince }
+                    ? {
+                        startDate: options.updatedSince,
+                        endDate: options.changedUntil,
+                        inProduct: options.includeCatalogChanges || undefined,
+                        inBranchInfo: options.includeCatalogChanges || undefined,
+                        branchInfoCodeList: options.includeCatalogChanges ? [this.credentials.branchCode] : undefined,
+                        inPrice: options.includeCatalogChanges || undefined,
+                        inPromotionalPrice: options.includeCatalogChanges || undefined,
+                        inScheduledPrice: options.includeCatalogChanges || undefined,
+                        inDigitalPromotionPrice: options.includeCatalogChanges || undefined,
+                        branchPriceCodeList: options.includeCatalogChanges ? [this.credentials.branchCode] : undefined,
+                        priceCodeList: options.includeCatalogChanges ? this.credentials.priceCodeList : undefined,
+                        inStock: options.includeCatalogChanges || undefined,
+                        branchStockCodeList: options.includeCatalogChanges ? [this.credentials.branchCode] : undefined,
+                        stockCodeList: options.includeCatalogChanges ? this.credentials.stockCodeList : undefined,
+                        inBarCode: options.includeCatalogChanges || undefined,
+                        inWebInfo: options.includeCatalogChanges || undefined,
+                    }
                     : undefined,
                 productCodeList: options.productCodeList,
+                referenceCodeList: options.referenceCodeList,
             },
             option: { branchInfoCode: this.credentials.branchCode },
             page: options.page,
             pageSize: options.pageSize,
+            order: options.order,
             expand: "classifications",
         };
         return this.searchAndValidate(

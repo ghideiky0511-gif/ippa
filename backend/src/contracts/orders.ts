@@ -115,6 +115,10 @@ export type OrderStatus = z.infer<typeof OrderStatusSchema>;
 
 export const OrderSchema = z.object({
   id: EntityIdSchema,
+  // Identificador legível pela pessoa usuária. É atribuído pelo banco na
+  // criação e é sequencial dentro de cada tenant; o UUID acima continua
+  // sendo a chave técnica usada nas relações e rotas internas.
+  orderNumber: z.number().int().positive(),
   date: IsoDateTimeSchema,
   updatedAt: IsoDateTimeSchema.optional(),
   // 'aberto': carrinho ainda em montagem, pode ganhar upsell (mais itens,

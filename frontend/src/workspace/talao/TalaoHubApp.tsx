@@ -15,6 +15,7 @@ import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import { KpiCard } from '@/workspace/components/shared/KpiCard';
 import { ResponsiveDataTable } from '@/workspace/components/shared/ResponsiveDataTable';
 import Link from '@/components/TenantLink';
+import { StatusChip, type StatusChipTone } from '@/components/StatusChip';
 import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
 
 function formatCurrency(value: number) {
@@ -34,6 +35,13 @@ const STATUS_LABELS: Record<OrderSession['status'], string> = {
   aguardando_pagamento: 'Aguardando pagamento',
   fechado: 'Finalizado',
   cancelado: 'Cancelado',
+};
+
+const STATUS_TONES: Record<OrderSession['status'], StatusChipTone> = {
+  aberto: 'brand',
+  aguardando_pagamento: 'brand',
+  fechado: 'brand',
+  cancelado: 'danger',
 };
 
 const BOOK_STATUS_LABELS: Record<OrderBook['status'], string> = {
@@ -268,7 +276,7 @@ export default function TalaoHubApp({
                       : <span className="text-muted-foreground">Sem cliente</span>,
                   },
                   { key: 'channel', header: 'Canal', cell: (session) => session.channel },
-                  { key: 'status', header: 'Status', cell: (session) => <span className="rounded-full bg-brand-background px-2 py-1 text-xs font-semibold text-brand-primary">{STATUS_LABELS[session.status]}</span> },
+                  { key: 'status', header: 'Status', cell: (session) => <StatusChip label={STATUS_LABELS[session.status]} tone={STATUS_TONES[session.status]} /> },
                   { key: 'items', header: 'Peças', cell: (session) => itemCount(session.items) },
                   { key: 'total', header: 'Total', cell: (session) => formatCurrency(sessionTotal(session)) },
                   { key: 'updatedAt', header: 'Atualização', cell: (session) => new Date(session.updatedAt).toLocaleString('pt-BR') },
@@ -289,7 +297,7 @@ export default function TalaoHubApp({
                           : <p className="truncate font-semibold text-muted-foreground">Sem cliente</p>}
                         <p className="mt-0.5 text-xs text-muted-foreground">{new Date(session.updatedAt).toLocaleString('pt-BR')} · {session.channel}</p>
                       </div>
-                      <span className="shrink-0 rounded-full bg-brand-background px-2 py-1 text-xs font-semibold text-brand-primary">{STATUS_LABELS[session.status]}</span>
+                      <span className="shrink-0"><StatusChip label={STATUS_LABELS[session.status]} tone={STATUS_TONES[session.status]} /></span>
                     </div>
                     <div className="mt-3 flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">{itemCount(session.items)} peças</span>

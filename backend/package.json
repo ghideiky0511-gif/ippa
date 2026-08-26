@@ -14,6 +14,7 @@
     "test:r2-catalog-media": "tsx scripts/testar-r2-catalogo-media.ts",
     "test:ai": "tsx --test src/services/ai/*.test.ts",
     "test:orders": "tsx --test src/services/orders/*.test.ts",
+    "test:catalog-sync": "tsx --test src/services/erp/catalogSyncService.test.ts src/erp/providers/totvsmoda/mapper.test.ts",
     "sync-contracts": "node ../scripts/sync-contracts.mjs"
   },
   "dependencies": {

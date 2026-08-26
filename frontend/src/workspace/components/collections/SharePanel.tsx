@@ -2,12 +2,18 @@
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
 import { useState } from 'react';
+import { useTenant } from '@/components/TenantProvider';
+import { useWorkspaceAuth } from '@/workspace/components/WorkspaceAuthProvider';
 
 export default function SharePanel({ collectionId }) {
   const [copied, setCopied] = useState(false);
-  const origin = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3010';
-  const link = `${origin}/catalogo?destaque=${encodeURIComponent(collectionId)}`;
-  const pdfLink = `${origin}/catalogo/pdf?destaque=${encodeURIComponent(collectionId)}`;
+  const { href } = useTenant();
+  const { workspaceUser } = useWorkspaceAuth();
+  const origin = typeof window === 'undefined' ? '' : window.location.origin;
+  const catalogParams = new URLSearchParams({ destaque: collectionId });
+  if (workspaceUser) catalogParams.set('sharedBy', workspaceUser.id);
+  const link = `${origin}${href('/catalogo')}?${catalogParams.toString()}`;
+  const pdfLink = `${origin}${href('/catalogo/pdf')}?destaque=${encodeURIComponent(collectionId)}`;
 
   function copyLink() {
     navigator.clipboard.writeText(link).then(() => {

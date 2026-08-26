@@ -4,8 +4,10 @@ import type {
     ErpFetchOptions,
     ErpFetchResult,
     ErpOrderPushContext,
+    ErpPriceSnapshot,
     ErpProvider,
     ErpProviderCredentials,
+    ErpStockSnapshot,
 } from "../../types";
 import {
     TotvsModaClient,
@@ -15,12 +17,14 @@ import {
 import { TotvsModaAuthError } from "./errors";
 import {
     groupTotvsModaProducts,
+    mapTotvsModaReferenceSnapshot,
     mapCancelOrderInput,
     mapOrderToTotvsModaOrderInDto,
     mapTotvsModaCompany,
     mapTotvsModaIndividualClient,
     mapTotvsModaLegalEntityClient,
     mapTotvsModaOrder,
+    referenceCodeOfTotvsModaProduct,
     type TotvsModaBalanceRow,
     type TotvsModaBranch,
     type TotvsModaIndividual,
@@ -32,6 +36,13 @@ import {
 } from "./mapper";
 
 const PAGE_SIZE = 100;
+const CATALOG_PAGE_SIZE = 1000;
+
+function chunks<T>(items: T[], size: number): T[][] {
+    const result: T[][] = [];
+    for (let index = 0; index < items.length; index += size) result.push(items.slice(index, index + size));
+    return result;
+}
 
 function trim(value: unknown): string {
     return String(value ?? "").trim();
@@ -173,6 +184,89 @@ export function createTotvsModaErpProvider(
 
     return {
         code: "totvsmoda",
+
+        async discoverProductChanges(window, cursor) {
+            const page = pageFromCursor(cursor);
+            const result = await client.searchProducts({
+                page,
+                pageSize: CATALOG_PAGE_SIZE,
+                updatedSince: window.startDate?.toISOString(),
+                changedUntil: window.endDate?.toISOString(),
+                includeCatalogChanges: Boolean(window.startDate),
+                order: window.startDate
+                    ? "maxChangeFilterDate,referenceCode,productCode"
+                    : "referenceCode,colorCode,productSize,productCode",
+            });
+            const referenceCodes = Array.from(new Set(
+                (result.items as TotvsModaProductRow[])
+                    .map(referenceCodeOfTotvsModaProduct)
+                    .filter(Boolean),
+            ));
+            return {
+                referenceCodes,
+                nextCursor: result.hasNext ? String(page + 1) : undefined,
+            };
+        },
+
+        async fetchReference(referenceCode) {
+            const rows: TotvsModaProductRow[] = [];
+            let page = 1;
+            while (true) {
+                const result = await client.searchProducts({
+                    page,
+                    pageSize: CATALOG_PAGE_SIZE,
+                    referenceCodeList: [referenceCode],
+                    order: "referenceCode,colorCode,productSize,productCode",
+                });
+                rows.push(...result.items as TotvsModaProductRow[]);
+                if (!result.hasNext) break;
+                page += 1;
+            }
+            return mapTotvsModaReferenceSnapshot(rows);
+        },
+
+        async fetchPrices(productCodes): Promise<ErpPriceSnapshot[]> {
+            const result: ErpPriceSnapshot[] = [];
+            const numericCodes = productCodes.map(Number).filter(Number.isFinite);
+            for (const batch of chunks(numericCodes, CATALOG_PAGE_SIZE)) {
+                const response = await client.searchProductPrices(batch);
+                for (const row of response.items as TotvsModaPriceRow[]) {
+                    if (row.productCode === undefined) continue;
+                    const selected = normalized.priceCodeList
+                        .map((code) => row.prices?.find((price) => price.priceCode === code))
+                        .find(Boolean) ?? row.prices?.[0];
+                    const price = selected?.promotionalPrice ?? selected?.price;
+                    if (price === undefined || !Number.isFinite(price)) continue;
+                    result.push({ skuExternalId: String(row.productCode), price });
+                }
+            }
+            return result;
+        },
+
+        async fetchStock(productCodes): Promise<ErpStockSnapshot[]> {
+            const result: ErpStockSnapshot[] = [];
+            const numericCodes = productCodes.map(Number).filter(Number.isFinite);
+            for (const batch of chunks(numericCodes, CATALOG_PAGE_SIZE)) {
+                const response = await client.searchProductBalances(batch);
+                for (const row of response.items as TotvsModaBalanceRow[]) {
+                    if (row.productCode === undefined) continue;
+                    for (const stockCode of normalized.stockCodeList) {
+                        const balance = row.balances?.find((candidate) =>
+                            candidate.stockCode === stockCode
+                            && (candidate.branchCode ?? normalized.branchCode) === normalized.branchCode,
+                        );
+                        const branchCode = balance?.branchCode ?? normalized.branchCode;
+                        result.push({
+                            skuExternalId: String(row.productCode),
+                            locationExternalId: `${branchCode}:${stockCode}`,
+                            locationName: `Filial ${branchCode} / estoque ${stockCode}`,
+                            quantity: Number.isFinite(balance?.stock) ? Number(balance?.stock) : 0,
+                        });
+                    }
+                }
+            }
+            return result;
+        },
 
         async getProducts(
             options?: ErpFetchOptions,

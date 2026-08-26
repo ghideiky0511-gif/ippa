@@ -99,7 +99,6 @@ export async function syncTenantProducts(tenant: Tenant, actor: AuthUser): Promi
                 price: data.price,
                 suggestedRetailPrice: data.suggestedRetailPrice,
                 markup: data.markup,
-                media: { image: data.image, images: data.images, imagesByColor: data.imagesByColor, videoUrl: data.videoUrl },
             };
             const existingId = await findInternalIdByExternalId(client, integration.id, entityType, externalId);
             const row = existingId

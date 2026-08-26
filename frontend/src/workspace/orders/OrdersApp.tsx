@@ -8,6 +8,8 @@ import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import { KpiCard } from '@/workspace/components/shared/KpiCard';
 import { ResponsiveDataTable } from '@/workspace/components/shared/ResponsiveDataTable';
 import { CreateOrderModal } from './OrderTalaoModal';
+import { OrderStatusChip } from './orderStatus';
+import { StatusChip, type StatusChipTone } from '@/components/StatusChip';
 import Link from '@/components/TenantLink';
 import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
 
@@ -30,6 +32,13 @@ const STATUS_LABELS: Record<OrderSession['status'], string> = {
   cancelado: 'Cancelado',
 };
 
+const STATUS_TONES: Record<OrderSession['status'], StatusChipTone> = {
+  aberto: 'brand',
+  aguardando_pagamento: 'brand',
+  fechado: 'brand',
+  cancelado: 'danger',
+};
+
 export default function OrdersApp({
   initialOrders,
   initialSessions,
@@ -40,7 +49,6 @@ export default function OrdersApp({
   const [orders, setOrders] = useState(initialOrders);
   const [sessions, setSessions] = useState(initialSessions);
   const [query, setQuery] = useState('');
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [isCreating, setCreating] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -69,7 +77,7 @@ export default function OrdersApp({
   const filteredOrders = useMemo(() => {
     if (!normalizedQuery) return orders;
     return orders.filter((order) =>
-      [order.id, order.clientName, order.paymentMethod, order.channel]
+      [order.id, String(order.orderNumber), order.clientName, order.paymentMethod, order.channel]
         .some((value) => value?.toLowerCase().includes(normalizedQuery)),
     );
   }, [orders, normalizedQuery]);
@@ -121,7 +129,7 @@ export default function OrdersApp({
             columns={[
               { key: 'updatedAt', header: 'Atualização', cell: (session) => new Date(session.updatedAt).toLocaleString('pt-BR') },
               { key: 'client', header: 'Cliente', cell: (session) => session.clientId ? session.clientName : <span className="text-muted-foreground">Sem cliente</span> },
-              { key: 'status', header: 'Status', cell: (session) => <span className="rounded-full bg-brand-background px-2 py-1 text-xs font-semibold text-brand-primary">{STATUS_LABELS[session.status]}</span> },
+              { key: 'status', header: 'Status', cell: (session) => <StatusChip label={STATUS_LABELS[session.status]} tone={STATUS_TONES[session.status]} /> },
               { key: 'channel', header: 'Canal', cell: (session) => session.channel },
               { key: 'items', header: 'Peças', cell: (session) => itemCount(session.items) },
               { key: 'total', header: 'Total', cell: (session) => formatCurrency(sessionTotal(session)) },
@@ -134,7 +142,7 @@ export default function OrdersApp({
                     <p className="truncate font-semibold text-foreground">{session.clientId ? session.clientName : 'Sem cliente'}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">{new Date(session.updatedAt).toLocaleString('pt-BR')} · {session.channel}</p>
                   </div>
-                  <span className="shrink-0 rounded-full bg-brand-background px-2 py-1 text-xs font-semibold text-brand-primary">{STATUS_LABELS[session.status]}</span>
+                  <span className="shrink-0"><StatusChip label={STATUS_LABELS[session.status]} tone={STATUS_TONES[session.status]} /></span>
                 </div>
                 <div className="mt-3 flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">{itemCount(session.items)} peças</span>
@@ -155,8 +163,10 @@ export default function OrdersApp({
             rowKey={(order) => order.id}
             emptyMessage="Nenhum pedido concluído."
             columns={[
+              { key: 'orderNumber', header: 'Pedido', cell: (order) => `#${order.orderNumber}` },
               { key: 'date', header: 'Data', cell: (order) => new Date(order.date).toLocaleString('pt-BR') },
               { key: 'client', header: 'Cliente', cell: (order) => order.clientName || '—' },
+              { key: 'status', header: 'Status', cell: (order) => <OrderStatusChip status={order.status} /> },
               { key: 'channel', header: 'Canal', cell: (order) => order.channel },
               { key: 'payment', header: 'Pagamento', cell: (order) => order.paymentMethod || '—' },
               { key: 'items', header: 'Peças', cell: (order) => itemCount(order.items) },
@@ -164,42 +174,27 @@ export default function OrdersApp({
               {
                 key: 'actions',
                 header: '',
-                cell: (order) => {
-                  const isExpanded = expandedId === order.id;
-                  return (
-                    <>
-                      <div className="flex gap-2">
-                        <button type="button" className={adminUi.button} onClick={() => setExpandedId(isExpanded ? null : order.id)}>{isExpanded ? 'Ocultar itens' : 'Ver itens'}</button>
-                        <Link href={`/workspace/pedidos/${order.id}`} className={adminUi.button}>Ver detalhes</Link>
-                      </div>
-                      {isExpanded && <div className="mt-2 min-w-56 text-xs text-muted-foreground">{order.items.map((item) => <div key={item.key}>{item.qty}× {item.name}{item.color ? ` · ${item.color}` : ''}{item.size ? ` · ${item.size}` : ''}</div>)}</div>}
-                    </>
-                  );
-                },
+                cell: (order) => <Link href={`/workspace/pedidos/${order.id}`} className={adminUi.button}>Ver detalhes</Link>,
               },
             ]}
-            mobileCard={(order) => {
-              const isExpanded = expandedId === order.id;
-              return (
-                <div className="rounded-brand border border-border bg-surface p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold text-foreground">{order.clientName || '—'}</p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">{new Date(order.date).toLocaleString('pt-BR')} · {order.channel}</p>
-                    </div>
-                    <span className="shrink-0 font-bold text-foreground">{formatCurrency(order.total)}</span>
+            mobileCard={(order) => (
+              <div className="rounded-brand border border-border bg-surface p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-foreground">{order.clientName || '—'}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{new Date(order.date).toLocaleString('pt-BR')} · {order.channel}</p>
                   </div>
-                  <div className="mt-3 flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">{itemCount(order.items)} peças · {order.paymentMethod || '—'}</span>
-                    <div className="flex gap-2">
-                      <button type="button" className={adminUi.button} onClick={() => setExpandedId(isExpanded ? null : order.id)}>{isExpanded ? 'Ocultar' : 'Ver itens'}</button>
-                      <Link href={`/workspace/pedidos/${order.id}`} className={adminUi.button}>Ver detalhes</Link>
-                    </div>
-                  </div>
-                  {isExpanded && <div className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">{order.items.map((item) => <div key={item.key}>{item.qty}× {item.name}{item.color ? ` · ${item.color}` : ''}{item.size ? ` · ${item.size}` : ''}</div>)}</div>}
+                  <span className="shrink-0 font-bold text-foreground">{formatCurrency(order.total)}</span>
                 </div>
-              );
-            }}
+                <div className="mt-2">
+                  <OrderStatusChip status={order.status} />
+                </div>
+                <div className="mt-3 flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">{itemCount(order.items)} peças · {order.paymentMethod || '—'}</span>
+                  <Link href={`/workspace/pedidos/${order.id}`} className={adminUi.button}>Ver detalhes</Link>
+                </div>
+              </div>
+            )}
           />
         </section>
       </main>

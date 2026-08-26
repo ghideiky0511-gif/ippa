@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 
-export type ProviderOrderStatus = "pending" | "processing" | "cancelling" | "sent" | "failed";
+export type ProviderOrderStatus = "pending" | "processing" | "cancelling" | "sent" | "failed" | "cancelled";
 
 export interface ProviderOrderRow {
     id: string; integration_id: string; order_id: string; provider: string;
@@ -98,6 +98,21 @@ export async function markProviderOrderForResend(client: PoolClient, orderId: st
         `UPDATE provider_orders SET
            status = CASE WHEN external_id IS NOT NULL THEN 'cancelling' ELSE 'pending' END,
            next_attempt_at = now(), updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND order_id = $1 AND status <> 'processing'
+         RETURNING ${fields}`,
+        [orderId],
+    );
+    return result.rows[0] ?? null;
+}
+
+// Cancelamento de PEDIDO (não resend): terminal, nunca recria em seguida --
+// diferente de markProviderOrderForResend acima. Chamado só depois que o
+// cancelamento no provider (se havia external_id) já foi tentado -- ver
+// orderPushService.cancelProviderOrderForOrder. Não mexe em linha
+// 'processing' pelo mesmo motivo do resend.
+export async function markProviderOrderCancelled(client: PoolClient, orderId: string): Promise<ProviderOrderRow | null> {
+    const result = await client.query<ProviderOrderRow>(
+        `UPDATE provider_orders SET status = 'cancelled', external_id = NULL, updated_at = now()
          WHERE tenant_id = app_tenant_id() AND order_id = $1 AND status <> 'processing'
          RETURNING ${fields}`,
         [orderId],

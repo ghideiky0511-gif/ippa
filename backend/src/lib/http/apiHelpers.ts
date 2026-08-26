@@ -71,6 +71,10 @@ export const ERROR_MESSAGES: Record<string, string> = {
     CLIENT_NOT_FOUND_FOR_DOCUMENT: "Nenhuma cliente encontrada (local ou no ERP) para este documento.",
     CLIENT_ALREADY_GROUP_MEMBER: "Esta cliente já é membro deste grupo comercial.",
     CLIENT_ALREADY_IN_ANOTHER_GROUP: "Esta cliente já pertence a outro grupo comercial ativo.",
+    ORDER_NOT_FOUND: "Pedido não encontrado.",
+    ORDER_NOT_READY_FOR_PAYMENT: "Este pedido ainda está em montagem — finalize o checkout antes de marcar como pago.",
+    ORDER_ALREADY_PAID: "Este pedido já está marcado como pago.",
+    ORDER_ALREADY_CANCELLED: "Este pedido já foi cancelado.",
 };
 
 export function cookieOptions() {

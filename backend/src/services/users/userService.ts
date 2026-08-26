@@ -44,6 +44,22 @@ export function defaultPermissionsFor(role: UserRole): NonNullable<AuthUser["per
     }
 }
 
+/**
+ * Nome que pode aparecer no card de compartilhamento de um catálogo.
+ * Somente pessoas da equipe são elegíveis: um `sharedBy` nunca revela o
+ * nome de uma cliente, mesmo que alguém tente montar a URL manualmente.
+ */
+export async function publicCatalogSharer(
+    tenant: Tenant,
+    userId: string,
+): Promise<{ name: string } | null> {
+    return withTenantTransaction(tenant, {}, async (client) => {
+        const user = await findUserRowById(client, userId);
+        if (!user || (user.role !== "vendedora" && user.role !== "administrador")) return null;
+        return { name: user.name };
+    });
+}
+
 export async function createUserRecord(
     client: PoolClient,
     actor: Pick<AuthUser, "id" | "role" | "name"> | null,

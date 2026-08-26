@@ -11,6 +11,11 @@ import {
 } from "@/lib/email";
 import { errorMeta, logger } from "@/lib/logger";
 
+function orderDetailsLink(tenant: Tenant, orderNumber: number): string {
+    const origin = (process.env.APP_URL || process.env.ADMIN_ORIGIN || "http://localhost:3010").replace(/\/+$/, "");
+    return `${origin}/${encodeURIComponent(tenant.slug)}/pedidos/${encodeURIComponent(String(orderNumber))}`;
+}
+
 export function notifySignup(
     tenant: Tenant,
     user: { email: string; name: string },
@@ -78,13 +83,14 @@ export function notifyOrderConfirmed(
         email: string;
         name: string;
     },
-    order: { id: string; total: number },
+    order: { id: string; orderNumber: number; total: number },
 ): void {
     void sendOrderConfirmedEmail({
         to: user.email,
         name: user.name,
         total: order.total,
-        orderId: order.id,
+        orderNumber: order.orderNumber,
+        link: orderDetailsLink(tenant, order.orderNumber),
         storeName: tenant.name,
     });
     // A caixa de entrada é criada mesmo sem inscrição Web Push; assim o aviso
@@ -93,11 +99,11 @@ export function notifyOrderConfirmed(
         module: "orders",
         event: "confirmed",
         title: "Pedido confirmado",
-        body: `Seu pedido #${order.id.slice(0, 8)} foi confirmado.`,
-        url: "/pedidos",
+        body: `Seu pedido nº ${order.orderNumber} foi confirmado.`,
+        url: `/pedidos/${order.orderNumber}`,
         tag: `order-${order.id}`,
         idempotencyKey: `order-confirmed:${order.id}:${user.id}`,
-        data: { orderId: order.id, total: order.total },
+        data: { orderId: order.id, orderNumber: order.orderNumber, total: order.total },
     }).catch((error) =>
         console.error("Falha ao criar notificação de pedido", error),
     );

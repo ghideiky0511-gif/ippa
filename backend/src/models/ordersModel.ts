@@ -9,7 +9,7 @@ export interface OrderSessionRow {
 }
 export interface OrderSessionItemRow { session_id: string; snapshot: CartItem }
 export interface OrderRow {
-    id: string; created_at: Date; updated_at: Date; client_id: string | null; seller_id: string | null;
+    id: string; order_number: number; created_at: Date; updated_at: Date; client_id: string | null; seller_id: string | null;
     client_name: string | null; channel: string; status: Order["status"]; total: string;
     shipping: Order["shipping"]; payment_method: string | null; discount: Order["discount"];
 }
@@ -189,6 +189,22 @@ export async function closeOpenOrderSessionRowsByOrder(client: PoolClient, order
     return result.rows;
 }
 
+// Cancelar um pedido (ver orderService.cancelOrder) cancela junto toda
+// sessão irmã ainda aberta -- mesmo motivo de closeOpenOrderSessionRowsByOrder
+// acima, só que com status 'cancelado' em vez de 'fechado' (mesmo padrão de
+// cancelOpenOrderSessionRowsByBook, abaixo, só que por order_id).
+export async function cancelOpenOrderSessionRowsByOrder(client: PoolClient, orderId: string): Promise<OrderSessionRow[]> {
+    const result = await client.query<OrderSessionRow>(
+        `UPDATE order_sessions SET status = 'cancelado', payment_token_hash = NULL,
+           payment_token_created_at = NULL, updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND order_id = $1
+           AND status IN ('aberto', 'aguardando_pagamento')
+         RETURNING ${sessionFields}`,
+        [orderId],
+    );
+    return result.rows;
+}
+
 // Proteção para dados legados ou interrupções durante a finalização: uma
 // sessão aberta não pode continuar apontando para um pedido já concluído.
 // A consulta é limitada à cliente para poder ser usada quando ela retoma o
@@ -264,12 +280,20 @@ export interface OrderWriteRow {
     createdAt?: string;
 }
 
-const orderFields = "id, created_at, updated_at, client_id, seller_id, client_name, channel, status, total, shipping, payment_method, discount";
+const orderFields = "id, order_number, created_at, updated_at, client_id, seller_id, client_name, channel, status, total, shipping, payment_method, discount";
 
 export async function insertOrderRow(client: PoolClient, value: OrderWriteRow): Promise<OrderRow> {
     const result = await client.query<OrderRow>(
-        `INSERT INTO orders (tenant_id, client_id, seller_id, client_name, channel, status, total, shipping, payment_method, discount, created_at)
-         VALUES (app_tenant_id(), $1,$2,$3,$4,$5,$6,$7,$8,$9, COALESCE($10, now()))
+        `WITH allocated_number AS (
+           INSERT INTO tenant_order_counters (tenant_id, next_order_number)
+           VALUES (app_tenant_id(), 2)
+           ON CONFLICT (tenant_id) DO UPDATE
+             SET next_order_number = tenant_order_counters.next_order_number + 1
+           RETURNING next_order_number - 1 AS order_number
+         )
+         INSERT INTO orders (tenant_id, order_number, client_id, seller_id, client_name, channel, status, total, shipping, payment_method, discount, created_at)
+         SELECT app_tenant_id(), allocated_number.order_number, $1,$2,$3,$4,$5,$6,$7,$8,$9, COALESCE($10, now())
+         FROM allocated_number
          RETURNING ${orderFields}`,
         [value.clientId ?? null, value.sellerId ?? null, value.clientName ?? null, value.channel,
          value.status ?? "pago", value.total, value.shipping ? JSON.stringify(value.shipping) : null,
@@ -283,6 +307,15 @@ export async function findOrderRowById(client: PoolClient, id: string, lock = fa
     const result = await client.query<OrderRow>(
         `SELECT ${orderFields} FROM orders
          WHERE tenant_id = app_tenant_id() AND id = $1${lock ? " FOR UPDATE" : ""}`, [id],
+    );
+    return result.rows[0] ?? null;
+}
+
+export async function findOrderRowByNumber(client: PoolClient, orderNumber: number): Promise<OrderRow | null> {
+    const result = await client.query<OrderRow>(
+        `SELECT ${orderFields} FROM orders
+         WHERE tenant_id = app_tenant_id() AND order_number = $1`,
+        [orderNumber],
     );
     return result.rows[0] ?? null;
 }

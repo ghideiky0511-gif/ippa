@@ -19,6 +19,7 @@ import {
 } from "@/models/settingsModel";
 import { getActiveProductDiscount } from "@/services/settings/discountCalculator";
 import { listHighlights } from "@/services/settings/highlightService";
+import { resolveCatalogMedia } from "@/services/catalog/catalogMediaService";
 
 // Árvore categoria->subcategorias pro menu público — direto de `classifications`/
 // `classification_types` (hierarquia real via `parent_id`, sem heurística de
@@ -111,9 +112,10 @@ export async function listCatalog(tenant: Tenant): Promise<Product[]> {
             variantsByProduct.set(row.product_id, productVariants);
         }
 
-        return products.map((row) => {
+        return Promise.all(products.map(async (row) => {
             const productVariants = variantsByProduct.get(row.id) ?? [];
             const classification = classificationsByProduct.get(row.id);
+            const resolvedMedia = await resolveCatalogMedia(row.media);
             const { manualOverride, ...attributes } = row.attributes as typeof row.attributes & {
                 manualOverride?: Partial<Product>;
             };
@@ -129,10 +131,10 @@ export async function listCatalog(tenant: Tenant): Promise<Product[]> {
                 price: Number(row.price),
                 suggestedRetailPrice: row.suggested_retail_price ? Number(row.suggested_retail_price) : undefined,
                 markup: row.markup ? Number(row.markup) : undefined,
-                image: row.media.image,
-                images: row.media.images,
-                imagesByColor: row.media.imagesByColor,
-                videoUrl: row.media.videoUrl,
+                image: resolvedMedia.image,
+                images: resolvedMedia.images,
+                imagesByColor: resolvedMedia.imagesByColor,
+                videoUrl: resolvedMedia.videoUrl,
                 colors: [...new Set(productVariants.map((variant) => variant.color))],
                 sizes: [...new Set(productVariants.map((variant) => variant.size))],
                 variants: productVariants,
@@ -149,7 +151,7 @@ export async function listCatalog(tenant: Tenant): Promise<Product[]> {
                     })),
                 })),
                 ...attributes,
-                ...manualOverride,
+                ...(row.source_origin === "erp" ? {} : manualOverride),
             } as Product;
             if (storeSettings?.default_markup && product.suggestedRetailPrice === undefined && product.markup === undefined) {
                 const defaultMarkup = Number(storeSettings.default_markup);
@@ -168,7 +170,7 @@ export async function listCatalog(tenant: Tenant): Promise<Product[]> {
                 product = withoutSuggestedPrice;
             }
             return product;
-        });
+        }));
     });
 }
 

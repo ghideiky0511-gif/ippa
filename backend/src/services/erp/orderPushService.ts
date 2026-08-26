@@ -27,6 +27,7 @@ import {
     finishProviderOrderAttempt,
     findProviderOrderRowByOrderId,
     insertProviderOrderRow,
+    markProviderOrderCancelled,
     markProviderOrderForResend,
     type ClaimedProviderOrderRow,
     type ProviderOrderRow,
@@ -103,6 +104,59 @@ export async function requestProviderOrderResend(
     // 'processing': dispatch já em andamento agora -- não mexe, só devolve o
     // estado atual para quem chamou decidir a mensagem ("já em andamento").
     return withTenantTransaction(tenant, actor, (client) => findProviderOrderRowByOrderId(client, orderId));
+}
+
+// Cancelamento de PEDIDO (ver orderService.cancelOrder) -- síncrono, fora da
+// fila de dispatch: diferente de um resend, aqui não há "tentar de novo
+// depois" que faça sentido (o pedido já foi cancelado localmente, que é a
+// fonte de verdade), então nunca lança para quem chamou -- mesmo espírito de
+// enqueueOrderPush nunca propagar erro, só que aqui devolvendo o motivo pra
+// virar um aviso não-bloqueante na UI em vez de só logar.
+export async function cancelProviderOrderForOrder(
+    tenant: Tenant,
+    actor: Pick<AuthUser, "id" | "role" | "name">,
+    orderId: string,
+    auditRequestContext?: AuditRequestContext,
+): Promise<{ cancelled: boolean; error?: string }> {
+    try {
+        return await withTenantTransaction(tenant, actor, async (client) => {
+            const row = await findProviderOrderRowByOrderId(client, orderId);
+            if (!row) return { cancelled: true };
+            if (row.status === "processing") {
+                return { cancelled: false, error: "Reenvio ao ERP em andamento — tente cancelar novamente em instantes." };
+            }
+            if (!row.external_id) {
+                await markProviderOrderCancelled(client, orderId);
+                return { cancelled: true };
+            }
+            const integration = await findErpIntegrationRowByProvider(client, row.provider);
+            if (!integration) {
+                return { cancelled: false, error: "Integração de ERP não encontrada para cancelar este pedido lá." };
+            }
+            const provider = createErpProvider(
+                integration.provider, integration.credentials,
+                createExternalApiCallReporter(tenant, actor, integration.provider),
+            );
+            if (!provider.cancelOrder) {
+                return { cancelled: false, error: "Este provedor de ERP não suporta cancelamento de pedido." };
+            }
+            await provider.cancelOrder(row.external_id);
+            await markProviderOrderCancelled(client, orderId);
+            if (auditRequestContext) {
+                await recordAuditEvent(client, {
+                    action: PROVIDER_ORDER_AUDIT_ACTIONS.CANCEL_REQUESTED,
+                    entityId: row.id,
+                    actor,
+                    context: auditRequestContext,
+                    metadata: { orderId, provider: row.provider },
+                });
+            }
+            return { cancelled: true };
+        });
+    } catch (error) {
+        logger.error("ERP_ORDER_PUSH", "Falha ao cancelar pedido no ERP", { orderId, ...errorMeta(error) });
+        return { cancelled: false, error: error instanceof Error ? error.message : "Falha ao cancelar no ERP." };
+    }
 }
 
 export async function orderPushStatus(tenant: Tenant, actor: ActorContext, orderId: string): Promise<ProviderOrderRow | null> {

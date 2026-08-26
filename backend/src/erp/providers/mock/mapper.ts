@@ -22,7 +22,7 @@ export function mapMockProduct(raw: MockRawProduct): Omit<Product, "id"> {
     };
 }
 
-export function mapMockOrder(raw: MockRawOrder): Omit<Order, "id"> {
+export function mapMockOrder(raw: MockRawOrder): Omit<Order, "id" | "orderNumber"> {
     const items: CartItem[] = raw.itens.map((item) => ({
         key: item.sku,
         id: item.sku,
