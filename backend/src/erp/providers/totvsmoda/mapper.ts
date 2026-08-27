@@ -36,8 +36,10 @@ import type {
 export interface TotvsModaClassification {
     typeCode?: number;
     typeName?: string;
+    typeNameAux?: string;
     code?: string;
     name?: string;
+    nameAux?: string;
 }
 
 // ReferenceDetailModel retornado com expand=details. A descrição principal
@@ -227,15 +229,13 @@ export function mapTotvsModaReferenceSnapshot(
         externalId,
         name: first.referenceName ?? first.productName ?? externalId,
         description: descriptionOfTotvsModaReference(rows),
-        category: findClassification(classifications, "categoria"),
-        subcategory: findClassification(classifications, "subcategoria"),
-        collection: findClassification(classifications, "coleção", "colecao"),
-        brand: findClassification(classifications, "marca"),
         classifications: classifications.map((classification) => ({
             typeCode: classification.typeCode,
             typeName: classification.typeName,
             code: classification.code,
             name: classification.name,
+            typeNameAux: classification.typeNameAux,
+            nameAux: classification.nameAux,
         })),
         skus: rows.flatMap((row) => {
             if (row.productCode === undefined) return [];
@@ -246,6 +246,14 @@ export function mapTotvsModaReferenceSnapshot(
                 size: row.size ?? "",
                 isActive: row.isActive !== false,
                 isBlocked: row.isBlocked === true,
+                classifications: (row.classifications ?? []).map((classification) => ({
+                    typeCode: classification.typeCode,
+                    typeName: classification.typeName,
+                    code: classification.code,
+                    name: classification.name,
+                    typeNameAux: classification.typeNameAux,
+                    nameAux: classification.nameAux,
+                })),
             }];
         }),
     };
@@ -343,6 +351,7 @@ export function groupTotvsModaProducts(
                 price: priceFor(row.productCode, priceByCode),
                 availability: row.isActive === false || row.isBlocked ? "out_of_stock" : stockQty > 0 ? "in_stock" : "out_of_stock",
                 stockQty,
+                classifications: [],
             };
         });
         const price = variants.find((v) => v.price > 0)?.price ?? 0;
@@ -351,9 +360,6 @@ export function groupTotvsModaProducts(
             data: {
                 name: first.referenceName ?? first.productName ?? "",
                 description: "",
-                category: findClassification(first.classifications, "categoria") ?? "",
-                subcategory: findClassification(first.classifications, "subcategoria"),
-                brand: findClassification(first.classifications, "marca"),
                 referenceId: referenceCode,
                 price,
                 colors,

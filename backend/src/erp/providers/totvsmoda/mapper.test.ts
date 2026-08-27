@@ -37,9 +37,9 @@ test("agrupa todos os SKUs e classificações de uma referência", () => {
     assert.ok(snapshot);
     assert.equal(snapshot.externalId, "REF-1");
     assert.equal(snapshot.description, "Descri\u00e7\u00e3o editorial do TOTVS");
-    assert.equal(snapshot.category, "Vestidos");
     assert.deepEqual(snapshot.skus.map((sku) => sku.externalId), ["10", "11"]);
-    assert.equal(snapshot.classifications.some((classification) => classification.code === "IPPA"), true);
+    assert.deepEqual(snapshot.skus[0].classifications.map((classification) => classification.code), ["VEST"]);
+    assert.deepEqual(snapshot.skus[1].classifications.map((classification) => classification.code), ["IPPA"]);
 });
 
 test("mapTotvsModaCompositions achata grupo/composição/fibras (composição por grupo)", () => {

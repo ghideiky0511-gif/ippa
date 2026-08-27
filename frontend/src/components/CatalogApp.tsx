@@ -14,6 +14,7 @@ import { useTalao } from "./TalaoProvider";
 import { useCart } from "./CartProvider";
 import type { CatalogPage, CatalogSectionsResult } from "@/domain/catalog/types";
 import type { Product } from "@/domain/products/types";
+import type { CategoryTreeEntry } from "@/domain/catalog/types";
 
 // Mesmo formato dos outros filtros (Select com "tanto faz"/"sim"/"não") em
 // vez de um toggle avulso — ver Filters.tsx.
@@ -21,8 +22,7 @@ export type TriFilter = "" | "sim" | "nao";
 
 export interface CatalogFilters {
     term: string;
-    category: string;
-    subcategory: string;
+    classificationId: string;
     color: string;
     size: string;
     // Client-side: recortam pelos ids do carrinho (ver ProductCard.tsx). Não
@@ -32,12 +32,12 @@ export interface CatalogFilters {
 }
 
 export interface CatalogFilterOptions {
-    categories: string[];
+    categories: CategoryTreeEntry[];
     colors: string[];
     sizes: string[];
 }
 
-const EMPTY_FILTERS: CatalogFilters = { term: "", category: "", subcategory: "", color: "", size: "", selected: "", suggested: "" };
+const EMPTY_FILTERS: CatalogFilters = { term: "", classificationId: "", color: "", size: "", selected: "", suggested: "" };
 const LOAD_MORE_ROOT_MARGIN = "600px 0px";
 const REFETCH_DEBOUNCE_MS = 350;
 // Scroll infinito nunca "esquece" o que já carregou — sem isso, uma sessão
@@ -57,8 +57,7 @@ const FIRST_ROW_PRIORITY_COUNT = 4;
 function facetParams(filters: CatalogFilters, restrictIds?: string[], excludeIds?: string[]): URLSearchParams {
     const params = new URLSearchParams();
     if (filters.term) params.set("term", filters.term);
-    if (filters.category) params.set("category", filters.category);
-    if (filters.subcategory) params.set("subcategory", filters.subcategory);
+    if (filters.classificationId) params.set("classificationId", filters.classificationId);
     if (filters.color) params.set("color", filters.color);
     if (filters.size) params.set("size", filters.size);
     if (restrictIds && restrictIds.length > 0) params.set("restrictIds", restrictIds.join(","));
@@ -91,7 +90,7 @@ export default function CatalogApp({
 }: {
     filterOptions: CatalogFilterOptions;
     initialSections: CatalogSectionsResult;
-    initialFilters: { category: string; subcategory: string };
+    initialFilters: { classificationId: string };
     restrictIds?: string[];
 }) {
     const searchParams = useSearchParams();
@@ -214,7 +213,7 @@ export default function CatalogApp({
         }, REFETCH_DEBOUNCE_MS);
         return () => clearTimeout(timeout);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filters.term, filters.category, filters.subcategory, filters.color, filters.size, cartFilterKey]);
+    }, [filters.term, filters.classificationId, filters.color, filters.size, cartFilterKey]);
 
     async function loadMore() {
         if (loadingMore || bottomGrid.pagination.page >= bottomGrid.pagination.totalPages) return;

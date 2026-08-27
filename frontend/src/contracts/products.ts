@@ -11,6 +11,7 @@ import {
   PositiveIntegerSchema,
   RequiredTextSchema,
 } from './shared';
+import { ClassificationSchema } from './classifications';
 
 export const AvailabilitySchema = z.enum(['in_stock', 'preorder', 'backorder', 'out_of_stock']);
 export type Availability = z.infer<typeof AvailabilitySchema>;
@@ -34,6 +35,7 @@ export const VariantSchema = z.object({
   // "pronta entrega" de "excedente sob encomenda" no seletor de quantidade
   // — ver splitStockQty em frontend/src/lib/variants.ts.
   stockQty: NonNegativeIntegerSchema.optional(),
+  classifications: z.array(ClassificationSchema),
 });
 export type Variant = z.infer<typeof VariantSchema>;
 
@@ -80,15 +82,6 @@ export const ProductSchema = z.object({
   id: EntityIdSchema,
   name: RequiredTextSchema,
   description: z.string(),
-  category: z.string(),
-  subcategory: z.string().optional(),
-  // Coleção/temporada da peça (ex. "Verão 2027") — dado da loja, sem
-  // origem no ERP hoje (se um dia o Bippa/ERP passar a mandar, some daqui
-  // e vira igual category: já vem pronto do catalog.json). Ausente = peça
-  // atemporal (vende o ano todo, fora de qualquer coleção). Editável em
-  // /produtos (ver ProductOverride em contracts/catalog.ts).
-  collection: z.string().optional(),
-  brand: z.string().optional(),
   referenceId: z.string().optional(), // código de referência (REF) — vem do ERP (ex. TOTVS Moda ReferenceCode) ou digitado à mão pra produto manual; mostrado no card e na página de produto
   price: MoneySchema,
   image: z.string().optional(),
@@ -172,11 +165,14 @@ export type RefreshProductFromErpResult = z.infer<typeof RefreshProductFromErpRe
 export const CreateProductInputSchema = z.object({
   name: RequiredTextSchema,
   price: MoneySchema,
-  category: OptionalTextSchema,
   referenceId: OptionalTextSchema,
   description: OptionalTextSchema,
   image: HttpUrlSchema.optional(),
-  variant: z.object({ color: RequiredTextSchema, size: RequiredTextSchema }).optional(),
+  variant: z.object({
+    color: RequiredTextSchema,
+    size: RequiredTextSchema,
+    classificationIds: z.array(EntityIdSchema).max(100).optional(),
+  }).optional(),
 });
 export type CreateProductInput = z.infer<typeof CreateProductInputSchema>;
 
@@ -193,10 +189,6 @@ const OptionalHttpUrlSchema = z.preprocess(
 export const UpdateManualProductInputSchema = z.object({
   name: RequiredTextSchema,
   description: z.string().trim(),
-  category: RequiredTextSchema,
-  subcategory: OptionalTextSchema,
-  collection: OptionalTextSchema,
-  brand: OptionalTextSchema,
   referenceId: OptionalTextSchema,
   price: MoneySchema,
   suggestedRetailPrice: MoneySchema.optional(),
@@ -211,6 +203,7 @@ export const UpdateManualProductInputSchema = z.object({
     size: RequiredTextSchema,
     price: MoneySchema,
     availability: AvailabilitySchema,
+    classificationIds: z.array(EntityIdSchema).max(100),
   })).max(200),
   similarProductIdsQuickview: z.array(EntityIdSchema).max(24).optional(),
   similarProductIdsCart: z.array(EntityIdSchema).max(24).optional(),

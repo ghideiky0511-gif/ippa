@@ -3,6 +3,7 @@ import { documentDigits } from "@/contracts/shared";
 import type {
     ErpFetchOptions,
     ErpFetchResult,
+    ErpClassificationTypeSnapshot,
     ErpOrderPushContext,
     ErpPriceSnapshot,
     ErpProvider,
@@ -190,6 +191,26 @@ export function createTotvsModaErpProvider(
 
     return {
         code: "totvsmoda",
+
+        async listProductClassificationTypes(): Promise<ErpClassificationTypeSnapshot[]> {
+            const types = new Map<string, ErpClassificationTypeSnapshot>();
+            let page = 1;
+            while (true) {
+                const result = await client.listProductClassifications(page, PAGE_SIZE);
+                for (const item of result.items) {
+                    const typeCode = trim(item.typeCode ?? item.code);
+                    const typeName = trim(item.typeName ?? item.name);
+                    if (typeCode && typeName) types.set(typeCode, {
+                        typeCode,
+                        typeName,
+                        typeNameAux: trim(item.typeNameAux ?? item.auxiliaryType) || undefined,
+                    });
+                }
+                if (!result.hasNext) break;
+                page += 1;
+            }
+            return [...types.values()].sort((left, right) => left.typeName.localeCompare(right.typeName));
+        },
 
         async discoverProductChanges(window, cursor) {
             const page = pageFromCursor(cursor);

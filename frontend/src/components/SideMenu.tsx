@@ -90,11 +90,11 @@ export default function SideMenu({ categoryTree, authUser }: { categoryTree: Cat
         </div>
         <div className={`absolute inset-0 flex flex-col overflow-y-auto bg-surface transition-transform duration-300 ${panel === 'categories' ? 'translate-x-0' : 'translate-x-full'}`}>
           <div className="flex min-h-16 items-center border-b border-border px-5"><button type="button" className="inline-flex min-h-11 items-center gap-2 rounded-control px-2 text-sm font-bold text-brand-primary hover:bg-brand-background" onClick={() => setPanel('menu')}><ArrowLeft className="size-4" />Voltar</button></div>
-          <div className="p-5">{(categoryTree || []).map(({ category, subcategories }) => {
-            const base = `/catalogo?publico=${encodeURIComponent(activeAudience || '')}&categoria=${encodeURIComponent(category)}`;
-            if (subcategories.length === 0) return <Link key={category} href={base} className="flex min-h-11 items-center text-sm font-semibold hover:text-brand-primary" onClick={closeMenu}>{category}</Link>;
-            const isOpen = openCategory === category;
-            return <div key={category} className="border-b border-border py-1"><button type="button" className="flex min-h-11 w-full items-center justify-between text-left text-sm font-semibold" onClick={() => setOpenCategory(isOpen ? null : category)}>{category}<ChevronRight className={`size-4 transition-transform ${isOpen ? 'rotate-90' : ''}`} /></button>{isOpen && <div className="pb-2 pl-3"><Link href={base} className="flex min-h-10 items-center text-sm font-semibold text-brand-primary" onClick={closeMenu}>Ver tudo</Link>{subcategories.map((sub) => <Link key={sub} href={`${base}&subcategoria=${encodeURIComponent(sub)}`} className="flex min-h-10 items-center text-sm text-muted-foreground hover:text-brand-primary" onClick={closeMenu}>{sub}</Link>)}</div>}</div>;
+          <div className="p-5">{(categoryTree || []).map((node) => {
+            const base = `/catalogo?publico=${encodeURIComponent(activeAudience || '')}&classificacao=${encodeURIComponent(node.id)}`;
+            if (node.children.length === 0) return <Link key={node.id} href={base} className="flex min-h-11 items-center text-sm font-semibold hover:text-brand-primary" onClick={closeMenu}>{node.name}</Link>;
+            const isOpen = openCategory === node.id;
+            return <div key={node.id} className="border-b border-border py-1"><button type="button" className="flex min-h-11 w-full items-center justify-between text-left text-sm font-semibold" onClick={() => setOpenCategory(isOpen ? null : node.id)}>{node.name}<ChevronRight className={`size-4 transition-transform ${isOpen ? 'rotate-90' : ''}`} /></button>{isOpen && <div className="pb-2 pl-3"><Link href={base} className="flex min-h-10 items-center text-sm font-semibold text-brand-primary" onClick={closeMenu}>Ver tudo</Link>{node.children.map((child) => <Link key={child.id} href={`/catalogo?publico=${encodeURIComponent(activeAudience || '')}&classificacao=${encodeURIComponent(child.id)}`} className="flex min-h-10 items-center text-sm text-muted-foreground hover:text-brand-primary" onClick={closeMenu}>{child.name}</Link>)}</div>}</div>;
           })}</div>
         </div>
       </aside>

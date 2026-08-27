@@ -4,7 +4,30 @@
 import type { HomeSection, Product, ResolvedHomeSection } from './types';
 
 export function getCategories(products: Product[]): string[] {
-  return Array.from(new Set(products.map((p) => p.category).filter(Boolean))).sort();
+  return Array.from(new Set(products.flatMap((product) => product.variants.flatMap((variant) =>
+    variant.classifications.filter((classification) => classification.type.categoryLevel === 1).map((classification) => classification.name),
+  )))).sort();
+}
+
+export function productClassificationIds(product: Product, level?: 1 | 2 | 3): string[] {
+  return [...new Set(product.variants.flatMap((variant) => variant.classifications
+    .filter((classification) => level === undefined || classification.type.categoryLevel === level)
+    .map((classification) => classification.id)))];
+}
+
+export function productDeepestCategoryIds(product: Product): string[] {
+  for (const level of [3, 2, 1] as const) {
+    const ids = productClassificationIds(product, level);
+    if (ids.length > 0) return ids;
+  }
+  return [];
+}
+
+export function productClassificationSummary(product: Product): string {
+  const labels = [...new Set(product.variants.flatMap((variant) => variant.classifications
+    .filter((classification) => classification.type.categoryLevel !== undefined)
+    .map((classification) => classification.name)))];
+  return labels.slice(0, 3).join(' / ');
 }
 
 export function getColors(products: Product[]): string[] {

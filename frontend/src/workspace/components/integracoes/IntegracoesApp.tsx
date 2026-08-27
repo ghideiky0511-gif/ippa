@@ -1,6 +1,7 @@
 // @ts-nocheck
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
+import Link from '@/components/TenantLink';
 import { useState } from 'react';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { HubHeader } from '@/workspace/components/shared/HubHeader';
@@ -199,9 +200,9 @@ export default function IntegracoesApp({ initialOptions, initialPaymentOptions }
                 )}
 
                 <div className={`${adminUi.fieldRow} flex-wrap`}>
-                  <button type="button" className={adminUi.button} onClick={() => setEditingProvider(option.provider)}>
-                    {option.configured ? 'Editar credenciais' : 'Configurar'}
-                  </button>
+                  {option.provider === 'totvsmoda'
+                    ? <Link href="/workspace/integracoes/totvsmoda" className={adminUi.button}>Configurar TOTVS Moda</Link>
+                    : <button type="button" className={adminUi.button} onClick={() => setEditingProvider(option.provider)}>{option.configured ? 'Editar credenciais' : 'Configurar'}</button>}
                   {option.configured && (
                     <button
                       type="button"

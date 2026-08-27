@@ -91,10 +91,6 @@ export async function syncTenantProducts(tenant: Tenant, actor: AuthUser): Promi
             const writeRow: ProductWriteRow = {
                 name: data.name,
                 description: data.description,
-                category: data.category,
-                subcategory: data.subcategory,
-                collection: data.collection,
-                brand: data.brand,
                 referenceId: data.referenceId,
                 price: data.price,
                 suggestedRetailPrice: data.suggestedRetailPrice,

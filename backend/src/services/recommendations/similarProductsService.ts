@@ -4,19 +4,20 @@ import type { Product, SimilarProductsRuleConfig, SimilarProductsSettings } from
 import { listCatalog } from "@/services/catalog";
 import { getSimilarProductsSettings } from "@/services/settings";
 import { ValidationError } from "@/services/shared/errors";
+import { productClassificationIds, productDeepestCategoryIds } from "@/lib/catalogFacets";
 
 type SimilarProductsContext = "quickview" | "cart";
 type Rule = (catalog: Product[], anchors: Product[], excluded: Set<string>, settings: SimilarProductsSettings) => Product[];
 
 const RULES: Record<string, Rule> = {
   sameSubcategory: (catalog, anchors, excluded) => catalog.filter((product) => !excluded.has(product.id) &&
-    anchors.some((anchor) => Boolean(anchor.subcategory) && product.category === anchor.category &&
-      product.subcategory === anchor.subcategory)),
+    anchors.some((anchor) => productDeepestCategoryIds(anchor).some((id) => productDeepestCategoryIds(product).includes(id)))),
   sameCategory: (catalog, anchors, excluded) => catalog.filter((product) => !excluded.has(product.id) &&
-    anchors.some((anchor) => product.category === anchor.category)),
+    anchors.some((anchor) => productClassificationIds(anchor, 1).some((id) => productClassificationIds(product, 1).includes(id)))),
   complementaryCategory: (catalog, anchors, excluded, settings) => {
-    const categories = new Set(anchors.flatMap((anchor) => settings.complementaryCategories[anchor.category] ?? []));
-    return catalog.filter((product) => !excluded.has(product.id) && categories.has(product.category));
+    const categories = new Set(anchors.flatMap((anchor) => productClassificationIds(anchor, 1)
+      .flatMap((id) => settings.complementaryCategories[id] ?? [])));
+    return catalog.filter((product) => !excluded.has(product.id) && productClassificationIds(product, 1).some((id) => categories.has(id)));
   },
 };
 

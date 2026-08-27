@@ -10,6 +10,7 @@ import { backendJson, backendRequest } from "@/lib/backend";
 import type { AuthUser } from "@/domain/clients/types";
 import { CategoryTreeEntrySchema, StoreSettingsSchema, type CategoryTreeEntry } from "@/domain/catalog/types";
 import { TenantProfileSchema, type TenantProfile } from '@/domain/tenant/types';
+import { cacheTag } from "@/lib/cacheTags";
 import "./tailwind.css";
 
 const manrope = Manrope({
@@ -38,7 +39,10 @@ export async function generateMetadata(): Promise<Metadata> {
   if (incomingHeaders.get('x-ippa-control') === '1') {
     return { title: 'Control IPPA', description: 'Gestão de tenants da plataforma IPPA' };
   }
-  const tenant = await backendJson('/api/tenant', TenantProfileSchema);
+  const tenantSlug = incomingHeaders.get('x-ippa-tenant') ?? '';
+  const tenant = await backendJson('/api/tenant', TenantProfileSchema, {
+    next: { revalidate: 60, tags: tenantSlug ? [cacheTag('tenant', tenantSlug)] : [] },
+  });
   return { title: `Catálogo — ${tenant.name}`, description: `Catálogo de ${tenant.name}` };
 }
 
@@ -58,11 +62,18 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       </html>
     );
   }
+  const tenantSlug = incomingHeaders.get('x-ippa-tenant') ?? '';
   const [categoryTree, authResponse, tenant, storeSettings] = await Promise.all([
-    backendJson('/api/categories', z.array(CategoryTreeEntrySchema)),
+    backendJson('/api/categories', z.array(CategoryTreeEntrySchema), {
+      next: { revalidate: 30, tags: tenantSlug ? [cacheTag('classifications', tenantSlug)] : [] },
+    }),
     backendRequest('/api/auth/me'),
-    backendJson('/api/tenant', TenantProfileSchema),
-    backendJson('/api/store-settings', StoreSettingsSchema),
+    backendJson('/api/tenant', TenantProfileSchema, {
+      next: { revalidate: 60, tags: tenantSlug ? [cacheTag('tenant', tenantSlug)] : [] },
+    }),
+    backendJson('/api/store-settings', StoreSettingsSchema, {
+      next: { revalidate: 30, tags: tenantSlug ? [cacheTag('storeSettings', tenantSlug)] : [] },
+    }),
   ]);
   const authPayload = authResponse.ok
     ? await authResponse.json() as { user: AuthUser | null }

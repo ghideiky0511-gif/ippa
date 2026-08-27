@@ -25,6 +25,15 @@ import { createExternalApiCallReporter } from "@/services/erp/externalApiLogServ
 import { NotFoundError, ValidationError } from "@/services/shared/errors";
 import { errorMeta, logger } from "@/lib/logger";
 import { upsertCatalogSyncConfigRow } from "@/models/catalogSyncModel";
+import {
+    findCategoryHierarchyMappingRow,
+    listClassificationTypeUsageRows,
+    saveCategoryHierarchyMappingRow,
+} from "@/models/classificationModel";
+import {
+    CategoryHierarchyMappingSchema,
+    type ClassificationCatalogResult,
+} from "@/contracts/classifications";
 
 // Uma opção por provider visível no catálogo, com o estado do tenant
 // mesclado por cima. `credentials` só carrega campos não-secretos (ver
@@ -177,9 +186,10 @@ export async function saveTenantErpIntegrationCredentials(
                 .split(",")
                 .map((code) => code.trim())
                 .filter(Boolean);
+            const mapping = await findCategoryHierarchyMappingRow(client, row.id);
             await upsertCatalogSyncConfigRow(client, {
                 integrationId: row.id,
-                enabled: Number.isFinite(classificationTypeCode) && classificationCodes.length > 0,
+                enabled: Boolean(mapping) && Number.isFinite(classificationTypeCode) && classificationCodes.length > 0,
                 classificationTypeCode,
                 classificationCodes,
             });
@@ -204,6 +214,9 @@ export async function activateTenantErpIntegration(
     requireSettingsAdministrator(user);
     const entry = findVisibleCatalogEntry(provider);
     return withTenantTransaction(tenant, user, async (client) => {
+        if (provider === "totvsmoda" && !await findCategoryHierarchyMappingRow(client, (await findErpIntegrationRowByProvider(client, provider))?.id ?? "")) {
+            throw new ValidationError("CATEGORY_MAPPING_REQUIRED", "Configure ao menos o nível 1 de categorias antes de ativar a TOTVS Moda.");
+        }
         const row = await activateErpIntegrationRow(client, provider);
         if (!row)
             throw new ValidationError(
@@ -219,6 +232,68 @@ export async function activateTenantErpIntegration(
         });
         return toOption(entry, row);
     });
+}
+
+async function totvsClassificationTypes(
+    tenant: Tenant,
+    user: AuthUser,
+): Promise<{ integration: ErpIntegrationRow; types: Array<{ typeCode: string; typeName: string; typeNameAux?: string }> }> {
+    const integration = await withTenantTransaction(tenant, user, (client) => findErpIntegrationRowByProvider(client, "totvsmoda"));
+    if (!integration) throw new NotFoundError("ERP_INTEGRATION_NOT_CONFIGURED");
+    const provider = createErpProvider(
+        "totvsmoda", integration.credentials,
+        createExternalApiCallReporter(tenant, user, "totvsmoda"),
+    );
+    if (!provider.listProductClassificationTypes) {
+        throw new ValidationError("CLASSIFICATION_TYPES_UNAVAILABLE", "Este provider não expõe tipos de classificação.");
+    }
+    return { integration, types: await provider.listProductClassificationTypes() };
+}
+
+export async function getTotvsClassificationCatalog(
+    tenant: Tenant,
+    user: AuthUser,
+): Promise<ClassificationCatalogResult> {
+    requireSettingsAdministrator(user);
+    const { integration, types } = await totvsClassificationTypes(tenant, user);
+    return withTenantTransaction(tenant, user, async (client) => {
+        const [mapping, usage] = await Promise.all([
+            findCategoryHierarchyMappingRow(client, integration.id),
+            listClassificationTypeUsageRows(client, integration.id),
+        ]);
+        const usageByCode = new Map(usage.map((row) => [row.external_code, row]));
+        return {
+            mapping,
+            types: types.map((type) => {
+                const current = usageByCode.get(type.typeCode);
+                return {
+                    typeCode: type.typeCode,
+                    typeName: type.typeName,
+                    typeNameAux: type.typeNameAux,
+                    itemCount: current?.item_count ?? 0,
+                    sampleNames: current?.sample_names ?? [],
+                    categoryLevel: current?.category_level ?? undefined,
+                };
+            }),
+        };
+    });
+}
+
+export async function saveTotvsCategoryHierarchyMapping(
+    tenant: Tenant,
+    user: AuthUser,
+    value: unknown,
+): Promise<ClassificationCatalogResult> {
+    requireSettingsAdministrator(user);
+    const parsed = CategoryHierarchyMappingSchema.safeParse(value);
+    if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Mapeamento de categorias inválido.", parsed.error.issues);
+    const { integration, types } = await totvsClassificationTypes(tenant, user);
+    await withTenantTransaction(tenant, user, (client) => saveCategoryHierarchyMappingRow(client, {
+        integrationId: integration.id,
+        mapping: parsed.data,
+        types,
+    }));
+    return getTotvsClassificationCatalog(tenant, user);
 }
 
 // Desliga o ERP inteiro (nenhum provider ativo) sem apagar credenciais

@@ -7,6 +7,7 @@ import { Check, TrendingUp } from 'lucide-react';
 import Link from '@/components/TenantLink';
 import { COLOR_MAP, CONFIG } from '@/lib/config';
 import { formatBRL, formatMarkup, priceWithPercentOff } from '@/lib/format';
+import { productClassificationSummary } from '@/lib/classifications';
 import { getMetQuantityTier, getQuantityDiscountTiers } from '@/lib/discounts';
 import { ADDABLE_AVAILABILITY, buildVariantMatrix, deliveryLabel, splitStockQty } from '@/lib/variants';
 import { resolveGallery, resolveImageForColor } from '@/lib/images';
@@ -164,7 +165,7 @@ export default function ProductDetailContent({ product, presentation = 'page', o
       </div>
 
       <div className={[publicUi.detailInfo, isPanel ? 'gap-2 text-sm' : ''].join(' ')}>
-        <div className={isPanel ? 'text-xs text-brand-muted' : ''}>{product.category}{product.subcategory ? ` · ${product.subcategory}` : ''}</div>
+        <div className={isPanel ? 'text-xs text-brand-muted' : ''}>{productClassificationSummary(product)}</div>
         <h2 className={isPanel ? 'text-base leading-tight' : ''}>{product.name}</h2>
         {product.referenceId && <div className={isPanel ? 'text-xs text-brand-muted' : ''}>{product.referenceId}</div>}
         {showPrices && (

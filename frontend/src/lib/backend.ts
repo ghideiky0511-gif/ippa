@@ -15,10 +15,15 @@ export async function backendRequest(pathname: string, init: RequestInit = {}): 
   const tenantSlug = incomingHeaders.get('x-ippa-tenant');
   if (!tenantSlug) throw new Error('A página precisa ser acessada por /{tenant_slug}/.');
 
+  // `no-store` só entra como padrão quando ninguém pediu cache explícito —
+  // um chamador que passou `next: { revalidate, tags }` quer participar do
+  // Data Cache, e `cache: 'no-store'` junto com `next.revalidate` é uma
+  // combinação inválida pro Next (a opção é ignorada com warning).
+  const cache = init.cache ?? (init.next ? undefined : 'no-store');
   return fetch(`${BACKEND_URL}/api/${tenantSlug}${pathname.replace(/^\/api/, '')}`, {
     ...init,
     headers: outgoingHeaders,
-    cache: init.cache ?? 'no-store',
+    cache,
   });
 }
 

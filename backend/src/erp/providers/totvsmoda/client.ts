@@ -42,6 +42,7 @@ import {
     PERSON_STATISTICS_PATH,
     PHONE_TYPES_PATH,
     PRODUCT_BALANCES_SEARCH_PATH,
+    PRODUCT_CLASSIFICATIONS_PATH,
     PRODUCT_PRICES_SEARCH_PATH,
     PRODUCTS_SEARCH_PATH,
     REPRESENTATIVES_SEARCH_PATH,
@@ -392,6 +393,19 @@ export class TotvsModaClient {
             (item): item is Record<string, unknown> =>
                 !!item && typeof item === "object",
         );
+    }
+
+    async listProductClassifications(page: number, pageSize: number): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
+        const payload = await this.request<TotvsModaSearchResponse<Record<string, unknown>>>(
+            "GET",
+            PRODUCT_CLASSIFICATIONS_PATH,
+            "listProductClassifications",
+            { params: { page, pageSize } },
+        );
+        if (!Array.isArray(payload?.items)) {
+            throw new TotvsModaResponseError("Classificações de produto retornaram formato inválido.", { payload });
+        }
+        return payload;
     }
 
     // BranchOutDto: dados de uma única empresa por código interno ou CNPJ

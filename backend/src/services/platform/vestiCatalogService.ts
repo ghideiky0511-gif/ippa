@@ -290,8 +290,6 @@ export async function importVestiCatalog(
 
                 const writeRow: ProductWriteRow & { referenceId: string } = {
                     name: product.catalogTitle || product.name,
-                    category: product.externalCategory || "Sem categoria",
-                    brand: product.brand || undefined,
                     referenceId: product.ref,
                     price: basePrice,
                     media: mediaByRef.get(product.ref),

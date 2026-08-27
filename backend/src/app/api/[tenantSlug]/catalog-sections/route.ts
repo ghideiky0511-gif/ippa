@@ -21,8 +21,7 @@ export async function GET(
     return execute(() =>
         catalog.listCatalogSections(route.tenant, {
             term: params.get("term") || undefined,
-            category: params.get("category") || undefined,
-            subcategory: params.get("subcategory") || undefined,
+            classificationId: params.get("classificationId") || undefined,
             color: params.get("color") || undefined,
             size: params.get("size") || undefined,
             restrictIds: parseIdsParam(params.get("restrictIds")),

@@ -24,8 +24,6 @@ export function createMockErpProvider(): ErpProvider {
                 externalId: referenceCode,
                 name: data.name,
                 description: data.description,
-                category: data.category,
-                brand: data.brand,
                 classifications: [],
                 skus: [{
                     externalId: found.raw.codigo,
@@ -34,6 +32,7 @@ export function createMockErpProvider(): ErpProvider {
                     size: "",
                     isActive: true,
                     isBlocked: false,
+                    classifications: [],
                 }],
             };
         },

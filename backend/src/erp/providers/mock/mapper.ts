@@ -10,8 +10,6 @@ export function mapMockProduct(raw: MockRawProduct): Omit<Product, "id"> {
     return {
         name: raw.descricao,
         description: "",
-        category: raw.categoria,
-        brand: raw.marca,
         referenceId: raw.referencia ?? raw.codigo,
         price: raw.precoVenda,
         suggestedRetailPrice: raw.precoSugerido,

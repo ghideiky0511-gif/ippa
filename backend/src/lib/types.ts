@@ -17,11 +17,15 @@ export type {
   UserCredentials, ClientRegistration, ClientRegistrationUpdate,
 } from '@/contracts/auth';
 export type {
-  ClassificationKind, ClassificationEntry, DiscountType, HomeSectionType, BannerMediaType, AssignmentStrategy,
+  ClassificationEntry, DiscountType, HomeSectionType, BannerMediaType, AssignmentStrategy,
   DiscountTier, Discount, Highlight, Audience, Banner, HomeSection, ResolvedHomeSection,
   CategoryTreeEntry, SimilarProductsRuleConfig, SimilarProductsSettings,
   ProductOverride, ProductOverrides, StoreFeatures, StoreSettings, HomeAiHistoryItem,
 } from '@/contracts/catalog';
+export type {
+  CategoryLevel, Classification, ClassificationType, CategoryTreeNode,
+  CategoryHierarchyMapping, ErpClassificationTypeOption,
+} from '@/contracts/classifications';
 export type {
   OrderChannel, OrderSession, OrderSessionParticipant, OrderSessionParticipantRole,
   OrderSessionParticipantUser, OrderBook, OrderStatus, Order,

@@ -25,6 +25,24 @@ export interface ErpIntegrationTestResult {
   message?: string;
 }
 
+export interface TotvsClassificationTypeOption {
+  typeCode: string; typeName: string; typeNameAux?: string; itemCount: number; sampleNames: string[]; categoryLevel?: 1 | 2 | 3;
+}
+export interface TotvsClassificationCatalog {
+  types: TotvsClassificationTypeOption[];
+  mapping?: { level1TypeCode: string; level2TypeCode?: string; level3TypeCode?: string };
+}
+
+export function fetchTotvsClassificationCatalog(): Promise<TotvsClassificationCatalog> {
+  return adminJson('/api/erp-integration/totvsmoda/classifications', unknown, {}, 'Não foi possível carregar os tipos da TOTVS.') as Promise<TotvsClassificationCatalog>;
+}
+
+export function saveTotvsClassificationMapping(mapping: TotvsClassificationCatalog['mapping']): Promise<TotvsClassificationCatalog> {
+  return adminJson('/api/erp-integration/totvsmoda/category-hierarchy', unknown, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(mapping),
+  }, 'Não foi possível salvar o mapeamento de categorias.') as Promise<TotvsClassificationCatalog>;
+}
+
 export type ProviderOrderStatus = 'pending' | 'processing' | 'cancelling' | 'sent' | 'failed' | 'cancelled';
 
 // Estado ATUAL do envio de um pedido ao ERP (provider_orders) -- no máximo

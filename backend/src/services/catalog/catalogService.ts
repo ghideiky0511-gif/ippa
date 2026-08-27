@@ -1,17 +1,16 @@
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
-import type { CategoryTreeEntry, Discount, Highlight, Product, Variant } from "@/lib/types";
+import type { CategoryTreeEntry, Classification, ClassificationType, Discount, Highlight, Product, Variant } from "@/lib/types";
 import type { ProductAdmin, ProductSourceOrigin } from "@/contracts/products";
 import type { CatalogPage, CatalogSectionsResult } from "@/contracts/catalog";
 import {
-    listCategoryMenuRows,
     listInventoryBalanceRows,
-    listPrimaryClassificationRows,
     listProductPackItemRows,
     listProductPackRows,
     listProductRows,
     listProductVariantRows,
 } from "@/models/catalogModel";
+import { listCategoryMenuRows, listVariantClassificationRows } from "@/models/classificationModel";
 import {
     findStoreSettingsRow,
     listDiscountProductRows,
@@ -28,17 +27,25 @@ import { resolveCatalogMedia } from "@/services/catalog/catalogMediaService";
 export async function categoryMenu(tenant: Tenant): Promise<CategoryTreeEntry[]> {
     return withTenantTransaction(tenant, {}, async (client) => {
         const rows = await listCategoryMenuRows(client);
-        const categories = rows.filter((row) => row.kind === "category");
-        const subcategories = rows.filter((row) => row.kind === "subcategory");
-        return categories.map((category) => ({
-            category: category.name,
-            subcategories: subcategories.filter((sub) => sub.parent_id === category.id).map((sub) => sub.name),
-        }));
+        const childrenByParent = new Map<string | null, typeof rows>();
+        for (const row of rows) {
+            const siblings = childrenByParent.get(row.parent_id) ?? [];
+            siblings.push(row);
+            childrenByParent.set(row.parent_id, siblings);
+        }
+        const build = (parentId: string | null): CategoryTreeEntry[] =>
+            (childrenByParent.get(parentId) ?? []).map((row) => ({
+                id: row.id,
+                name: row.name,
+                level: row.category_level ?? 1,
+                children: build(row.id),
+            }));
+        return build(null);
     });
 }
 
 export interface CatalogFilters {
-    categories: string[];
+    categories: CategoryTreeEntry[];
     colors: string[];
     sizes: string[];
 }
@@ -56,7 +63,7 @@ export async function listCatalogFilters(tenant: Tenant): Promise<CatalogFilters
         );
 
         return {
-            categories: categories.flatMap((c) => [c.category, ...c.subcategories]).filter((v, i, arr) => arr.indexOf(v) === i),
+            categories,
             colors: allColors,
             sizes: allSizes,
         };
@@ -71,7 +78,7 @@ export async function listCatalog(tenant: Tenant): Promise<Product[]> {
         const [variants, balances, classifications, packs, packItems, storeSettings, discountRows, tierRows, discountProductRows] = await Promise.all([
             listProductVariantRows(client),
             listInventoryBalanceRows(client),
-            listPrimaryClassificationRows(client),
+            listVariantClassificationRows(client),
             listProductPackRows(client),
             listProductPackItemRows(client),
             findStoreSettingsRow(client),
@@ -91,12 +98,28 @@ export async function listCatalog(tenant: Tenant): Promise<Product[]> {
                 .map((product) => product.product_id),
         }));
         const stockByVariant = new Map(balances.map((row) => [row.variant_id, row.stock_qty]));
-        const classificationsByProduct = new Map<string, Partial<Record<"category" | "subcategory" | "collection" | "brand", string>>>();
+        const classificationsByVariant = new Map<string, Classification[]>();
         for (const row of classifications) {
-            classificationsByProduct.set(row.product_id, {
-                ...classificationsByProduct.get(row.product_id),
-                [row.kind]: row.name,
+            if (!row.variant_id) continue;
+            const values = classificationsByVariant.get(row.variant_id) ?? [];
+            values.push({
+                id: row.id,
+                externalCode: row.external_code,
+                name: row.name,
+                auxiliaryName: row.auxiliary_name ?? undefined,
+                parentId: row.parent_id ?? undefined,
+                active: row.active,
+                type: {
+                    id: row.classification_type_id,
+                    integrationId: row.integration_id,
+                    externalCode: row.type_external_code,
+                    label: row.type_label,
+                    auxiliaryLabel: row.type_auxiliary_label ?? undefined,
+                    categoryLevel: row.category_level ?? undefined,
+                    active: row.type_active,
+                } satisfies ClassificationType,
             });
+            classificationsByVariant.set(row.variant_id, values);
         }
         const variantsByProduct = new Map<string, Variant[]>();
         for (const row of variants) {
@@ -109,13 +132,13 @@ export async function listCatalog(tenant: Tenant): Promise<Product[]> {
                 availability: row.availability,
                 availableFrom: row.available_from ?? undefined,
                 stockQty: row.track_inventory ? (stockByVariant.get(row.id) ?? 0) : undefined,
+                classifications: classificationsByVariant.get(row.id) ?? [],
             });
             variantsByProduct.set(row.product_id, productVariants);
         }
 
         return Promise.all(products.map(async (row) => {
             const productVariants = variantsByProduct.get(row.id) ?? [];
-            const classification = classificationsByProduct.get(row.id);
             const resolvedMedia = await resolveCatalogMedia(row.media);
             const { manualOverride, ...attributes } = row.attributes as typeof row.attributes & {
                 manualOverride?: Partial<Product>;
@@ -124,10 +147,6 @@ export async function listCatalog(tenant: Tenant): Promise<Product[]> {
                 id: row.id,
                 name: row.name,
                 description: row.description,
-                category: classification?.category ?? row.category ?? "Sem categoria",
-                subcategory: classification?.subcategory ?? row.subcategory ?? undefined,
-                collection: classification?.collection ?? row.collection ?? undefined,
-                brand: classification?.brand ?? row.brand ?? undefined,
                 referenceId: row.reference_id ?? undefined,
                 price: Number(row.price),
                 suggestedRetailPrice: row.suggested_retail_price ? Number(row.suggested_retail_price) : undefined,
@@ -203,8 +222,7 @@ export interface CatalogQuery {
     page?: number;
     pageSize?: number;
     term?: string;
-    category?: string;
-    subcategory?: string;
+    classificationId?: string;
     color?: string;
     size?: string;
     // Conjunto exato e ordenado a retornar (uma vitrine de destaque, por
@@ -222,22 +240,29 @@ export interface CatalogQuery {
     excludeFeatured?: boolean;
 }
 
-function matchesCatalogFacets(product: Product, query: {
-    term?: string; category?: string; subcategory?: string; color?: string; size?: string; restrictIds?: string[]; excludeIds?: string[];
-}): boolean {
+function filterCatalogVariants(product: Product, query: {
+    term?: string; classificationId?: string; color?: string; size?: string; restrictIds?: string[]; excludeIds?: string[];
+}): Product | undefined {
     const term = query.term?.trim().toLowerCase();
-    if (term && !(product.name || "").toLowerCase().includes(term) && !(product.id || "").toLowerCase().includes(term)) return false;
+    if (term && !(product.name || "").toLowerCase().includes(term) && !(product.id || "").toLowerCase().includes(term)) return undefined;
     // Categorias "dobradas" no menu (ex.: BODY ALCA vira subcategoria de
     // BODY) têm produtos cujo `category` real é o nome dobrado — some do
     // filtro se a gente só comparar contra `subcategory`.
-    const isFoldedMatch = !!query.subcategory && product.category === query.subcategory;
-    if (query.category && product.category !== query.category && !isFoldedMatch) return false;
-    if (query.subcategory && product.subcategory !== query.subcategory && !isFoldedMatch) return false;
-    if (query.color && !(product.colors || []).includes(query.color)) return false;
-    if (query.size && !(product.sizes || []).includes(query.size)) return false;
-    if (query.restrictIds && !query.restrictIds.includes(product.id)) return false;
-    if (query.excludeIds && query.excludeIds.includes(product.id)) return false;
-    return true;
+    if (query.restrictIds && !query.restrictIds.includes(product.id)) return undefined;
+    if (query.excludeIds && query.excludeIds.includes(product.id)) return undefined;
+    const variants = product.variants.filter((variant) =>
+        (!query.classificationId || variant.classifications.some((classification) => classification.id === query.classificationId))
+        && (!query.color || variant.color === query.color)
+        && (!query.size || variant.size === query.size),
+    );
+    if ((query.classificationId || query.color || query.size) && variants.length === 0) return undefined;
+    const visibleVariants = query.classificationId || query.color || query.size ? variants : product.variants;
+    return {
+        ...product,
+        variants: visibleVariants,
+        colors: [...new Set(visibleVariants.map((variant) => variant.color))],
+        sizes: [...new Set(visibleVariants.map((variant) => variant.size))],
+    };
 }
 
 function featuredProductIds(products: Product[], highlights: Highlight[]): Set<string> {
@@ -267,7 +292,9 @@ export async function listCatalogPage(tenant: Tenant, query: CatalogQuery): Prom
         listCatalog(tenant),
         query.excludeFeatured ? listHighlights(tenant) : Promise.resolve<Highlight[]>([]),
     ]);
-    let matching = products.filter((p) => matchesCatalogFacets(p, query));
+    let matching = products
+        .map((product) => filterCatalogVariants(product, query))
+        .filter((product): product is Product => Boolean(product));
     if (query.excludeFeatured) {
         const featuredIds = featuredProductIds(matching, highlights);
         matching = matching.filter((p) => !featuredIds.has(p.id));
@@ -281,8 +308,7 @@ export async function listCatalogPage(tenant: Tenant, query: CatalogQuery): Prom
 
 export interface CatalogSectionsQuery {
     term?: string;
-    category?: string;
-    subcategory?: string;
+    classificationId?: string;
     color?: string;
     size?: string;
     restrictIds?: string[];
@@ -292,7 +318,9 @@ export interface CatalogSectionsQuery {
 
 export async function listCatalogSections(tenant: Tenant, query: CatalogSectionsQuery): Promise<CatalogSectionsResult> {
     const [products, highlights] = await Promise.all([listCatalog(tenant), listHighlights(tenant)]);
-    const matching = products.filter((p) => matchesCatalogFacets(p, query));
+    const matching = products
+        .map((product) => filterCatalogVariants(product, query))
+        .filter((product): product is Product => Boolean(product));
     // Só coleções publicadas (showInCatalog) viram vitrine — mas featuredIds
     // abaixo usa `highlights` inteiro (sem esse filtro), então produto de
     // coleção ainda oculta continua fora de "outros produtos".

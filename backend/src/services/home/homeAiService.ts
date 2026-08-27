@@ -6,6 +6,7 @@ import type { HomeAiHistoryItem } from "@/contracts/catalog";
 import { insertHomeAiHistoryRow, listHomeAiHistoryRows } from "@/models/homeAiModel";
 import { listCatalog } from "@/services/catalog";
 import { ForbiddenError, ServiceError, ValidationError } from "@/services/shared/errors";
+import { productClassificationSummary } from "@/lib/catalogFacets";
 
 interface DraftSection {
   type: "banner" | "product";
@@ -38,7 +39,7 @@ Regras: canvas de 1200px; não sobreponha blocos; banner nunca contém mediaUrl;
 Home atual:
 ${current}
 Produtos (id | nome | categoria | preço | foto):
-${products.map((product) => `${product.id} | ${product.name} | ${product.category}${product.subcategory ? ` / ${product.subcategory}` : ""} | R$${product.price.toFixed(2)} | ${product.image || product.images?.length ? "com foto" : "sem foto"}`).join("\n")}`;
+${products.map((product) => `${product.id} | ${product.name} | ${productClassificationSummary(product) || "sem categoria"} | R$${product.price.toFixed(2)} | ${product.image || product.images?.length ? "com foto" : "sem foto"}`).join("\n")}`;
 }
 
 export async function homeAiHistory(tenant: Tenant, actor: AuthUser): Promise<HomeAiHistoryItem[]> {

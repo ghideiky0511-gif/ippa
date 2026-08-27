@@ -40,13 +40,15 @@ import { replaceProductCompositionsRow } from "@/models/productCompositionModel"
 import {
     deactivateMissingProductVariantsRow,
     listProductVariantsForSyncRow,
-    setPrimaryProductClassificationKindRow,
-    setPrimaryProductSubcategorySyncRow,
     setProductSyncActiveRow,
     upsertErpProductRow,
     upsertErpProductVariantRow,
     type ProductVariantRow,
 } from "@/models/catalogModel";
+import {
+    lockClassificationIntegrationRow,
+    replaceVariantClassificationsRow,
+} from "@/models/classificationModel";
 import {
     findInternalIdByExternalId,
     listExternalReferencesByEntityRow,
@@ -80,12 +82,6 @@ export interface CatalogSyncResult {
 
 function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
-}
-
-function slugify(value: string): string {
-    const normalized = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    return normalized.slice(0, 127) || "sem-classificacao";
 }
 
 export function shouldPublishReference(
@@ -263,13 +259,10 @@ export async function processReference(
     const publicationActive = shouldPublishReference(reference, runtime.config);
 
     await withTenantTransaction(runtime.tenant, SYSTEM_ACTOR, async (client) => {
+        await lockClassificationIntegrationRow(client, runtime.integration.id);
         const product = await upsertErpProductRow(client, {
             name: reference.name,
             description: reference.description,
-            category: reference.category ?? "Sem categoria",
-            subcategory: reference.subcategory,
-            collection: reference.collection,
-            brand: reference.brand,
             referenceId: reference.externalId,
             price: activePrices.length > 0 ? Math.min(...activePrices) : 0,
             isActive: publicationActive,
@@ -310,26 +303,14 @@ export async function processReference(
             });
             usedVariantIds.add(variantId);
             seenVariantIds.push(variantId);
+            await replaceVariantClassificationsRow(client, {
+                integrationId: runtime.integration.id,
+                variantId,
+                classifications: sku.classifications,
+            });
         }
         await deactivateMissingProductVariantsRow(client, product.row.id, seenVariantIds);
         await setProductSyncActiveRow(client, product.row.id, publicationActive);
-
-        const classifications = [
-            ["category", reference.category] as const,
-            ["collection", reference.collection] as const,
-            ["brand", reference.brand] as const,
-        ];
-        for (const [kind, name] of classifications) {
-            await setPrimaryProductClassificationKindRow(
-                client, product.row.id, kind, name, name ? slugify(name) : undefined,
-            );
-        }
-        await setPrimaryProductSubcategorySyncRow(
-            client,
-            product.row.id,
-            reference.subcategory,
-            reference.subcategory ? slugify(reference.subcategory) : undefined,
-        );
     });
     return true;
 }

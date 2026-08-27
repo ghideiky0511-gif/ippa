@@ -5,17 +5,19 @@ import { z } from 'zod';
 import CatalogApp from '@/components/CatalogApp';
 import { backendJson } from '@/lib/backend';
 import { CatalogSectionsResultSchema, HighlightSchema } from '@/domain/catalog/types';
+import { CategoryTreeNodeSchema } from '@/contracts/classifications';
 import { TenantProfileSchema } from '@/domain/tenant/types';
 import { CONFIG } from '@/lib/config';
+import { cacheTag } from '@/lib/cacheTags';
 
 interface CatalogFilterOptions {
-  categories: string[];
+  categories: z.infer<typeof CategoryTreeNodeSchema>[];
   colors: string[];
   sizes: string[];
 }
 
 const CatalogFilterOptionsSchema = z.object({
-  categories: z.array(z.string()),
+  categories: z.array(CategoryTreeNodeSchema),
   colors: z.array(z.string()),
   sizes: z.array(z.string()),
 });
@@ -23,8 +25,7 @@ const CatalogFilterOptionsSchema = z.object({
 const CatalogShareSchema = z.object({ name: z.string().nullable() });
 
 type CatalogSearchParams = {
-  categoria?: string;
-  subcategoria?: string;
+  classificacao?: string;
   publico?: string;
   destaque?: string;
   precos?: string;
@@ -33,8 +34,7 @@ type CatalogSearchParams = {
 
 function catalogScopeLabel(params: CatalogSearchParams, collectionLabel?: string): string {
   if (collectionLabel) return `Coleção ${collectionLabel}`;
-  if (params.subcategoria) return `Catálogo ${params.subcategoria}`;
-  if (params.categoria) return `Catálogo ${params.categoria}`;
+  if (params.classificacao) return 'Catálogo por classificação';
   return 'Catálogo';
 }
 
@@ -46,7 +46,7 @@ function publicCatalogUrl(tenantSlug: string, params: CatalogSearchParams, incom
   // Mantém somente os parâmetros que definem a vitrine ou a autoria do
   // compartilhamento. `session`, por exemplo, é um link interno e não
   // deve virar uma URL canônica/indexável.
-  for (const key of ['categoria', 'subcategoria', 'publico', 'destaque', 'precos', 'sharedBy'] as const) {
+  for (const key of ['classificacao', 'publico', 'destaque', 'precos', 'sharedBy'] as const) {
     const value = params[key];
     if (value) url.searchParams.set(key, value);
   }
@@ -62,18 +62,20 @@ export async function generateMetadata({
   const audience = params.publico ? CONFIG.home?.audiences?.find((entry) => entry.id === params.publico) : undefined;
   const restrictIds = audience?.productIds ?? undefined;
   const sectionsQuery = new URLSearchParams();
-  if (params.categoria) sectionsQuery.set('category', params.categoria);
-  if (params.subcategoria) sectionsQuery.set('subcategory', params.subcategoria);
+  if (params.classificacao) sectionsQuery.set('classificationId', params.classificacao);
   if (restrictIds) sectionsQuery.set('restrictIds', restrictIds.join(','));
 
-  const [tenant, catalog, highlights, share, incomingHeaders] = await Promise.all([
-    backendJson('/api/tenant', TenantProfileSchema),
+  const incomingHeaders = await headers();
+  const tenantSlug = incomingHeaders.get('x-ippa-tenant') ?? '';
+  const [tenant, catalog, highlights, share] = await Promise.all([
+    backendJson('/api/tenant', TenantProfileSchema, {
+      next: { revalidate: 60, tags: tenantSlug ? [cacheTag('tenant', tenantSlug)] : [] },
+    }),
     backendJson(`/api/catalog-sections?${sectionsQuery.toString()}`, CatalogSectionsResultSchema),
     backendJson('/api/highlights', z.array(HighlightSchema)),
     params.sharedBy
       ? backendJson(`/api/catalog-share?sharedBy=${encodeURIComponent(params.sharedBy)}`, CatalogShareSchema)
       : Promise.resolve({ name: null }),
-    headers(),
   ]);
 
   const collection = params.destaque ? highlights.find((highlight) => highlight.id === params.destaque) : undefined;
@@ -127,17 +129,22 @@ export default async function Page({
 }: {
   searchParams: Promise<CatalogSearchParams>;
 }) {
-  const { categoria, subcategoria, publico } = await searchParams;
+  const { classificacao, publico } = await searchParams;
   const audience = publico ? CONFIG.home?.audiences?.find((a) => a.id === publico) : undefined;
   const restrictIds = audience?.productIds ?? undefined;
 
   const sectionsQuery = new URLSearchParams();
-  if (categoria) sectionsQuery.set('category', categoria);
-  if (subcategoria) sectionsQuery.set('subcategory', subcategoria);
+  if (classificacao) sectionsQuery.set('classificationId', classificacao);
   if (restrictIds) sectionsQuery.set('restrictIds', restrictIds.join(','));
 
+  const tenantSlug = (await headers()).get('x-ippa-tenant') ?? '';
   const [filterOptions, initialSections] = await Promise.all([
-    backendJson('/api/catalog-filters', CatalogFilterOptionsSchema),
+    // Cores/tamanhos vêm de variantes de produto (mudam a qualquer edição de
+    // catálogo), então além da tag de categorias mantemos uma janela curta
+    // de revalidação como rede de segurança para essa parte.
+    backendJson('/api/catalog-filters', CatalogFilterOptionsSchema, {
+      next: { revalidate: 30, tags: tenantSlug ? [cacheTag('classifications', tenantSlug)] : [] },
+    }),
     backendJson(`/api/catalog-sections?${sectionsQuery.toString()}`, CatalogSectionsResultSchema),
   ]);
 
@@ -146,7 +153,7 @@ export default async function Page({
       <CatalogApp
         filterOptions={filterOptions}
         initialSections={initialSections}
-        initialFilters={{ category: categoria || '', subcategory: subcategoria || '' }}
+        initialFilters={{ classificationId: classificacao || '' }}
         restrictIds={restrictIds}
       />
     </Suspense>

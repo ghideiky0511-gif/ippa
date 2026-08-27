@@ -3,11 +3,7 @@
 // backend) depois de mudar o arquivo de origem.
 import { z } from 'zod';
 import { ProductSchema, type Product } from './products';
-
-// Espelham os enums PostgreSQL da migration 006. Campos dinâmicos de loja,
-// como categorias e métodos configuráveis, ficam em tabelas relacionais.
-export const ClassificationKindSchema = z.enum(['category', 'subcategory', 'collection', 'brand']);
-export type ClassificationKind = z.infer<typeof ClassificationKindSchema>;
+import { CategoryTreeNodeSchema, ClassificationSchema, ClassificationTypeSchema } from './classifications';
 
 export const DiscountTypeSchema = z.enum(['quantity', 'products']);
 export type DiscountType = z.infer<typeof DiscountTypeSchema>;
@@ -142,22 +138,15 @@ export type HomeSection = z.infer<typeof HomeSectionSchema>;
 // próprio (não precisa validar algo que o próprio backend monta).
 export type ResolvedHomeSection = HomeSection & { product?: Product };
 
-export const CategoryTreeEntrySchema = z.object({
-  category: z.string(),
-  subcategories: z.array(z.string()),
-});
+export const CategoryTreeEntrySchema = CategoryTreeNodeSchema;
 export type CategoryTreeEntry = z.infer<typeof CategoryTreeEntrySchema>;
 
 // Nó da árvore de classificação editável em /categorias (plataforma
 // admin) — categoria/subcategoria/coleção/marca cadastradas manualmente
 // pela loja, com hierarquia (`parentId`) e ordem de exibição (`position`).
 export const ClassificationEntrySchema = z.object({
-  id: z.string(),
-  kind: ClassificationKindSchema,
-  parentId: z.string().nullable(),
-  name: z.string(),
-  active: z.boolean(),
-  position: z.number(),
+  classification: ClassificationSchema,
+  type: ClassificationTypeSchema,
 });
 export type ClassificationEntry = z.infer<typeof ClassificationEntrySchema>;
 
@@ -188,9 +177,6 @@ export const ProductOverrideSchema = ProductSchema.pick({
   markup: true,
   similarProductIdsQuickview: true,
   similarProductIdsCart: true,
-  category: true,
-  subcategory: true,
-  collection: true,
 }).partial();
 export type ProductOverride = z.infer<typeof ProductOverrideSchema>;
 

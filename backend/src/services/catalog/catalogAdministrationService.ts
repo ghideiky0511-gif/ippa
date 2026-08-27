@@ -12,13 +12,10 @@ import {
     findProductByIdRow,
     findProductByReferenceIdRow,
     findProductSourceOriginsByIds,
-  listCatalogOrderRows,
-  listClassificationRows,
+    listCatalogOrderRows,
   listProductOverrideRows,
   replaceCatalogOrderRows,
-  setClassificationActiveRow,
     setProductOverrideRow,
-    setPrimaryProductCategoryRow,
     productReferenceIdExists,
     replaceManualProductRow,
     replaceManualProductVariantsRow,
@@ -26,6 +23,11 @@ import {
     listProductVariantsForSyncRow,
     type ProductOverrideRow,
 } from "@/models/catalogModel";
+import {
+  listClassificationRows,
+  replaceManualVariantClassificationIdsRow,
+  setClassificationActiveRow,
+} from "@/models/classificationModel";
 import { listAdminProducts } from "./catalogService";
 import { listProductCompositionsRow } from "@/models/productCompositionModel";
 import {
@@ -39,12 +41,6 @@ function requireAdministrator(user: AuthUser): void {
   if (user.role !== "administrador" || user.permissions?.adminAccess !== true) throw new ForbiddenError();
 }
 
-function classificationSlug(value: string): string {
-  const slug = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 127);
-  return slug || "categoria";
-}
-
 /** Cadastro manual enxuto. Variantes adicionais e estoque ficam para a tela de estoque. */
 export async function createProduct(tenant: Tenant, actor: AuthUser, value: unknown): Promise<{ id: string }> {
   requireAdministrator(actor);
@@ -56,18 +52,21 @@ export async function createProduct(tenant: Tenant, actor: AuthUser, value: unkn
     const product = await insertProductRow(client, {
       name: input.name,
       description: input.description,
-      category: input.category ?? "Sem categoria",
       referenceId: input.referenceId,
       price: input.price,
       media: input.image ? { image: input.image, images: [input.image] } : undefined,
     });
-    if (input.category) await setPrimaryProductCategoryRow(
-      client, product.id, input.category, classificationSlug(input.category),
-    );
-    if (input.variant) await insertProductVariantRow(client, product.id, {
-      ...input.variant,
-      price: input.price,
-    });
+    if (input.variant) {
+      const variantId = await insertProductVariantRow(client, product.id, {
+        color: input.variant.color,
+        size: input.variant.size,
+        availability: "in_stock",
+        price: input.price,
+      });
+      if (!await replaceManualVariantClassificationIdsRow(client, variantId, input.variant.classificationIds ?? [])) {
+        throw new ValidationError("INVALID_CLASSIFICATION", "Classificação inválida para este tenant.");
+      }
+    }
     return { id: product.id };
   });
 }
@@ -207,10 +206,6 @@ export async function updateManualProduct(
     await replaceManualProductRow(client, id, {
       name: input.name,
       description: input.description,
-      category: input.category,
-      subcategory: input.subcategory,
-      collection: input.collection,
-      brand: input.brand,
       referenceId: input.referenceId,
       price: input.price,
       suggestedRetailPrice: input.suggestedRetailPrice,
@@ -228,7 +223,6 @@ export async function updateManualProduct(
       },
     });
     await replaceManualProductVariantsRow(client, id, input.variants);
-    await setPrimaryProductCategoryRow(client, id, input.category, classificationSlug(input.category));
   });
   return getProductAdmin(tenant, actor, id);
 }
@@ -236,12 +230,32 @@ export async function updateManualProduct(
 export async function listClassifications(tenant: Tenant, actor: AuthUser): Promise<ClassificationEntry[]> {
   requireAdministrator(actor);
   return withTenantTransaction(tenant, actor, async (client) => (await listClassificationRows(client)).map((row) => ({
-    id: row.id,
-    kind: row.kind,
-    parentId: row.parent_id,
-    name: row.name,
-    active: row.active,
-    position: row.position,
+    classification: {
+      id: row.id,
+      externalCode: row.external_code,
+      name: row.name,
+      auxiliaryName: row.auxiliary_name ?? undefined,
+      parentId: row.parent_id ?? undefined,
+      active: row.active,
+      type: {
+        id: row.classification_type_id,
+        integrationId: row.integration_id,
+        externalCode: row.type_external_code,
+        label: row.type_label,
+        auxiliaryLabel: row.type_auxiliary_label ?? undefined,
+        categoryLevel: row.category_level ?? undefined,
+        active: row.type_active,
+      },
+    },
+    type: {
+      id: row.classification_type_id,
+      integrationId: row.integration_id,
+      externalCode: row.type_external_code,
+      label: row.type_label,
+      auxiliaryLabel: row.type_auxiliary_label ?? undefined,
+      categoryLevel: row.category_level ?? undefined,
+      active: row.type_active,
+    },
   })));
 }
 
@@ -253,13 +267,26 @@ export async function setClassificationActive(tenant: Tenant, actor: AuthUser, i
   if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
   const updated = await withTenantTransaction(tenant, actor, (client) => setClassificationActiveRow(client, id, parsed.data.active));
   if (!updated) throw new NotFoundError("CLASSIFICATION_NOT_FOUND");
+  const type = {
+    id: updated.classification_type_id,
+    integrationId: updated.integration_id,
+    externalCode: updated.type_external_code,
+    label: updated.type_label,
+    auxiliaryLabel: updated.type_auxiliary_label ?? undefined,
+    categoryLevel: updated.category_level ?? undefined,
+    active: updated.type_active,
+  };
   return {
-    id: updated.id,
-    kind: updated.kind,
-    parentId: updated.parent_id,
-    name: updated.name,
-    active: updated.active,
-    position: updated.position,
+    classification: {
+      id: updated.id,
+      externalCode: updated.external_code,
+      name: updated.name,
+      auxiliaryName: updated.auxiliary_name ?? undefined,
+      parentId: updated.parent_id ?? undefined,
+      active: updated.active,
+      type,
+    },
+    type,
   };
 }
 

@@ -44,6 +44,8 @@ export interface ErpClassificationSnapshot {
     typeName?: string;
     code?: string;
     name?: string;
+    typeNameAux?: string;
+    nameAux?: string;
 }
 
 export interface ErpSkuSnapshot {
@@ -53,16 +55,13 @@ export interface ErpSkuSnapshot {
     size: string;
     isActive: boolean;
     isBlocked: boolean;
+    classifications: ErpClassificationSnapshot[];
 }
 
 export interface ErpReferenceSnapshot {
     externalId: string;
     name: string;
     description?: string;
-    category?: string;
-    subcategory?: string;
-    collection?: string;
-    brand?: string;
     classifications: ErpClassificationSnapshot[];
     skus: ErpSkuSnapshot[];
 }
@@ -94,6 +93,12 @@ export interface ErpCompositionSnapshot {
     items: ErpCompositionFiberSnapshot[];
 }
 
+export interface ErpClassificationTypeSnapshot {
+    typeCode: string;
+    typeName: string;
+    typeNameAux?: string;
+}
+
 export type ErpProviderCredentials = Record<string, unknown>;
 
 // Dado auxiliar de um pedido que só existe no banco (não em Order/CartItem),
@@ -121,6 +126,7 @@ export interface ErpProvider {
     findReferenceCodeByProductCode?(productCode: string): Promise<string | null>;
     fetchPrices(productCodes: string[]): Promise<ErpPriceSnapshot[]>;
     fetchStock(productCodes: string[]): Promise<ErpStockSnapshot[]>;
+    listProductClassificationTypes?(): Promise<ErpClassificationTypeSnapshot[]>;
     // Composição (material/percentual de fibra) de uma referência. Opcional
     // pelo mesmo motivo dos demais métodos duck-typed abaixo: um provider sem
     // esse dado (mock, ou um ERP futuro) simplesmente não implementa, e quem

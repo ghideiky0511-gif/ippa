@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { ArrowLeft, UserRound } from 'lucide-react';
 import Link from '@/components/TenantLink';
 import { formatBRL } from '@/lib/format';
+import { productClassificationSummary } from '@/lib/classifications';
 import { useAuthUser } from '@/components/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -33,7 +34,7 @@ interface CategorySummary {
 function summarizeByCategory(items: CartItem[], catalogById: Record<string, Product>): CategorySummary[] {
   const byCategory = new Map<string, CategorySummary>();
   for (const item of items) {
-    const category = catalogById[item.id]?.category || 'Outros';
+    const category = catalogById[item.id] ? productClassificationSummary(catalogById[item.id]) || 'Outros' : 'Outros';
     const entry = byCategory.get(category) || { category, qty: 0, total: 0 };
     entry.qty += item.qty;
     entry.total += item.qty * item.price;

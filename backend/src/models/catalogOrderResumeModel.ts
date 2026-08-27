@@ -48,13 +48,13 @@ export async function listCatalogOrderResumeItemRows(
        COALESCE(variant.color, item.snapshot->>'color') AS color,
        COALESCE(variant.size, item.snapshot->>'size') AS size,
        COALESCE(
-         max(classification.name) FILTER (WHERE type.kind = 'category' AND link.is_primary),
-         product.category,
+         max(classification.name) FILTER (WHERE type.category_level = 1),
          item.snapshot->>'category'
        ) AS category,
        COALESCE(
-         max(classification.name) FILTER (WHERE type.kind = 'subcategory' AND link.is_primary),
-         product.subcategory,
+         max(classification.name) FILTER (WHERE type.category_level = 3),
+         max(classification.name) FILTER (WHERE type.category_level = 2),
+         max(classification.name) FILTER (WHERE type.category_level = 1),
          item.snapshot->>'subcategory'
        ) AS subcategory
      FROM order_items AS item
@@ -62,14 +62,14 @@ export async function listCatalogOrderResumeItemRows(
        ON product.tenant_id = app_tenant_id() AND product.id = item.product_id
      LEFT JOIN product_variants AS variant
        ON variant.tenant_id = app_tenant_id() AND variant.id = item.variant_id
-     LEFT JOIN product_classifications AS link
-       ON link.tenant_id = app_tenant_id() AND link.product_id = item.product_id
+     LEFT JOIN variant_classifications AS link
+       ON link.tenant_id = app_tenant_id() AND link.variant_id = item.variant_id
      LEFT JOIN classification_types AS type
        ON type.tenant_id = app_tenant_id() AND type.id = link.classification_type_id
      LEFT JOIN classifications AS classification
        ON classification.tenant_id = app_tenant_id() AND classification.id = link.classification_id
      WHERE item.tenant_id = app_tenant_id() AND item.order_id = $1
-     GROUP BY item.id, variant.color, variant.size, product.category, product.subcategory
+     GROUP BY item.id, variant.color, variant.size
      ORDER BY item.id`,
     [orderId],
   );

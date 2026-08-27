@@ -4,6 +4,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { COLOR_MAP } from '@/lib/config';
+import { productClassificationSummary } from '@/lib/classifications';
 import { publicUi } from '@/lib/ui';
 import type { Product } from '@/domain/products/types';
 import ProductImage from './ProductImage';
@@ -67,7 +68,7 @@ export default function CatalogProductCard({ product, onOpen, imageAction, title
         )}
       </div>
       <div className={publicUi.catalogCardContent}>
-        {product.category && <Badge>{product.category}</Badge>}
+        {productClassificationSummary(product) && <Badge>{productClassificationSummary(product)}</Badge>}
         <h3 className="min-h-[2.7em] text-[15px] font-semibold leading-[1.35]">{title}</h3>
         {product.referenceId && <div className="-mt-1 text-[11px] text-brand-muted">{product.referenceId}</div>}
         {price}

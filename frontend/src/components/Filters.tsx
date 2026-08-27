@@ -9,9 +9,10 @@ import { Sheet, SheetContent, SheetHeader } from '@/components/ui/sheet';
 import { publicUi } from '@/lib/ui';
 import { useAuthUser } from './AuthProvider';
 import type { CatalogFilters } from './CatalogApp';
+import type { CategoryTreeEntry } from '@/domain/catalog/types';
 
 interface FilterOptions {
-  categories: string[];
+  categories: CategoryTreeEntry[];
   colors: string[];
   sizes: string[];
 }
@@ -25,16 +26,19 @@ export default function Filters({ options, filters, onChange, onClear }: {
   const { suggestedPiecesEnabled } = useAuthUser();
   const [mobileOpen, setMobileOpen] = useState(false);
   const activeFilterCount = useMemo(
-    () => [filters.category, filters.color, filters.size].filter(Boolean).length + (filters.selected ? 1 : 0) + (filters.suggested ? 1 : 0),
-    [filters.category, filters.color, filters.size, filters.selected, filters.suggested]
+    () => [filters.classificationId, filters.color, filters.size].filter(Boolean).length + (filters.selected ? 1 : 0) + (filters.suggested ? 1 : 0),
+    [filters.classificationId, filters.color, filters.size, filters.selected, filters.suggested]
   );
+  const categories = options.categories.flatMap(function flatten(node): CategoryTreeEntry[] {
+    return [node, ...node.children.flatMap(flatten)];
+  });
   const hasActiveFilters = Boolean(filters.term || activeFilterCount);
 
   const filterFields = (
     <>
-      <Select value={filters.category} disabled={options.categories.length === 0} onChange={(e) => onChange({ ...filters, category: e.target.value, subcategory: '' })}>
+      <Select value={filters.classificationId} disabled={categories.length === 0} onChange={(e) => onChange({ ...filters, classificationId: e.target.value })}>
         <option value="">{options.categories.length === 0 ? 'Sem categorias disponíveis' : 'Todas as categorias'}</option>
-        {options.categories.map((c) => <option key={c} value={c}>{c}</option>)}
+        {categories.map((category) => <option key={category.id} value={category.id}>{' '.repeat(category.level - 1)}{category.name}</option>)}
       </Select>
       <Select value={filters.color} disabled={options.colors.length === 0} onChange={(e) => onChange({ ...filters, color: e.target.value })}>
         <option value="">{options.colors.length === 0 ? 'Sem cores disponíveis' : 'Todas as cores'}</option>

@@ -53,14 +53,6 @@ CREATE TYPE public."banner_media_type" AS ENUM (
 	'image',
 	'video');
 
--- DROP TYPE public."classification_kind";
-
-CREATE TYPE public."classification_kind" AS ENUM (
-	'category',
-	'subcategory',
-	'collection',
-	'brand');
-
 -- DROP TYPE public."discount_type";
 
 CREATE TYPE public."discount_type" AS ENUM (
@@ -375,17 +367,21 @@ CREATE POLICY ai_tool_prompt_versions_tenant_read ON public.ai_tool_prompt_versi
 CREATE TABLE public.classification_types (
 	id uuid DEFAULT gen_random_uuid() NOT NULL,
 	tenant_id uuid NOT NULL,
-	kind public."classification_kind" NOT NULL,
+	integration_id uuid NOT NULL,
+	external_code text NOT NULL,
 	"label" text NOT NULL,
-	hierarchical bool DEFAULT false NOT NULL,
+	auxiliary_label text NULL,
+	category_level int4 NULL,
 	active bool DEFAULT true NOT NULL,
 	created_at timestamptz DEFAULT now() NOT NULL,
 	updated_at timestamptz DEFAULT now() NOT NULL,
 	CONSTRAINT classification_types_pkey PRIMARY KEY (id),
 	CONSTRAINT classification_types_tenant_id_id_key UNIQUE (tenant_id, id),
-	CONSTRAINT classification_types_tenant_id_kind_key UNIQUE (tenant_id, kind),
+	CONSTRAINT classification_types_category_level_check CHECK ((category_level IS NULL) OR (category_level >= 1 AND category_level <= 3)),
+	CONSTRAINT classification_types_tenant_integration_external_code_key UNIQUE (tenant_id, integration_id, external_code),
 	CONSTRAINT classification_types_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
+CREATE UNIQUE INDEX classification_types_tenant_integration_level_key ON public.classification_types USING btree (tenant_id, integration_id, category_level) WHERE (category_level IS NOT NULL);
 ALTER TABLE public.classification_types ENABLE ROW LEVEL SECURITY;
 
 -- Table Policies
@@ -408,15 +404,15 @@ CREATE TABLE public.classifications (
 	tenant_id uuid NOT NULL,
 	classification_type_id uuid NOT NULL,
 	parent_id uuid NULL,
+	external_code text NOT NULL,
 	"name" text NOT NULL,
-	slug text NOT NULL,
+	auxiliary_name text NULL,
 	"position" int4 DEFAULT 0 NOT NULL,
 	active bool DEFAULT true NOT NULL,
 	created_at timestamptz DEFAULT now() NOT NULL,
 	updated_at timestamptz DEFAULT now() NOT NULL,
 	CONSTRAINT classifications_pkey PRIMARY KEY (id),
-	CONSTRAINT classifications_slug_check CHECK ((slug ~ '^[a-z0-9][a-z0-9-]{0,126}$'::text)),
-	CONSTRAINT classifications_tenant_id_classification_type_id_parent_id__key UNIQUE NULLS NOT DISTINCT (tenant_id, classification_type_id, parent_id, slug),
+	CONSTRAINT classifications_tenant_id_classification_type_id_parent_id_external_code_key UNIQUE NULLS NOT DISTINCT (tenant_id, classification_type_id, parent_id, external_code),
 	CONSTRAINT classifications_tenant_id_id_classification_type_id_key UNIQUE (tenant_id, id, classification_type_id),
 	CONSTRAINT classifications_tenant_id_id_key UNIQUE (tenant_id, id),
 	CONSTRAINT classifications_tenant_id_classification_type_id_fkey FOREIGN KEY (tenant_id,classification_type_id) REFERENCES public.classification_types(tenant_id,id) ON DELETE CASCADE,
@@ -765,10 +761,6 @@ CREATE TABLE public.products (
 	tenant_id uuid NOT NULL,
 	"name" text NOT NULL,
 	description text DEFAULT ''::text NOT NULL,
-	category text NULL,
-	subcategory text NULL,
-	collection text NULL,
-	brand text NULL,
 	reference_id text NULL,
 	price numeric(12, 2) NOT NULL,
 	suggested_retail_price numeric(12, 2) NULL,
@@ -889,6 +881,11 @@ CREATE POLICY tenant_isolation ON public.tenant_erp_integrations
  FOR ALL
  USING ((tenant_id = app_tenant_id()))
  WITH CHECK ((tenant_id = app_tenant_id()));
+
+ALTER TABLE public.classification_types
+  ADD CONSTRAINT classification_types_tenant_integration_fkey
+  FOREIGN KEY (tenant_id, integration_id)
+  REFERENCES public.tenant_erp_integrations(tenant_id, id) ON DELETE CASCADE;
 
 
 -- public.tenant_order_counters definition
@@ -1335,36 +1332,6 @@ CREATE POLICY tenant_isolation ON public.inventory_locations
  WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.product_classifications definition
-
--- Drop table
-
--- DROP TABLE public.product_classifications;
-
-CREATE TABLE public.product_classifications (
-	tenant_id uuid NOT NULL,
-	product_id uuid NOT NULL,
-	classification_id uuid NOT NULL,
-	classification_type_id uuid NOT NULL,
-	is_primary bool DEFAULT true NOT NULL,
-	created_at timestamptz DEFAULT now() NOT NULL,
-	CONSTRAINT product_classifications_pkey PRIMARY KEY (tenant_id, product_id, classification_id),
-	CONSTRAINT product_classifications_tenant_id_classification_id_classi_fkey FOREIGN KEY (tenant_id,classification_id,classification_type_id) REFERENCES public.classifications(tenant_id,id,classification_type_id) ON DELETE CASCADE,
-	CONSTRAINT product_classifications_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE,
-	CONSTRAINT product_classifications_tenant_id_product_id_fkey FOREIGN KEY (tenant_id,product_id) REFERENCES public.products(tenant_id,id) ON DELETE CASCADE
-);
-CREATE UNIQUE INDEX product_classifications_primary_idx ON public.product_classifications USING btree (tenant_id, product_id, classification_type_id) WHERE is_primary;
-ALTER TABLE public.product_classifications ENABLE ROW LEVEL SECURITY;
-
--- Table Policies
-
-CREATE POLICY tenant_isolation ON public.product_classifications
- AS PERMISSIVE
- FOR ALL
- USING ((tenant_id = app_tenant_id()))
- WITH CHECK ((tenant_id = app_tenant_id()));
-
-
 -- public.product_compositions definition
 
 -- Drop table
@@ -1469,6 +1436,29 @@ ALTER TABLE public.product_variants ENABLE ROW LEVEL SECURITY;
 -- Table Policies
 
 CREATE POLICY tenant_isolation ON public.product_variants
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+-- public.variant_classifications definition
+
+CREATE TABLE public.variant_classifications (
+	tenant_id uuid NOT NULL,
+	variant_id uuid NOT NULL,
+	classification_id uuid NOT NULL,
+	classification_type_id uuid NOT NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT variant_classifications_pkey PRIMARY KEY (tenant_id, variant_id, classification_id),
+	CONSTRAINT variant_classifications_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE,
+	CONSTRAINT variant_classifications_tenant_variant_fkey FOREIGN KEY (tenant_id,variant_id) REFERENCES public.product_variants(tenant_id,id) ON DELETE CASCADE,
+	CONSTRAINT variant_classifications_tenant_classification_type_fkey FOREIGN KEY (tenant_id,classification_id,classification_type_id) REFERENCES public.classifications(tenant_id,id,classification_type_id) ON DELETE CASCADE
+);
+CREATE INDEX variant_classifications_variant_idx ON public.variant_classifications USING btree (tenant_id, variant_id);
+CREATE INDEX variant_classifications_type_idx ON public.variant_classifications USING btree (tenant_id, classification_type_id);
+CREATE INDEX variant_classifications_classification_idx ON public.variant_classifications USING btree (tenant_id, classification_id);
+ALTER TABLE public.variant_classifications ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON public.variant_classifications
  AS PERMISSIVE
  FOR ALL
  USING ((tenant_id = app_tenant_id()))

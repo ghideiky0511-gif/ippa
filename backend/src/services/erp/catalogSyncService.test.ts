@@ -9,13 +9,13 @@ function reference(overrides: Partial<ErpReferenceSnapshot> = {}): ErpReferenceS
         externalId: "REF-1",
         name: "Produto",
         classifications: [{ typeCode: 7, code: "IPPA", name: "Catálogo IPPA" }],
-        skus: [{ externalId: "101", color: "Preto", size: "M", isActive: true, isBlocked: false }],
+        skus: [{ externalId: "101", color: "Preto", size: "M", isActive: true, isBlocked: false, classifications: [] }],
         ...overrides,
     };
 }
 
 function sku(overrides: Partial<ErpSkuSnapshot> = {}): ErpSkuSnapshot {
-    return { externalId: "101", color: "Preto", size: "M", isActive: true, isBlocked: false, ...overrides };
+    return { externalId: "101", color: "Preto", size: "M", isActive: true, isBlocked: false, classifications: [], ...overrides };
 }
 
 function variant(overrides: Partial<ProductVariantRow> = {}): ProductVariantRow {
@@ -43,10 +43,10 @@ test("publica somente com classificação permitida e SKU ativo", () => {
         classifications: [{ typeCode: 7, code: "OUTRA" }],
     }), config), false);
     assert.equal(shouldPublishReference(reference({
-        skus: [{ externalId: "101", color: "", size: "", isActive: false, isBlocked: false }],
+        skus: [{ externalId: "101", color: "", size: "", isActive: false, isBlocked: false, classifications: [] }],
     }), config), false);
     assert.equal(shouldPublishReference(reference({
-        skus: [{ externalId: "101", color: "", size: "", isActive: true, isBlocked: true }],
+        skus: [{ externalId: "101", color: "", size: "", isActive: true, isBlocked: true, classifications: [] }],
     }), config), false);
 });
 

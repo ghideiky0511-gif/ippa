@@ -31,6 +31,8 @@ export const PRODUCT_PRICES_SEARCH_PATH =
     "/api/totvsmoda/product/v2/prices/search";
 export const PRODUCT_BALANCES_SEARCH_PATH =
     "/api/totvsmoda/product/v2/balances/search";
+export const PRODUCT_CLASSIFICATIONS_PATH =
+    "/api/totvsmoda/product/v2/classifications";
 export const COMPOSITION_GROUP_PRODUCT_PATH =
     "/api/totvsmoda/product/v2/composition-group-product";
 export const INDIVIDUALS_SEARCH_PATH =
