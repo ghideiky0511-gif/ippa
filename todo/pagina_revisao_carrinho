@@ -1,0 +1,33 @@
+# Página de revisão do carrinho (antes do frete) + IA de sugestões
+
+Origem: pedido do usuário em 2026-08-27, "to do para depois" — não implementar
+agora.
+
+Problema: hoje o fluxo vai direto de `/carrinho` pra `/frete`. Falta um passo
+intermediário que ajude a vendedora a vender mais e deixe claro, tanto pra ela
+quanto pra cliente, o que de fato está sendo comprado.
+
+Ideia:
+
+- Nova página de revisão entre `/carrinho` e `/frete` (ver `CheckoutSteps.tsx`
+  pro stepper atual) com o resumo do pedido agrupado por categoria (parte de
+  cima, parte de baixo, camisetas, calças etc. — usar as classificações que já
+  existem, ver `backend/src/models/classificationModel.ts`).
+- Uma ferramenta de IA que lê o carrinho atual e devolve um insight de como
+  está o pedido + sugestões de peças pra completar/adicionar.
+- Explicitamente listado como FORA da fase 2 de [[todo/ideia_resumo_compra]]
+  ("análise do carrinho atual contra a última compra em tempo real") — esse
+  motor de IA (ferramenta versionada, cache por tenant, runner isolado) já
+  existe e deve ser reaproveitado aqui, não recriado.
+
+## Passos
+
+- [ ] Desenhar a página de revisão (layout, categorias, onde entra no stepper).
+- [ ] Agregação por categoria no backend (reaproveitar classificações já
+      existentes, sem heurística de nome).
+- [ ] Ferramenta de IA nova (schema Zod de entrada/saída, prompt versionado no
+      Control) reaproveitando o motor de `backend/src/services/ai`.
+- [ ] Rota específica e autorizada, sem dado pessoal no prompt (mesmo padrão
+      de `catalog.last_order_resume`).
+- [ ] Testes cobrindo agregação sem IA, ferramenta com provider falso, e a
+      rota com autorização.
