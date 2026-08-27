@@ -1,0 +1,4 @@
+# Scripts entram em containers Linux (docker-entrypoint-initdb.d, Dockerfile
+# RUN, etc.) — CRLF (comum em checkout Windows sem isso) quebra o shebang
+# ("/bin/sh^M: bad interpreter"). Força LF independente do core.autocrlf local.
+*.sh text eol=lf

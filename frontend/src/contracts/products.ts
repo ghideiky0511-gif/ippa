@@ -87,6 +87,11 @@ export const ProductSchema = z.object({
   image: z.string().optional(),
   images: z.array(z.string()).optional(),
   imagesByColor: z.record(z.string(), z.string()).optional(),
+  // Galeria completa por cor (product_color_images) — quando presente, o
+  // quick-view mostra só as fotos da cor selecionada em vez da galeria
+  // única `images` (que mistura fotos de todas as cores). Ordem da lista =
+  // ordem de exibição.
+  galleryByColor: z.record(z.string(), z.array(z.string())).optional(),
   colors: z.array(z.string()),
   sizes: z.array(z.string()),
   variants: z.array(VariantSchema),
@@ -196,6 +201,7 @@ export const UpdateManualProductInputSchema = z.object({
   image: OptionalHttpUrlSchema,
   images: z.array(HttpUrlSchema).max(12).optional(),
   imagesByColor: z.record(z.string(), HttpUrlSchema).optional(),
+  galleryByColor: z.record(z.string(), z.array(HttpUrlSchema).max(12)).optional(),
   videoUrl: OptionalHttpUrlSchema,
   variants: z.array(z.object({
     id: EntityIdSchema.optional(),

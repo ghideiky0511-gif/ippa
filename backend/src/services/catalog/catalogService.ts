@@ -6,6 +6,7 @@ import type { ProductAdmin, ProductSourceOrigin } from "@/contracts/products";
 import type { CatalogPage, CatalogSectionsResult } from "@/contracts/catalog";
 import type {
     InventoryBalanceRow,
+    ProductColorImageRow,
     ProductPackItemRow,
     ProductPackRow,
     ProductRow,
@@ -16,6 +17,8 @@ import {
     listCatalogProductPage,
     listInventoryBalanceRows,
     listInventoryBalanceRowsByVariantIds,
+    listProductColorImageRows,
+    listProductColorImageRowsByProductIds,
     listProductPackItemRows,
     listProductPackItemRowsByPackIds,
     listProductPackRows,
@@ -120,6 +123,7 @@ interface CatalogAssociations {
     classifications: ClassificationJoinedRow[];
     packs: ProductPackRow[];
     packItems: ProductPackItemRow[];
+    colorImages: ProductColorImageRow[];
     storeSettings: StoreSettingsRow | null;
     discounts: Discount[];
 }
@@ -130,7 +134,13 @@ interface CatalogAssociations {
 // só diferem em QUAIS linhas são carregadas antes de chegar aqui.
 async function assembleCatalogProducts(productRows: ProductRow[], assoc: CatalogAssociations): Promise<Product[]> {
     if (productRows.length === 0) return [];
-    const { variants, balances, classifications, packs, packItems, storeSettings, discounts } = assoc;
+    const { variants, balances, classifications, packs, packItems, colorImages, storeSettings, discounts } = assoc;
+    const colorImagesByProduct = new Map<string, Record<string, string[]>>();
+    for (const row of colorImages) {
+        const byColor = colorImagesByProduct.get(row.product_id) ?? {};
+        (byColor[row.color] ??= []).push(row.image_url);
+        colorImagesByProduct.set(row.product_id, byColor);
+    }
     const stockByVariant = new Map(balances.map((row) => [row.variant_id, row.stock_qty]));
     const classificationsByVariant = new Map<string, Classification[]>();
     for (const row of classifications) {
@@ -188,6 +198,7 @@ async function assembleCatalogProducts(productRows: ProductRow[], assoc: Catalog
             image: resolvedMedia.image,
             images: resolvedMedia.images,
             imagesByColor: resolvedMedia.imagesByColor,
+            galleryByColor: colorImagesByProduct.get(row.id),
             videoUrl: resolvedMedia.videoUrl,
             colors: [...new Set(productVariants.map((variant) => variant.color))],
             sizes: [...new Set(productVariants.map((variant) => variant.size))],
@@ -235,19 +246,20 @@ async function loadCatalog(tenant: Tenant, includeProductsWithoutPrice: boolean)
             : productRows.filter((product) => hasPublicCatalogPrice(product.price));
         if (products.length === 0) return [];
 
-        const [variants, balances, classifications, packs, packItems, storeSettings, discountRows, tierRows, discountProductRows] = await Promise.all([
+        const [variants, balances, classifications, packs, packItems, colorImages, storeSettings, discountRows, tierRows, discountProductRows] = await Promise.all([
             listProductVariantRows(client),
             listInventoryBalanceRows(client),
             listVariantClassificationRows(client),
             listProductPackRows(client),
             listProductPackItemRows(client),
+            listProductColorImageRows(client),
             findStoreSettingsRow(client),
             listDiscountRows(client),
             listDiscountTierRows(client),
             listDiscountProductRows(client),
         ]);
         const discounts = buildDiscounts(discountRows, tierRows, discountProductRows);
-        return assembleCatalogProducts(products, { variants, balances, classifications, packs, packItems, storeSettings, discounts });
+        return assembleCatalogProducts(products, { variants, balances, classifications, packs, packItems, colorImages, storeSettings, discounts });
     });
 }
 
@@ -376,13 +388,14 @@ async function loadAssociatedCatalogProducts(client: PoolClient, productRows: Pr
     ]);
     const variantIds = variants.map((variant) => variant.id);
     const packIds = packs.map((pack) => pack.id);
-    const [balances, classifications, packItems] = await Promise.all([
+    const [balances, classifications, packItems, colorImages] = await Promise.all([
         listInventoryBalanceRowsByVariantIds(client, variantIds),
         listVariantClassificationRowsByVariantIds(client, variantIds),
         listProductPackItemRowsByPackIds(client, packIds),
+        listProductColorImageRowsByProductIds(client, productIds),
     ]);
     const discounts = buildDiscounts(discountRows, tierRows, discountProductRows);
-    return assembleCatalogProducts(productRows, { variants, balances, classifications, packs, packItems, storeSettings, discounts });
+    return assembleCatalogProducts(productRows, { variants, balances, classifications, packs, packItems, colorImages, storeSettings, discounts });
 }
 
 export async function listCatalogPage(tenant: Tenant, query: CatalogQuery): Promise<CatalogPage> {

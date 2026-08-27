@@ -3,7 +3,7 @@ import { publicUi } from '@/lib/ui';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
-import { Check, TrendingUp } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, TrendingUp } from 'lucide-react';
 import Link from '@/components/TenantLink';
 import { COLOR_MAP, CONFIG } from '@/lib/config';
 import { formatBRL, formatMarkup } from '@/lib/format';
@@ -36,12 +36,52 @@ export default function ProductDetailContent({ product, presentation = 'page', o
   const { cart, discounts, addToCart, changeQty, removeFromCart, setBackorderDate } = useCart();
   const { authUser, showPrices } = useAuthUser();
   const matrix = useMemo(() => buildVariantMatrix(product), [product]);
-  const gallery = useMemo(() => resolveGallery(product), [product]);
   const [selectedColor, setSelectedColor] = useState<string | null>(
     matrix.availableColors[0] || matrix.colors[0] || null
   );
+  // Galeria já filtrada pela cor escolhida (product_color_images) — se essa
+  // cor não tiver galeria própria, cai na galeria única do produto (ver
+  // resolveGallery em lib/images.ts).
+  const gallery = useMemo(() => resolveGallery(product, selectedColor), [product, selectedColor]);
   const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>('all');
-  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  // Ordem de exibição da galeria: posição 0 é a foto em destaque no centro,
+  // as demais viram miniaturas na tira lateral, nessa mesma ordem. Clicar
+  // numa miniatura TROCA de lugar com a foto em destaque (pedido do usuário:
+  // a foto clicada vai pro centro e a que estava no centro volta pra lateral,
+  // no lugar de onde a outra saiu) — por isso é uma troca de posições no
+  // array, não só qual índice está "ativo". Reseta sempre que a galeria muda
+  // (troca de cor, por ex.), senão a posição 0 apontaria pra foto errada —
+  // mesmo padrão de reset-durante-render de ProductQuickView.tsx (comparar a
+  // uma referência anterior e ajustar o estado no corpo do componente, sem
+  // useEffect só pra sincronizar estado derivado).
+  const galleryKey = gallery.join('\n');
+  const [galleryState, setGalleryState] = useState(() => ({ key: galleryKey, order: gallery.map((_, i) => i) }));
+  if (galleryState.key !== galleryKey) {
+    setGalleryState({ key: galleryKey, order: gallery.map((_, i) => i) });
+  }
+  const galleryOrder = galleryState.order;
+
+  function setGalleryOrder(updater: (prev: number[]) => number[]) {
+    setGalleryState((prev) => ({ key: prev.key, order: updater(prev.order) }));
+  }
+
+  function swapToCenter(position: number) {
+    setGalleryOrder((prev) => {
+      const next = [...prev];
+      [next[0], next[position]] = [next[position], next[0]];
+      return next;
+    });
+  }
+
+  function stepGallery(direction: 1 | -1) {
+    setGalleryOrder((prev) => {
+      if (prev.length < 2) return prev;
+      const next = [...prev];
+      if (direction === 1) next.push(next.shift()!);
+      else next.unshift(next.pop()!);
+      return next;
+    });
+  }
   // Liga/desliga dos filtros de pré-venda/pronta-entrega (ver /ferramentas
   // na plataforma admin) — cliente, não vem do getCatalog() porque não é
   // dado de produto, é toggle de página. Mesmo padrão de CatalogApp.tsx
@@ -68,7 +108,7 @@ export default function ProductDetailContent({ product, presentation = 'page', o
       .catch(() => {});
   }, []);
 
-  const displayImage = resolveImageForColor(product, selectedColor) || gallery[activeImageIndex] || null;
+  const displayImage = gallery[galleryOrder[0]] ?? resolveImageForColor(product, selectedColor);
   const showSuggestedPrice = !!product.suggestedRetailPrice;
   const markup = product.markup || (product.suggestedRetailPrice ? product.suggestedRetailPrice / product.price : undefined);
 
@@ -116,7 +156,6 @@ export default function ProductDetailContent({ product, presentation = 'page', o
 
   function pickColor(color: string | null) {
     setSelectedColor(color);
-    setActiveImageIndex(0);
   }
 
   function qtyInCart(color: string, size: string) {
@@ -142,27 +181,49 @@ export default function ProductDetailContent({ product, presentation = 'page', o
       layout
       transition={{ layout: shouldReduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 280, damping: 30, mass: 0.8 } }}
       onLayoutAnimationComplete={onLayoutAnimationComplete}
-      className={[publicUi.productDetail, isPanel ? 'grid-cols-[minmax(0,10rem)_minmax(0,1fr)] gap-4 py-0 max-sm:grid-cols-[minmax(0,8.5rem)_minmax(0,1fr)]' : ''].join(' ')}
+      className={[publicUi.productDetail, isPanel ? 'grid-cols-[minmax(0,16rem)_minmax(0,1fr)] gap-4 py-0 max-sm:grid-cols-[minmax(0,9.5rem)_minmax(0,1fr)]' : ''].join(' ')}
     >
       <div className={publicUi.gallery}>
-        <ProductImage
-          className={[publicUi.detailImage, isPanel ? 'aspect-[4/5]' : ''].join(' ')}
-          src={displayImage}
-          alt={product.name}
-        />
         {gallery.length > 1 && (
-          <div className="contents">
-            {gallery.map((src, i) => (
+          <div className={publicUi.galleryThumbRail}>
+            {galleryOrder.slice(1).map((imageIndex, i) => (
               <ProductImage
-                key={src + i}
-                src={src}
+                key={imageIndex}
+                src={gallery[imageIndex]}
                 alt=""
-                className={'thumb' + (i === activeImageIndex ? ' selected' : '')}
-                onClick={() => setActiveImageIndex(i)}
+                className={publicUi.galleryThumb}
+                onClick={() => swapToCenter(i + 1)}
               />
             ))}
           </div>
         )}
+        <div className={publicUi.galleryMainWrap}>
+          <ProductImage
+            className={[publicUi.detailImage, isPanel ? 'aspect-[4/5]' : ''].join(' ')}
+            src={displayImage}
+            alt={product.name}
+          />
+          {gallery.length > 1 && (
+            <>
+              <button
+                type="button"
+                className={[publicUi.galleryNavButton, publicUi.galleryNavButtonPrev].join(' ')}
+                onClick={() => stepGallery(-1)}
+                aria-label="Foto anterior"
+              >
+                <ChevronLeft className="size-4" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className={[publicUi.galleryNavButton, publicUi.galleryNavButtonNext].join(' ')}
+                onClick={() => stepGallery(1)}
+                aria-label="Próxima foto"
+              >
+                <ChevronRight className="size-4" aria-hidden="true" />
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className={[publicUi.detailInfo, isPanel ? 'gap-2 text-sm' : ''].join(' ')}>

@@ -44,11 +44,9 @@ function CartProductGroup({ productId, items }: { productId: string; items: Cart
       <div className={publicUi.cartGroupSummary}>
         <ProductImage src={first.image} alt={first.name} className={publicUi.cartGroupImage} />
         <div className={publicUi.cartGroupInfo}>
-          <div className="contents">{first.name}</div>
-          {isDraftOnly ? (
-            <div className="contents">Selecione a grade</div>
-          ) : (
-            <div className="contents">
+          <div className="name">{first.name}</div>
+          {!isDraftOnly && (
+            <div className="variant">
               {colorCount} {colorCount === 1 ? 'cor' : 'cores'} · {totalQty} peça{totalQty === 1 ? '' : 's'}
               {showPrices && (
                 <>
@@ -81,7 +79,7 @@ function CartProductGroup({ productId, items }: { productId: string; items: Cart
             <CartItemRow key={item.key} item={item} onChangeQty={changeQty} onRemove={removeFromCart} />
           ))}
           <button className={publicUi.cartGroupEdit} onClick={handleEditGrade} disabled={!product}>
-            + editar grade
+            + editar
           </button>
         </div>
       )}

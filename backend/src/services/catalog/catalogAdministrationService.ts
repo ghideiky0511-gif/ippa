@@ -19,6 +19,7 @@ import {
     productReferenceIdExists,
     replaceManualProductRow,
     replaceManualProductVariantsRow,
+    replaceProductColorImagesRow,
     replaceProductReferenceIdRow,
     listProductVariantsForSyncRow,
     type ProductOverrideRow,
@@ -223,6 +224,7 @@ export async function updateManualProduct(
       },
     });
     await replaceManualProductVariantsRow(client, id, input.variants);
+    await replaceProductColorImagesRow(client, id, input.galleryByColor ?? {});
   });
   return getProductAdmin(tenant, actor, id);
 }

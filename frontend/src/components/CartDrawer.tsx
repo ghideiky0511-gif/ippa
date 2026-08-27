@@ -80,7 +80,7 @@ export default function CartDrawer() {
             </div>
           )}
           <div className="flex flex-col gap-2">
-            <Button type="button" className="w-full" onClick={goToCheckout} disabled={cartCount === 0}>Revisar e continuar</Button>
+            <Button type="button" className="w-full" onClick={goToCheckout} disabled={cart.length === 0}>Revisar e continuar</Button>
             <Button type="button" variant="outline" className="w-full" onClick={() => void checkoutWhatsapp()} disabled={isSendingWhatsapp}><MessageCircle className="size-4" aria-hidden="true" />{isSendingWhatsapp ? 'Registrando…' : 'Finalizar pelo WhatsApp'}</Button>
           </div>
           <p className="mt-3 text-[11px] leading-4 text-muted-foreground">Ao enviar pelo WhatsApp, nada é cobrado automaticamente.</p>

@@ -44,6 +44,8 @@ export interface ProductPackItemRow {
     pack_id: string; size: string; color: string | null; quantity: number;
 }
 
+export interface ProductColorImageRow { product_id: string; color: string; image_url: string }
+
 export interface InventoryBalanceRow { variant_id: string; stock_qty: number }
 export async function listProductRows(client: PoolClient): Promise<ProductRow[]> {
     const result = await client.query<ProductRow>(
@@ -213,6 +215,53 @@ export async function listProductPackItemRowsByPackIds(client: PoolClient, packI
     return result.rows;
 }
 
+// Uma linha por foto (produto × cor × posição) — carregado pra TODOS os
+// produtos de uma vez (mesmo padrão de listProductVariantRows), agrupado por
+// produto/cor no serviço de catálogo, não aqui.
+export async function listProductColorImageRows(client: PoolClient): Promise<ProductColorImageRow[]> {
+    const result = await client.query<ProductColorImageRow>(
+        `SELECT product_id, color, image_url FROM product_color_images
+         WHERE tenant_id = app_tenant_id()
+         ORDER BY product_id, color, position`,
+    );
+    return result.rows;
+}
+
+// Escopada por id -- usada pela página real de catálogo (listCatalogPage em
+// catalogService.ts), mesmo padrão de listProductVariantRowsByProductIds.
+export async function listProductColorImageRowsByProductIds(client: PoolClient, productIds: string[]): Promise<ProductColorImageRow[]> {
+    if (productIds.length === 0) return [];
+    const result = await client.query<ProductColorImageRow>(
+        `SELECT product_id, color, image_url FROM product_color_images
+         WHERE tenant_id = app_tenant_id() AND product_id = ANY($1::uuid[])
+         ORDER BY product_id, color, position`,
+        [productIds],
+    );
+    return result.rows;
+}
+
+// Substitui a galeria inteira de um produto (todas as cores) a cada
+// atualização — mesmo padrão de replaceProductCompositionsRow: a edição
+// manual manda o estado final completo, não um diff incremental.
+export async function replaceProductColorImagesRow(
+    client: PoolClient,
+    productId: string,
+    galleryByColor: Record<string, string[]>,
+): Promise<void> {
+    await client.query(
+        `DELETE FROM product_color_images WHERE tenant_id = app_tenant_id() AND product_id = $1`,
+        [productId],
+    );
+    for (const [color, urls] of Object.entries(galleryByColor)) {
+        for (const [position, imageUrl] of urls.entries()) {
+            await client.query(
+                `INSERT INTO product_color_images (tenant_id, product_id, color, image_url, position)
+                 VALUES (app_tenant_id(), $1, $2, $3, $4)`,
+                [productId, color, imageUrl, position],
+            );
+        }
+    }
+}
 export async function listInventoryBalanceRows(client: PoolClient): Promise<InventoryBalanceRow[]> {
     const result = await client.query<InventoryBalanceRow>(
         `SELECT balance.variant_id, SUM(balance.available_qty)::integer AS stock_qty
