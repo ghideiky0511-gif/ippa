@@ -40,28 +40,37 @@ import { recordAuditEvent, ORDER_SESSION_AUDIT_ACTIONS, type AuditRequestContext
 import { enqueueOrderPush, requestProviderOrderResend } from "@/services/erp/orderPushService";
 import { logger, errorMeta } from "@/lib/logger";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
-import { notifyOrder, notifyOrderBook, notifySession } from "@/services/realtime/updateBroadcast";
+import { notifyOrder, notifyOrderBook, notifySession, notifySessionCreated } from "@/services/realtime/updateBroadcast";
 import { scheduleSessionBroadcast } from "@/services/realtime/sessionBroadcast";
 import { findActiveOrderBookRow, findOrderBookRow, insertOrderBookRow, reopenOrderBookRow, type OrderBookRow } from "@/models/orderBooksModel";
 import { closeOrderBookWhenFinished } from "./orderBookLifecycle";
-import { toOrder, toOrderSession } from "./orderMapper";
+import { diffCartItems, toOrder, toOrderBook, toOrderSession } from "./orderMapper";
 import { pickSeller } from "./sellerAssignmentService";
 
 async function reconcileFinalizedCustomerSessions(client: Parameters<typeof findLatestOpenOrderSessionRowByClient>[0], clientId: string) {
     const sessions = await closeStaleOrderSessionRowsByClient(client, clientId);
+    // As peças continuam existindo (fechar não as apaga) — buscar de
+    // verdade em vez de mapear com items:[] falso, que zerava o carrinho de
+    // quem estivesse na room /pedidos dessa sessão (ver scheduleSessionBroadcast
+    // abaixo).
+    const sessionsWithItems = await Promise.all(sessions.map(async (session) => ({
+        session,
+        items: (await listOrderSessionItemRowsBySession(client, session.id)).map((item) => item.snapshot),
+    })));
     const bookIds = new Set(sessions.map((session) => session.order_book_id));
     const books = (await Promise.all(
         [...bookIds].map((bookId) => closeOrderBookWhenFinished(client, bookId)),
     )).filter((book): book is OrderBookRow => Boolean(book));
-    return { sessions, books };
+    return { sessions: sessionsWithItems, books };
 }
 
 function notifyReconciledSessions(tenantId: string, reconciled: Awaited<ReturnType<typeof reconcileFinalizedCustomerSessions>>) {
-    for (const session of reconciled.sessions) {
-        notifySession(tenantId, toOrderSession(session, []));
-        scheduleSessionBroadcast(toOrderSession(session, []));
+    for (const { session, items } of reconciled.sessions) {
+        const mapped = toOrderSession(session, items);
+        notifySession(tenantId, mapped);
+        scheduleSessionBroadcast(mapped);
     }
-    for (const book of reconciled.books) notifyOrderBook(tenantId, { sellerId: book.seller_id });
+    for (const book of reconciled.books) notifyOrderBook(tenantId, toOrderBook(book));
 }
 
 export function canManageSession(user: AuthUser, sellerId: string): boolean {
@@ -154,6 +163,24 @@ export async function orderSessions(tenant: Tenant, user: AuthUser): Promise<Ord
 
 // MantÃ©m o nome anterior para o talÃ£o pÃºblico e integraÃ§Ãµes jÃ¡ existentes.
 export const sellerSessions = orderSessions;
+
+// Resync barato de UMA sessão — usado pelo cliente de realtime incremental
+// (ver frontend/src/lib/realtime/applySessionEvent.ts) quando a cadeia
+// causal de um `session_items` tem buraco (evento perdido): em vez de
+// refazer o GET /sessions inteiro, busca só a sessão em questão. Mesma
+// regra de visibilidade de canAccessOrderSession/canManageSession.
+export async function orderSessionById(tenant: Tenant, user: AuthUser, id: string): Promise<OrderSession> {
+    return withTenantTransaction(tenant, user, async (client) => {
+        const row = await findOrderSessionRow(client, id);
+        if (!row) throw new NotFoundError("SESSION_NOT_FOUND");
+        const allowed = user.role === "cliente"
+            ? row.client_id === user.clientId
+            : canManageSession(user, row.seller_id);
+        if (!allowed) throw new ForbiddenError();
+        const items = (await listOrderSessionItemRowsBySession(client, id)).map((item) => item.snapshot);
+        return toOrderSession(row, items);
+    });
+}
 
 export async function customerActiveSession(tenant: Tenant, user: AuthUser): Promise<OrderSession | null> {
     if (user.role !== "cliente" || !user.clientId) throw new ForbiddenError();
@@ -253,7 +280,12 @@ export async function ensureCustomerOrderSession(
             });
         }
         await patchClientRow(client, registration.id, { lastSellerId: sellerId });
-        const session = toOrderSession(row, requestedItems);
+        // sellerName só existe computado (não persistido, ver
+        // contracts/orders.ts) e é o que o PresenceBadge da cliente lê —
+        // preenche aqui porque este é o evento que a leva a adotar a sessão
+        // pela primeira vez (session_created), sem passar por /sessions/mine.
+        const seller = await findUserRowById(client, sellerId);
+        const session = { ...toOrderSession(row, requestedItems), sellerName: seller?.name };
         await recordAuditEvent(client, {
             action: ORDER_SESSION_AUDIT_ACTIONS.CREATED,
             entityId: session.id,
@@ -266,7 +298,7 @@ export async function ensureCustomerOrderSession(
 
     notifyReconciledSessions(tenant.id, result.reconciled);
     if (result.session && result.created) {
-        notifySession(tenant.id, result.session);
+        notifySessionCreated(tenant.id, result.session);
         scheduleSessionBroadcast(result.session);
     }
     return result.session;
@@ -282,7 +314,7 @@ export async function createOrderSession(
     const parsedBody = CreateOrderSessionInputSchema.safeParse(body);
     if (!parsedBody.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsedBody.error.issues);
     const data = parsedBody.data;
-    const created = await withTenantTransaction(tenant, user, async (client) => {
+    const result = await withTenantTransaction(tenant, user, async (client) => {
         const items = data.items ?? [];
         const requestedBookId = data.orderBookId;
         const book = requestedBookId
@@ -304,7 +336,7 @@ export async function createOrderSession(
             const existing = await findLatestOpenOrderSessionRowByClient(client, registration.id);
             if (existing) {
                 const items = (await listOrderSessionItemRowsBySession(client, existing.id)).map((item) => item.snapshot);
-                return toOrderSession(existing, items);
+                return { session: toOrderSession(existing, items), created: false };
             }
         }
         // Upsell: cliente com pedido em aberto pra essa mesma vendedora
@@ -339,11 +371,15 @@ export async function createOrderSession(
                 itemCount: created.items.length,
             },
         });
-        return created;
+        return { session: created, created: true };
     });
-    notifySession(tenant.id, created);
-    scheduleSessionBroadcast(created);
-    return created;
+    // O caminho de reaproveitamento (cliente já tinha sessão online aberta)
+    // não mudou nada — não notifica, só devolve o que já existia.
+    if (result.created) {
+        notifySessionCreated(tenant.id, result.session);
+        scheduleSessionBroadcast(result.session);
+    }
+    return result.session;
 }
 
 // Nome mantido para nÃ£o quebrar chamadas antigas do talÃ£o pÃºblico.
@@ -358,7 +394,13 @@ export async function updateSession(
     const parsedBody = UpdateOrderSessionInputSchema.safeParse(rawBody);
     if (!parsedBody.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsedBody.error.issues);
     const body = parsedBody.data;
-    const changes: { book?: OrderBookRow; order?: Order; pushOrderId?: string } = {};
+    const changes: {
+        book?: OrderBookRow;
+        order?: Order;
+        pushOrderId?: string;
+        itemsDelta?: { prevUpdatedAt: string; set: CartItem[]; del: string[] };
+        onlyItemsChanged?: boolean;
+    } = {};
     const updated = await withTenantTransaction(tenant, user, async (client) => {
         const currentRow = await findOrderSessionRow(client, id);
         if (!currentRow) throw new NotFoundError("SESSION_NOT_FOUND");
@@ -421,6 +463,15 @@ export async function updateSession(
         }
         const currentItems = (await listOrderSessionItemRowsBySession(client, id)).map((item) => item.snapshot);
         const items = body.items ?? currentItems;
+        // Só o caso quente (itens de fato enviados nesta chamada) vira
+        // session_items — as demais mutações (status, cliente, frete...)
+        // seguem só no session_patch abaixo, que nunca toca em itens.
+        if (body.items !== undefined) {
+            changes.itemsDelta = {
+                prevUpdatedAt: currentRow.updated_at.toISOString(),
+                ...diffCartItems(currentItems, items),
+            };
+        }
         // O lock/estado do pedido é validado antes de mexer no snapshot da
         // sessão. Assim um update atrasado falha sem apagar nenhuma das duas
         // fontes de itens dentro da transação.
@@ -456,6 +507,18 @@ export async function updateSession(
                 }
             }
         }
+        // Caso quente (só itens mudaram, ex. "+1 peça"): não vale a pena
+        // mandar session_patch junto — seria reafirmar campos que não
+        // mudaram nesta chamada. Comparado contra o estado ANTES desta
+        // mutação (currentRow), não contra o que updateOrderSessionRow vai
+        // gravar (que é sempre igual a estas variáveis).
+        changes.onlyItemsChanged = body.items !== undefined
+            && clientId === (currentRow.client_id ?? undefined)
+            && clientName === currentRow.client_name
+            && notes === (currentRow.notes ?? undefined)
+            && status === currentRow.status
+            && shipping === (currentRow.shipping ?? undefined)
+            && orderId === (currentRow.order_id ?? undefined);
         const row = await updateOrderSessionRow(client, id, {
             clientName, clientId, notes, status, shipping, orderId,
             // Links de pagamento nao sobrevivem a cancelamento nem a uma
@@ -470,12 +533,10 @@ export async function updateSession(
         }
         return toOrderSession(row, items);
     });
-    notifySession(tenant.id, updated);
+    notifySession(tenant.id, updated, changes.itemsDelta, { skipPatch: changes.onlyItemsChanged });
     scheduleSessionBroadcast(updated);
     if (changes.order) notifyOrder(tenant.id, changes.order);
-    if (changes.book) notifyOrderBook(tenant.id, {
-        sellerId: changes.book.seller_id,
-    });
+    if (changes.book) notifyOrderBook(tenant.id, toOrderBook(changes.book));
     if (changes.pushOrderId) {
         try {
             await requestProviderOrderResend(tenant, user, changes.pushOrderId);
@@ -563,7 +624,7 @@ export async function finalizeOrderSession(
         notifySession(tenant.id, changedSession);
         scheduleSessionBroadcast(changedSession);
     }
-    for (const book of changedBooks) notifyOrderBook(tenant.id, { sellerId: book.seller_id });
+    for (const book of changedBooks) notifyOrderBook(tenant.id, toOrderBook(book));
     notifyOrder(tenant.id, order);
     await enqueueOrderPush(tenant, user, order.id);
     return order;

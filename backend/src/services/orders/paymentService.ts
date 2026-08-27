@@ -24,7 +24,7 @@ import { enqueueOrderPush } from "@/services/erp/orderPushService";
 import { GoneError, NotFoundError } from "@/services/shared/errors";
 import { getCartDiscount } from "@/services/settings";
 import { PAYMENT_LINK_EXPIRATION_DEFAULT_MINUTES } from "@/services/settings";
-import { toOrder, toOrderSession } from "./orderMapper";
+import { toOrder, toOrderBook, toOrderSession } from "./orderMapper";
 import { closeOrderBookWhenFinished } from "./orderBookLifecycle";
 import type { OrderBookRow } from "@/models/orderBooksModel";
 
@@ -148,7 +148,7 @@ export async function confirmPayment(
     return toOrder(row, context.items);
   });
   for (const changedSession of changedSessions) notifySession(tenant.id, changedSession);
-  for (const book of changedBooks) notifyOrderBook(tenant.id, { sellerId: book.seller_id });
+  for (const book of changedBooks) notifyOrderBook(tenant.id, toOrderBook(book));
   notifyOrder(tenant.id, order);
   if (recipient) notifyOrderConfirmed(tenant, recipient, order);
   if (sellerRecipient) notifyNewOrderForSeller(tenant, sellerRecipient, order);

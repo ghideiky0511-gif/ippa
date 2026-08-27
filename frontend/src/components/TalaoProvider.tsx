@@ -4,7 +4,8 @@ import type { Client } from '@/domain/clients/types';
 import type { CartItem, OrderBook, OrderSession, ShippingOption } from '@/domain/orders/types';
 import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
 import { usePedidoRealtime, type PedidoParticipant, type PedidoPresence } from '@/lib/realtime/usePedidoRealtime';
-import { activateOrderBook, cancelOrderBook, createOrderBook, fetchActiveOrderBook, fetchOrderBooks } from '@/lib/ordersClient';
+import { applyBookUpsert, applySessionEventToList } from '@/lib/realtime/applySessionEvent';
+import { activateOrderBook, cancelOrderBook, createOrderBook, fetchActiveOrderBook, fetchOrderBooks, fetchOrderSession } from '@/lib/ordersClient';
 
 interface TalaoContextValue {
   sessions: OrderSession[]; // todas (aberta + fechada) — usado por "buscar existentes"
@@ -113,12 +114,56 @@ export function TalaoProvider({ children }: { children: ReactNode }) {
     }).catch(() => {});
   }, []);
 
-  useUpdatesRealtime((update) => {
-    if (update === 'sessions_updated' || update === 'order_books_updated') {
+  // Resync pontual de uma sessão só (buraco na cadeia causal de
+  // session_items — ver applySessionEvent.ts) em vez do talão inteiro.
+  function resyncSession(sessionId: string) {
+    fetchOrderSession(sessionId)
+      .then((session) => setSessions((prev) => (prev.some((s) => s.id === session.id) ? prev.map((s) => (s.id === session.id ? session : s)) : [...prev, session])))
+      .catch(() => {});
+  }
+
+  useUpdatesRealtime(
+    () => {}, // sinal legado — este provider só reage ao evento com payload abaixo
+    {
+      onEvent: (event) => {
+        if (event.t === 'book_upsert') {
+          setBooks((current) => applyBookUpsert(current, event.book));
+          return;
+        }
+        setSessions((current) => {
+          const result = applySessionEventToList(current, event);
+          if (result.resyncSessionId) resyncSession(result.resyncSessionId);
+          return result.sessions;
+        });
+      },
+      // /atualizacoes não manda snapshot no join — toda reconexão pode ter
+      // perdido eventos no meio, então refaz o fetch completo uma vez.
+      onResync: () => {
+        void refetchSessions();
+        void refetchBooks();
+      },
+    },
+  );
+
+  // Rede de segurança: mesmo com os eventos acima, um heartbeat de 30s
+  // corrige qualquer drift silencioso — só com a aba visível, pra não
+  // queimar recurso do plano free do Render em abas de fundo.
+  useEffect(() => {
+    function tick() {
+      if (document.visibilityState !== 'visible') return;
       void refetchSessions();
       void refetchBooks();
     }
-  });
+    const interval = window.setInterval(tick, 30_000);
+    function onVisible() {
+      if (document.visibilityState === 'visible') tick();
+    }
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
 
   const openSessions = sessions.filter((s) => s.status === 'aberto' || s.status === 'aguardando_pagamento');
   const activeSession = sessions.find((s) => s.id === activeSessionId) || null;
@@ -172,7 +217,14 @@ export function TalaoProvider({ children }: { children: ReactNode }) {
 
   const realtime = usePedidoRealtime({
     sessionId: activeSession?.id,
-    onSession: (session) => setSessions((prev) => prev.map((item) => item.id === session.id ? session : item)),
+    // Guarda monotônica (mesmo updatedAt usado pelo canal /atualizacoes,
+    // ver applySessionEvent.ts): sem isso, o snapshot deste canal e o do
+    // /atualizacoes podiam se sobrescrever fora de ordem — era exatamente o
+    // "overlap" na tela ao alterar produto rapidamente.
+    onSession: (session) => setSessions((prev) => prev.map((item) => {
+      if (item.id !== session.id) return item;
+      return session.updatedAt < item.updatedAt ? item : session;
+    })),
     onPresence: setPresence,
     onParticipants: setParticipants,
   });

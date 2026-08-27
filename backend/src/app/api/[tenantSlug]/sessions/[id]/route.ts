@@ -12,6 +12,27 @@ export async function OPTIONS() {
     return new NextResponse(null, { status: 204 });
 }
 
+// Resync de uma sessão só — usado pelo realtime incremental do talão quando
+// a cadeia causal de um evento de itens tem buraco (ver
+// frontend/src/lib/realtime/applySessionEvent.ts), em vez de refazer o GET
+// /sessions inteiro.
+export async function GET(
+    request: NextRequest,
+    context: RouteContext,
+): Promise<Response> {
+    const route = await resolveTenantRoute(request, context.params);
+    if (isTenantRouteError(route)) return route;
+    const authenticated = await authentication.getAuthenticatedSession(
+        route.tenant,
+        requestToken(request, route.tenant.slug),
+    );
+    if (!authenticated)
+        return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+    return execute(() =>
+        orders.orderSessionById(route.tenant, authenticated.user, route.params.id),
+    );
+}
+
 export async function PUT(
     request: NextRequest,
     context: RouteContext,

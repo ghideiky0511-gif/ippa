@@ -5,6 +5,7 @@ import { OrderSessionSchema, type CartItem, type OrderSession, type ShippingOpti
 import { pedidoRealtimeEventMessage, usePedidoRealtime, type PedidoParticipant, type PedidoPresence } from '@/lib/realtime/usePedidoRealtime';
 import { apiFetch } from '@/lib/api-client';
 import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
+import { applySessionEventToActive } from '@/lib/realtime/applySessionEvent';
 
 // Contrato mínimo que CartProvider.tsx precisa pra escrever num pedido
 // compartilhado — mesmo formato que TalaoProvider.tsx expõe (ver
@@ -66,16 +67,54 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
   // a lista de presença informa quando a vendedora entra ou sai do pedido.
   const realtime = usePedidoRealtime({
     sessionId: activeSession?.id,
-    onSession: setActiveSession,
+    // Guarda monotônica (mesmo updatedAt usado pelo canal /atualizacoes,
+    // ver applySessionEvent.ts): sem isso, o snapshot deste canal e o do
+    // /atualizacoes podiam se sobrescrever fora de ordem.
+    onSession: (session) => setActiveSession((prev) => {
+      if (prev && prev.id === session.id && session.updatedAt < prev.updatedAt) return prev;
+      return session;
+    }),
     onPresence: setPresence,
     onParticipants: setParticipants,
     onEvent: (event) => toast.info(pedidoRealtimeEventMessage(event)),
     allowCustomerSessionCreation: !activeSession,
   });
 
-  useUpdatesRealtime((update) => {
-    if (update === 'sessions_updated') void refetch();
-  });
+  useUpdatesRealtime(
+    () => {}, // sinal legado — este provider só reage ao evento com payload abaixo
+    {
+      onEvent: (event) => {
+        if (event.t === 'book_upsert') return; // cliente não vê talões
+        setActiveSession((current) => {
+          const result = applySessionEventToActive(current, event);
+          if (result.resync) void refetch();
+          return result.session;
+        });
+      },
+      // /atualizacoes não manda snapshot no join — toda reconexão pode ter
+      // perdido eventos no meio.
+      onResync: () => void refetch(),
+    },
+  );
+
+  // Rede de segurança: heartbeat de 30s corrige qualquer drift silencioso —
+  // só com a aba visível, pra não queimar recurso do plano free do Render
+  // em abas de fundo.
+  useEffect(() => {
+    function tick() {
+      if (document.visibilityState !== 'visible') return;
+      void refetch();
+    }
+    const interval = window.setInterval(tick, 30_000);
+    function onVisible() {
+      if (document.visibilityState === 'visible') tick();
+    }
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
 
   async function updateActiveItems(items: CartItem[]) {
     if (!activeSession) return;

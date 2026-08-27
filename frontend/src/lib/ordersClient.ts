@@ -32,6 +32,13 @@ export function fetchOrderSessions(): Promise<OrderSession[]> {
   return adminJson('/api/sessions', OrderSessionSchema.array(), {}, 'Não foi possível carregar os talões.');
 }
 
+// Resync de uma sessão só — usado pelo realtime incremental do talão
+// (applySessionEvent.ts) quando a cadeia causal de um evento de itens tem
+// buraco (evento perdido), em vez de refazer o fetchOrderSessions() inteiro.
+export function fetchOrderSession(id: string): Promise<OrderSession> {
+  return adminJson(`/api/sessions/${id}`, OrderSessionSchema, {}, 'Não foi possível atualizar o pedido.');
+}
+
 export function fetchOrderBooks(status?: OrderBook['status']): Promise<OrderBook[]> {
   const query = status ? `?status=${encodeURIComponent(status)}` : '';
   return adminJson(`/api/order-books${query}`, OrderBookSchema.array(), {}, 'Não foi possível carregar os talões.');

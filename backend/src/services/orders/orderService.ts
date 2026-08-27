@@ -22,7 +22,7 @@ import { notifyNewOrderForSeller, notifyOrderConfirmed } from "@/services/notifi
 import { cancelProviderOrderForOrder, enqueueOrderPush, requestProviderOrderResend } from "@/services/erp/orderPushService";
 import { logger, errorMeta } from "@/lib/logger";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
-import { toOrder, toOrderSession } from "./orderMapper";
+import { toOrder, toOrderBook, toOrderSession } from "./orderMapper";
 import { closeOrderBookWhenFinished } from "./orderBookLifecycle";
 import type { OrderBookRow } from "@/models/orderBooksModel";
 import { ORDER_AUDIT_ACTIONS, recordAuditEvent, type AuditRequestContext } from "@/services/audit";
@@ -191,7 +191,7 @@ export async function createCustomerOrder(
         return toOrder(row, orderItems);
     });
     for (const changedSession of changedSessions) notifySession(tenant.id, changedSession);
-    for (const book of changedBooks) notifyOrderBook(tenant.id, { sellerId: book.seller_id });
+    for (const book of changedBooks) notifyOrderBook(tenant.id, toOrderBook(book));
     notifyOrder(tenant.id, order);
     notifyOrderConfirmed(tenant, user, order);
     if (sellerRecipient) notifyNewOrderForSeller(tenant, sellerRecipient, order);
@@ -285,7 +285,7 @@ export async function cancelOrder(
         return toOrder(row, items);
     });
     for (const cancelledSession of cancelledSessions) notifySession(tenant.id, cancelledSession);
-    for (const book of changedBooks) notifyOrderBook(tenant.id, { sellerId: book.seller_id });
+    for (const book of changedBooks) notifyOrderBook(tenant.id, toOrderBook(book));
     notifyOrder(tenant.id, order);
     const erpResult = await cancelProviderOrderForOrder(tenant, user, orderId, auditRequestContext);
     return { order, erpWarning: erpResult.cancelled ? undefined : erpResult.error };

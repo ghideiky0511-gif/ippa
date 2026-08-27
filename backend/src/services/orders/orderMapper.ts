@@ -1,6 +1,7 @@
-import type { CartItem, Order, OrderSession } from "@/lib/types";
+import type { CartItem, Order, OrderBook, OrderSession } from "@/lib/types";
 import { OrderChannelSchema } from "@/contracts/orders";
 import type { OrderRow, OrderSessionRow } from "@/models/ordersModel";
+import type { OrderBookRow } from "@/models/orderBooksModel";
 
 export function toOrderSession(row: OrderSessionRow, items: CartItem[]): OrderSession {
     return {
@@ -38,4 +39,42 @@ export function toOrder(row: OrderRow, items: CartItem[]): Order {
         sellerId: row.seller_id ?? undefined,
         clientName: row.client_name ?? undefined,
     };
+}
+
+export function toOrderBook(row: OrderBookRow): OrderBook {
+    return {
+        id: row.id,
+        sellerId: row.seller_id,
+        name: row.name,
+        status: row.status,
+        isActive: row.is_active,
+        createdAt: row.created_at.toISOString(),
+        updatedAt: row.updated_at.toISOString(),
+    };
+}
+
+/** Diff de itens de sessão pro evento incremental `session_items` — `set`
+ * carrega o item inteiro com a qty ABSOLUTA (não o delta), pra convergir
+ * mesmo em cima de uma atualização otimista local já aplicada. Compara por
+ * `key` (não só qty): preço/backorderDate/suggested também contam como
+ * mudança, senão o cliente que recebe o evento fica com um snapshot velho
+ * desses campos. */
+export function diffCartItems(before: CartItem[], after: CartItem[]): { set: CartItem[]; del: string[] } {
+    const beforeByKey = new Map(before.map((item) => [item.key, item]));
+    const afterByKey = new Map(after.map((item) => [item.key, item]));
+    const set: CartItem[] = [];
+    const del: string[] = [];
+    for (const [key, item] of afterByKey) {
+        const previous = beforeByKey.get(key);
+        const changed = !previous
+            || previous.qty !== item.qty
+            || previous.price !== item.price
+            || previous.backorderDate !== item.backorderDate
+            || previous.suggested !== item.suggested;
+        if (changed) set.push(item);
+    }
+    for (const key of beforeByKey.keys()) {
+        if (!afterByKey.has(key)) del.push(key);
+    }
+    return { set, del };
 }

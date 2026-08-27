@@ -8,26 +8,13 @@ import {
     findOrderBookRow,
     insertOrderBookRow,
     listOrderBookRowsBySeller,
-    type OrderBookRow,
 } from "@/models/orderBooksModel";
 import { cancelOpenOrderSessionRowsByBook } from "@/models/ordersModel";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
 import { notifyOrderBook, notifySession } from "@/services/realtime/updateBroadcast";
-import { toOrderSession } from "./orderMapper";
+import { toOrderBook, toOrderSession } from "./orderMapper";
 import { getOrderBookSessionState } from "./orderBookLifecycle";
 import { CreateOrderBookInputSchema } from "@/contracts/orders";
-
-function toOrderBook(row: OrderBookRow): OrderBook {
-    return {
-        id: row.id,
-        sellerId: row.seller_id,
-        name: row.name,
-        status: row.status,
-        isActive: row.is_active,
-        createdAt: row.created_at.toISOString(),
-        updatedAt: row.updated_at.toISOString(),
-    };
-}
 
 function requireInternal(user: AuthUser) {
     if (user.role === "cliente") throw new ForbiddenError();
@@ -42,13 +29,18 @@ export async function orderBooks(tenant: Tenant, user: AuthUser, status?: OrderB
 
 export async function activeOrderBook(tenant: Tenant, user: AuthUser): Promise<OrderBook> {
     requireInternal(user);
+    let created = false;
     const book = await withTenantTransaction(tenant, user, async (client) => {
         const active = await findActiveOrderBookRow(client, user.id);
         if (active) return active;
+        created = true;
         return insertOrderBookRow(client, user.id, "Talão atual");
     });
     const result = toOrderBook(book);
-    notifyOrderBook(tenant.id, result);
+    // Get-or-create: só notifica quando de fato criou um talão novo — o
+    // caminho "achou o ativo" é leitura pura (chamado toda vez que a
+    // vendedora abre o talão) e não deve gerar ruído de broadcast.
+    if (created) notifyOrderBook(tenant.id, result);
     return result;
 }
 

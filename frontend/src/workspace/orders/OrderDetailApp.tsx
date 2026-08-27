@@ -1,12 +1,14 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { ArrowLeft, Ban, CheckCircle2, Printer, RefreshCw, Wrench } from 'lucide-react';
-import type { Order } from '@/domain/orders/types';
+import { ArrowLeft, Ban, CheckCircle2, PackagePlus, Printer, RefreshCw, Wrench } from 'lucide-react';
+import type { Order, OrderSession } from '@/domain/orders/types';
 import type { ClientWithLogin } from '@/domain/clients/types';
 import type { ProviderOrderAttempt, ProviderOrderAttemptOutcome, ProviderOrderRow, ProviderOrderStatus } from '@/workspace/lib/erpIntegrationClient';
 import Link from '@/components/TenantLink';
+import { useTenant } from '@/components/TenantProvider';
 import { adminUi } from '@/workspace/lib/ui';
 import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import { ResponsiveDataTable } from '@/workspace/components/shared/ResponsiveDataTable';
@@ -14,7 +16,7 @@ import { requestOrderPushResend } from '@/workspace/lib/erpIntegrationClient';
 import { useWorkspaceAuth } from '@/workspace/components/WorkspaceAuthProvider';
 import { Sheet, SheetContent, SheetHeader, SheetTrigger } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogCloseButton, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { markOrderPaid, cancelOrder } from '@/lib/ordersClient';
+import { markOrderPaid, cancelOrder, updateOrderSession } from '@/lib/ordersClient';
 import { StatusChip, type StatusChipTone } from '@/components/StatusChip';
 import { ORDER_STATUS_LABELS, OrderStatusChip } from './orderStatus';
 
@@ -78,26 +80,51 @@ export default function OrderDetailApp({
   initialClient,
   initialPushStatus,
   initialPushHistory,
+  initialSession,
 }: {
   initialOrder: Order;
   initialClient: ClientWithLogin | null;
   initialPushStatus: ProviderOrderRow | null;
   initialPushHistory: ProviderOrderAttempt[];
+  initialSession: OrderSession | null;
 }) {
   const [order, setOrder] = useState(initialOrder);
   const [client] = useState(initialClient);
   const [pushStatus, setPushStatus] = useState(initialPushStatus);
   const [pushHistory] = useState(initialPushHistory);
+  const [session] = useState(initialSession);
   const [resending, setResending] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [paymentMethodInput, setPaymentMethodInput] = useState('');
   const [actionPending, setActionPending] = useState(false);
+  const [upsellPending, setUpsellPending] = useState(false);
 
+  const router = useRouter();
+  const { href } = useTenant();
   const { workspaceUser } = useWorkspaceAuth();
   const canManageOrder = Boolean(workspaceUser) && workspaceUser?.role !== 'cliente';
   const canMarkPaid = order.status !== 'aberto' && order.status !== 'pago' && order.status !== 'cancelado';
   const canCancel = order.status !== 'pago' && order.status !== 'cancelado';
+  // Upsell: reabre o atendimento que originou este pedido e leva pro
+  // catálogo -- mesmo fluxo de sempre pra adicionar peça (websocket na
+  // sessão ativa), só que numa sessão que já tinha fechado ao finalizar. O
+  // backend só recusa mutação em pedido cancelado (canMutateLinkedOrder em
+  // orderSessionService.ts), então não há necessidade de checar o status do
+  // pedido além disso.
+  const canUpsell = canManageOrder && Boolean(session) && order.status !== 'cancelado';
+
+  async function startUpsell() {
+    if (!session) return;
+    setUpsellPending(true);
+    try {
+      if (session.status !== 'aberto') await updateOrderSession(session.id, { status: 'aberto' });
+      router.push(href(`/catalogo?session=${encodeURIComponent(session.id)}`));
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Não foi possível reabrir o atendimento.');
+      setUpsellPending(false);
+    }
+  }
 
   async function handleResend() {
     setResending(true);
@@ -291,6 +318,17 @@ export default function OrderDetailApp({
               <RefreshCw className={`mr-2 size-3.5 ${resending ? 'animate-spin' : ''}`} aria-hidden="true" />
               {resending ? 'Reenviando...' : 'Reenviar ao ERP'}
             </button>
+            {canUpsell && (
+              <button
+                type="button"
+                className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={upsellPending}
+                onClick={() => { setFabOpen(false); void startUpsell(); }}
+              >
+                <PackagePlus className="mr-2 size-3.5" aria-hidden="true" />
+                {upsellPending ? 'Abrindo...' : 'Adicionar peças'}
+              </button>
+            )}
             {canManageOrder && canMarkPaid && (
               <button
                 type="button"
