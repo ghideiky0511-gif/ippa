@@ -6,6 +6,7 @@ import { withControlTransaction } from "@/lib/db/control";
 import { createErpProvider } from "@/erp/registry";
 import type {
     ErpPriceSnapshot,
+    ErpProductChangeWindow,
     ErpProvider,
     ErpReferenceSnapshot,
     ErpSkuSnapshot,
@@ -436,12 +437,15 @@ export async function syncTenantCatalog(
         );
         const runtime: SyncRuntime = { tenant, integration, config, provider, run };
 
+        const discoveryWindow: ErpProductChangeWindow = {
+            ...(mode === "incremental" ? { startDate: windowStart, endDate: windowEnd } : {}),
+            ...(config.classification_type_code !== null && config.classification_codes.length > 0
+                ? { classificationTypeCode: config.classification_type_code, classificationCodes: config.classification_codes }
+                : {}),
+        };
         let cursor: string | undefined;
         do {
-            const page = await provider.discoverProductChanges(
-                mode === "incremental" ? { startDate: windowStart, endDate: windowEnd } : {},
-                cursor,
-            );
+            const page = await provider.discoverProductChanges(discoveryWindow, cursor);
             discovered += await withTenantTransaction(tenant, SYSTEM_ACTOR, (client) =>
                 stageCatalogSyncItemsRow(client, run!.id, integration.id, page.referenceCodes),
             );

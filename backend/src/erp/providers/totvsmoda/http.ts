@@ -15,6 +15,9 @@ import {
 
 export const TOTVS_MODA_BASE_URL = "https://apitotvsmoda.bhan.com.br";
 export const TOTVS_MODA_DEFAULT_TIMEOUT_MS = 20_000;
+// Loga chamadas que demoram mais que isso mesmo quando bem-sucedidas -- serve
+// pra identificar qual endpoint está perto do timeout antes dele virar erro.
+const SLOW_REQUEST_THRESHOLD_MS = 8_000;
 
 export const AUTH_TOKEN_PATH = "/api/totvsmoda/authorization/v2/token";
 export const BRANCHES_LIST_PATH = "/api/totvsmoda/person/v2/branchesList";
@@ -153,6 +156,12 @@ export async function totvsModaRequest<T = unknown>(
         const message = isTimeout
             ? `Tempo limite excedido ao chamar a API TOTVS Moda (${timeoutMs}ms).`
             : `Falha de rede na API TOTVS Moda: ${(exc as Error).message}`;
+        logger.error("totvsmoda-http", message, {
+            operation: operation || pathNorm,
+            method: methodNorm,
+            endpoint: pathNorm,
+            durationMs: Date.now() - startedAt,
+        });
         await report({
             statusCode: null,
             success: false,
@@ -164,6 +173,16 @@ export async function totvsModaRequest<T = unknown>(
         });
     } finally {
         clearTimeout(timer);
+    }
+
+    const durationMs = Date.now() - startedAt;
+    if (durationMs >= SLOW_REQUEST_THRESHOLD_MS) {
+        logger.warn("totvsmoda-http", "Chamada lenta à API TOTVS Moda", {
+            operation: operation || pathNorm,
+            method: methodNorm,
+            endpoint: pathNorm,
+            durationMs,
+        });
     }
 
     const statusCode = response.status;

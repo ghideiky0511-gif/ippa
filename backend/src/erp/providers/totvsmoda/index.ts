@@ -36,7 +36,11 @@ import {
 } from "./mapper";
 
 const PAGE_SIZE = 100;
-const CATALOG_PAGE_SIZE = 1000;
+// Era 1000 -- páginas desse tamanho (produtos com expand de classificação/
+// preço/saldo, ou centenas de códigos num searchProductPrices/Balances de
+// uma vez) estavam estourando TOTVS_MODA_DEFAULT_TIMEOUT_MS (20s) do lado do
+// TOTVS. Lotes menores trocam mais chamadas por chamadas mais rápidas.
+const CATALOG_PAGE_SIZE = 200;
 
 function chunks<T>(items: T[], size: number): T[][] {
     const result: T[][] = [];
@@ -196,6 +200,8 @@ export function createTotvsModaErpProvider(
                 order: window.startDate
                     ? "maxChangeFilterDate,referenceCode,productCode"
                     : "referenceCode,colorCode,productSize,productCode",
+                classificationTypeCode: window.classificationTypeCode,
+                classificationCodes: window.classificationCodes,
             });
             const referenceCodes = Array.from(new Set(
                 (result.items as TotvsModaProductRow[])

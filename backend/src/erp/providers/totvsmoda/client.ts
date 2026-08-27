@@ -116,6 +116,11 @@ export interface TotvsModaProductSearchOptions {
     referenceCodeList?: string[];
     includeCatalogChanges?: boolean;
     order?: string;
+    // Gate de publicação do tenant (classification_type_code/codes em
+    // catalog_sync_configs) -- quando presente, filtra na origem em vez de
+    // descobrir/baixar referência que shouldPublishReference ia descartar.
+    classificationTypeCode?: number;
+    classificationCodes?: string[];
 }
 
 export interface TotvsModaPersonSearchOptions {
@@ -423,6 +428,16 @@ export class TotvsModaClient {
                     : undefined,
                 productCodeList: options.productCodeList,
                 referenceCodeList: options.referenceCodeList,
+                // Catálogo do TOTVS mistura produto acabado (vendável) com
+                // matéria-prima/componente de ficha técnica sob o mesmo
+                // endpoint (ver ProductFilterModel.isFinishedProduct em
+                // docs/erp/totvsmoda/products.json) -- este provider só
+                // publica produto de venda, então filtra na origem em vez de
+                // trazer e descartar depois.
+                isFinishedProduct: true,
+                classifications: options.classificationTypeCode !== undefined && options.classificationCodes?.length
+                    ? [{ type: options.classificationTypeCode, codeList: options.classificationCodes }]
+                    : undefined,
             },
             option: { branchInfoCode: this.credentials.branchCode },
             page: options.page,

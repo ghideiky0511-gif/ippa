@@ -26,6 +26,12 @@ export interface ErpFetchResult<T> {
 export interface ErpProductChangeWindow {
     startDate?: Date;
     endDate?: Date;
+    // Gate de publicação do tenant (catalog_sync_configs), repassado para
+    // quem suportar filtrar na origem -- evita descobrir/baixar referência
+    // que shouldPublishReference (catalogSyncService.ts) ia descartar de
+    // qualquer forma. Provider que não suportar simplesmente ignora.
+    classificationTypeCode?: number;
+    classificationCodes?: string[];
 }
 
 export interface ErpProductChangePage {
