@@ -3,11 +3,11 @@
 import { useEffect, useRef } from 'react';
 import Link from '@/components/TenantLink';
 import { Check, Plus } from 'lucide-react';
-import { formatBRL, priceWithPercentOff } from '@/lib/format';
 import { useCart } from './CartProvider';
 import { useQuickView } from './QuickViewProvider';
 import { useAuthUser } from './AuthProvider';
 import CatalogProductCard from './CatalogProductCard';
+import ProductPrice from './ProductPrice';
 import type { Product } from '@/domain/products/types';
 
 // Janela pra distinguir "1 clique pra desfazer" de "2 cliques seguidos pra
@@ -101,13 +101,7 @@ export default function ProductCard({ product, priority, index }: { product: Pro
 
   const price = !showPrices ? (
     <Link href="/login" className="text-[13px] font-semibold text-brand-primary">Entrar para ver o preço</Link>
-  ) : product.activeDiscount ? (
-    <div className="flex flex-wrap items-center gap-2" title={product.activeDiscount.label}>
-      <span className="relative text-sm text-brand-muted after:absolute after:inset-x-0 after:top-1/2 after:h-px after:bg-current">{formatBRL(product.price)}</span>
-      <span className="text-xl font-bold text-brand-primary">{formatBRL(priceWithPercentOff(product.price, product.activeDiscount.percent))}</span>
-      <span className="rounded-full bg-brand-primary px-2 py-0.5 text-xs font-semibold text-white">-{product.activeDiscount.percent}%</span>
-    </div>
-  ) : <div className="text-base font-bold text-foreground">{formatBRL(product.price)}</div>;
+  ) : <ProductPrice price={product.price} discount={product.activeDiscount} presentation="card" />;
 
   return <CatalogProductCard product={product} onOpen={() => openQuickView(product)} imageAction={imageAction} title={title} price={price} priority={priority} index={index} />;
 }

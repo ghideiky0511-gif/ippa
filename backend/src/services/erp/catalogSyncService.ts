@@ -256,6 +256,30 @@ export async function processReference(
         .filter((sku) => sku.isActive && !sku.isBlocked)
         .map((sku) => priceBySku.get(sku.externalId)?.price)
         .filter((price): price is number => price !== undefined && price >= 0);
+    const productPrice = activePrices.length > 0 ? Math.min(...activePrices) : 0;
+    const missingPriceSkuIds = reference.skus
+        .filter((sku) => sku.isActive && !sku.isBlocked && !priceBySku.has(sku.externalId))
+        .map((sku) => sku.externalId);
+    logger.info("catalog-sync", "Preço do produto calculado para persistência", {
+        tenantId: runtime.tenant.id,
+        integrationId: runtime.integration.id,
+        runId: runtime.run.id,
+        referenceCode: reference.externalId,
+        skuCount: reference.skus.length,
+        returnedPriceCount: prices.length,
+        activePrices: activePrices.join(","),
+        missingPriceSkuIds: missingPriceSkuIds.join(","),
+        productPrice,
+    });
+    if (activePrices.length === 0) {
+        logger.warn("catalog-sync", "Produto será salvo com preço zero porque o ERP não forneceu preço válido", {
+            tenantId: runtime.tenant.id,
+            integrationId: runtime.integration.id,
+            runId: runtime.run.id,
+            referenceCode: reference.externalId,
+            skuExternalIds: skuExternalIds.join(","),
+        });
+    }
     const publicationActive = shouldPublishReference(reference, runtime.config);
 
     await withTenantTransaction(runtime.tenant, SYSTEM_ACTOR, async (client) => {
@@ -264,9 +288,19 @@ export async function processReference(
             name: reference.name,
             description: reference.description,
             referenceId: reference.externalId,
-            price: activePrices.length > 0 ? Math.min(...activePrices) : 0,
+            price: productPrice,
             isActive: publicationActive,
             sourceOrigin: "erp",
+        });
+        logger.info("catalog-sync", "Preço do produto salvo", {
+            tenantId: runtime.tenant.id,
+            integrationId: runtime.integration.id,
+            runId: runtime.run.id,
+            referenceCode: reference.externalId,
+            productId: product.row.id,
+            requestedPrice: productPrice,
+            persistedPrice: product.row.price,
+            created: product.created,
         });
         await upsertExternalReferenceRow(client, {
             integrationId: runtime.integration.id,

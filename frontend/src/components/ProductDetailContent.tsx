@@ -6,7 +6,7 @@ import { motion, useReducedMotion } from 'motion/react';
 import { Check, TrendingUp } from 'lucide-react';
 import Link from '@/components/TenantLink';
 import { COLOR_MAP, CONFIG } from '@/lib/config';
-import { formatBRL, formatMarkup, priceWithPercentOff } from '@/lib/format';
+import { formatBRL, formatMarkup } from '@/lib/format';
 import { productClassificationSummary } from '@/lib/classifications';
 import { getMetQuantityTier, getQuantityDiscountTiers } from '@/lib/discounts';
 import { ADDABLE_AVAILABILITY, buildVariantMatrix, deliveryLabel, splitStockQty } from '@/lib/variants';
@@ -14,6 +14,7 @@ import { resolveGallery, resolveImageForColor } from '@/lib/images';
 import { useCart } from './CartProvider';
 import { useAuthUser } from './AuthProvider';
 import ProductImage from './ProductImage';
+import ProductPrice from './ProductPrice';
 import { ProductVariantMatrix } from './ui/product-variant-matrix';
 import type { Availability, Product } from '@/domain/products/types';
 
@@ -170,19 +171,13 @@ export default function ProductDetailContent({ product, presentation = 'page', o
         {product.referenceId && <div className={isPanel ? 'text-xs text-brand-muted' : ''}>{product.referenceId}</div>}
         {showPrices && (
           <>
-            {effectivePercent > 0 ? (
-              <div
-                className={[publicUi.discountRow, justUnlocked ? 'animate-[qty-discount-pop_.5s_ease]' : ''].join(' ')}
-                title={effectiveLabel}
-                onAnimationEnd={() => setJustUnlocked(false)}
-              >
-                <span className={publicUi.originalPrice}>{formatBRL(product.price)}</span>
-                <span className="contents">{formatBRL(priceWithPercentOff(product.price, effectivePercent))}</span>
-                <span className={publicUi.discountBadge}>-{effectivePercent}%</span>
-              </div>
-            ) : (
-              <div className="contents">{formatBRL(product.price)}</div>
-            )}
+            <ProductPrice
+              price={product.price}
+              discount={effectivePercent > 0 ? { percent: effectivePercent, label: effectiveLabel } : undefined}
+              presentation="detail"
+              animatePromotion={justUnlocked}
+              onAnimationEnd={() => setJustUnlocked(false)}
+            />
             {quantityTiers.length > 0 && (
               <div className="contents">
                 {quantityTiers.map((t) => (

@@ -1,4 +1,11 @@
-import type { CartItem, Client, Company, Order, Product, Variant } from "@/lib/types";
+import type {
+    CartItem,
+    Client,
+    Company,
+    Order,
+    Product,
+    Variant,
+} from "@/lib/types";
 import { OrderChannelSchema } from "@/contracts/orders";
 import type {
     ErpCompositionSnapshot,
@@ -75,13 +82,47 @@ export interface TotvsModaProductRow {
 export interface TotvsModaPriceItem {
     branchCode?: number;
     priceCode?: number;
-    price?: number;
-    promotionalPrice?: number;
+    price?: number | string;
+    promotionalPrice?: number | string | null;
 }
 
 export interface TotvsModaPriceRow {
     productCode?: number;
     prices?: TotvsModaPriceItem[];
+}
+
+function validPrice(value: number | string | null | undefined): number | undefined {
+    if (value === null || value === undefined || value === "") return undefined;
+    const numeric = typeof value === "number" ? value : Number(value);
+    return Number.isFinite(numeric) && numeric >= 0 ? numeric : undefined;
+}
+
+function valueOfTotvsModaPrice(item: TotvsModaPriceItem): number | undefined {
+    return validPrice(item.promotionalPrice) ?? validPrice(item.price);
+}
+
+/**
+ * Escolhe o primeiro código configurado que realmente tenha valor. A API pode
+ * devolver o item de um código solicitado com os campos de valor vazios; isso
+ * não deve impedir o fallback para o próximo código configurado.
+ */
+export function selectTotvsModaPrice(
+    row: TotvsModaPriceRow,
+    priceCodeList: number[],
+): number | undefined {
+    for (const priceCode of priceCodeList) {
+        const candidates =
+            row.prices?.filter((item) => item.priceCode === priceCode) ?? [];
+        for (const candidate of candidates) {
+            const value = valueOfTotvsModaPrice(candidate);
+            if (value !== undefined) return value;
+        }
+    }
+    for (const candidate of row.prices ?? []) {
+        const value = valueOfTotvsModaPrice(candidate);
+        if (value !== undefined) return value;
+    }
+    return undefined;
 }
 
 export interface TotvsModaBalanceItem {
@@ -125,11 +166,15 @@ export interface TotvsModaRelated {
     name?: string;
 }
 
-function primaryAddress(addresses: TotvsModaAddress[] | undefined): TotvsModaAddress | undefined {
+function primaryAddress(
+    addresses: TotvsModaAddress[] | undefined,
+): TotvsModaAddress | undefined {
     return addresses?.[0];
 }
 
-function primaryEmail(emails: TotvsModaEmail[] | undefined): string | undefined {
+function primaryEmail(
+    emails: TotvsModaEmail[] | undefined,
+): string | undefined {
     return (emails?.find((e) => e.isDefault) ?? emails?.[0])?.email;
 }
 
@@ -192,24 +237,46 @@ export interface TotvsModaOrder {
 // heurística — funciona para as nomeações usuais da TOTVS ("Categoria",
 // "Subcategoria", "Marca"), mas o certo a médio prazo é receber os
 // typeCodes corretos via credentials, igual branchCode/priceCodeList.
-function findClassification(classifications: TotvsModaClassification[] | undefined, ...keywords: string[]): string | undefined {
-    const match = classifications?.find((c) => keywords.some((keyword) => (c.typeName ?? "").toLowerCase().includes(keyword)));
+function findClassification(
+    classifications: TotvsModaClassification[] | undefined,
+    ...keywords: string[]
+): string | undefined {
+    const match = classifications?.find((c) =>
+        keywords.some((keyword) =>
+            (c.typeName ?? "").toLowerCase().includes(keyword),
+        ),
+    );
     return match?.name;
 }
 
-export function referenceCodeOfTotvsModaProduct(row: TotvsModaProductRow): string {
-    return String(row.ReferenceCode ?? row.referenceId ?? row.productCode ?? "").trim();
+export function referenceCodeOfTotvsModaProduct(
+    row: TotvsModaProductRow,
+): string {
+    return String(
+        row.ReferenceCode ?? row.referenceId ?? row.productCode ?? "",
+    ).trim();
 }
 
-function firstNonEmptyText(values: Array<string | null | undefined>): string | undefined {
-    return values.find((value): value is string => typeof value === "string" && value.trim().length > 0)?.trim();
+function firstNonEmptyText(
+    values: Array<string | null | undefined>,
+): string | undefined {
+    return values
+        .find(
+            (value): value is string =>
+                typeof value === "string" && value.trim().length > 0,
+        )
+        ?.trim();
 }
 
 function descriptionOfTotvsModaReference(rows: TotvsModaProductRow[]): string {
-    return firstNonEmptyText([
-        ...rows.flatMap((row) => (row.details ?? []).map((detail) => detail.description)),
-        ...rows.flatMap((row) => [row.description, row.descriptive]),
-    ]) ?? "";
+    return (
+        firstNonEmptyText([
+            ...rows.flatMap((row) =>
+                (row.details ?? []).map((detail) => detail.description),
+            ),
+            ...rows.flatMap((row) => [row.description, row.descriptive]),
+        ]) ?? ""
+    );
 }
 
 export function mapTotvsModaReferenceSnapshot(
@@ -219,12 +286,16 @@ export function mapTotvsModaReferenceSnapshot(
     if (!first) return null;
     const externalId = referenceCodeOfTotvsModaProduct(first);
     if (!externalId) return null;
-    const classifications = Array.from(new Map(
-        rows.flatMap((row) => row.classifications ?? []).map((classification) => [
-            `${classification.typeCode ?? ""}:${classification.code ?? classification.name ?? ""}`,
-            classification,
-        ]),
-    ).values());
+    const classifications = Array.from(
+        new Map(
+            rows
+                .flatMap((row) => row.classifications ?? [])
+                .map((classification) => [
+                    `${classification.typeCode ?? ""}:${classification.code ?? classification.name ?? ""}`,
+                    classification,
+                ]),
+        ).values(),
+    );
     return {
         externalId,
         name: first.referenceName ?? first.productName ?? externalId,
@@ -239,22 +310,26 @@ export function mapTotvsModaReferenceSnapshot(
         })),
         skus: rows.flatMap((row) => {
             if (row.productCode === undefined) return [];
-            return [{
-                externalId: String(row.productCode),
-                sku: row.productSku?.trim() || undefined,
-                color: row.colorName ?? row.colorCode ?? "",
-                size: row.size ?? "",
-                isActive: row.isActive !== false,
-                isBlocked: row.isBlocked === true,
-                classifications: (row.classifications ?? []).map((classification) => ({
-                    typeCode: classification.typeCode,
-                    typeName: classification.typeName,
-                    code: classification.code,
-                    name: classification.name,
-                    typeNameAux: classification.typeNameAux,
-                    nameAux: classification.nameAux,
-                })),
-            }];
+            return [
+                {
+                    externalId: String(row.productCode),
+                    sku: row.productSku?.trim() || undefined,
+                    color: row.colorName ?? row.colorCode ?? "",
+                    size: row.size ?? "",
+                    isActive: row.isActive !== false,
+                    isBlocked: row.isBlocked === true,
+                    classifications: (row.classifications ?? []).map(
+                        (classification) => ({
+                            typeCode: classification.typeCode,
+                            typeName: classification.typeName,
+                            code: classification.code,
+                            name: classification.name,
+                            typeNameAux: classification.typeNameAux,
+                            nameAux: classification.nameAux,
+                        }),
+                    ),
+                },
+            ];
         }),
     };
 }
@@ -287,32 +362,43 @@ export interface TotvsModaCompositionGroupRow {
 export function mapTotvsModaCompositions(
     rows: TotvsModaCompositionGroupRow[],
 ): ErpCompositionSnapshot[] {
-    return rows.flatMap((group) =>
-        (group.compositions ?? []).map((composition) => ({
-            externalCode: String(composition.code ?? "").trim(),
-            description: composition.description ?? "",
-            typeDescription: composition.typeDescription,
-            externalGroupCode: group.groupCode,
-            groupDescription: group.groupDescription,
-            items: (composition.itemsComposition ?? []).map((item) => ({
-                externalCode: item.fiberCode !== undefined ? String(item.fiberCode) : undefined,
-                material: item.fiberDescription ?? "",
-                percentage: item.fiberPercentage ?? 0,
+    return rows
+        .flatMap((group) =>
+            (group.compositions ?? []).map((composition) => ({
+                externalCode: String(composition.code ?? "").trim(),
+                description: composition.description ?? "",
+                typeDescription: composition.typeDescription,
+                externalGroupCode: group.groupCode,
+                groupDescription: group.groupDescription,
+                items: (composition.itemsComposition ?? []).map((item) => ({
+                    externalCode:
+                        item.fiberCode !== undefined
+                            ? String(item.fiberCode)
+                            : undefined,
+                    material: item.fiberDescription ?? "",
+                    percentage: item.fiberPercentage ?? 0,
+                })),
             })),
-        })),
-    ).filter((composition) => composition.externalCode);
+        )
+        .filter((composition) => composition.externalCode);
 }
 
-function sumStock(productCode: number | undefined, balanceByCode: Map<number, TotvsModaBalanceRow>): number {
+function sumStock(
+    productCode: number | undefined,
+    balanceByCode: Map<number, TotvsModaBalanceRow>,
+): number {
     if (productCode === undefined) return 0;
     const balances = balanceByCode.get(productCode)?.balances ?? [];
     return balances.reduce((sum, item) => sum + (item.stock ?? 0), 0);
 }
 
-function priceFor(productCode: number | undefined, priceByCode: Map<number, TotvsModaPriceRow>): number {
+function priceFor(
+    productCode: number | undefined,
+    priceByCode: Map<number, TotvsModaPriceRow>,
+): number {
     if (productCode === undefined) return 0;
     const item = priceByCode.get(productCode)?.prices?.[0];
-    return item?.promotionalPrice ?? item?.price ?? 0;
+    return item ? (valueOfTotvsModaPrice(item) ?? 0) : 0;
 }
 
 // products/search devolve uma linha por SKU; agrupamos por ReferenceCode
@@ -328,8 +414,16 @@ export function groupTotvsModaProducts(
     priceRows: TotvsModaPriceRow[],
     balanceRows: TotvsModaBalanceRow[],
 ): Array<{ externalId: string; data: Omit<Product, "id"> }> {
-    const priceByCode = new Map(priceRows.filter((r) => r.productCode !== undefined).map((r) => [r.productCode as number, r]));
-    const balanceByCode = new Map(balanceRows.filter((r) => r.productCode !== undefined).map((r) => [r.productCode as number, r]));
+    const priceByCode = new Map(
+        priceRows
+            .filter((r) => r.productCode !== undefined)
+            .map((r) => [r.productCode as number, r]),
+    );
+    const balanceByCode = new Map(
+        balanceRows
+            .filter((r) => r.productCode !== undefined)
+            .map((r) => [r.productCode as number, r]),
+    );
 
     const groups = new Map<string, TotvsModaProductRow[]>();
     for (const row of rows) {
@@ -340,8 +434,14 @@ export function groupTotvsModaProducts(
 
     return Array.from(groups.entries()).map(([referenceCode, skuRows]) => {
         const first = skuRows[0];
-        const colors = Array.from(new Set(skuRows.map((r) => r.colorName).filter((v): v is string => !!v)));
-        const sizes = Array.from(new Set(skuRows.map((r) => r.size).filter((v): v is string => !!v)));
+        const colors = Array.from(
+            new Set(
+                skuRows.map((r) => r.colorName).filter((v): v is string => !!v),
+            ),
+        );
+        const sizes = Array.from(
+            new Set(skuRows.map((r) => r.size).filter((v): v is string => !!v)),
+        );
         const variants: Variant[] = skuRows.map((row, index) => {
             const stockQty = sumStock(row.productCode, balanceByCode);
             return {
@@ -349,7 +449,12 @@ export function groupTotvsModaProducts(
                 color: row.colorName ?? "",
                 size: row.size ?? "",
                 price: priceFor(row.productCode, priceByCode),
-                availability: row.isActive === false || row.isBlocked ? "out_of_stock" : stockQty > 0 ? "in_stock" : "out_of_stock",
+                availability:
+                    row.isActive === false || row.isBlocked
+                        ? "out_of_stock"
+                        : stockQty > 0
+                          ? "in_stock"
+                          : "out_of_stock",
                 stockQty,
                 classifications: [],
             };
@@ -370,7 +475,9 @@ export function groupTotvsModaProducts(
     });
 }
 
-export function mapTotvsModaOrder(raw: TotvsModaOrder): Omit<Order, "id" | "orderNumber"> {
+export function mapTotvsModaOrder(
+    raw: TotvsModaOrder,
+): Omit<Order, "id" | "orderNumber"> {
     const items: CartItem[] = (raw.items ?? []).map((item, index) => {
         const key = String(item.productCode ?? index);
         return {
@@ -397,7 +504,9 @@ export function mapTotvsModaOrder(raw: TotvsModaOrder): Omit<Order, "id" | "orde
 // searchLegalEntities) — usamos sempre o primeiro endereço e o e-mail padrão
 // (isDefault), já que Client não modela múltiplos endereços/e-mails por
 // pessoa.
-export function mapTotvsModaIndividualClient(raw: TotvsModaIndividual): Omit<Client, "id" | "createdAt" | "updatedAt"> {
+export function mapTotvsModaIndividualClient(
+    raw: TotvsModaIndividual,
+): Omit<Client, "id" | "createdAt" | "updatedAt"> {
     const address = primaryAddress(raw.addresses);
     return {
         name: raw.name ?? "",
@@ -405,7 +514,10 @@ export function mapTotvsModaIndividualClient(raw: TotvsModaIndividual): Omit<Cli
         email: primaryEmail(raw.emails),
         cep: address?.cep,
         street: address?.address,
-        number: address?.addressNumber !== undefined ? String(address.addressNumber) : undefined,
+        number:
+            address?.addressNumber !== undefined
+                ? String(address.addressNumber)
+                : undefined,
         complement: address?.complement,
         neighborhood: address?.neighborhood,
         city: address?.cityName,
@@ -413,7 +525,9 @@ export function mapTotvsModaIndividualClient(raw: TotvsModaIndividual): Omit<Cli
     };
 }
 
-export function mapTotvsModaLegalEntityClient(raw: TotvsModaLegalEntity): Omit<Client, "id" | "createdAt" | "updatedAt"> {
+export function mapTotvsModaLegalEntityClient(
+    raw: TotvsModaLegalEntity,
+): Omit<Client, "id" | "createdAt" | "updatedAt"> {
     const address = primaryAddress(raw.addresses);
     return {
         name: raw.name ?? raw.fantasyName ?? "",
@@ -421,7 +535,10 @@ export function mapTotvsModaLegalEntityClient(raw: TotvsModaLegalEntity): Omit<C
         email: primaryEmail(raw.emails),
         cep: address?.cep,
         street: address?.address,
-        number: address?.addressNumber !== undefined ? String(address.addressNumber) : undefined,
+        number:
+            address?.addressNumber !== undefined
+                ? String(address.addressNumber)
+                : undefined,
         complement: address?.complement,
         neighborhood: address?.neighborhood,
         city: address?.cityName,
@@ -435,7 +552,10 @@ export function mapTotvsModaLegalEntityClient(raw: TotvsModaLegalEntity): Omit<C
 // Retentar sem corrigir o cadastro nunca resolve sozinho, por isso implementa
 // NonRetryableErpOrderError (mesmo motivo de TotvsModaOrderRejectedError em
 // errors.ts, só que detectado antes de chamar a API, não depois).
-export class TotvsModaOrderMappingError extends Error implements NonRetryableErpOrderError {
+export class TotvsModaOrderMappingError
+    extends Error
+    implements NonRetryableErpOrderError
+{
     readonly nonRetryable = true as const;
     constructor(message: string) {
         super(message);
@@ -449,13 +569,23 @@ export class TotvsModaOrderMappingError extends Error implements NonRetryableErp
 // uma integração de verdade com o meio de pagamento. "Invoice" (fatura) é o
 // fallback quando nada bate, por ser o tipo mais neutro (não exige dado de
 // cartão/NSU que não temos).
-function mapPaymentMethodToDocumentType(paymentMethod: string | undefined): TotvsModaDocumentType {
+function mapPaymentMethodToDocumentType(
+    paymentMethod: string | undefined,
+): TotvsModaDocumentType {
     const normalized = (paymentMethod ?? "").toLowerCase();
     if (normalized.includes("pix")) return "Pix";
     if (normalized.includes("boleto")) return "Billet";
-    if (normalized.includes("debito") || normalized.includes("débito")) return "DebitCard";
-    if (normalized.includes("credito") || normalized.includes("crédito") || normalized.includes("cartao") || normalized.includes("cartão")) return "CreditCard";
-    if (normalized.includes("dinheiro") || normalized.includes("cash")) return "Cash";
+    if (normalized.includes("debito") || normalized.includes("débito"))
+        return "DebitCard";
+    if (
+        normalized.includes("credito") ||
+        normalized.includes("crédito") ||
+        normalized.includes("cartao") ||
+        normalized.includes("cartão")
+    )
+        return "CreditCard";
+    if (normalized.includes("dinheiro") || normalized.includes("cash"))
+        return "Cash";
     return "Invoice";
 }
 
@@ -472,7 +602,11 @@ export function mapOrderToTotvsModaOrderInDto(
     credentials: TotvsModaCredentials,
     orderId: string,
 ): TotvsModaOrderInput {
-    if (!credentials.defaultOperationCode || !credentials.defaultPaymentConditionCode || !credentials.defaultPriorityCode) {
+    if (
+        !credentials.defaultOperationCode ||
+        !credentials.defaultPaymentConditionCode ||
+        !credentials.defaultPriorityCode
+    ) {
         throw new TotvsModaOrderMappingError(
             "Configuração do TOTVS Moda incompleta: código de operação, condição de pagamento ou prioridade não definidos.",
         );
@@ -497,7 +631,9 @@ export function mapOrderToTotvsModaOrderInDto(
         );
     }
     if (order.items.length === 0) {
-        throw new TotvsModaOrderMappingError("Pedido sem itens -- nada para enviar ao TOTVS Moda.");
+        throw new TotvsModaOrderMappingError(
+            "Pedido sem itens -- nada para enviar ao TOTVS Moda.",
+        );
     }
 
     const items: TotvsModaOrderItemInput[] = order.items.map((item) => {
@@ -520,9 +656,18 @@ export function mapOrderToTotvsModaOrderInDto(
     // aqui) ou o bruto dos itens sem o desconto -- best-effort até termos
     // confirmação/acesso a sandbox para testar um pedido com desconto de
     // verdade.
-    const payments: TotvsModaOrderPaymentInput[] | undefined = order.total > 0
-        ? [{ documentType: mapPaymentMethodToDocumentType(order.paymentMethod), installment: 1, paymentValue: order.total }]
-        : undefined;
+    const payments: TotvsModaOrderPaymentInput[] | undefined =
+        order.total > 0
+            ? [
+                  {
+                      documentType: mapPaymentMethodToDocumentType(
+                          order.paymentMethod,
+                      ),
+                      installment: 1,
+                      paymentValue: order.total,
+                  },
+              ]
+            : undefined;
 
     // totalAmountOrder é conferido pelo TOTVS contra a soma de items e
     // payments (doc: "utilizado para conferência da soma dos itens e dos
@@ -538,7 +683,12 @@ export function mapOrderToTotvsModaOrderInDto(
                 "Configuração do TOTVS Moda incompleta: código de tipo de desconto (defaultDiscountTypeCode) não definido, e este pedido tem desconto.",
             );
         }
-        discounts = [{ typeDiscountCode: credentials.defaultDiscountTypeCode, discountValue: order.discount.amount }];
+        discounts = [
+            {
+                typeDiscountCode: credentials.defaultDiscountTypeCode,
+                discountValue: order.discount.amount,
+            },
+        ];
     }
 
     return {
@@ -547,7 +697,9 @@ export function mapOrderToTotvsModaOrderInDto(
         orderDate: order.date,
         customerCpfCnpj: context.clientDocument,
         representativeCode: credentials.representativeCode,
-        representativeCpfCnpj: credentials.representativeCode ? undefined : credentials.representativeCpfCnpj,
+        representativeCpfCnpj: credentials.representativeCode
+            ? undefined
+            : credentials.representativeCpfCnpj,
         operationCode: credentials.defaultOperationCode,
         paymentConditionCode: credentials.defaultPaymentConditionCode,
         priorityCode: credentials.defaultPriorityCode,
@@ -577,7 +729,9 @@ export function mapCancelOrderInput(
     }
     const orderCode = Number(externalOrderCode);
     if (!Number.isFinite(orderCode)) {
-        throw new TotvsModaOrderMappingError(`external_id "${externalOrderCode}" não é um orderCode válido do TOTVS Moda.`);
+        throw new TotvsModaOrderMappingError(
+            `external_id "${externalOrderCode}" não é um orderCode válido do TOTVS Moda.`,
+        );
     }
     return {
         branchCode: credentials.branchCode,
@@ -590,7 +744,9 @@ export function mapCancelOrderInput(
 // BranchListModel não tem inscrição estadual, matriz/filial ou ativo/inativo
 // — só o que dá pra preencher com segurança fica preenchido; isMatriz/active
 // ficam com um default fixo até a API expor isso por outro campo/endpoint.
-export function mapTotvsModaCompany(raw: TotvsModaBranch): Omit<Company, "id" | "createdAt" | "updatedAt"> {
+export function mapTotvsModaCompany(
+    raw: TotvsModaBranch,
+): Omit<Company, "id" | "createdAt" | "updatedAt"> {
     const address = primaryAddress(raw.addresses);
     return {
         cnpj: raw.cnpj ?? "",
@@ -599,7 +755,10 @@ export function mapTotvsModaCompany(raw: TotvsModaBranch): Omit<Company, "id" | 
         isMatriz: false,
         cep: address?.cep,
         street: address?.address,
-        number: address?.addressNumber !== undefined ? String(address.addressNumber) : undefined,
+        number:
+            address?.addressNumber !== undefined
+                ? String(address.addressNumber)
+                : undefined,
         complement: address?.complement,
         neighborhood: address?.neighborhood,
         city: address?.cityName,

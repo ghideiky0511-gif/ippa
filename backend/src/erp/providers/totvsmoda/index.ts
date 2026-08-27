@@ -1,5 +1,6 @@
 import type { ExternalApiCallReporter } from "@/lib/externalApiCall";
 import { documentDigits } from "@/contracts/shared";
+import { logger } from "@/lib/logger";
 import type {
     ErpFetchOptions,
     ErpFetchResult,
@@ -27,6 +28,7 @@ import {
     mapTotvsModaLegalEntityClient,
     mapTotvsModaOrder,
     referenceCodeOfTotvsModaProduct,
+    selectTotvsModaPrice,
     type TotvsModaBalanceRow,
     type TotvsModaBranch,
     type TotvsModaCompositionGroupRow,
@@ -47,7 +49,8 @@ const CATALOG_PAGE_SIZE = 200;
 
 function chunks<T>(items: T[], size: number): T[][] {
     const result: T[][] = [];
-    for (let index = 0; index < items.length; index += size) result.push(items.slice(index, index + size));
+    for (let index = 0; index < items.length; index += size)
+        result.push(items.slice(index, index + size));
     return result;
 }
 
@@ -113,13 +116,34 @@ function normalizeCredentials(
         branchCode,
         priceCodeList,
         stockCodeList,
-        defaultDiscountTypeCode: toOptionalNumber(credentials.defaultDiscountTypeCode ?? credentials.default_discount_type_code),
-        defaultOperationCode: toOptionalNumber(credentials.defaultOperationCode ?? credentials.default_operation_code),
-        defaultPaymentConditionCode: toOptionalNumber(credentials.defaultPaymentConditionCode ?? credentials.default_payment_condition_code),
-        defaultPriorityCode: toOptionalNumber(credentials.defaultPriorityCode ?? credentials.default_priority_code),
-        representativeCode: toOptionalNumber(credentials.representativeCode ?? credentials.representative_code),
-        representativeCpfCnpj: trim(credentials.representativeCpfCnpj ?? credentials.representative_cpf_cnpj) || undefined,
-        defaultReasonCancellationCode: toOptionalNumber(credentials.defaultReasonCancellationCode ?? credentials.default_reason_cancellation_code),
+        defaultDiscountTypeCode: toOptionalNumber(
+            credentials.defaultDiscountTypeCode ??
+                credentials.default_discount_type_code,
+        ),
+        defaultOperationCode: toOptionalNumber(
+            credentials.defaultOperationCode ??
+                credentials.default_operation_code,
+        ),
+        defaultPaymentConditionCode: toOptionalNumber(
+            credentials.defaultPaymentConditionCode ??
+                credentials.default_payment_condition_code,
+        ),
+        defaultPriorityCode: toOptionalNumber(
+            credentials.defaultPriorityCode ??
+                credentials.default_priority_code,
+        ),
+        representativeCode: toOptionalNumber(
+            credentials.representativeCode ?? credentials.representative_code,
+        ),
+        representativeCpfCnpj:
+            trim(
+                credentials.representativeCpfCnpj ??
+                    credentials.representative_cpf_cnpj,
+            ) || undefined,
+        defaultReasonCancellationCode: toOptionalNumber(
+            credentials.defaultReasonCancellationCode ??
+                credentials.default_reason_cancellation_code,
+        ),
     };
 }
 
@@ -171,7 +195,9 @@ function onlyDigits(value: string): string {
 // depois (ver commercialGroupMemberService.addCommercialGroupMember).
 // Documento normalizado pro mesmo formato (só dígitos) que o resto do
 // sistema usa (clients.cpf_cnpj), em vez do que a TOTVS devolver cru.
-function toRelatedParty(raw: TotvsModaRelated): { cpfCnpj: string; name: string } | null {
+function toRelatedParty(
+    raw: TotvsModaRelated,
+): { cpfCnpj: string; name: string } | null {
     const cpfCnpj = documentDigits(trim(raw.cpfCnpj));
     const name = trim(raw.name);
     if (!cpfCnpj || !name) return null;
@@ -192,24 +218,34 @@ export function createTotvsModaErpProvider(
     return {
         code: "totvsmoda",
 
-        async listProductClassificationTypes(): Promise<ErpClassificationTypeSnapshot[]> {
+        async listProductClassificationTypes(): Promise<
+            ErpClassificationTypeSnapshot[]
+        > {
             const types = new Map<string, ErpClassificationTypeSnapshot>();
             let page = 1;
             while (true) {
-                const result = await client.listProductClassifications(page, PAGE_SIZE);
+                const result = await client.listProductClassifications(
+                    page,
+                    PAGE_SIZE,
+                );
                 for (const item of result.items) {
                     const typeCode = trim(item.typeCode ?? item.code);
                     const typeName = trim(item.typeName ?? item.name);
-                    if (typeCode && typeName) types.set(typeCode, {
-                        typeCode,
-                        typeName,
-                        typeNameAux: trim(item.typeNameAux ?? item.auxiliaryType) || undefined,
-                    });
+                    if (typeCode && typeName)
+                        types.set(typeCode, {
+                            typeCode,
+                            typeName,
+                            typeNameAux:
+                                trim(item.typeNameAux ?? item.auxiliaryType) ||
+                                undefined,
+                        });
                 }
                 if (!result.hasNext) break;
                 page += 1;
             }
-            return [...types.values()].sort((left, right) => left.typeName.localeCompare(right.typeName));
+            return [...types.values()].sort((left, right) =>
+                left.typeName.localeCompare(right.typeName),
+            );
         },
 
         async discoverProductChanges(window, cursor) {
@@ -226,11 +262,13 @@ export function createTotvsModaErpProvider(
                 classificationTypeCode: window.classificationTypeCode,
                 classificationCodes: window.classificationCodes,
             });
-            const referenceCodes = Array.from(new Set(
-                (result.items as TotvsModaProductRow[])
-                    .map(referenceCodeOfTotvsModaProduct)
-                    .filter(Boolean),
-            ));
+            const referenceCodes = Array.from(
+                new Set(
+                    (result.items as TotvsModaProductRow[])
+                        .map(referenceCodeOfTotvsModaProduct)
+                        .filter(Boolean),
+                ),
+            );
             return {
                 referenceCodes,
                 nextCursor: result.hasNext ? String(page + 1) : undefined,
@@ -248,7 +286,7 @@ export function createTotvsModaErpProvider(
                     order: "referenceCode,colorCode,productSize,productCode",
                     includeDetails: true,
                 });
-                rows.push(...result.items as TotvsModaProductRow[]);
+                rows.push(...(result.items as TotvsModaProductRow[]));
                 if (!result.hasNext) break;
                 page += 1;
             }
@@ -268,51 +306,93 @@ export function createTotvsModaErpProvider(
                 productCodeList: [numericCode],
             });
             const first = result.items[0] as TotvsModaProductRow | undefined;
-            const referenceCode = first ? referenceCodeOfTotvsModaProduct(first) : "";
+            const referenceCode = first
+                ? referenceCodeOfTotvsModaProduct(first)
+                : "";
             return referenceCode || null;
         },
 
         async fetchCompositions(referenceCode) {
-            const result = await client.searchCompositionGroupProducts(referenceCode);
-            return mapTotvsModaCompositions(result.items as TotvsModaCompositionGroupRow[]);
+            const result =
+                await client.searchCompositionGroupProducts(referenceCode);
+            return mapTotvsModaCompositions(
+                result.items as TotvsModaCompositionGroupRow[],
+            );
         },
 
         async fetchPrices(productCodes): Promise<ErpPriceSnapshot[]> {
             const result: ErpPriceSnapshot[] = [];
-            const numericCodes = productCodes.map(Number).filter(Number.isFinite);
+            const numericCodes = productCodes
+                .map(Number)
+                .filter(Number.isFinite);
             for (const batch of chunks(numericCodes, CATALOG_PAGE_SIZE)) {
                 const response = await client.searchProductPrices(batch);
+                logger.info("totvsmoda-price", "Resposta de preços recebida do ERP", {
+                    branchCode: normalized.branchCode,
+                    requestedProductCodes: batch.join(","),
+                    configuredPriceCodes: normalized.priceCodeList.join(","),
+                    returnedRows: response.items.length,
+                });
                 for (const row of response.items as TotvsModaPriceRow[]) {
                     if (row.productCode === undefined) continue;
-                    const selected = normalized.priceCodeList
-                        .map((code) => row.prices?.find((price) => price.priceCode === code))
-                        .find(Boolean) ?? row.prices?.[0];
-                    const price = selected?.promotionalPrice ?? selected?.price;
-                    if (price === undefined || !Number.isFinite(price)) continue;
-                    result.push({ skuExternalId: String(row.productCode), price });
+                    const price = selectTotvsModaPrice(
+                        row,
+                        normalized.priceCodeList,
+                    );
+                    if (price === undefined) {
+                        logger.warn("totvsmoda-price", "SKU retornado sem preço válido", {
+                            productCode: row.productCode,
+                            configuredPriceCodes: normalized.priceCodeList.join(","),
+                            returnedPrices: JSON.stringify(row.prices ?? []),
+                        });
+                        continue;
+                    }
+                    logger.info("totvsmoda-price", "Preço do SKU selecionado", {
+                        productCode: row.productCode,
+                        price,
+                        returnedPrices: JSON.stringify(row.prices ?? []),
+                    });
+                    result.push({
+                        skuExternalId: String(row.productCode),
+                        price,
+                    });
                 }
+            }
+            if (numericCodes.length > 0 && result.length === 0) {
+                logger.warn("totvsmoda-price", "Consulta concluída sem nenhum preço aproveitável", {
+                    requestedProductCodes: numericCodes.join(","),
+                    configuredPriceCodes: normalized.priceCodeList.join(","),
+                });
             }
             return result;
         },
 
         async fetchStock(productCodes): Promise<ErpStockSnapshot[]> {
             const result: ErpStockSnapshot[] = [];
-            const numericCodes = productCodes.map(Number).filter(Number.isFinite);
+            const numericCodes = productCodes
+                .map(Number)
+                .filter(Number.isFinite);
             for (const batch of chunks(numericCodes, CATALOG_PAGE_SIZE)) {
                 const response = await client.searchProductBalances(batch);
                 for (const row of response.items as TotvsModaBalanceRow[]) {
                     if (row.productCode === undefined) continue;
                     for (const stockCode of normalized.stockCodeList) {
-                        const balance = row.balances?.find((candidate) =>
-                            candidate.stockCode === stockCode
-                            && (candidate.branchCode ?? normalized.branchCode) === normalized.branchCode,
+                        const balance = row.balances?.find(
+                            (candidate) =>
+                                candidate.stockCode === stockCode &&
+                                (candidate.branchCode ??
+                                    normalized.branchCode) ===
+                                    normalized.branchCode,
                         );
-                        const branchCode = balance?.branchCode ?? normalized.branchCode;
+                        const branchCode =
+                            balance?.branchCode ?? normalized.branchCode;
                         result.push({
                             skuExternalId: String(row.productCode),
                             locationExternalId: `${branchCode}:${stockCode}`,
                             locationName: `Filial ${branchCode} / estoque ${stockCode}`,
-                            quantity: Number.isFinite(balance?.stock) ? Number(balance?.stock) : 0,
+                            quantity: Number.isFinite(balance?.stock)
+                                ? Number(balance?.stock)
+                                : 0,
                         });
                     }
                 }
@@ -534,13 +614,14 @@ export function createTotvsModaErpProvider(
         // lança TotvsModaOrderMappingError (não-repetível) quando falta
         // config/dado obrigatório. orderCode (o número que o TOTVS atribui) é
         // o externalId que orderPushService guarda como "id do ERP".
-        async sendOrder(
-            order,
-            context: ErpOrderPushContext,
-            options,
-        ) {
+        async sendOrder(order, context: ErpOrderPushContext, options) {
             const orderId = options?.idempotencyKey || order.id;
-            const payload = mapOrderToTotvsModaOrderInDto(order, context, normalized, orderId);
+            const payload = mapOrderToTotvsModaOrderInDto(
+                order,
+                context,
+                normalized,
+                orderId,
+            );
             const result = await client.createB2COrder(payload);
             return {
                 externalId: String(result.orderCode),
@@ -554,7 +635,11 @@ export function createTotvsModaErpProvider(
         // Um 400 já chega aqui como TotvsModaOrderRejectedError (client.ts),
         // então não precisa de tratamento especial: só deixa propagar.
         async cancelOrder(externalId, options) {
-            const payload = mapCancelOrderInput(externalId, normalized, options?.reason);
+            const payload = mapCancelOrderInput(
+                externalId,
+                normalized,
+                options?.reason,
+            );
             await client.cancelOrder(payload);
             return {};
         },

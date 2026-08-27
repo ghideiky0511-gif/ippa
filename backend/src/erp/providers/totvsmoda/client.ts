@@ -395,15 +395,20 @@ export class TotvsModaClient {
         );
     }
 
-    async listProductClassifications(page: number, pageSize: number): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
-        const payload = await this.request<TotvsModaSearchResponse<Record<string, unknown>>>(
-            "GET",
-            PRODUCT_CLASSIFICATIONS_PATH,
-            "listProductClassifications",
-            { params: { page, pageSize } },
-        );
+    async listProductClassifications(
+        page: number,
+        pageSize: number,
+    ): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
+        const payload = await this.request<
+            TotvsModaSearchResponse<Record<string, unknown>>
+        >("GET", PRODUCT_CLASSIFICATIONS_PATH, "listProductClassifications", {
+            params: { page, pageSize },
+        });
         if (!Array.isArray(payload?.items)) {
-            throw new TotvsModaResponseError("Classificações de produto retornaram formato inválido.", { payload });
+            throw new TotvsModaResponseError(
+                "Classificações de produto retornaram formato inválido.",
+                { payload },
+            );
         }
         return payload;
     }
@@ -524,11 +529,15 @@ export class TotvsModaClient {
                     {
                         branchCode: this.credentials.branchCode,
                         priceCodeList: this.credentials.priceCodeList,
+                        // ProductPriceItemModel.promotionalPrice só é
+                        // carregado quando PriceInfoModel pede explicitamente.
+                        isPromotionalPrice: true,
                     },
                 ],
             },
             page: 1,
             pageSize: 1000,
+            order: "productCode",
         };
         return this.searchAndValidate(
             "searchProductPrices",

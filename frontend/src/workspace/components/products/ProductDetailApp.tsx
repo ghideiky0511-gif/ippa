@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, LockKeyhole, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import Link from '@/components/TenantLink';
 import ProductImage from '@/components/ProductImage';
+import ProductPrice from '@/components/ProductPrice';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -149,7 +150,7 @@ export default function ProductDetailApp({ initialProduct, allProducts, erpInteg
 
       <section className="grid gap-4 rounded-brand border border-border bg-surface p-4 md:grid-cols-[11rem_1fr]">
         <ProductImage src={product.image} alt={product.name} className="aspect-[4/5] w-full rounded-control bg-brand-background md:w-44" />
-        <div className="grid content-start gap-4 sm:grid-cols-2 lg:grid-cols-4"><DetailValue label="Referência" value={product.referenceId} /><DetailValue label="Preço de atacado" value={money(product.price)} /><DetailValue label="Preço sugerido" value={money(product.suggestedRetailPrice)} /><div><p className="text-xs text-muted-foreground">Origem</p><Badge className="mt-1">{sourceLabel(product.sourceOrigin)}</Badge></div><DetailValue label="Classificações" value={productClassificationSummary(product)} /></div>
+        <div className="grid content-start gap-4 sm:grid-cols-2 lg:grid-cols-4"><DetailValue label="Referência" value={product.referenceId} /><div><p className="text-xs text-muted-foreground">Preço de atacado</p><ProductPrice price={product.price} discount={product.activeDiscount} presentation="workspace" /></div><DetailValue label="Preço sugerido" value={money(product.suggestedRetailPrice)} /><div><p className="text-xs text-muted-foreground">Origem</p><Badge className="mt-1">{sourceLabel(product.sourceOrigin)}</Badge></div><DetailValue label="Classificações" value={productClassificationSummary(product)} /></div>
       </section>
 
       {product.compositions && product.compositions.length > 0 && <section className="rounded-brand border border-border bg-surface p-4"><h2 className="font-bold">Composição</h2><div className="mt-3 grid gap-3 md:grid-cols-2">{product.compositions.map((composition) => <Card key={composition.id} className="p-3"><h3 className="font-semibold">{composition.typeDescription ?? composition.description}</h3>{composition.typeDescription && composition.description !== composition.typeDescription && <p className="mt-1 text-xs text-muted-foreground">{composition.description}</p>}<ul className="mt-3 space-y-1 text-sm text-foreground">{composition.items.map((item, index) => <li key={`${item.material}-${index}`} className="flex justify-between gap-3"><span>{item.material}</span><span className="font-medium">{item.percentage.toLocaleString('pt-BR')}%</span></li>)}</ul>{composition.items.length === 0 && <p className="mt-2 text-sm text-muted-foreground">Nenhum material informado pelo ERP.</p>}</Card>)}</div></section>}

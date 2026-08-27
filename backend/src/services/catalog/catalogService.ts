@@ -50,15 +50,25 @@ export interface CatalogFilters {
     sizes: string[];
 }
 
+export function hasPublicCatalogPrice(price: string | number): boolean {
+    const numericPrice = Number(price);
+    return Number.isFinite(numericPrice) && numericPrice > 0;
+}
+
 export async function listCatalogFilters(tenant: Tenant): Promise<CatalogFilters> {
     return withTenantTransaction(tenant, {}, async (client) => {
-        const [categories, variants] = await Promise.all([
+        const [categories, variants, products] = await Promise.all([
             categoryMenu(tenant),
             listProductVariantRows(client),
+            listProductRows(client),
         ]);
+        const visibleProductIds = new Set(
+            products.filter((product) => hasPublicCatalogPrice(product.price)).map((product) => product.id),
+        );
+        const visibleVariants = variants.filter((variant) => visibleProductIds.has(variant.product_id));
 
-        const allColors = [...new Set(variants.map((v) => v.color).filter(Boolean))].sort();
-        const allSizes = [...new Set(variants.map((v) => v.size).filter(Boolean))].sort((a, b) =>
+        const allColors = [...new Set(visibleVariants.map((v) => v.color).filter(Boolean))].sort();
+        const allSizes = [...new Set(visibleVariants.map((v) => v.size).filter(Boolean))].sort((a, b) =>
             isNaN(Number(a)) || isNaN(Number(b)) ? a.localeCompare(b) : Number(a) - Number(b)
         );
 
@@ -70,9 +80,12 @@ export async function listCatalogFilters(tenant: Tenant): Promise<CatalogFilters
     });
 }
 
-export async function listCatalog(tenant: Tenant): Promise<Product[]> {
+async function loadCatalog(tenant: Tenant, includeProductsWithoutPrice: boolean): Promise<Product[]> {
     return withTenantTransaction(tenant, {}, async (client) => {
-        const products = await listProductRows(client);
+        const productRows = await listProductRows(client);
+        const products = includeProductsWithoutPrice
+            ? productRows
+            : productRows.filter((product) => hasPublicCatalogPrice(product.price));
         if (products.length === 0) return [];
 
         const [variants, balances, classifications, packs, packItems, storeSettings, discountRows, tierRows, discountProductRows] = await Promise.all([
@@ -194,6 +207,11 @@ export async function listCatalog(tenant: Tenant): Promise<Product[]> {
     });
 }
 
+/** Catálogo público: produtos sem preço vendável permanecem no workspace, mas não são publicados. */
+export async function listCatalog(tenant: Tenant): Promise<Product[]> {
+    return loadCatalog(tenant, false);
+}
+
 export function canApplyDefaultMarkup(sourceOrigin: ProductSourceOrigin): boolean {
     return sourceOrigin !== "erp";
 }
@@ -201,7 +219,7 @@ export function canApplyDefaultMarkup(sourceOrigin: ProductSourceOrigin): boolea
 /** Visão exclusiva do workspace, com a origem usada para controlar edição. */
 export async function listAdminProducts(tenant: Tenant): Promise<ProductAdmin[]> {
     const [products, sourceRows] = await Promise.all([
-        listCatalog(tenant),
+        loadCatalog(tenant, true),
         withTenantTransaction(tenant, {}, (client) => listProductRows(client)),
     ]);
     const sourceById = new Map(sourceRows.map((row) => [row.id, row.source_origin]));
@@ -244,7 +262,9 @@ function filterCatalogVariants(product: Product, query: {
     term?: string; classificationId?: string; color?: string; size?: string; restrictIds?: string[]; excludeIds?: string[];
 }): Product | undefined {
     const term = query.term?.trim().toLowerCase();
-    if (term && !(product.name || "").toLowerCase().includes(term) && !(product.id || "").toLowerCase().includes(term)) return undefined;
+    if (term
+        && !(product.name || "").toLowerCase().includes(term)
+        && !(product.referenceId || "").toLowerCase().includes(term)) return undefined;
     // Categorias "dobradas" no menu (ex.: BODY ALCA vira subcategoria de
     // BODY) têm produtos cujo `category` real é o nome dobrado — some do
     // filtro se a gente só comparar contra `subcategory`.
