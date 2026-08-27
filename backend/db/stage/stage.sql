@@ -28,7 +28,10 @@ CREATE TYPE public."audit_action" AS ENUM (
 	'user.updated',
 	'order.manually_marked_paid',
 	'order.manually_cancelled',
-	'provider_order.cancel_requested');
+	'provider_order.cancel_requested',
+	'payment_integration.configured',
+	'payment_integration.activated',
+	'payment_integration.deactivated');
 
 -- DROP TYPE public."audit_entity_type";
 
@@ -41,7 +44,8 @@ CREATE TYPE public."audit_entity_type" AS ENUM (
 	'erp_integration',
 	'commercial_group',
 	'provider_order',
-	'order');
+	'order',
+	'payment_integration');
 
 -- DROP TYPE public."banner_media_type";
 
@@ -63,9 +67,9 @@ CREATE TYPE public."discount_type" AS ENUM (
 	'quantity',
 	'products');
 
--- DROP TYPE public."freight_provider_kind";
+-- DROP TYPE public.freight_provider_kind;
 
-CREATE TYPE public."freight_provider_kind" AS ENUM (
+CREATE TYPE public.freight_provider_kind AS ENUM (
 	'pickup',
 	'fixed',
 	'carrier');
@@ -119,15 +123,33 @@ CREATE TYPE public."order_channel" AS ENUM (
 	'whatsapp',
 	'online');
 
--- DROP TYPE public."order_freight_status";
+-- DROP TYPE public.order_freight_status;
 
-CREATE TYPE public."order_freight_status" AS ENUM (
+CREATE TYPE public.order_freight_status AS ENUM (
 	'aguardando',
 	'etiqueta_emitida',
 	'em_transporte',
 	'entregue',
 	'devolvido',
 	'cancelado');
+
+-- DROP TYPE public.payment_charge_method;
+
+CREATE TYPE public.payment_charge_method AS ENUM (
+	'pix',
+	'boleto',
+	'cartao');
+
+-- DROP TYPE public.payment_charge_status;
+
+CREATE TYPE public.payment_charge_status AS ENUM (
+	'pending',
+	'processing',
+	'authorized',
+	'paid',
+	'failed',
+	'expired',
+	'cancelled');
 
 -- DROP TYPE public."platform_plan_code";
 
@@ -567,7 +589,7 @@ CREATE TABLE public.freight_providers (
 	tenant_id uuid NOT NULL,
 	code text NOT NULL,
 	"name" text NOT NULL,
-	kind public."freight_provider_kind" NOT NULL,
+	kind public.freight_provider_kind NOT NULL,
 	active bool DEFAULT true NOT NULL,
 	"configuration" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	credentials jsonb DEFAULT '{}'::jsonb NOT NULL,
@@ -887,6 +909,41 @@ ALTER TABLE public.tenant_order_counters ENABLE ROW LEVEL SECURITY;
 -- Table Policies
 
 CREATE POLICY tenant_isolation ON public.tenant_order_counters
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+
+-- public.tenant_payment_integrations definition
+
+-- Drop table
+
+-- DROP TABLE public.tenant_payment_integrations;
+
+CREATE TABLE public.tenant_payment_integrations (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NOT NULL,
+	provider text NOT NULL,
+	credentials_encrypted bytea NOT NULL,
+	credentials_meta jsonb DEFAULT '{}'::jsonb NOT NULL,
+	active bool DEFAULT false NOT NULL,
+	webhook_secret text NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	updated_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT tenant_payment_integrations_credentials_meta_check CHECK ((jsonb_typeof(credentials_meta) = 'object'::text)),
+	CONSTRAINT tenant_payment_integrations_pkey PRIMARY KEY (id),
+	CONSTRAINT tenant_payment_integrations_provider_check CHECK ((provider ~ '^[a-z0-9][a-z0-9_-]{0,62}$'::text)),
+	CONSTRAINT tenant_payment_integrations_tenant_id_id_key UNIQUE (tenant_id, id),
+	CONSTRAINT tenant_payment_integrations_tenant_id_provider_key UNIQUE (tenant_id, provider),
+	CONSTRAINT tenant_payment_integrations_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX tenant_payment_integrations_one_active_idx ON public.tenant_payment_integrations USING btree (tenant_id) WHERE active;
+ALTER TABLE public.tenant_payment_integrations ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.tenant_payment_integrations
  AS PERMISSIVE
  FOR ALL
  USING ((tenant_id = app_tenant_id()))
@@ -1308,6 +1365,42 @@ CREATE POLICY tenant_isolation ON public.product_classifications
  WITH CHECK ((tenant_id = app_tenant_id()));
 
 
+-- public.product_compositions definition
+
+-- Drop table
+
+-- DROP TABLE public.product_compositions;
+
+CREATE TABLE public.product_compositions (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NOT NULL,
+	product_id uuid NOT NULL,
+	provider text NOT NULL,
+	external_code text NOT NULL,
+	description text NOT NULL,
+	type_description text NULL,
+	external_group_code text NULL,
+	group_description text NULL,
+	fetched_at timestamptz DEFAULT now() NOT NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	updated_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT product_compositions_pkey PRIMARY KEY (id),
+	CONSTRAINT product_compositions_tenant_id_id_key UNIQUE (tenant_id, id),
+	CONSTRAINT product_compositions_tenant_id_product_id_provider_external_key UNIQUE (tenant_id, product_id, provider, external_code),
+	CONSTRAINT product_compositions_tenant_id_product_id_fkey FOREIGN KEY (tenant_id,product_id) REFERENCES public.products(tenant_id,id) ON DELETE CASCADE
+);
+CREATE INDEX product_compositions_tenant_product_idx ON public.product_compositions USING btree (tenant_id, product_id);
+ALTER TABLE public.product_compositions ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.product_compositions
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+
 -- public.product_packs definition
 
 -- Drop table
@@ -1358,6 +1451,7 @@ CREATE TABLE public.product_variants (
 	track_inventory bool DEFAULT false NOT NULL,
 	is_active bool DEFAULT true NOT NULL,
 	source_origin text DEFAULT 'manual'::text NOT NULL,
+	bootstrap_external_code text NULL,
 	CONSTRAINT product_variants_pkey PRIMARY KEY (id),
 	CONSTRAINT product_variants_price_check CHECK ((price >= (0)::numeric)),
 	CONSTRAINT product_variants_source_origin_check CHECK ((source_origin = ANY (ARRAY['manual'::text, 'bootstrap'::text, 'erp'::text]))),
@@ -1367,6 +1461,7 @@ CREATE TABLE public.product_variants (
 	CONSTRAINT product_variants_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE CASCADE,
 	CONSTRAINT product_variants_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
+CREATE UNIQUE INDEX product_variants_tenant_bootstrap_external_code_key ON public.product_variants USING btree (tenant_id, bootstrap_external_code) WHERE (bootstrap_external_code IS NOT NULL);
 CREATE INDEX product_variants_tenant_product_active_idx ON public.product_variants USING btree (tenant_id, product_id) WHERE is_active;
 CREATE INDEX product_variants_tenant_product_idx ON public.product_variants USING btree (tenant_id, product_id);
 ALTER TABLE public.product_variants ENABLE ROW LEVEL SECURITY;
@@ -1618,6 +1713,37 @@ CREATE POLICY tenant_isolation ON public.inventory_reservation_items
  WITH CHECK ((tenant_id = app_tenant_id()));
 
 
+-- public.product_composition_items definition
+
+-- Drop table
+
+-- DROP TABLE public.product_composition_items;
+
+CREATE TABLE public.product_composition_items (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NOT NULL,
+	composition_id uuid NOT NULL,
+	external_code text NULL,
+	material text NOT NULL,
+	percentage numeric(5, 2) NOT NULL,
+	sort_order int4 DEFAULT 0 NOT NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT product_composition_items_percentage_check CHECK (((percentage >= (0)::numeric) AND (percentage <= (100)::numeric))),
+	CONSTRAINT product_composition_items_pkey PRIMARY KEY (id),
+	CONSTRAINT product_composition_items_tenant_id_composition_id_fkey FOREIGN KEY (tenant_id,composition_id) REFERENCES public.product_compositions(tenant_id,id) ON DELETE CASCADE
+);
+CREATE INDEX product_composition_items_tenant_composition_idx ON public.product_composition_items USING btree (tenant_id, composition_id);
+ALTER TABLE public.product_composition_items ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.product_composition_items
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+
 -- public.product_pack_items definition
 
 -- Drop table
@@ -1833,7 +1959,7 @@ CREATE TABLE public.freight_quotes (
 	tenant_id uuid NOT NULL,
 	order_session_id uuid NOT NULL,
 	provider_id uuid NULL,
-	kind public."freight_provider_kind" NOT NULL,
+	kind public.freight_provider_kind NOT NULL,
 	"label" text NOT NULL,
 	price numeric(12, 2) NOT NULL,
 	eta_label text NULL,
@@ -1847,8 +1973,8 @@ CREATE TABLE public.freight_quotes (
 	CONSTRAINT freight_quotes_raw_response_check CHECK ((jsonb_typeof(raw_response) = 'object'::text)),
 	CONSTRAINT freight_quotes_tenant_id_id_key UNIQUE (tenant_id, id)
 );
-CREATE INDEX freight_quotes_session_idx ON public.freight_quotes USING btree (tenant_id, order_session_id, created_at DESC);
 CREATE UNIQUE INDEX freight_quotes_one_selected_per_session_idx ON public.freight_quotes USING btree (tenant_id, order_session_id) WHERE selected;
+CREATE INDEX freight_quotes_session_idx ON public.freight_quotes USING btree (tenant_id, order_session_id, created_at DESC);
 ALTER TABLE public.freight_quotes ENABLE ROW LEVEL SECURITY;
 
 -- Table Policies
@@ -1986,7 +2112,7 @@ CREATE TABLE public.order_freight_tracking_events (
 	id uuid DEFAULT gen_random_uuid() NOT NULL,
 	tenant_id uuid NOT NULL,
 	order_freight_id uuid NOT NULL,
-	status public."order_freight_status" NOT NULL,
+	status public.order_freight_status NOT NULL,
 	description text NULL,
 	occurred_at timestamptz DEFAULT now() NOT NULL,
 	raw_payload jsonb DEFAULT '{}'::jsonb NOT NULL,
@@ -2018,14 +2144,14 @@ CREATE TABLE public.order_freights (
 	order_id uuid NOT NULL,
 	provider_id uuid NULL,
 	quote_id uuid NULL,
-	kind public."freight_provider_kind" NOT NULL,
+	kind public.freight_provider_kind NOT NULL,
 	"label" text NOT NULL,
 	price numeric(12, 2) NOT NULL,
 	eta_label text NULL,
 	destination_cep text NULL,
 	tracking_code text NULL,
 	tracking_url text NULL,
-	status public."order_freight_status" DEFAULT 'aguardando'::order_freight_status NOT NULL,
+	status public.order_freight_status DEFAULT 'aguardando'::order_freight_status NOT NULL,
 	shipped_at timestamptz NULL,
 	delivered_at timestamptz NULL,
 	cancelled_at timestamptz NULL,
@@ -2219,7 +2345,6 @@ CREATE TABLE public.order_sessions (
 	seller_id uuid NOT NULL,
 	channel public."order_channel" NOT NULL,
 	status public."session_status" DEFAULT 'aberto'::session_status NOT NULL,
-	shipping jsonb NULL,
 	payment_token_hash text NULL,
 	payment_token_created_at timestamptz NULL,
 	notes text NULL,
@@ -2229,13 +2354,13 @@ CREATE TABLE public.order_sessions (
 	order_id uuid NULL,
 	freight_quote_id uuid NULL,
 	freight_provider_id uuid NULL,
-	freight_kind public."freight_provider_kind" NULL,
+	freight_kind public.freight_provider_kind NULL,
 	freight_label text NULL,
 	freight_price numeric(12, 2) NULL,
 	freight_eta_label text NULL,
+	CONSTRAINT order_sessions_freight_price_check CHECK (((freight_price IS NULL) OR (freight_price >= (0)::numeric))),
 	CONSTRAINT order_sessions_payment_token_hash_key UNIQUE (payment_token_hash),
-	CONSTRAINT order_sessions_pkey PRIMARY KEY (id),
-	CONSTRAINT order_sessions_freight_price_check CHECK (((freight_price IS NULL) OR (freight_price >= (0)::numeric)))
+	CONSTRAINT order_sessions_pkey PRIMARY KEY (id)
 );
 CREATE INDEX order_sessions_order_idx ON public.order_sessions USING btree (tenant_id, order_id) WHERE (order_id IS NOT NULL);
 CREATE INDEX order_sessions_tenant_book_status_idx ON public.order_sessions USING btree (tenant_id, order_book_id, status, updated_at DESC);
@@ -2265,13 +2390,15 @@ CREATE TABLE public.orders (
 	client_name text NULL,
 	channel public."order_channel" NOT NULL,
 	total numeric(12, 2) NOT NULL,
-	shipping jsonb NULL,
 	payment_method text NULL,
 	discount jsonb NULL,
 	created_at timestamptz DEFAULT now() NOT NULL,
 	status text DEFAULT 'novo'::text NOT NULL,
 	updated_at timestamptz DEFAULT now() NOT NULL,
 	order_number int4 NOT NULL,
+	payment_status text DEFAULT 'unpaid'::text NOT NULL,
+	paid_at timestamptz NULL,
+	CONSTRAINT orders_payment_status_check CHECK ((payment_status = ANY (ARRAY['unpaid'::text, 'awaiting_confirmation'::text, 'paid'::text, 'payment_failed'::text]))),
 	CONSTRAINT orders_pkey PRIMARY KEY (id),
 	CONSTRAINT orders_status_check CHECK ((status = ANY (ARRAY['aberto'::text, 'aguardando_pagamento'::text, 'novo'::text, 'separado'::text, 'pago'::text, 'cancelado'::text]))),
 	CONSTRAINT orders_total_check CHECK ((total >= (0)::numeric))
@@ -2286,6 +2413,91 @@ ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 -- Table Policies
 
 CREATE POLICY tenant_isolation ON public.orders
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+
+-- public.payment_charges definition
+
+-- Drop table
+
+-- DROP TABLE public.payment_charges;
+
+CREATE TABLE public.payment_charges (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NOT NULL,
+	integration_id uuid NOT NULL,
+	provider text NOT NULL,
+	order_id uuid NOT NULL,
+	order_session_id uuid NULL,
+	"method" public.payment_charge_method NOT NULL,
+	status public.payment_charge_status DEFAULT 'pending'::payment_charge_status NOT NULL,
+	amount numeric(12, 2) NOT NULL,
+	external_id text NULL,
+	external_status text NULL,
+	pix_qr_code text NULL,
+	pix_copy_paste text NULL,
+	boleto_barcode text NULL,
+	boleto_pdf_url text NULL,
+	card_last_digits text NULL,
+	card_brand text NULL,
+	provider_expires_at timestamptz NULL,
+	last_checked_at timestamptz NULL,
+	next_check_at timestamptz NULL,
+	paid_at timestamptz NULL,
+	raw_create_response jsonb DEFAULT '{}'::jsonb NOT NULL,
+	raw_last_webhook jsonb DEFAULT '{}'::jsonb NOT NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	updated_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT payment_charges_amount_check CHECK ((amount >= (0)::numeric)),
+	CONSTRAINT payment_charges_pkey PRIMARY KEY (id),
+	CONSTRAINT payment_charges_raw_create_response_check CHECK ((jsonb_typeof(raw_create_response) = 'object'::text)),
+	CONSTRAINT payment_charges_raw_last_webhook_check CHECK ((jsonb_typeof(raw_last_webhook) = 'object'::text)),
+	CONSTRAINT payment_charges_tenant_id_id_key UNIQUE (tenant_id, id)
+);
+CREATE UNIQUE INDEX payment_charges_external_idx ON public.payment_charges USING btree (tenant_id, provider, external_id) WHERE (external_id IS NOT NULL);
+CREATE INDEX payment_charges_order_idx ON public.payment_charges USING btree (tenant_id, order_id, created_at DESC);
+CREATE INDEX payment_charges_reconcile_idx ON public.payment_charges USING btree (tenant_id, status, next_check_at) WHERE (status = ANY (ARRAY['pending'::payment_charge_status, 'processing'::payment_charge_status]));
+ALTER TABLE public.payment_charges ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.payment_charges
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+
+-- public.payment_webhook_events definition
+
+-- Drop table
+
+-- DROP TABLE public.payment_webhook_events;
+
+CREATE TABLE public.payment_webhook_events (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NULL,
+	provider text NOT NULL,
+	external_event_id text NULL,
+	charge_id uuid NULL,
+	event_type text NOT NULL,
+	signature_valid bool NOT NULL,
+	payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+	processed_at timestamptz NULL,
+	processing_error text NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT payment_webhook_events_payload_check CHECK ((jsonb_typeof(payload) = 'object'::text)),
+	CONSTRAINT payment_webhook_events_pkey PRIMARY KEY (id)
+);
+CREATE INDEX payment_webhook_events_charge_idx ON public.payment_webhook_events USING btree (tenant_id, charge_id, created_at DESC);
+ALTER TABLE public.payment_webhook_events ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.payment_webhook_events
  AS PERMISSIVE
  FOR ALL
  USING ((tenant_id = app_tenant_id()))
@@ -2581,6 +2793,20 @@ ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_tenant_id_fkey F
 ALTER TABLE public.orders ADD CONSTRAINT orders_client_id_fkey FOREIGN KEY (client_id) REFERENCES public.clients(id) ON DELETE SET NULL;
 ALTER TABLE public.orders ADD CONSTRAINT orders_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id) ON DELETE SET NULL;
 ALTER TABLE public.orders ADD CONSTRAINT orders_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+-- public.payment_charges foreign keys
+
+ALTER TABLE public.payment_charges ADD CONSTRAINT payment_charges_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id) ON DELETE CASCADE;
+ALTER TABLE public.payment_charges ADD CONSTRAINT payment_charges_order_session_id_fkey FOREIGN KEY (order_session_id) REFERENCES public.order_sessions(id) ON DELETE SET NULL;
+ALTER TABLE public.payment_charges ADD CONSTRAINT payment_charges_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.payment_charges ADD CONSTRAINT payment_charges_tenant_id_integration_id_fkey FOREIGN KEY (tenant_id,integration_id) REFERENCES public.tenant_payment_integrations(tenant_id,id) ON DELETE CASCADE;
+
+
+-- public.payment_webhook_events foreign keys
+
+ALTER TABLE public.payment_webhook_events ADD CONSTRAINT payment_webhook_events_charge_id_fkey FOREIGN KEY (charge_id) REFERENCES public.payment_charges(id) ON DELETE SET NULL;
+ALTER TABLE public.payment_webhook_events ADD CONSTRAINT payment_webhook_events_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
 
 
 -- public.provider_order_attempts foreign keys

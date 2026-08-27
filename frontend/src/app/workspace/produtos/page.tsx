@@ -1,6 +1,7 @@
 import ProductsApp from '@/workspace/components/products/ProductsApp';
 import { fetchAdminProducts } from '@/workspace/lib/catalogClient.server';
 import { fetchStoreSettings } from '@/workspace/lib/storeSettingsClient.server';
+import { WorkspaceLoadError } from '@/workspace/components/shared/WorkspaceLoadError';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,14 +19,7 @@ export default async function ProdutosPage() {
     loadError = err instanceof Error ? err.message : 'Erro desconhecido';
   }
 
-  if (loadError) {
-    return (
-      <div style={{ padding: 40 }}>
-        <p>Não foi possível carregar o catálogo ({loadError}).</p>
-        <p>Confira se o serviço `backend` está rodando em localhost:3011.</p>
-      </div>
-    );
-  }
+  if (loadError) return <WorkspaceLoadError message={`Não foi possível carregar o catálogo (${loadError}).`} showBackendHint />;
 
   return <ProductsApp products={products} initialSettings={settings} />;
 }

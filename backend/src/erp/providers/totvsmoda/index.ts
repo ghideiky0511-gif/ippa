@@ -225,6 +225,7 @@ export function createTotvsModaErpProvider(
                     pageSize: CATALOG_PAGE_SIZE,
                     referenceCodeList: [referenceCode],
                     order: "referenceCode,colorCode,productSize,productCode",
+                    includeDetails: true,
                 });
                 rows.push(...result.items as TotvsModaProductRow[]);
                 if (!result.hasNext) break;

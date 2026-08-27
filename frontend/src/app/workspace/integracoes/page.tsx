@@ -1,6 +1,7 @@
 import IntegracoesApp from '@/workspace/components/integracoes/IntegracoesApp';
 import { fetchErpIntegrations } from '@/workspace/lib/erpIntegrationClient.server';
 import { fetchPaymentIntegrations } from '@/workspace/lib/paymentIntegrationClient.server';
+import { WorkspaceLoadError } from '@/workspace/components/shared/WorkspaceLoadError';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,14 +19,7 @@ export default async function IntegracoesPage() {
     loadError = err instanceof Error ? err.message : 'Erro desconhecido';
   }
 
-  if (loadError) {
-    return (
-      <div style={{ padding: 40 }}>
-        <p>Não foi possível carregar as integrações ({loadError}).</p>
-        <p>Confira se o serviço `backend` está rodando em localhost:3011.</p>
-      </div>
-    );
-  }
+  if (loadError) return <WorkspaceLoadError message={`Não foi possível carregar as integrações (${loadError}).`} showBackendHint />;
 
   return <IntegracoesApp initialOptions={options} initialPaymentOptions={paymentOptions} />;
 }

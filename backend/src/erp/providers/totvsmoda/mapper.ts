@@ -40,6 +40,17 @@ export interface TotvsModaClassification {
     name?: string;
 }
 
+// ReferenceDetailModel retornado com expand=details. A descrição principal
+// cadastrada no TOTVS fica neste nível, enquanto `description` na raiz da
+// referência pode vir nula.
+export interface TotvsModaReferenceDetail {
+    typeCode?: number;
+    type?: string;
+    auxiliaryType?: string;
+    title?: string | null;
+    description?: string | null;
+}
+
 export interface TotvsModaProductRow {
     productCode?: number;
     productSku?: string;
@@ -54,6 +65,7 @@ export interface TotvsModaProductRow {
     referenceName?: string;
     description?: string;
     descriptive?: string;
+    details?: TotvsModaReferenceDetail[];
     maxChangeFilterDate?: string;
     classifications?: TotvsModaClassification[];
 }
@@ -187,6 +199,17 @@ export function referenceCodeOfTotvsModaProduct(row: TotvsModaProductRow): strin
     return String(row.ReferenceCode ?? row.referenceId ?? row.productCode ?? "").trim();
 }
 
+function firstNonEmptyText(values: Array<string | null | undefined>): string | undefined {
+    return values.find((value): value is string => typeof value === "string" && value.trim().length > 0)?.trim();
+}
+
+function descriptionOfTotvsModaReference(rows: TotvsModaProductRow[]): string {
+    return firstNonEmptyText([
+        ...rows.flatMap((row) => (row.details ?? []).map((detail) => detail.description)),
+        ...rows.flatMap((row) => [row.description, row.descriptive]),
+    ]) ?? "";
+}
+
 export function mapTotvsModaReferenceSnapshot(
     rows: TotvsModaProductRow[],
 ): ErpReferenceSnapshot | null {
@@ -203,7 +226,7 @@ export function mapTotvsModaReferenceSnapshot(
     return {
         externalId,
         name: first.referenceName ?? first.productName ?? externalId,
-        description: first.description ?? first.descriptive ?? "",
+        description: descriptionOfTotvsModaReference(rows),
         category: findClassification(classifications, "categoria"),
         subcategory: findClassification(classifications, "subcategoria"),
         collection: findClassification(classifications, "coleção", "colecao"),

@@ -9,6 +9,15 @@ test("agrupa todos os SKUs e classificações de uma referência", () => {
             productSku: "SKU-10",
             ReferenceCode: "REF-1",
             referenceName: "Vestido",
+            description: "Descri\u00e7\u00e3o resumida",
+            details: [
+                {
+                    typeCode: 1,
+                    type: "Description",
+                    auxiliaryType: "Descri\u00e7\u00e3o",
+                    description: "Descri\u00e7\u00e3o editorial do TOTVS",
+                },
+            ],
             colorName: "Preto",
             size: "P",
             isActive: true,
@@ -27,6 +36,7 @@ test("agrupa todos os SKUs e classificações de uma referência", () => {
     ]);
     assert.ok(snapshot);
     assert.equal(snapshot.externalId, "REF-1");
+    assert.equal(snapshot.description, "Descri\u00e7\u00e3o editorial do TOTVS");
     assert.equal(snapshot.category, "Vestidos");
     assert.deepEqual(snapshot.skus.map((sku) => sku.externalId), ["10", "11"]);
     assert.equal(snapshot.classifications.some((classification) => classification.code === "IPPA"), true);

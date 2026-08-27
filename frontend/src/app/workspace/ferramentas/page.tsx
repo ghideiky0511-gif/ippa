@@ -3,6 +3,7 @@ import { fetchStoreSettings } from '@/workspace/lib/storeSettingsClient.server';
 import { fetchSimilarProductsSettings } from '@/workspace/lib/similarProductsSettingsClient.server';
 import { fetchCatalog } from '@/workspace/lib/catalogClient.server';
 import { fetchClassifications } from '@/workspace/lib/classificationsClient.server';
+import { WorkspaceLoadError } from '@/workspace/components/shared/WorkspaceLoadError';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,14 +25,7 @@ export default async function FerramentasPage() {
     loadError = err instanceof Error ? err.message : 'Erro desconhecido';
   }
 
-  if (loadError) {
-    return (
-      <div style={{ padding: 40 }}>
-        <p>Não foi possível carregar as configurações da loja ({loadError}).</p>
-        <p>Confira se o serviço `backend` está rodando em localhost:3011.</p>
-      </div>
-    );
-  }
+  if (loadError) return <WorkspaceLoadError message={`Não foi possível carregar as configurações da loja (${loadError}).`} showBackendHint />;
 
   return (
     <ToolsApp

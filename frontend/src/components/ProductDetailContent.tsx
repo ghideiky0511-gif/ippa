@@ -13,6 +13,7 @@ import { resolveGallery, resolveImageForColor } from '@/lib/images';
 import { useCart } from './CartProvider';
 import { useAuthUser } from './AuthProvider';
 import ProductImage from './ProductImage';
+import { ProductVariantMatrix } from './ui/product-variant-matrix';
 import type { Availability, Product } from '@/domain/products/types';
 
 type AvailabilityFilter = 'all' | 'in_stock' | 'preorder';
@@ -356,79 +357,35 @@ export default function ProductDetailContent({ product, presentation = 'page', o
           </div>
         </div>
 
-        <div className={publicUi.variantMatrix}>
-          <table className={publicUi.variantMatrixTable}>
-            <thead className={publicUi.variantMatrixHead}>
-              <tr>
-                <th className={publicUi.variantMatrixHeadCell}>Cor</th>
-                {matrix.sizes.map((s) => (
-                  <th key={s} className={publicUi.variantMatrixHeadCell}>{s}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {matrix.rows.map((row) => (
-                <tr key={row.color} className={publicUi.variantMatrixRow}>
-                  <td className={publicUi.variantMatrixColor}>
-                    <span className={publicUi.swatch} style={{ background: COLOR_MAP[row.color] || '#ccc' }} />
-                    {row.color}
-                  </td>
-                  {row.cells.map((cell, i) => {
-                    const size = matrix.sizes[i];
-                    const addable = cell && ADDABLE_AVAILABILITY.has(cell.availability);
+        <ProductVariantMatrix
+          matrix={matrix}
+          renderCell={({ cell, color, size }) => {
+            const addable = cell && ADDABLE_AVAILABILITY.has(cell.availability);
+            if (!addable) {
+              return {
+                content: cell ? '✕' : '—',
+                className: !cell ? publicUi.variantMatrixCellEmpty : publicUi.variantMatrixCellOut,
+                title: cell ? deliveryLabel(cell.availability) : 'Não existe nessa combinação',
+              };
+            }
 
-                    if (!addable) {
-                      return (
-                        <td
-                          key={size}
-                          className={[
-                            publicUi.variantMatrixCell,
-                            !cell ? publicUi.variantMatrixCellEmpty : publicUi.variantMatrixCellOut,
-                          ].join(' ')}
-                          title={cell ? deliveryLabel(cell.availability) : 'Não existe nessa combinação'}
-                        >
-                          {cell ? '✕' : '—'}
-                        </td>
-                      );
-                    }
-
-                    const dimmed = !matchesAvailabilityFilter(cell.availability, availabilityFilter);
-                    const qty = qtyInCart(row.color, size);
-                    const { inStock, excess } = splitStockQty(qty, cell.stockQty);
-                    return (
-                      <td
-                        key={size}
-                        className={[
-                          publicUi.variantMatrixCell,
-                          dimmed ? publicUi.variantMatrixCellDimmed : '',
-                        ].join(' ')}
-                        title={deliveryLabel(cell.availability)}
-                      >
-                        <div className={[
-                          publicUi.variantQtyControl,
-                          cell.availability !== 'in_stock' ? publicUi.variantQtyPreorder : '',
-                        ].join(' ')}>
-                          <button
-                            type="button"
-                            disabled={!authUser || qty === 0}
-                            onClick={() => decrement(row.color, size)}
-                          >
-                            −
-                          </button>
-                          <span>{inStock}</span>
-                          {excess > 0 && <span className={publicUi.variantQtyExcess}>+{excess}</span>}
-                          <button type="button" disabled={!authUser} onClick={() => increment(row.color, size, cell.stockQty)}>
-                            +
-                          </button>
-                        </div>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            const dimmed = !matchesAvailabilityFilter(cell.availability, availabilityFilter);
+            const qty = qtyInCart(color, size);
+            const { inStock, excess } = splitStockQty(qty, cell.stockQty);
+            return {
+              className: dimmed ? publicUi.variantMatrixCellDimmed : undefined,
+              title: deliveryLabel(cell.availability),
+              content: (
+                <div className={[publicUi.variantQtyControl, cell.availability !== 'in_stock' ? publicUi.variantQtyPreorder : ''].join(' ')}>
+                  <button type="button" disabled={!authUser || qty === 0} onClick={() => decrement(color, size)}>−</button>
+                  <span>{inStock}</span>
+                  {excess > 0 && <span className={publicUi.variantQtyExcess}>+{excess}</span>}
+                  <button type="button" disabled={!authUser} onClick={() => increment(color, size, cell.stockQty)}>+</button>
+                </div>
+              ),
+            };
+          }}
+        />
       </div>
     </motion.div>
   );

@@ -1,5 +1,6 @@
 import OrdersApp from '@/workspace/orders/OrdersApp';
 import { fetchOrders, fetchOrderSessions } from '@/workspace/lib/ordersClient.server';
+import { WorkspaceLoadError } from '@/workspace/components/shared/WorkspaceLoadError';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,9 +18,7 @@ export default async function PedidosPage() {
     loadError = error instanceof Error ? error.message : 'Erro desconhecido';
   }
 
-  if (loadError) {
-    return <div style={{ padding: 40 }}>Não foi possível carregar o hub de pedidos ({loadError}).</div>;
-  }
+  if (loadError) return <WorkspaceLoadError message={`Não foi possível carregar o hub de pedidos (${loadError}).`} showBackendHint />;
 
   return <OrdersApp initialOrders={orders} initialSessions={sessions} />;
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getBackendUrl } from '@/lib/api-config';
 import type { AuthUser } from '@/domain/clients/types';
+import { forwardClientIpHeaders } from '@/lib/forwarded-client';
 
 const BACKEND_URL = getBackendUrl();
 const CUSTOMER_PUBLIC_PREFIXES = ['/login', '/cadastro', '/confirmar-conta', '/pagar', '/em-construcao'];
@@ -20,13 +21,19 @@ function tenantFromReferer(request: NextRequest): string | null {
   try { return tenantFromPath(new URL(referer).pathname); } catch { return null; }
 }
 
+function internalBackendHeaders(request: NextRequest, init?: HeadersInit): Headers {
+  const outgoingHeaders = new Headers(init);
+  forwardClientIpHeaders(request.headers, outgoingHeaders);
+  return outgoingHeaders;
+}
+
 async function validateWorkspaceAccess(request: NextRequest, tenantSlug: string): Promise<boolean> {
   const token = request.cookies.get('ippa_workspace_session')?.value;
   if (!token) return false;
 
   try {
     const response = await fetch(`${BACKEND_URL}/api/${tenantSlug}/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: internalBackendHeaders(request, { Authorization: `Bearer ${token}` }),
       cache: 'no-store',
     });
     if (!response.ok) return false;
@@ -42,7 +49,7 @@ async function validateControl(request: NextRequest): Promise<boolean> {
   if (!token) return false;
   try {
     const response = await fetch(`${BACKEND_URL}/api/control/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: internalBackendHeaders(request, { Authorization: `Bearer ${token}` }),
       cache: 'no-store',
     });
     return response.ok;
@@ -54,7 +61,7 @@ async function validateControl(request: NextRequest): Promise<boolean> {
 async function getCustomer(request: NextRequest, tenantSlug: string): Promise<AuthUser | null> {
   try {
     const response = await fetch(`${BACKEND_URL}/api/${tenantSlug}/auth/me`, {
-      headers: { cookie: request.headers.get('cookie') || '' },
+      headers: internalBackendHeaders(request, { cookie: request.headers.get('cookie') || '' }),
       cache: 'no-store',
     });
     if (!response.ok) return null;

@@ -1,5 +1,6 @@
 import CustomersApp from '@/workspace/customers/CustomersApp';
 import { fetchClients } from '@/workspace/lib/customersClient.server';
+import { WorkspaceLoadError } from '@/workspace/components/shared/WorkspaceLoadError';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,14 +14,7 @@ export default async function ClientesPage() {
     loadError = err instanceof Error ? err.message : 'Erro desconhecido';
   }
 
-  if (loadError) {
-    return (
-      <div style={{ padding: 40 }}>
-        <p>Não foi possível carregar os clientes ({loadError}).</p>
-        <p>Confira se o serviço `backend` está rodando em localhost:3011.</p>
-      </div>
-    );
-  }
+  if (loadError) return <WorkspaceLoadError message={`Não foi possível carregar os clientes (${loadError}).`} showBackendHint />;
 
   return <CustomersApp initialPage={clients!} />;
 }

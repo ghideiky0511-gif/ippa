@@ -72,14 +72,17 @@ export default function RightPanel({ selectedSection, products, onUpdate, onDese
   return (
     <aside className={cn(adminUi.toolbox, className)}>
       <div className={adminUi.panelHeader}>
-        <h2>Editando</h2>
-        <button className={adminUi.iconButton} onClick={onDeselect}>Fechar</button>
+        <div>
+          <h2 className="text-base font-extrabold text-foreground">Editando bloco</h2>
+          <p className="mt-1 text-xs text-muted-foreground">Ajuste o conteúdo, posição e tamanho.</p>
+        </div>
+        <button type="button" className={adminUi.iconButton} onClick={onDeselect} aria-label="Fechar editor">Fechar</button>
       </div>
 
       <PositionFields section={selectedSection} onUpdate={onUpdate} />
 
       {Editor && <Editor section={selectedSection} onUpdate={onUpdate} products={products} />}
-      <button className={adminUi.dangerButton} style={{ marginTop: 14, width: '100%' }} onClick={onRemove}>
+      <button type="button" className={`${adminUi.dangerButton} mt-4 w-full`} onClick={onRemove}>
         Excluir bloco
       </button>
     </aside>

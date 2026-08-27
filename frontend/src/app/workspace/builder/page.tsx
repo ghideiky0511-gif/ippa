@@ -1,6 +1,7 @@
 import BuilderApp from '@/workspace/components/builder/BuilderApp';
 import { fetchHomeSections } from '@/workspace/lib/homeSectionsClient.server';
 import { fetchCatalog } from '@/workspace/lib/catalogClient.server';
+import { WorkspaceLoadError } from '@/workspace/components/shared/WorkspaceLoadError';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,14 +16,7 @@ export default async function BuilderPage() {
     loadError = err instanceof Error ? err.message : 'Erro desconhecido';
   }
 
-  if (loadError) {
-    return (
-      <div style={{ padding: 40 }}>
-        <p>Não foi possível carregar o catálogo ({loadError}).</p>
-        <p>Confira se o serviço `backend` está rodando em localhost:3011.</p>
-      </div>
-    );
-  }
+  if (loadError) return <WorkspaceLoadError message={`Não foi possível carregar o catálogo (${loadError}).`} showBackendHint />;
 
   return <BuilderApp initialSections={sections} products={products} />;
 }

@@ -9,6 +9,7 @@ import RightPanel from './RightPanel';
 import BuilderMobileList from './BuilderMobileList';
 import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Input } from '@/components/ui/input';
 import { BLOCK_REGISTRY, CANVAS_WIDTH } from '@/workspace/lib/blockRegistry';
 import { saveHomeSections, generateHomeSections, fetchHomeAiHistory } from '@/workspace/lib/homeSectionsClient';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -196,44 +197,55 @@ export default function BuilderApp({ initialSections, products }) {
           primaryAction={{ label: saveState === 'saving' ? 'Salvando…' : 'Salvar', onClick: handleSave, disabled: saveState === 'saving', icon: <Save className="size-5" aria-hidden="true" /> }}
         />
 
-        <form className="contents" onSubmit={handleGenerateAI}>
-          <input
-            value={aiPrompt}
-            onChange={(e) => setAiPrompt(e.target.value)}
-            placeholder='Descreva a estrutura, ex.: "banner de vídeo 660x880 no início, com mais 3 cards abaixo"'
-          />
-          <button type="submit" className={adminUi.primaryButton} disabled={aiState === 'generating' || !aiPrompt.trim()}>
-            {aiState === 'generating' ? 'Gerando…' : 'Gerar com IA'}
-          </button>
-          <button type="button" className={adminUi.button} onClick={toggleHistory}>
-            Histórico
-          </button>
-          {aiState === 'error' && <span className="contents">{aiError}</span>}
+        <section className={adminUi.builderAiPanel} aria-label="Gerar estrutura com IA">
+          <form className={adminUi.builderAiForm} onSubmit={handleGenerateAI}>
+            <div className={`${adminUi.field} min-w-0 flex-1`}>
+              <label htmlFor="builder-ai-prompt">Monte a página com IA</label>
+              <Input
+                id="builder-ai-prompt"
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                placeholder='Descreva a estrutura, ex.: "banner de vídeo 660x880 no início, com mais 3 cards abaixo"'
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="submit" className={adminUi.primaryButton} disabled={aiState === 'generating' || !aiPrompt.trim()}>
+                {aiState === 'generating' ? 'Gerando…' : 'Gerar com IA'}
+              </button>
+              <button type="button" className={adminUi.button} onClick={toggleHistory} aria-expanded={historyOpen}>
+                Histórico
+              </button>
+            </div>
+          </form>
+          {aiState === 'error' && <p className="mx-auto mt-2 max-w-6xl text-sm text-danger" role="alert">{aiError}</p>}
 
           {historyOpen && (
-            <div className="contents">
-              {historyState === 'loading' && <p className="contents">Carregando…</p>}
-              {historyState === 'error' && <p className="contents">{historyError}</p>}
+            <div className={adminUi.builderHistory}>
+              {historyState === 'loading' && <p className={adminUi.hint}>Carregando…</p>}
+              {historyState === 'error' && <p className="text-sm text-danger" role="alert">{historyError}</p>}
               {historyState === 'idle' && history.length === 0 && (
-                <p className="contents">Nenhuma geração ainda.</p>
+                <p className={adminUi.hint}>Nenhuma geração ainda.</p>
               )}
-              {historyState === 'idle' &&
-                history.map((entry) => (
-                  <button
-                    key={entry.id}
-                    type="button"
-                    className="contents"
-                    onClick={() => handleReapplyHistory(entry)}
-                  >
-                    <span className="contents">{entry.prompt}</span>
-                    <span className="contents">{new Date(entry.at).toLocaleString('pt-BR')}</span>
-                  </button>
-                ))}
+              {historyState === 'idle' && history.length > 0 && (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {history.map((entry) => (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      className="rounded-control border border-border bg-surface p-3 text-left transition-colors hover:border-brand-primary/30 hover:bg-brand-primary/5"
+                      onClick={() => handleReapplyHistory(entry)}
+                    >
+                      <span className="block truncate text-sm font-semibold text-foreground">{entry.prompt}</span>
+                      <span className="mt-1 block text-xs text-muted-foreground">{new Date(entry.at).toLocaleString('pt-BR')}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
-        </form>
+        </section>
 
-        <div className="hidden lg:block">
+        <div className={adminUi.builderLayout}>
           <Canvas
             sections={sections}
             products={products}

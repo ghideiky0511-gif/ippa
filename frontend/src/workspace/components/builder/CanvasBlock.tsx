@@ -2,6 +2,7 @@
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
 import { useState, memo } from 'react';
+import { GripVertical, Trash2 } from 'lucide-react';
 import { getBlockDefinition, CANVAS_WIDTH, MIN_SIZE } from '@/workspace/lib/blockRegistry';
 
 const MAX_HEIGHT = 2000;
@@ -111,18 +112,20 @@ function CanvasBlock({ section, products, selected, onSelect, onRemove, onMove, 
       onClick={() => onSelect(section.id)}
     >
       <div className={adminUi.blockHeader}>
-        <span className={adminUi.blockHandle} onPointerDown={handleMoveStart} title="Arraste pra mover">
-          ⠿
-        </span>
+        <button type="button" className={adminUi.blockHandle} onPointerDown={handleMoveStart} title="Arraste pra mover" aria-label="Arraste para mover o bloco">
+          <GripVertical className="size-4" aria-hidden="true" />
+        </button>
         <span className={adminUi.blockLabel}>{summarize(section, products)}</span>
         <button
+          type="button"
           className={adminUi.iconButton}
           onClick={(e) => {
             e.stopPropagation();
             onRemove(section.id);
           }}
         >
-          Excluir
+          <Trash2 className="size-4" aria-hidden="true" />
+          <span className="sr-only">Excluir bloco</span>
         </button>
       </div>
       <div className={adminUi.blockPreview}>{Preview && <Preview section={section} products={products} />}</div>

@@ -1,6 +1,7 @@
 // @ts-nocheck
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
+import ProductImage from '@/components/ProductImage';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { formatBRL } from '@/workspace/lib/format';
@@ -16,18 +17,18 @@ export default function SortableProductRow({ id, product, onRemove }) {
       </span>
       {product ? (
         <>
-          <img src={product.image || ''} alt={product.name} />
-          <span className={adminUi.productName} style={{ flex: 1 }}>
+          <ProductImage src={product.image} alt={product.name} className="size-12 shrink-0 rounded-control bg-brand-background" />
+          <span className={`${adminUi.productName} flex-1`}>
             {product.name}
           </span>
           <span className={adminUi.productPrice}>{formatBRL(product.price)}</span>
         </>
       ) : (
-        <span className="contents" style={{ flex: 1 }}>
+        <span className="flex-1 text-sm text-danger">
           ID não encontrado: {id}
         </span>
       )}
-      <button className={adminUi.iconButton} onClick={() => onRemove(id)}>
+      <button type="button" className={adminUi.iconButton} onClick={() => onRemove(id)}>
         Remover
       </button>
     </div>

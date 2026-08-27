@@ -2,6 +2,7 @@
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
 import { formatBRL } from '@/workspace/lib/format';
+import ProductImage from '@/components/ProductImage';
 
 export default function ProductPreview({ section, products }) {
   const product = (products || []).find((p) => p.id === section.productId);
@@ -15,14 +16,12 @@ export default function ProductPreview({ section, products }) {
   }
 
   return (
-    <article className="contents">
-      <div className="contents">
-        <img src={product.image || ''} alt={product.name} />
-      </div>
-      <div className="contents">
-        {product.category && <div className="contents">{product.category}</div>}
-        <h3>{product.name}</h3>
-        <div className="contents">{formatBRL(product.price)}</div>
+    <article className="flex size-full min-h-0 flex-col gap-3 p-3">
+      <ProductImage src={product.image} alt={product.name} className="min-h-0 w-full flex-1 rounded-control bg-brand-background" />
+      <div className="min-w-0">
+        {product.category && <p className="truncate text-xs font-semibold tracking-wide text-muted-foreground uppercase">{product.category}</p>}
+        <h3 className="mt-1 truncate text-sm font-extrabold text-foreground">{product.name}</h3>
+        <p className="mt-1 text-sm font-semibold text-brand-primary">{formatBRL(product.price)}</p>
       </div>
     </article>
   );

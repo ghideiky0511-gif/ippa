@@ -3,6 +3,7 @@ import { fetchOrder, fetchOrderSessions } from '@/workspace/lib/ordersClient.ser
 import { fetchClient } from '@/workspace/lib/customersClient.server';
 import { fetchOrderPushStatus, fetchOrderPushHistory } from '@/workspace/lib/erpIntegrationClient.server';
 import type { OrderSession } from '@/domain/orders/types';
+import { WorkspaceLoadError } from '@/workspace/components/shared/WorkspaceLoadError';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,13 +39,7 @@ export default async function PedidoDetailPage({ params }: { params: Promise<{ i
     loadError = err instanceof Error ? err.message : 'Erro desconhecido';
   }
 
-  if (loadError || !order) {
-    return (
-      <div style={{ padding: 40 }}>
-        <p>Não foi possível carregar o pedido ({loadError ?? 'pedido não encontrado'}).</p>
-      </div>
-    );
-  }
+  if (loadError || !order) return <WorkspaceLoadError message={`Não foi possível carregar o pedido (${loadError ?? 'pedido não encontrado'}).`} />;
 
   return (
     <OrderDetailApp

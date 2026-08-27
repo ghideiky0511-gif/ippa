@@ -56,6 +56,7 @@ export default function BannerBlockEditor({ section, onUpdate }) {
             </div>
           </div>
           <button
+            type="button"
             className={adminUi.dangerButton}
             onClick={() => removeBanner(b.id)}
             disabled={banners.length <= 1}
@@ -64,7 +65,7 @@ export default function BannerBlockEditor({ section, onUpdate }) {
           </button>
         </div>
       ))}
-      <button className={adminUi.button} onClick={addBanner}>+ Adicionar item ao carrossel</button>
+      <button type="button" className={adminUi.button} onClick={addBanner}>+ Adicionar item ao carrossel</button>
     </>
   );
 }

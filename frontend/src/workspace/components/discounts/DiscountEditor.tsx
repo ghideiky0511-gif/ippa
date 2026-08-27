@@ -2,6 +2,7 @@
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
 import ProductPicker from '@/workspace/components/collections/ProductPicker';
+import ProductImage from '@/components/ProductImage';
 import { Trash2 } from 'lucide-react';
 
 const TYPE_OPTIONS = [
@@ -143,7 +144,7 @@ export default function DiscountEditor({ discount, products, onUpdate }) {
               const p = byId.get(id);
               return (
                 <div key={id} className={adminUi.overrideRow}>
-                  <img src={p?.image || ''} alt={p?.name || ''} />
+                  <ProductImage src={p?.image} alt={p?.name || ''} className="size-12 shrink-0 rounded-control bg-brand-background" />
                   <div className={adminUi.productInfo}>
                     <span className={adminUi.productName}>{p?.name || id}</span>
                   </div>

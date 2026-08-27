@@ -1,6 +1,7 @@
 import ProductDetailApp from '@/workspace/components/products/ProductDetailApp';
 import { fetchAdminProduct, fetchAdminProducts } from '@/workspace/lib/catalogClient.server';
 import { fetchErpIntegrations } from '@/workspace/lib/erpIntegrationClient.server';
+import { WorkspaceLoadError } from '@/workspace/components/shared/WorkspaceLoadError';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +16,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
   } catch (error) {
     loadError = error instanceof Error ? error.message : 'Produto não encontrado.';
   }
-  if (!result) return <div style={{ padding: 40 }}>Não foi possível carregar o produto ({loadError}).</div>;
+  if (!result) return <WorkspaceLoadError message={`Não foi possível carregar o produto (${loadError}).`} />;
   try {
     const { options } = await fetchErpIntegrations();
     erpIntegrationActive = options.some((option) => option.active && option.configured);

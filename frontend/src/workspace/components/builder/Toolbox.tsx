@@ -16,8 +16,8 @@ function ToolItem({ block }) {
 
   return (
     <div ref={setNodeRef} style={style} className={adminUi.toolItem} {...listeners} {...attributes}>
-      <span className="contents">{block.icon}</span>
-      <span className="contents">{block.label}</span>
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-control bg-brand-background text-[10px] font-extrabold tracking-wide text-brand-primary" aria-hidden="true">{block.icon}</span>
+      <span>{block.label}</span>
     </div>
   );
 }
@@ -25,7 +25,8 @@ function ToolItem({ block }) {
 export default function Toolbox() {
   return (
     <aside className={adminUi.toolbox}>
-      <h2>Ferramentas</h2>
+      <h2 className="text-base font-extrabold text-foreground">Ferramentas</h2>
+      <p className="mt-1 text-sm text-muted-foreground">Arraste um bloco para a área de edição.</p>
       <div className={adminUi.toolboxList}>
         {BLOCK_REGISTRY.map((block) => (
           <ToolItem key={block.type} block={block} />

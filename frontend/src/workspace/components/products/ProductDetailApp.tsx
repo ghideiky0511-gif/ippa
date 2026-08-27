@@ -8,7 +8,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { ProductVariantMatrix } from '@/components/ui/product-variant-matrix';
 import type { ProductAdmin, UpdateManualProductInput } from '@/domain/products/types';
+import { buildVariantMatrix, deliveryLabel } from '@/lib/variants';
 import { adminUi } from '@/workspace/lib/ui';
 import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import { refreshProductFromErp, updateManualProduct } from '@/workspace/lib/catalogClient';
@@ -174,5 +176,28 @@ function Field({ label, children, className }: { label: string; children: React.
 }
 
 function ReadOnlyContent({ product }: { product: ProductAdmin }) {
-  return <><section className="rounded-brand border border-border bg-surface p-4"><h2 className="font-bold">Descrição</h2><p className="mt-3 whitespace-pre-wrap text-sm text-foreground">{product.description || 'Não informada.'}</p></section><section className="rounded-brand border border-border bg-surface p-4"><h2 className="font-bold">Grade e variantes</h2><div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{product.variants.map((variant) => <Card key={variant.id} className="p-3"><p className="font-semibold">{variant.color} · {variant.size}</p><p className="mt-1 text-sm text-muted-foreground">{money(variant.price)} · {variant.availability === 'in_stock' ? 'Pronta-entrega' : variant.availability}</p>{variant.stockQty !== undefined && <p className="mt-1 text-xs text-muted-foreground">Estoque: {variant.stockQty}</p>}</Card>)}{product.variants.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma variante informada.</p>}</div></section>{product.images && product.images.length > 1 && <section className="rounded-brand border border-border bg-surface p-4"><h2 className="font-bold">Galeria</h2><div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">{product.images.map((url) => <ProductImage key={url} src={url} alt={product.name} className="aspect-[4/5] rounded-control bg-brand-background" />)}</div></section>}</>;
+  const matrix = buildVariantMatrix(product);
+
+  return <>
+    <section className="rounded-brand border border-border bg-surface p-4"><h2 className="font-bold">Descrição</h2><p className="mt-3 whitespace-pre-wrap text-sm text-foreground">{product.description || 'Não informada.'}</p></section>
+    <section className="rounded-brand border border-border bg-surface p-4">
+      <h2 className="font-bold">Grade e variantes</h2>
+      {product.variants.length === 0 ? <p className="mt-3 text-sm text-muted-foreground">Nenhuma variante informada.</p> : (
+        <div className="mt-3">
+          <ProductVariantMatrix
+            matrix={matrix}
+            renderCell={({ cell }) => {
+              if (!cell) return { content: '—', className: 'text-brand-muted/60', title: 'Não existe nessa combinação' };
+              if (cell.availability === 'out_of_stock') return { content: '✕', className: 'text-[#b00020]/60', title: deliveryLabel(cell.availability) };
+              return {
+                title: deliveryLabel(cell.availability),
+                content: <div className="flex flex-col items-center gap-0.5 whitespace-nowrap leading-tight"><span className="font-semibold text-foreground">{money(cell.price)}</span><span className="text-[10px] text-muted-foreground">{deliveryLabel(cell.availability)}</span>{cell.stockQty !== undefined && <span className="text-[10px] text-muted-foreground">Estoque: {cell.stockQty}</span>}</div>,
+              };
+            }}
+          />
+        </div>
+      )}
+    </section>
+    {product.images && product.images.length > 1 && <section className="rounded-brand border border-border bg-surface p-4"><h2 className="font-bold">Galeria</h2><div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">{product.images.map((url) => <ProductImage key={url} src={url} alt={product.name} className="aspect-[4/5] rounded-control bg-brand-background" />)}</div></section>}
+  </>;
 }

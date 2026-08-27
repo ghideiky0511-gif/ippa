@@ -3,30 +3,34 @@
 export default function BannerPreview({ section }) {
   const banners = section.banners || [];
   const first = banners[0];
-  const style = section.height ? { height: section.height } : undefined;
 
   if (!first || !first.mediaUrl) {
     return (
-      <div className="contents" style={style}>
+      <div className="flex size-full min-h-[120px] items-center justify-center bg-brand-background p-4 text-center text-sm text-muted-foreground">
         <p>Sem mídia ainda — adicione uma imagem ou vídeo no painel ao lado.</p>
       </div>
     );
   }
 
   return (
-    <div className="contents" style={style}>
+    <article className="relative size-full min-h-[120px] overflow-hidden bg-brand-background">
       {first.type === 'video' ? (
-        <video src={first.mediaUrl} muted loop playsInline className="contents" />
+        <video src={first.mediaUrl} muted loop playsInline className="size-full object-cover" />
       ) : (
-        <img src={first.mediaUrl} alt={first.title || ''} className="contents" />
+        // A mídia do banner aceita URLs externas configuráveis; `next/image`
+        // exigiria liberar cada origem no build e impediria essa prévia.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={first.mediaUrl} alt={first.title || ''} className="size-full object-cover" />
       )}
-      <div className="contents">
-        {first.title && <h2>{first.title}</h2>}
-        {first.subtitle && <p>{first.subtitle}</p>}
-      </div>
+      {(first.title || first.subtitle) && (
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent px-4 pt-12 pb-4 text-white">
+          {first.title && <h2 className="text-lg font-extrabold">{first.title}</h2>}
+          {first.subtitle && <p className="mt-1 text-sm text-white/85">{first.subtitle}</p>}
+        </div>
+      )}
       {banners.length > 1 && (
-        <span className="contents">+{banners.length - 1} no carrossel</span>
+        <span className="absolute top-3 right-3 rounded-full bg-black/65 px-2 py-1 text-xs font-semibold text-white">+{banners.length - 1} no carrossel</span>
       )}
-    </div>
+    </article>
   );
 }

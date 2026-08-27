@@ -1,5 +1,6 @@
 import TalaoHubApp from '@/workspace/talao/TalaoHubApp';
 import { fetchOrderBooks, fetchOrderSessions } from '@/workspace/lib/ordersClient.server';
+import { WorkspaceLoadError } from '@/workspace/components/shared/WorkspaceLoadError';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,9 +18,7 @@ export default async function TalaoPage() {
     loadError = error instanceof Error ? error.message : 'Erro desconhecido';
   }
 
-  if (loadError) {
-    return <div style={{ padding: 40 }}>Não foi possível carregar o talão ({loadError}).</div>;
-  }
+  if (loadError) return <WorkspaceLoadError message={`Não foi possível carregar o talão (${loadError}).`} showBackendHint />;
 
   return <TalaoHubApp initialBooks={books} initialSessions={sessions} />;
 }

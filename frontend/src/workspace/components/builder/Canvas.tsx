@@ -26,7 +26,7 @@ export default function Canvas({
 
   return (
     <main className={adminUi.canvasWrap}>
-      <p className={adminUi.hint}>
+      <p className={`${adminUi.hint} mb-3`}>
         Arraste um bloco pra mover; pelas bordas, pra redimensionar. Nada se move sozinho quando você mexe
         em outro bloco.
       </p>
@@ -39,7 +39,7 @@ export default function Canvas({
         {sections.length === 0 && (
           <div className={adminUi.emptyCanvas}>
             <p>Arraste uma ferramenta aqui pra começar a montar a home.</p>
-            <button className={adminUi.button} onClick={() => onUseTemplate(STARTER_TEMPLATE)}>
+            <button type="button" className={adminUi.button} onClick={() => onUseTemplate(STARTER_TEMPLATE)}>
               Usar modelo inicial
             </button>
           </div>

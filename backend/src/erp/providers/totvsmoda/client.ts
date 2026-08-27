@@ -122,6 +122,10 @@ export interface TotvsModaProductSearchOptions {
     // descobrir/baixar referência que shouldPublishReference ia descartar.
     classificationTypeCode?: number;
     classificationCodes?: string[];
+    // `details` é necessário para obter a descrição editorial da referência.
+    // Só é solicitado na leitura completa de uma referência, não na descoberta
+    // paginada de alterações do catálogo.
+    includeDetails?: boolean;
 }
 
 export interface TotvsModaPersonSearchOptions {
@@ -481,7 +485,9 @@ export class TotvsModaClient {
             page: options.page,
             pageSize: options.pageSize,
             order: options.order,
-            expand: "classifications",
+            expand: options.includeDetails
+                ? "classifications,details"
+                : "classifications",
         };
         return this.searchAndValidate(
             "searchProducts",
