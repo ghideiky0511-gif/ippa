@@ -10,6 +10,7 @@ import {
     insertProductRow,
     insertProductVariantRow,
     findProductByIdRow,
+    findProductByReferenceIdRow,
     findProductSourceOriginsByIds,
   listCatalogOrderRows,
   listClassificationRows,
@@ -21,11 +22,17 @@ import {
     productReferenceIdExists,
     replaceManualProductRow,
     replaceManualProductVariantsRow,
+    replaceProductReferenceIdRow,
+    listProductVariantsForSyncRow,
     type ProductOverrideRow,
 } from "@/models/catalogModel";
 import { listAdminProducts } from "./catalogService";
 import { listProductCompositionsRow } from "@/models/productCompositionModel";
-import { syncReferenceOnDemand } from "@/services/erp/catalogSyncService";
+import {
+  findReferenceCodeByProductCodeOnDemand,
+  syncReferenceOnDemand,
+} from "@/services/erp/catalogSyncService";
+import { logger } from "@/lib/logger";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
 
 function requireAdministrator(user: AuthUser): void {
@@ -101,8 +108,80 @@ export async function refreshProductFromErp(
   if (current.source_origin === "manual" || !current.reference_id) {
     throw new ValidationError("INVALID_INPUT", "Este produto não possui uma referência vinculada ao ERP.");
   }
-  const result = await syncReferenceOnDemand(tenant, current.reference_id);
-  if (result.status === "not_found") return { status: "not_found", runId: result.runId };
+  logger.info("workspace-product-refresh", "Atualização de produto pelo ERP solicitada", {
+    tenantId: tenant.id,
+    productId: id,
+    actorId: actor.id,
+    sourceOrigin: current.source_origin,
+    referenceId: current.reference_id,
+  });
+  let result = await syncReferenceOnDemand(tenant, current.reference_id);
+  if (result.status === "not_found") {
+    const productCodes = await withTenantTransaction(tenant, actor, async (client) => [
+      ...new Set(
+        (await listProductVariantsForSyncRow(client, id))
+          .map((variant) => variant.bootstrap_external_code?.trim())
+          .filter((code): code is string => Boolean(code)),
+      ),
+    ]);
+    logger.info("workspace-product-refresh", "Referência original não encontrada; iniciando fallback por productCode", {
+      tenantId: tenant.id,
+      productId: id,
+      actorId: actor.id,
+      referenceId: current.reference_id,
+      productCodes: productCodes.join(","),
+    });
+
+    // Só o TOTVS Moda implementa findReferenceCodeByProductCode. Nos demais
+    // providers, a chamada devolve null e preserva exatamente o not_found
+    // original, sem inventar uma regra de reconciliação fora do provider.
+    for (const productCode of productCodes) {
+      const resolvedReferenceId = await findReferenceCodeByProductCodeOnDemand(tenant, productCode);
+      if (!resolvedReferenceId) continue;
+
+      await withTenantTransaction(tenant, actor, async (client) => {
+        const productWithReference = await findProductByReferenceIdRow(client, resolvedReferenceId);
+        if (productWithReference && productWithReference.id !== id) {
+          logger.warn("workspace-product-refresh", "Referência ERP resolvida já pertence a outro produto", {
+            tenantId: tenant.id,
+            productId: id,
+            actorId: actor.id,
+            productCode,
+            resolvedReferenceId,
+            conflictingProductId: productWithReference.id,
+          });
+          throw new ConflictError("PRODUCT_REFERENCE_ID_TAKEN");
+        }
+        await replaceProductReferenceIdRow(client, id, resolvedReferenceId);
+      });
+      logger.info("workspace-product-refresh", "Referência de bootstrap reconciliada com o ERP", {
+        tenantId: tenant.id,
+        productId: id,
+        actorId: actor.id,
+        productCode,
+        previousReferenceId: current.reference_id,
+        resolvedReferenceId,
+      });
+      result = await syncReferenceOnDemand(tenant, resolvedReferenceId);
+      break;
+    }
+  }
+  if (result.status === "not_found") {
+    logger.warn("workspace-product-refresh", "Produto não encontrado no ERP após a tentativa de atualização", {
+      tenantId: tenant.id,
+      productId: id,
+      actorId: actor.id,
+      referenceId: current.reference_id,
+      runId: result.runId,
+    });
+    return { status: "not_found", runId: result.runId };
+  }
+  logger.info("workspace-product-refresh", "Produto atualizado pelo ERP", {
+    tenantId: tenant.id,
+    productId: id,
+    actorId: actor.id,
+    runId: result.runId,
+  });
   return { status: "updated", runId: result.runId, product: await getProductAdmin(tenant, actor, id) };
 }
 

@@ -113,6 +113,12 @@ export interface ErpProvider {
         cursor?: string,
     ): Promise<ErpProductChangePage>;
     fetchReference(referenceCode: string): Promise<ErpReferenceSnapshot | null>;
+    // Alguns catálogos bootstrap (como o Vesti) guardam o id próprio no
+    // reference_id, mas preservam nos SKUs o productCode do ERP. O TOTVS Moda
+    // consegue, então, resolver a referência canônica a partir desse código.
+    // É propositalmente opcional: apenas providers que expõem esse lookup
+    // seguro o implementam.
+    findReferenceCodeByProductCode?(productCode: string): Promise<string | null>;
     fetchPrices(productCodes: string[]): Promise<ErpPriceSnapshot[]>;
     fetchStock(productCodes: string[]): Promise<ErpStockSnapshot[]>;
     // Composição (material/percentual de fibra) de uma referência. Opcional

@@ -304,6 +304,21 @@ export async function findProductByReferenceIdRow(
     return result.rows[0] ?? null;
 }
 
+/** Troca a referência de bootstrap pela referência canônica resolvida no ERP. */
+export async function replaceProductReferenceIdRow(
+    client: PoolClient,
+    productId: string,
+    referenceId: string,
+): Promise<boolean> {
+    const result = await client.query(
+        `UPDATE products
+         SET reference_id = $2, updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND id = $1`,
+        [productId, referenceId],
+    );
+    return (result.rowCount ?? 0) > 0;
+}
+
 export async function findProductByIdRow(
     client: PoolClient,
     id: string,

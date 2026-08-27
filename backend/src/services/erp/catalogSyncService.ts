@@ -351,6 +351,12 @@ export async function syncReferenceOnDemand(
     referenceCode: string,
 ): Promise<{ status: "updated" | "not_found"; runId: string }> {
     const { integration, config } = await loadSyncContext(tenant);
+    logger.info("catalog-sync", "Iniciando sincronização pontual de referência", {
+        tenantId: tenant.id,
+        integrationId: integration.id,
+        provider: integration.provider,
+        referenceCode,
+    });
     const provider = createErpProvider(
         integration.provider,
         integration.credentials,
@@ -380,11 +386,79 @@ export async function syncReferenceOnDemand(
         await withTenantTransaction(tenant, SYSTEM_ACTOR, (client) =>
             finishCatalogSyncRunRow(client, run.id, true),
         );
-        return { status: found ? "updated" : "not_found", runId: run.id };
+        const status = found ? "updated" : "not_found";
+        logger.info("catalog-sync", "Sincronização pontual de referência concluída", {
+            tenantId: tenant.id,
+            integrationId: integration.id,
+            provider: integration.provider,
+            referenceCode,
+            runId: run.id,
+            status,
+        });
+        return { status, runId: run.id };
     } catch (error) {
         await withTenantTransaction(tenant, SYSTEM_ACTOR, (client) =>
             markCatalogSyncRunFailedRow(client, run.id, errorMessage(error)),
         ).catch(() => undefined);
+        logger.warn("catalog-sync", "Falha na sincronização pontual de referência", {
+            tenantId: tenant.id,
+            integrationId: integration.id,
+            provider: integration.provider,
+            referenceCode,
+            runId: run.id,
+            ...errorMeta(error),
+        });
+        throw error;
+    }
+}
+
+// Fallback de reconciliação de bootstrap: só providers que expõem o lookup
+// retornam uma referência. Hoje é implementado pelo TOTVS Moda; os demais
+// mantêm o fluxo usual e retornam null.
+export async function findReferenceCodeByProductCodeOnDemand(
+    tenant: Tenant,
+    productCode: string,
+): Promise<string | null> {
+    const { integration } = await loadSyncContext(tenant);
+    const provider = createErpProvider(
+        integration.provider,
+        integration.credentials,
+        createExternalApiCallReporter(tenant, SYSTEM_ACTOR, integration.provider),
+    );
+    if (!provider.findReferenceCodeByProductCode) {
+        logger.info("catalog-sync", "Provider não suporta resolver referência por productCode", {
+            tenantId: tenant.id,
+            integrationId: integration.id,
+            provider: integration.provider,
+            productCode,
+        });
+        return null;
+    }
+    logger.info("catalog-sync", "Buscando referência ERP por productCode", {
+        tenantId: tenant.id,
+        integrationId: integration.id,
+        provider: integration.provider,
+        productCode,
+    });
+    try {
+        const referenceCode = await provider.findReferenceCodeByProductCode(productCode);
+        logger.info("catalog-sync", "Busca de referência por productCode concluída", {
+            tenantId: tenant.id,
+            integrationId: integration.id,
+            provider: integration.provider,
+            productCode,
+            referenceCode,
+            found: Boolean(referenceCode),
+        });
+        return referenceCode;
+    } catch (error) {
+        logger.warn("catalog-sync", "Falha ao buscar referência ERP por productCode", {
+            tenantId: tenant.id,
+            integrationId: integration.id,
+            provider: integration.provider,
+            productCode,
+            ...errorMeta(error),
+        });
         throw error;
     }
 }

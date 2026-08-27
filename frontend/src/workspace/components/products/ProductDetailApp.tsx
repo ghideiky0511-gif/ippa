@@ -33,7 +33,7 @@ function DetailValue({ label, value }: { label: string; value?: string | number 
   return <div><p className="text-xs text-muted-foreground">{label}</p><p className="mt-0.5 text-sm text-foreground">{value === undefined || value === '' ? 'Não informado' : value}</p></div>;
 }
 
-export default function ProductDetailApp({ initialProduct, allProducts }: { initialProduct: ProductAdmin; allProducts: ProductAdmin[] }) {
+export default function ProductDetailApp({ initialProduct, allProducts, erpIntegrationActive }: { initialProduct: ProductAdmin; allProducts: ProductAdmin[]; erpIntegrationActive: boolean }) {
   const [product, setProduct] = useState(initialProduct);
   const readOnly = product.sourceOrigin === 'erp';
   const [name, setName] = useState(product.name);
@@ -57,7 +57,7 @@ export default function ProductDetailApp({ initialProduct, allProducts }: { init
   const [message, setMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
 
   const galleryUrls = useMemo(() => gallery.split('\n').map((url) => url.trim()).filter(Boolean), [gallery]);
-  const canRefreshFromErp = Boolean(product.referenceId) && (product.sourceOrigin === 'erp' || product.sourceOrigin === 'bootstrap');
+  const canRefreshFromErp = erpIntegrationActive && Boolean(product.referenceId) && (product.sourceOrigin === 'erp' || product.sourceOrigin === 'bootstrap');
 
   function applyProduct(updated: ProductAdmin) {
     setProduct(updated);

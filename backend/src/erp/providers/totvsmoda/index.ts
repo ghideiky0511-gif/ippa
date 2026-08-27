@@ -233,6 +233,23 @@ export function createTotvsModaErpProvider(
             return mapTotvsModaReferenceSnapshot(rows);
         },
 
+        // O bootstrap do Vesti pode ter persistido o UUID dele em
+        // products.reference_id. Para reconciliar esse registro com o TOTVS,
+        // buscamos o productCode que o Vesti preservou na variante e usamos o
+        // ReferenceCode devolvido pelo próprio TOTVS como chave canônica.
+        async findReferenceCodeByProductCode(productCode) {
+            const numericCode = Number(productCode);
+            if (!Number.isInteger(numericCode) || numericCode < 0) return null;
+            const result = await client.searchProducts({
+                page: 1,
+                pageSize: 1,
+                productCodeList: [numericCode],
+            });
+            const first = result.items[0] as TotvsModaProductRow | undefined;
+            const referenceCode = first ? referenceCodeOfTotvsModaProduct(first) : "";
+            return referenceCode || null;
+        },
+
         async fetchCompositions(referenceCode) {
             const result = await client.searchCompositionGroupProducts(referenceCode);
             return mapTotvsModaCompositions(result.items as TotvsModaCompositionGroupRow[]);
