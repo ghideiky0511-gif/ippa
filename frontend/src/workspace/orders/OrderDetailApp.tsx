@@ -291,7 +291,7 @@ export default function OrderDetailApp({
           </tbody>
         </table>
         {order.discount && <p className="mt-2 text-sm">Desconto ({order.discount.label}): -{formatCurrency(order.discount.amount)}</p>}
-        {order.shipping && <p className="text-sm">Frete: {formatCurrency(order.shipping.price)}</p>}
+        {order.freight && <p className="text-sm">Frete: {formatCurrency(order.freight.price)}</p>}
         <p className="mt-2 text-base font-bold">Total: {formatCurrency(order.total)}</p>
         <p className="text-sm">Forma de pagamento: {order.paymentMethod || '—'}</p>
       </div>

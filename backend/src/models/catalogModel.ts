@@ -304,6 +304,18 @@ export async function findProductByReferenceIdRow(
     return result.rows[0] ?? null;
 }
 
+export async function findProductByIdRow(
+    client: PoolClient,
+    id: string,
+): Promise<ProductRow | null> {
+    const result = await client.query<ProductRow>(
+        `SELECT ${productFields} FROM products
+         WHERE tenant_id = app_tenant_id() AND id = $1`,
+        [id],
+    );
+    return result.rows[0] ?? null;
+}
+
 /** Upsert do ERP preserva mídia e atributos locais; só o bootstrap escreve mídia. */
 export async function upsertErpProductRow(
     client: PoolClient,
@@ -522,6 +534,64 @@ export async function updateProductRow(client: PoolClient, id: string, value: Pa
     return result.rows[0] ?? null;
 }
 
+/** Substitui os dados editáveis de um produto local; diferente do update de
+ * sync, aceita limpar campos opcionais. A origem não é alterada aqui. */
+export async function replaceManualProductRow(
+    client: PoolClient,
+    id: string,
+    value: ProductWriteRow,
+): Promise<ProductRow | null> {
+    const result = await client.query<ProductRow>(
+        `UPDATE products SET name = $2, description = $3, category = $4,
+           subcategory = $5, collection = $6, brand = $7, reference_id = $8,
+           price = $9, suggested_retail_price = $10, markup = $11, media = $12,
+           attributes = $13, updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND id = $1
+         RETURNING ${productFields}`,
+        [id, value.name, value.description ?? '', value.category,
+         value.subcategory ?? null, value.collection ?? null, value.brand ?? null,
+         value.referenceId ?? null, value.price, value.suggestedRetailPrice ?? null,
+         value.markup ?? null, JSON.stringify(value.media ?? {}),
+         JSON.stringify(value.attributes ?? {})],
+    );
+    return result.rows[0] ?? null;
+}
+
+export async function replaceManualProductVariantsRow(
+    client: PoolClient,
+    productId: string,
+    variants: Array<{ id?: string; color: string; size: string; price: number; availability: Availability }>,
+): Promise<void> {
+    // Desativar em vez de apagar preserva referências de estoque e histórico.
+    await client.query(
+        `UPDATE product_variants SET is_active = false, updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND product_id = $1`,
+        [productId],
+    );
+    for (const variant of variants) {
+        if (variant.id) {
+            const updated = await client.query<{ id: string }>(
+                `UPDATE product_variants SET color = $3, size = $4, price = $5,
+                   availability = $6, is_active = true, source_origin = 'manual'
+                 WHERE tenant_id = app_tenant_id() AND id = $1 AND product_id = $2
+                 RETURNING id`,
+                [variant.id, productId, variant.color, variant.size, variant.price, variant.availability],
+            );
+            if (updated.rows[0]) continue;
+        }
+        await client.query(
+            `INSERT INTO product_variants (
+               tenant_id, product_id, color, size, price, availability,
+               track_inventory, is_active, source_origin
+             ) VALUES (app_tenant_id(), $1, $2, $3, $4, $5, false, true, 'manual')
+             ON CONFLICT (tenant_id, product_id, color, size) DO UPDATE SET
+               price = EXCLUDED.price, availability = EXCLUDED.availability,
+               is_active = true, source_origin = 'manual'`,
+            [productId, variant.color, variant.size, variant.price, variant.availability],
+        );
+    }
+}
+
 export async function listCatalogOrderRows(client: PoolClient): Promise<string[]> {
     const result = await client.query<{ id: string }>(
         `SELECT id FROM products WHERE tenant_id = app_tenant_id() AND display_position IS NOT NULL
@@ -554,8 +624,22 @@ export async function listProductOverrideRows(client: PoolClient): Promise<Array
 export async function clearProductOverrideRows(client: PoolClient): Promise<void> {
     await client.query(
         `UPDATE products SET attributes = attributes - 'manualOverride', updated_at = now()
-         WHERE tenant_id = app_tenant_id() AND attributes ? 'manualOverride'`,
+         WHERE tenant_id = app_tenant_id() AND attributes ? 'manualOverride'
+           AND source_origin <> 'erp'`,
     );
+}
+
+export async function findProductSourceOriginsByIds(
+    client: PoolClient,
+    productIds: string[],
+): Promise<Record<string, ProductRow['source_origin']>> {
+    if (productIds.length === 0) return {};
+    const result = await client.query<Pick<ProductRow, 'id' | 'source_origin'>>(
+        `SELECT id, source_origin FROM products
+         WHERE tenant_id = app_tenant_id() AND id = ANY($1::uuid[])`,
+        [productIds],
+    );
+    return Object.fromEntries(result.rows.map((row) => [row.id, row.source_origin]));
 }
 
 export async function setProductOverrideRow(client: PoolClient, productId: string, value: ProductOverrideRow): Promise<void> {

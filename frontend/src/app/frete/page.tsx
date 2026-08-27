@@ -6,26 +6,26 @@ import Link from '@/components/TenantLink';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Check } from 'lucide-react';
 import { formatBRL } from '@/lib/format';
-import { calculateShipping } from '@/lib/shipping';
+import { fetchFreightProviders, fetchFreightQuotes } from '@/lib/shipping';
 import { useCart } from '@/components/CartProvider';
 import { useTalao } from '@/components/TalaoProvider';
 import { useAuthUser } from '@/components/AuthProvider';
 import { useTalaoClientGate } from '@/components/useTalaoClientGate';
 import CheckoutSteps from '@/components/CheckoutSteps';
 import type { Client } from '@/domain/clients/types';
-import type { ShippingOption } from '@/domain/orders/types';
+import type { FreightQuote } from '@/domain/orders/types';
 import { useTenant } from '@/components/TenantProvider';
 
 export default function FretePage() {
   const router = useRouter();
   const { href } = useTenant();
-  const { cart, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, shipping, setShipping } = useCart();
+  const { cart, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, freight, setFreight, freightSessionId } = useCart();
   const talao = useTalao();
   const activeSession = talao?.activeSession ?? null;
   const { authUser } = useAuthUser();
   const gate = useTalaoClientGate();
   const [cep, setCep] = useState('');
-  const [options, setOptions] = useState<ShippingOption[] | null>(null);
+  const [options, setOptions] = useState<FreightQuote[] | null>(null);
   const [savedCep, setSavedCep] = useState<string | null>(null);
 
   // CEP salvo no cadastro — atalho pra não digitar de novo (ver
@@ -48,23 +48,30 @@ export default function FretePage() {
     };
   }, [activeSession?.clientId, authUser?.clientId]);
 
+  async function loadOptions(value: string) {
+    const quotes = freightSessionId
+      ? await fetchFreightQuotes(freightSessionId, value || undefined)
+      : await fetchFreightProviders();
+    setOptions(quotes);
+  }
+
   function handleCalculate(e: FormEvent) {
     e.preventDefault();
-    setOptions(calculateShipping(cep));
+    void loadOptions(cep);
   }
 
   function useSavedCep() {
     if (!savedCep) return;
     setCep(savedCep);
-    setOptions(calculateShipping(savedCep));
+    void loadOptions(savedCep);
   }
 
   function handleContinue() {
-    if (!shipping) return;
+    if (!freight) return;
     router.push(href('/pagamento'));
   }
 
-  const reachable = shipping ? 3 : cart.length > 0 ? 2 : 1;
+  const reachable = freight ? 3 : cart.length > 0 ? 2 : 1;
 
   if (cart.length === 0) {
     return (
@@ -160,25 +167,28 @@ export default function FretePage() {
 
       {options && (
         <div className="my-4 flex flex-col gap-2.5 max-w-[420px]">
-          {options.map((opt) => (
-            <label key={opt.id} className={[publicUi.paymentOption, shipping?.id === opt.id ? 'border-brand-primary' : ''].join(' ')}>
-              <input
-                type="radio"
-                name="shipping"
-                checked={shipping?.id === opt.id}
-                onChange={() => setShipping(opt)}
-              />
-              <div className="flex flex-1 flex-col gap-0.5">
-                <div>{opt.label}</div>
-                <div className="text-xs font-normal text-brand-muted">{opt.prazo}</div>
-              </div>
-              <div className="font-semibold">{opt.price === 0 ? 'Grátis' : formatBRL(opt.price)}</div>
-            </label>
-          ))}
+          {options.map((opt) => {
+            const selected = freightSessionId ? freight?.quoteId === opt.id : freight?.providerId === opt.providerId;
+            return (
+              <label key={opt.id} className={[publicUi.paymentOption, selected ? 'border-brand-primary' : ''].join(' ')}>
+                <input
+                  type="radio"
+                  name="shipping"
+                  checked={selected}
+                  onChange={() => setFreight(opt)}
+                />
+                <div className="flex flex-1 flex-col gap-0.5">
+                  <div>{opt.label}</div>
+                  <div className="text-xs font-normal text-brand-muted">{opt.etaLabel}</div>
+                </div>
+                <div className="font-semibold">{opt.price === 0 ? 'Grátis' : formatBRL(opt.price)}</div>
+              </label>
+            );
+          })}
         </div>
       )}
 
-      {shipping && (
+      {freight && (
         <div className={publicUi.checkoutSummary}>
           <div className={publicUi.summaryLine}>
             <span>Subtotal</span>
@@ -191,18 +201,18 @@ export default function FretePage() {
             </div>
           )}
           <div className={publicUi.summaryLine}>
-            <span>Frete ({shipping.label})</span>
-            <span>{shipping.price === 0 ? 'Grátis' : formatBRL(shipping.price)}</span>
+            <span>Frete ({freight.label})</span>
+            <span>{freight.price === 0 ? 'Grátis' : formatBRL(freight.price)}</span>
           </div>
           <div className={`${publicUi.summaryLine} border-t border-border/60 pt-1.5 text-sm font-bold text-brand-text`}>
             <span>Total</span>
-            <span>{formatBRL(cartTotal + shipping.price)}</span>
+            <span>{formatBRL(cartTotal + freight.price)}</span>
           </div>
         </div>
       )}
 
       <div className={publicUi.checkoutActions}>
-        <button className={publicUi.primaryButton} disabled={!shipping} onClick={handleContinue}>
+        <button className={publicUi.primaryButton} disabled={!freight} onClick={handleContinue}>
           Continuar para pagamento
         </button>
       </div>

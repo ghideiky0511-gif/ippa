@@ -17,6 +17,7 @@ import {
 import { TotvsModaAuthError } from "./errors";
 import {
     groupTotvsModaProducts,
+    mapTotvsModaCompositions,
     mapTotvsModaReferenceSnapshot,
     mapCancelOrderInput,
     mapOrderToTotvsModaOrderInDto,
@@ -27,6 +28,7 @@ import {
     referenceCodeOfTotvsModaProduct,
     type TotvsModaBalanceRow,
     type TotvsModaBranch,
+    type TotvsModaCompositionGroupRow,
     type TotvsModaIndividual,
     type TotvsModaLegalEntity,
     type TotvsModaOrder,
@@ -229,6 +231,11 @@ export function createTotvsModaErpProvider(
                 page += 1;
             }
             return mapTotvsModaReferenceSnapshot(rows);
+        },
+
+        async fetchCompositions(referenceCode) {
+            const result = await client.searchCompositionGroupProducts(referenceCode);
+            return mapTotvsModaCompositions(result.items as TotvsModaCompositionGroupRow[]);
         },
 
         async fetchPrices(productCodes): Promise<ErpPriceSnapshot[]> {

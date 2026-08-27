@@ -20,8 +20,8 @@ function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 }
 
-function sessionTotal(session: Pick<OrderSession, 'items' | 'shipping'>) {
-  return session.items.reduce((sum, item) => sum + item.price * item.qty, 0) + (session.shipping?.price ?? 0);
+function sessionTotal(session: Pick<OrderSession, 'items' | 'freight'>) {
+  return session.items.reduce((sum, item) => sum + item.price * item.qty, 0) + (session.freight?.price ?? 0);
 }
 
 function cartItemFromProduct(product: Product): CartItem {
@@ -221,7 +221,7 @@ export function OrderTalaoModal({
     return products.filter((product) => product.name.toLowerCase().includes(query)).slice(0, 8);
   }, [products, productQuery]);
 
-  const total = sessionTotal({ items, shipping: session.shipping });
+  const total = sessionTotal({ items, freight: session.freight });
   const canFinalize = Boolean(client?.id) && items.some((item) => item.qty > 0) && session.status !== 'fechado';
 
   function addProduct(product: Product) {

@@ -4,7 +4,9 @@
 // arquivo continua sendo o import path que o resto do backend já usa
 // (@/lib/types); só reexporta em vez de definir.
 export type { Availability, Variant, PackScope, PackItem, Pack, Product } from '@/contracts/products';
-export type { CartItem, ShippingOption } from '@/contracts/shared';
+export type {
+  CartItem, FreightProviderKind, FreightQuote, SessionFreight, OrderFreight, OrderFreightStatus,
+} from '@/contracts/shared';
 export type { Client } from '@/contracts/clients';
 export type {
   CommercialGroup, CommercialGroupType, CommercialGroupMember,

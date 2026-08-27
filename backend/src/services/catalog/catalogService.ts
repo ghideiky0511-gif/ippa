@@ -1,6 +1,7 @@
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import type { CategoryTreeEntry, Discount, Highlight, Product, Variant } from "@/lib/types";
+import type { ProductAdmin, ProductSourceOrigin } from "@/contracts/products";
 import type { CatalogPage, CatalogSectionsResult } from "@/contracts/catalog";
 import {
     listCategoryMenuRows,
@@ -153,7 +154,7 @@ export async function listCatalog(tenant: Tenant): Promise<Product[]> {
                 ...attributes,
                 ...(row.source_origin === "erp" ? {} : manualOverride),
             } as Product;
-            if (storeSettings?.default_markup && product.suggestedRetailPrice === undefined && product.markup === undefined) {
+            if (canApplyDefaultMarkup(row.source_origin) && storeSettings?.default_markup && product.suggestedRetailPrice === undefined && product.markup === undefined) {
                 const defaultMarkup = Number(storeSettings.default_markup);
                 product = {
                     ...product,
@@ -172,6 +173,23 @@ export async function listCatalog(tenant: Tenant): Promise<Product[]> {
             return product;
         }));
     });
+}
+
+export function canApplyDefaultMarkup(sourceOrigin: ProductSourceOrigin): boolean {
+    return sourceOrigin !== "erp";
+}
+
+/** Visão exclusiva do workspace, com a origem usada para controlar edição. */
+export async function listAdminProducts(tenant: Tenant): Promise<ProductAdmin[]> {
+    const [products, sourceRows] = await Promise.all([
+        listCatalog(tenant),
+        withTenantTransaction(tenant, {}, (client) => listProductRows(client)),
+    ]);
+    const sourceById = new Map(sourceRows.map((row) => [row.id, row.source_origin]));
+    return products.map((product) => ({
+        ...product,
+        sourceOrigin: sourceById.get(product.id) ?? "manual",
+    }));
 }
 
 const DEFAULT_PAGE_SIZE = 24;

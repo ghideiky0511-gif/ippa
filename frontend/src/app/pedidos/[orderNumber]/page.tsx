@@ -126,7 +126,7 @@ export default function PedidoDetalhePage() {
                 <div><p className="text-muted-foreground">Data</p><p className="mt-0.5 font-semibold text-foreground">{new Date(order.date).toLocaleString('pt-BR')}</p></div>
                 <div><p className="text-muted-foreground">Canal</p><p className="mt-0.5 font-semibold text-foreground">{CHANNEL_LABELS[order.channel]}</p></div>
                 {order.paymentMethod && <div><p className="text-muted-foreground">Pagamento</p><p className="mt-0.5 font-semibold text-foreground">{order.paymentMethod}</p></div>}
-                {order.shipping && <div><p className="text-muted-foreground">Frete</p><p className="mt-0.5 font-semibold text-foreground">{order.shipping.label} · {formatBRL(order.shipping.price)}</p></div>}
+                {order.freight && <div><p className="text-muted-foreground">Frete</p><p className="mt-0.5 font-semibold text-foreground">{order.freight.label} · {formatBRL(order.freight.price)}</p></div>}
               </div>
             </div>
           </Card>
@@ -152,7 +152,7 @@ export default function PedidoDetalhePage() {
             <div className="flex flex-col gap-2 text-sm">
               <div className="flex justify-between text-muted-foreground"><span>Produtos</span><span>{formatBRL(order.items.reduce((sum, item) => sum + item.qty * item.price, 0))}</span></div>
               {order.discount && <div className="flex justify-between text-muted-foreground"><span>Desconto · {order.discount.label}</span><span>-{formatBRL(order.discount.amount)}</span></div>}
-              {order.shipping && <div className="flex justify-between text-muted-foreground"><span>Frete</span><span>{formatBRL(order.shipping.price)}</span></div>}
+              {order.freight && <div className="flex justify-between text-muted-foreground"><span>Frete</span><span>{formatBRL(order.freight.price)}</span></div>}
               <div className="flex justify-between border-t border-border pt-3 text-base font-bold text-foreground"><span>Total</span><span>{formatBRL(order.total)}</span></div>
             </div>
           </Card>

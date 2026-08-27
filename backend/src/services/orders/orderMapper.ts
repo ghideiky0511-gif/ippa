@@ -1,7 +1,32 @@
-import type { CartItem, Order, OrderBook, OrderSession } from "@/lib/types";
+import type { CartItem, FreightQuote, Order, OrderBook, OrderFreight, OrderSession, SessionFreight } from "@/lib/types";
 import { OrderChannelSchema } from "@/contracts/orders";
 import type { OrderRow, OrderSessionRow } from "@/models/ordersModel";
 import type { OrderBookRow } from "@/models/orderBooksModel";
+import type { OrderFreightRow } from "@/models/orderFreightsModel";
+import type { FreightQuoteRow } from "@/models/freightQuotesModel";
+
+export function toFreightQuote(row: FreightQuoteRow): FreightQuote {
+    return {
+        id: row.id,
+        providerId: row.provider_id,
+        kind: row.kind,
+        label: row.label,
+        price: Number(row.price),
+        etaLabel: row.eta_label,
+    };
+}
+
+export function sessionFreightFromRow(row: OrderSessionRow): SessionFreight | undefined {
+    if (!row.freight_kind) return undefined;
+    return {
+        quoteId: row.freight_quote_id,
+        providerId: row.freight_provider_id,
+        kind: row.freight_kind,
+        label: row.freight_label!,
+        price: Number(row.freight_price),
+        etaLabel: row.freight_eta_label,
+    };
+}
 
 export function toOrderSession(row: OrderSessionRow, items: CartItem[]): OrderSession {
     return {
@@ -13,7 +38,7 @@ export function toOrderSession(row: OrderSessionRow, items: CartItem[]): OrderSe
         sellerId: row.seller_id,
         channel: OrderChannelSchema.catch("online").parse(row.channel),
         status: row.status,
-        shipping: row.shipping ?? undefined,
+        freight: sessionFreightFromRow(row),
         items,
         paymentTokenCreatedAt: row.payment_token_created_at?.toISOString(),
         notes: row.notes ?? undefined,
@@ -22,7 +47,25 @@ export function toOrderSession(row: OrderSessionRow, items: CartItem[]): OrderSe
     };
 }
 
-export function toOrder(row: OrderRow, items: CartItem[]): Order {
+export function toOrderFreight(row: OrderFreightRow): OrderFreight {
+    return {
+        id: row.id,
+        providerId: row.provider_id,
+        quoteId: row.quote_id,
+        kind: row.kind,
+        label: row.label,
+        price: Number(row.price),
+        etaLabel: row.eta_label,
+        trackingCode: row.tracking_code,
+        trackingUrl: row.tracking_url,
+        status: row.status,
+        shippedAt: row.shipped_at?.toISOString() ?? null,
+        deliveredAt: row.delivered_at?.toISOString() ?? null,
+        cancelledAt: row.cancelled_at?.toISOString() ?? null,
+    };
+}
+
+export function toOrder(row: OrderRow, items: CartItem[], freightRow?: OrderFreightRow | null): Order {
     return {
         id: row.id,
         orderNumber: row.order_number,
@@ -32,7 +75,7 @@ export function toOrder(row: OrderRow, items: CartItem[]): Order {
         items,
         total: Number(row.total),
         channel: OrderChannelSchema.catch("online").parse(row.channel),
-        shipping: row.shipping ?? undefined,
+        freight: freightRow ? toOrderFreight(freightRow) : undefined,
         paymentMethod: row.payment_method ?? undefined,
         discount: row.discount ?? undefined,
         clientId: row.client_id ?? undefined,

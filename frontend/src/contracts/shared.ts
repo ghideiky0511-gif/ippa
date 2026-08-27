@@ -100,10 +100,53 @@ export const CartItemSchema = z.object({
 });
 export type CartItem = z.infer<typeof CartItemSchema>;
 
-export const ShippingOptionSchema = z.object({
+export const FreightProviderKindSchema = z.enum(['pickup', 'fixed', 'carrier']);
+export type FreightProviderKind = z.infer<typeof FreightProviderKindSchema>;
+
+export const OrderFreightStatusSchema = z.enum([
+  'aguardando', 'etiqueta_emitida', 'em_transporte', 'entregue', 'devolvido', 'cancelado',
+]);
+export type OrderFreightStatus = z.infer<typeof OrderFreightStatusSchema>;
+
+// O que a tela de frete lista pra escolher (uma linha por `freight_providers`
+// ativo do tenant no momento em que a sessão pediu cotação).
+export const FreightQuoteSchema = z.object({
   id: EntityIdSchema,
+  providerId: EntityIdSchema.nullable(),
+  kind: FreightProviderKindSchema,
   label: RequiredTextSchema,
   price: MoneySchema,
-  prazo: RequiredTextSchema,
+  etaLabel: z.string().nullable(),
 });
-export type ShippingOption = z.infer<typeof ShippingOptionSchema>;
+export type FreightQuote = z.infer<typeof FreightQuoteSchema>;
+
+// Snapshot do frete escolhido, guardado em `order_sessions` (6 colunas) e
+// exposto na API como um objeto só pra não espalhar 6 campos soltos.
+export const SessionFreightSchema = z.object({
+  quoteId: EntityIdSchema.nullable(),
+  providerId: EntityIdSchema.nullable(),
+  kind: FreightProviderKindSchema,
+  label: RequiredTextSchema,
+  price: MoneySchema,
+  etaLabel: z.string().nullable(),
+});
+export type SessionFreight = z.infer<typeof SessionFreightSchema>;
+
+// Snapshot final do frete no pedido (`order_freights`), com o estado de
+// rastreio -- ver order_freight_status.
+export const OrderFreightSchema = z.object({
+  id: EntityIdSchema,
+  providerId: EntityIdSchema.nullable(),
+  quoteId: EntityIdSchema.nullable(),
+  kind: FreightProviderKindSchema,
+  label: RequiredTextSchema,
+  price: MoneySchema,
+  etaLabel: z.string().nullable(),
+  trackingCode: z.string().nullable(),
+  trackingUrl: z.string().nullable(),
+  status: OrderFreightStatusSchema,
+  shippedAt: IsoDateTimeSchema.nullable(),
+  deliveredAt: IsoDateTimeSchema.nullable(),
+  cancelledAt: IsoDateTimeSchema.nullable(),
+});
+export type OrderFreight = z.infer<typeof OrderFreightSchema>;

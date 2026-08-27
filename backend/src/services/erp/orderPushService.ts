@@ -19,6 +19,7 @@ import { createExternalApiCallReporter } from "@/services/erp/externalApiLogServ
 import { recordAuditEvent, PROVIDER_ORDER_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
 import { findActiveErpIntegrationRow, findErpIntegrationRowByProvider } from "@/models/erpIntegrationsModel";
 import { findOrderRowById, listOrderItemRowsByOrder } from "@/models/ordersModel";
+import { findOrderFreightRowByOrderId } from "@/models/orderFreightsModel";
 import { findClientRow } from "@/models/clientsModel";
 import { findProductReferenceIdsByIds } from "@/models/catalogModel";
 import { toOrder } from "@/services/orders/orderMapper";
@@ -243,7 +244,8 @@ async function attemptProviderOrderPush(
             return "failed";
         }
         const items = (await listOrderItemRowsByOrder(client, row.order_id)).map((item) => item.snapshot);
-        const order = toOrder(orderRow, items);
+        const freightRow = await findOrderFreightRowByOrderId(client, row.order_id);
+        const order = toOrder(orderRow, items, freightRow);
 
         const [clientRow, productReferenceIds] = await Promise.all([
             orderRow.client_id ? findClientRow(client, orderRow.client_id) : Promise.resolve(null),

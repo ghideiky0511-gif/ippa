@@ -162,9 +162,9 @@ export default function PedidosPage() {
               {isVendedora && order.clientName && (
                 <div className="mb-1.5 text-sm text-brand-muted">Cliente: {order.clientName}</div>
               )}
-              {(order.shipping || order.paymentMethod || order.discount) && (
+              {(order.freight || order.paymentMethod || order.discount) && (
                 <div className="mb-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-brand-muted">
-                  {order.shipping && <span>Frete: {order.shipping.label}</span>}
+                  {order.freight && <span>Frete: {order.freight.label}</span>}
                   {order.paymentMethod && <span>Pagamento: {order.paymentMethod}</span>}
                   {order.discount && (
                     <span>Desconto: {order.discount.label} (-{formatBRL(order.discount.amount)})</span>

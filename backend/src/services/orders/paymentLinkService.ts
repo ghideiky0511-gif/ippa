@@ -33,7 +33,7 @@ export async function createPaymentLink(
     const items = (await listOrderSessionItemRowsBySession(client, sessionId)).map((item) => item.snapshot)
       .filter((item) => item.qty > 0);
     if (items.length === 0) throw new ValidationError("EMPTY_ORDER");
-    if (!session.shipping) throw new ValidationError("SHIPPING_REQUIRED");
+    if (session.freight_quote_id == null) throw new ValidationError("SHIPPING_REQUIRED");
     if (!session.client_id) throw new ValidationError("CLIENT_REQUIRED");
     const registration = await findClientRow(client, session.client_id);
     if (!registration || !registration.name.trim() || !registration.cpf_cnpj?.trim() ||

@@ -5,14 +5,15 @@ import { COMPANY_AUDIT_ACTIONS, type CompanyAuditAction } from './companyAuditAc
 import { ERP_INTEGRATION_AUDIT_ACTIONS, type ErpIntegrationAuditAction } from './erpIntegrationAuditActions';
 import { ORDER_AUDIT_ACTIONS, type OrderAuditAction } from './orderAuditActions';
 import { ORDER_SESSION_AUDIT_ACTIONS, type OrderSessionAuditAction } from './orderSessionAuditActions';
+import { PAYMENT_INTEGRATION_AUDIT_ACTIONS, type PaymentIntegrationAuditAction } from './paymentIntegrationAuditActions';
 import { PROVIDER_ORDER_AUDIT_ACTIONS, type ProviderOrderAuditAction } from './providerOrderAuditActions';
 import { USER_AUDIT_ACTIONS, type UserAuditAction } from './userAuditActions';
 
-export { AUTHENTICATION_AUDIT_ACTIONS, CLIENT_AUDIT_ACTIONS, COMMERCIAL_GROUP_AUDIT_ACTIONS, COMPANY_AUDIT_ACTIONS, ERP_INTEGRATION_AUDIT_ACTIONS, ORDER_AUDIT_ACTIONS, ORDER_SESSION_AUDIT_ACTIONS, PROVIDER_ORDER_AUDIT_ACTIONS, USER_AUDIT_ACTIONS };
+export { AUTHENTICATION_AUDIT_ACTIONS, CLIENT_AUDIT_ACTIONS, COMMERCIAL_GROUP_AUDIT_ACTIONS, COMPANY_AUDIT_ACTIONS, ERP_INTEGRATION_AUDIT_ACTIONS, ORDER_AUDIT_ACTIONS, ORDER_SESSION_AUDIT_ACTIONS, PAYMENT_INTEGRATION_AUDIT_ACTIONS, PROVIDER_ORDER_AUDIT_ACTIONS, USER_AUDIT_ACTIONS };
 
-export type AuditAction = ClientAuditAction | CommercialGroupAuditAction | CompanyAuditAction | ErpIntegrationAuditAction | OrderAuditAction | OrderSessionAuditAction | ProviderOrderAuditAction | AuthenticationAuditAction | UserAuditAction;
+export type AuditAction = ClientAuditAction | CommercialGroupAuditAction | CompanyAuditAction | ErpIntegrationAuditAction | OrderAuditAction | OrderSessionAuditAction | PaymentIntegrationAuditAction | ProviderOrderAuditAction | AuthenticationAuditAction | UserAuditAction;
 
-export type AuditEntityType = 'client' | 'commercial_group' | 'company' | 'erp_integration' | 'order' | 'order_session' | 'provider_order' | 'user';
+export type AuditEntityType = 'client' | 'commercial_group' | 'company' | 'erp_integration' | 'order' | 'order_session' | 'payment_integration' | 'provider_order' | 'user';
 
 // Este mapa Ã© o contrato que impede, por exemplo, registrar
 // `client.created` para a entidade `order_session`.
@@ -31,6 +32,9 @@ export const AUDIT_ENTITY_BY_ACTION = {
   [ERP_INTEGRATION_AUDIT_ACTIONS.CONFIGURED]: 'erp_integration',
   [ERP_INTEGRATION_AUDIT_ACTIONS.ACTIVATED]: 'erp_integration',
   [ERP_INTEGRATION_AUDIT_ACTIONS.DEACTIVATED]: 'erp_integration',
+  [PAYMENT_INTEGRATION_AUDIT_ACTIONS.CONFIGURED]: 'payment_integration',
+  [PAYMENT_INTEGRATION_AUDIT_ACTIONS.ACTIVATED]: 'payment_integration',
+  [PAYMENT_INTEGRATION_AUDIT_ACTIONS.DEACTIVATED]: 'payment_integration',
   [ORDER_AUDIT_ACTIONS.MANUALLY_MARKED_PAID]: 'order',
   [ORDER_AUDIT_ACTIONS.MANUALLY_CANCELLED]: 'order',
   [ORDER_SESSION_AUDIT_ACTIONS.CREATED]: 'order_session',

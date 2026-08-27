@@ -79,6 +79,21 @@ export interface ErpStockSnapshot {
     quantity: number;
 }
 
+export interface ErpCompositionFiberSnapshot {
+    externalCode?: string;
+    material: string;
+    percentage: number;
+}
+
+export interface ErpCompositionSnapshot {
+    externalCode: string;
+    description: string;
+    typeDescription?: string;
+    externalGroupCode?: string;
+    groupDescription?: string;
+    items: ErpCompositionFiberSnapshot[];
+}
+
 export type ErpProviderCredentials = Record<string, unknown>;
 
 // Dado auxiliar de um pedido que só existe no banco (não em Order/CartItem),
@@ -100,6 +115,12 @@ export interface ErpProvider {
     fetchReference(referenceCode: string): Promise<ErpReferenceSnapshot | null>;
     fetchPrices(productCodes: string[]): Promise<ErpPriceSnapshot[]>;
     fetchStock(productCodes: string[]): Promise<ErpStockSnapshot[]>;
+    // Composição (material/percentual de fibra) de uma referência. Opcional
+    // pelo mesmo motivo dos demais métodos duck-typed abaixo: um provider sem
+    // esse dado (mock, ou um ERP futuro) simplesmente não implementa, e quem
+    // chama (catalogSyncService.syncReferenceOnDemand) trata a ausência como
+    // "sem composição disponível", não como falha.
+    fetchCompositions?(referenceCode: string): Promise<ErpCompositionSnapshot[]>;
     getProducts(
         options?: ErpFetchOptions,
     ): Promise<ErpFetchResult<Omit<Product, "id">>>;

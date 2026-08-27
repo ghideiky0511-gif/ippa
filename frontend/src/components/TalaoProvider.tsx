@@ -1,7 +1,7 @@
 'use client';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Client } from '@/domain/clients/types';
-import type { CartItem, OrderBook, OrderSession, ShippingOption } from '@/domain/orders/types';
+import type { CartItem, OrderBook, OrderSession } from '@/domain/orders/types';
 import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
 import { usePedidoRealtime, type PedidoParticipant, type PedidoPresence } from '@/lib/realtime/usePedidoRealtime';
 import { applyBookUpsert, applySessionEventToList } from '@/lib/realtime/applySessionEvent';
@@ -25,7 +25,6 @@ interface TalaoContextValue {
   closeSession: (id: string) => Promise<void>;
   reopenSession: (id: string) => Promise<void>;
   updateActiveItems: (items: CartItem[]) => Promise<void>;
-  updateActiveShipping: (shipping: ShippingOption | null) => Promise<void>;
   linkClient: (clientId: string) => Promise<void>;
   // Gera (ou, se já existir, apenas devolve) o token do link de pagamento
   // da sessão ativa — ver POST /api/sessions/[id]/payment-link/route.ts.
@@ -298,13 +297,6 @@ export function TalaoProvider({ children }: { children: ReactNode }) {
     await realtime.updateSession({ items });
   }
 
-  async function updateActiveShipping(shipping: ShippingOption | null) {
-    if (!activeSession) return;
-    const id = activeSession.id;
-    setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, shipping: shipping || undefined } : s)));
-    await realtime.updateSession({ shipping: shipping || undefined });
-  }
-
   // Sempre chama a API — o servidor decide se reaproveita o token existente
   // (ainda válido) ou gera um novo (sem token ainda, ou o anterior expirou,
   // ver POST /api/sessions/[id]/payment-link).
@@ -351,7 +343,6 @@ export function TalaoProvider({ children }: { children: ReactNode }) {
       closeSession,
       reopenSession,
       updateActiveItems,
-      updateActiveShipping,
       linkClient,
       requestPaymentLink,
       books,

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
-import type { AuthUser, CartItem, Order, OrderSession, OrderSessionParticipant } from "@/lib/types";
+import type { AuthUser, CartItem, FreightQuote, Order, OrderSession, OrderSessionParticipant } from "@/lib/types";
 import { CartItemSchema } from "@/contracts/shared";
 import {
     CreateOrderSessionInputSchema,
@@ -21,10 +21,19 @@ import {
     listTenantOrderSessionRows,
     replaceOrderSessionItemRows,
     updateOrderSessionRow,
+    setOrderSessionFreightRow,
     updateOrderRow,
     closeOpenOrderSessionRowsByOrder,
     countOpenOrderSessionRowsBySeller,
 } from "@/models/ordersModel";
+import { listActiveFreightProviderRows } from "@/models/freightProvidersModel";
+import {
+    findFreightQuoteRow,
+    insertFreightQuoteRows,
+    selectFreightQuoteRow,
+} from "@/models/freightQuotesModel";
+import { findOrderFreightRowByOrderId, insertOrderFreightRow, type OrderFreightRow } from "@/models/orderFreightsModel";
+import { computeFreightPrice } from "./freightPricing";
 import { getOrCreateOpenOrder, syncOrderItems } from "./orderItemSync";
 import {
     listOrderSessionParticipantRows,
@@ -44,7 +53,7 @@ import { notifyOrder, notifyOrderBook, notifySession, notifySessionCreated } fro
 import { scheduleSessionBroadcast } from "@/services/realtime/sessionBroadcast";
 import { findActiveOrderBookRow, findOrderBookRow, insertOrderBookRow, reopenOrderBookRow, type OrderBookRow } from "@/models/orderBooksModel";
 import { closeOrderBookWhenFinished } from "./orderBookLifecycle";
-import { diffCartItems, toOrder, toOrderBook, toOrderSession } from "./orderMapper";
+import { diffCartItems, toFreightQuote, toOrder, toOrderBook, toOrderSession } from "./orderMapper";
 import { pickSeller } from "./sellerAssignmentService";
 
 async function reconcileFinalizedCustomerSessions(client: Parameters<typeof findLatestOpenOrderSessionRowByClient>[0], clientId: string) {
@@ -84,10 +93,11 @@ export function canMutateLinkedOrder(status: Order["status"], isClient: boolean)
 
 export function totalAfterItemMutation(
     items: Array<Pick<CartItem, "price" | "qty">>,
-    order: Pick<NonNullable<Awaited<ReturnType<typeof findOrderRowById>>>, "discount" | "shipping">,
+    order: Pick<NonNullable<Awaited<ReturnType<typeof findOrderRowById>>>, "discount">,
+    freightPrice: number,
 ): number {
     const subtotal = items.reduce((sum, item) => sum + item.price * item.qty, 0);
-    return Math.max(0, subtotal - (order.discount?.amount ?? 0) + (order.shipping?.price ?? 0));
+    return Math.max(0, subtotal - (order.discount?.amount ?? 0) + freightPrice);
 }
 
 function toParticipant(
@@ -351,7 +361,6 @@ export async function createOrderSession(
             sellerId: user.id,
             channel,
             status: "aberto",
-            shipping: undefined,
             notes: data.notes,
         });
         for (const item of items) await insertOrderSessionItemRow(client, row.id, item);
@@ -430,9 +439,6 @@ export async function updateSession(
             if (body.notes !== undefined) notes = body.notes;
             if (body.status !== undefined) status = body.status;
         }
-        let shipping = currentRow.shipping ?? undefined;
-        if (body.shipping === null) shipping = undefined;
-        else if (body.shipping) shipping = body.shipping;
         // order_id só falta numa sessão que nunca teve cliente vinculado.
         // Se esta chamada é o momento em que o cliente passa a existir
         // (ex. vendedora identifica quem é depois de já ter lançado peças),
@@ -490,12 +496,13 @@ export async function updateSession(
             }
             if (order && body.items !== undefined) {
                 const persistedItems = (await listOrderItemRowsByOrder(client, orderId)).map((item) => item.snapshot);
+                const freightRow = await findOrderFreightRowByOrderId(client, orderId);
                 const updatedOrder = await updateOrderRow(client, orderId, {
                     status: order.status,
-                    total: totalAfterItemMutation(persistedItems, order),
+                    total: totalAfterItemMutation(persistedItems, order, Number(freightRow?.price ?? 0)),
                 });
                 if (updatedOrder) {
-                    changes.order = toOrder(updatedOrder, persistedItems);
+                    changes.order = toOrder(updatedOrder, persistedItems, freightRow);
                     // Upsell num pedido já finalizado (novo/separado/pago) muda o
                     // que o ERP tem registrado -- reenvia. Edição do carrinho ainda
                     // "aberto"/"aguardando_pagamento" não conta: o pedido nem chegou
@@ -517,10 +524,9 @@ export async function updateSession(
             && clientName === currentRow.client_name
             && notes === (currentRow.notes ?? undefined)
             && status === currentRow.status
-            && shipping === (currentRow.shipping ?? undefined)
             && orderId === (currentRow.order_id ?? undefined);
         const row = await updateOrderSessionRow(client, id, {
-            clientName, clientId, notes, status, shipping, orderId,
+            clientName, clientId, notes, status, orderId,
             // Links de pagamento nao sobrevivem a cancelamento nem a uma
             // reativacao: a proxima cobranca precisa gerar um token novo.
             clearPaymentToken: (status === "aberto" && currentRow.status !== "aberto") || status === "cancelado",
@@ -598,17 +604,28 @@ export async function finalizeOrderSession(
         const items = (await listOrderItemRowsByOrder(client, orderId)).map((item) => item.snapshot);
         if (items.length === 0) throw new ValidationError("EMPTY_ORDER");
 
-        const total = items.reduce((sum, item) => sum + item.price * item.qty, 0)
-            + (session.shipping?.price ?? 0);
+        const freightPrice = Number(session.freight_price ?? 0);
+        const total = items.reduce((sum, item) => sum + item.price * item.qty, 0) + freightPrice;
         // Sem motor de pagamentos de verdade, "finalizar" não paga mais o
         // pedido -- só fecha o carrinho pra separação (ver migration 036).
         // paymentMethod fica sem uso aqui até existir cobrança real.
-        const row = await updateOrderRow(client, orderId, {
-            status: "novo",
-            total,
-            shipping: session.shipping ?? undefined,
-        });
+        const row = await updateOrderRow(client, orderId, { status: "novo", total });
         if (!row) throw new NotFoundError("ORDER_NOT_FOUND");
+        // Snapshot do frete escolhido na sessão (ver selectFreightQuote) vira
+        // a linha definitiva de order_freights -- sem frete escolhido (sessão
+        // finalizada sem passar por /frete), não há o que gravar.
+        let freightRow: OrderFreightRow | undefined;
+        if (session.freight_kind) {
+            freightRow = await insertOrderFreightRow(client, {
+                orderId,
+                providerId: session.freight_provider_id,
+                quoteId: session.freight_quote_id,
+                kind: session.freight_kind,
+                label: session.freight_label!,
+                price: freightPrice,
+                etaLabel: session.freight_eta_label,
+            });
+        }
         // Fecha TODA sessão irmã ainda aberta que aponte pro mesmo pedido
         // (upsell entre talões), não só a que disparou o fechamento --
         // senão ela fica presa "aberta" apontando pra um pedido já pago.
@@ -618,7 +635,7 @@ export async function finalizeOrderSession(
         changedBooks = (await Promise.all(
             [...bookIds].map((bookId) => closeOrderBookWhenFinished(client, bookId)),
         )).filter((book): book is OrderBookRow => Boolean(book));
-        return toOrder(row, items);
+        return toOrder(row, items, freightRow);
     });
     for (const changedSession of changedSessions) {
         notifySession(tenant.id, changedSession);
@@ -628,4 +645,79 @@ export async function finalizeOrderSession(
     notifyOrder(tenant.id, order);
     await enqueueOrderPush(tenant, user, order.id);
     return order;
+}
+
+function canAccessSessionRow(user: AuthUser, session: { seller_id: string; client_id: string | null }): boolean {
+    if (user.role === "cliente") return session.client_id === user.clientId;
+    return canManageSession(user, session.seller_id);
+}
+
+// Gera (e persiste) uma cotação por freight_provider ativo do tenant --
+// substitui o MOCK_SHIPPING_OPTIONS que o frontend usava antes. Cada
+// chamada insere linhas novas em freight_quotes (histórico de o que foi
+// mostrado), sem reaproveitar cotações antigas da mesma sessão.
+export async function listFreightQuotes(
+    tenant: Tenant,
+    user: AuthUser,
+    sessionId: string,
+    destinationCep?: string,
+): Promise<FreightQuote[]> {
+    return withTenantTransaction(tenant, user, async (client) => {
+        const session = await findOrderSessionRow(client, sessionId);
+        if (!session) throw new NotFoundError("SESSION_NOT_FOUND");
+        if (!canAccessSessionRow(user, session)) throw new ForbiddenError();
+        const providers = await listActiveFreightProviderRows(client);
+        // kind = 'carrier' ainda não tem cotação automática (ver
+        // freightPricing.computeFreightPrice) -- nenhum provider ativo hoje
+        // tem esse kind, mas o filtro evita quebrar se um dia tiver.
+        const quotable = providers.filter((provider) => provider.kind !== "carrier");
+        const rows = await insertFreightQuoteRows(
+            client,
+            sessionId,
+            quotable.map((provider) => ({
+                providerId: provider.id,
+                kind: provider.kind,
+                destinationCep,
+                ...computeFreightPrice(provider),
+            })),
+        );
+        return rows.map(toFreightQuote);
+    });
+}
+
+// Marca a cotação escolhida (índice único parcial em freight_quotes garante
+// 1 selecionada por sessão) e copia o snapshot pras 6 colunas de frete de
+// order_sessions -- é o único lugar que deve alterar frete de uma sessão
+// (updateSession não aceita mais esse campo).
+export async function selectFreightQuote(
+    tenant: Tenant,
+    user: AuthUser,
+    sessionId: string,
+    quoteId: string,
+): Promise<OrderSession> {
+    const updated = await withTenantTransaction(tenant, user, async (client) => {
+        const session = await findOrderSessionRow(client, sessionId);
+        if (!session) throw new NotFoundError("SESSION_NOT_FOUND");
+        if (!canAccessSessionRow(user, session)) throw new ForbiddenError();
+        if (session.status === "cancelado" || session.status === "fechado") {
+            throw new ValidationError("SESSION_CANCELLED");
+        }
+        const quote = await findFreightQuoteRow(client, quoteId);
+        if (!quote || quote.order_session_id !== sessionId) throw new NotFoundError("FREIGHT_QUOTE_NOT_FOUND");
+        await selectFreightQuoteRow(client, sessionId, quoteId);
+        const row = await setOrderSessionFreightRow(client, sessionId, {
+            quoteId: quote.id,
+            providerId: quote.provider_id,
+            kind: quote.kind,
+            label: quote.label,
+            price: Number(quote.price),
+            etaLabel: quote.eta_label,
+        });
+        if (!row) throw new NotFoundError("SESSION_NOT_FOUND");
+        const items = (await listOrderSessionItemRowsBySession(client, sessionId)).map((item) => item.snapshot);
+        return toOrderSession(row, items);
+    });
+    notifySession(tenant.id, updated);
+    scheduleSessionBroadcast(updated);
+    return updated;
 }

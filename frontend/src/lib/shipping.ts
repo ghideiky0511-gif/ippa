@@ -1,16 +1,32 @@
-// Mock de frete — sem integração real com transportadora ainda. O CEP hoje
-// não influencia o resultado; a função já existe separada pra quando entrar
-// uma cotação de verdade (Correios/transportadora), sem precisar mexer na
-// página de frete.
+import { FreightQuoteSchema, OrderSessionSchema, type FreightQuote, type OrderSession } from '@/domain/orders/types';
+import { adminJson } from './http';
 
-import type { ShippingOption } from './types';
+// Gera (e persiste) uma cotação por freight_provider ativo do tenant pra
+// esta sessão -- substitui o MOCK_SHIPPING_OPTIONS antigo. CEP hoje só é
+// repassado pro backend; nenhum provider ativo ainda calcula frete por
+// distância (ver backend/src/services/orders/freightPricing.ts).
+export function fetchFreightQuotes(sessionId: string, cep?: string): Promise<FreightQuote[]> {
+  const query = cep ? `?cep=${encodeURIComponent(cep)}` : '';
+  return adminJson(
+    `/api/sessions/${sessionId}/freight-quotes${query}`,
+    FreightQuoteSchema.array(),
+    {},
+    'Não foi possível calcular o frete.',
+  );
+}
 
-export const MOCK_SHIPPING_OPTIONS: ShippingOption[] = [
-  { id: 'retirada', label: 'Retirada no showroom', price: 0, prazo: 'Combinar retirada' },
-  { id: 'padrao', label: 'Entrega padrão', price: 19.9, prazo: '5 a 8 dias úteis' },
-  { id: 'expressa', label: 'Entrega expressa', price: 39.9, prazo: '2 a 3 dias úteis' },
-];
+// Escolhe uma cotação gerada por fetchFreightQuotes -- só assim uma sessão
+// passa a ter frete (PUT /sessions/:id não aceita mais esse campo).
+export function selectFreightQuote(sessionId: string, quoteId: string): Promise<OrderSession> {
+  return adminJson(`/api/sessions/${sessionId}/freight-quotes`, OrderSessionSchema, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ quoteId }),
+  }, 'Não foi possível escolher o frete.');
+}
 
-export function calculateShipping(cep: string): ShippingOption[] {
-  return MOCK_SHIPPING_OPTIONS;
+// Checkout direto (cliente sem talão/sessão ativa) não passa por sessão --
+// lista os providers ativos já convertidos pra preço/label/prazo.
+export function fetchFreightProviders(): Promise<FreightQuote[]> {
+  return adminJson('/api/freight-providers', FreightQuoteSchema.array(), {}, 'Não foi possível carregar as opções de frete.');
 }

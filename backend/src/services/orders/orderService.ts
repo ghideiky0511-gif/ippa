@@ -1,6 +1,6 @@
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
-import type { AuthUser, Order, OrderChannel, OrderSession } from "@/lib/types";
+import type { AuthUser, FreightQuote, Order, OrderChannel, OrderSession } from "@/lib/types";
 import { CreateCustomerOrderInputSchema } from "@/contracts/orders";
 import {
     cancelOpenOrderSessionRowsByOrder,
@@ -14,6 +14,9 @@ import {
     listTenantOrderRows,
     updateOrderRow,
 } from "@/models/ordersModel";
+import { findFreightProviderRow, listActiveFreightProviderRows } from "@/models/freightProvidersModel";
+import { findOrderFreightRowByOrderId, insertOrderFreightRow, listOrderFreightRows } from "@/models/orderFreightsModel";
+import { computeFreightPrice } from "./freightPricing";
 import { getOrCreateOpenOrder, syncOrderItems } from "./orderItemSync";
 import { findUserRowById } from "@/models/usersModel";
 import { findStoreSettingsRow } from "@/models/settingsModel";
@@ -26,6 +29,19 @@ import { toOrder, toOrderBook, toOrderSession } from "./orderMapper";
 import { closeOrderBookWhenFinished } from "./orderBookLifecycle";
 import type { OrderBookRow } from "@/models/orderBooksModel";
 import { ORDER_AUDIT_ACTIONS, recordAuditEvent, type AuditRequestContext } from "@/services/audit";
+
+// Checkout direto (cliente sem talão/sessão ativa) não passa por
+// freight_quotes -- lista os providers ativos já convertidos pra
+// preço/label/prazo, pra cliente escolher um antes de mandar
+// freightProviderId em createCustomerOrder.
+export async function listActiveFreightProviders(tenant: Tenant, user: AuthUser): Promise<FreightQuote[]> {
+    return withTenantTransaction(tenant, user, async (client) => {
+        const providers = await listActiveFreightProviderRows(client);
+        return providers
+            .filter((provider) => provider.kind !== "carrier")
+            .map((provider) => ({ id: provider.id, providerId: provider.id, kind: provider.kind, ...computeFreightPrice(provider) }));
+    });
+}
 
 function isAdministrator(user: AuthUser): boolean {
     return user.role === "administrador" && user.permissions?.adminAccess === true;
@@ -47,7 +63,7 @@ export async function userOrders(
 ): Promise<Order[]> {
     if (filters?.clientId && !isAdministrator(user)) throw new ForbiddenError();
     return withTenantTransaction(tenant, user, async (client) => {
-        const [orders, items] = await Promise.all([
+        const [orders, items, freights] = await Promise.all([
             filters?.clientId
                 ? listOrderRowsBy(client, "client_id", filters.clientId)
                 : isAdministrator(user)
@@ -58,6 +74,7 @@ export async function userOrders(
                       ? listOrderRowsBy(client, "seller_id", user.id)
                       : listTenantOrderRows(client),
             listOrderItemRows(client),
+            listOrderFreightRows(client),
         ]);
         return orders.map((order) =>
             toOrder(
@@ -65,6 +82,7 @@ export async function userOrders(
                 items
                     .filter((item) => item.order_id === order.id)
                     .map((item) => item.snapshot),
+                freights.find((freight) => freight.order_id === order.id),
             ),
         );
     });
@@ -98,7 +116,8 @@ async function visibleOrder(
     const isOwnAsClient = user.role === "cliente" && user.clientId && orderRow.client_id === user.clientId;
     if (!isAdministrator(user) && !isOwnAsSeller && !isOwnAsClient) throw new ForbiddenError();
     const items = (await listOrderItemRowsByOrder(client, orderRow.id)).map((item) => item.snapshot);
-    return toOrder(orderRow, items);
+    const freightRow = await findOrderFreightRowByOrderId(client, orderRow.id);
+    return toOrder(orderRow, items, freightRow);
 }
 
 export async function createCustomerOrder(
@@ -165,16 +184,31 @@ export async function createCustomerOrder(
             await syncOrderItems(client, { orderId, currentItems, nextItems: items, actorId: user.id, actorRole: user.role });
         }
         if (orderItems.filter((item) => item.qty > 0).length === 0) throw new ValidationError("EMPTY_ORDER");
+        // Checkout direto não passa por freight_quotes (não há sessão pra
+        // pendurar a cotação) -- a cliente escolhe um provider ativo e o
+        // preço/label/prazo vêm direto da config dele (mesma regra de
+        // orderSessionService.listFreightQuotes).
+        const freightProvider = await findFreightProviderRow(client, body.freightProviderId);
+        if (!freightProvider || !freightProvider.active) throw new ValidationError("FREIGHT_PROVIDER_NOT_FOUND");
+        const freightPrice = computeFreightPrice(freightProvider);
         // Sem motor de pagamentos de verdade, este checkout só confirma o
         // pedido (fecha o carrinho pra separação) -- não paga mais (ver
         // migration 036). paymentMethod fica sem uso até existir cobrança real.
         const row = await updateOrderRow(client, orderId, {
             status: "novo",
             total: body.total,
-            shipping: body.shipping,
             discount: body.discount,
         });
         if (!row) throw new NotFoundError("ORDER_NOT_FOUND");
+        const freightRow = await insertOrderFreightRow(client, {
+            orderId,
+            providerId: freightProvider.id,
+            quoteId: null,
+            kind: freightProvider.kind,
+            label: freightPrice.label,
+            price: freightPrice.price,
+            etaLabel: freightPrice.etaLabel,
+        });
         if (sellerId) {
             const seller = await findUserRowById(client, sellerId);
             if (seller) sellerRecipient = { id: seller.id, role: seller.role };
@@ -188,7 +222,7 @@ export async function createCustomerOrder(
         changedBooks = (await Promise.all(
             [...bookIds].map((bookId) => closeOrderBookWhenFinished(client, bookId)),
         )).filter((book): book is OrderBookRow => Boolean(book));
-        return toOrder(row, orderItems);
+        return toOrder(row, orderItems, freightRow);
     });
     for (const changedSession of changedSessions) notifySession(tenant.id, changedSession);
     for (const book of changedBooks) notifyOrderBook(tenant.id, toOrderBook(book));
@@ -231,7 +265,8 @@ export async function markOrderPaid(
             context: auditRequestContext,
             metadata: paymentMethod ? { paymentMethod } : {},
         });
-        return toOrder(row, items);
+        const freightRow = await findOrderFreightRowByOrderId(client, orderId);
+        return toOrder(row, items, freightRow);
     });
     notifyOrder(tenant.id, order);
     // Marcar como pago é uma alteração do pedido como qualquer outra --
@@ -282,7 +317,8 @@ export async function cancelOrder(
             context: auditRequestContext,
             metadata: {},
         });
-        return toOrder(row, items);
+        const freightRow = await findOrderFreightRowByOrderId(client, orderId);
+        return toOrder(row, items, freightRow);
     });
     for (const cancelledSession of cancelledSessions) notifySession(tenant.id, cancelledSession);
     for (const book of changedBooks) notifyOrderBook(tenant.id, toOrderBook(book));

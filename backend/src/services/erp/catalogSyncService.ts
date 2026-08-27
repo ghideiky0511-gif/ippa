@@ -36,6 +36,7 @@ import {
     type CatalogSyncRunRow,
     type CatalogSyncStateRow,
 } from "@/models/catalogSyncModel";
+import { replaceProductCompositionsRow } from "@/models/productCompositionModel";
 import {
     deactivateMissingProductVariantsRow,
     listProductVariantsForSyncRow,
@@ -237,7 +238,7 @@ export function matchExistingVariantId(input: {
 export async function processReference(
     runtime: SyncRuntime,
     referenceCode: string,
-): Promise<void> {
+): Promise<boolean> {
     const reference = await runtime.provider.fetchReference(referenceCode);
     if (!reference) {
         await withTenantTransaction(runtime.tenant, SYSTEM_ACTOR, async (client) => {
@@ -246,7 +247,7 @@ export async function processReference(
             );
             if (productId) await setProductSyncActiveRow(client, productId, false);
         });
-        return;
+        return false;
     }
 
     const skuExternalIds = reference.skus.map((sku) => sku.externalId);
@@ -330,6 +331,62 @@ export async function processReference(
             reference.subcategory ? slugify(reference.subcategory) : undefined,
         );
     });
+    return true;
+}
+
+// Atualização pontual de uma única referência, sob demanda (fora da janela de
+// descoberta/fila do sync periódico) — reaproveita o mesmo cascade de
+// processReference (dados gerais, descrição, SKUs, preço, estoque,
+// classificações) e, por cima, busca composição se o provider suportar
+// (fetchCompositions é opcional: multiprovider sem quebrar quem não tem esse
+// dado). Cria um catalog_sync_runs de verdade em vez de forjar um objeto de
+// run, pra manter observabilidade e não inventar um "run fake" fora do
+// modelo de dados existente. Não usa o lease de syncTenantCatalog: uma
+// chamada sob demanda pode, em tese, correr em paralelo com o sync
+// periódico da mesma referência, mas ambos escrevem via transações curtas e
+// idempotentes (upsert por reference_id/external_id), então o pior caso é
+// uma leitura intermediária inconsistente, não corrupção.
+export async function syncReferenceOnDemand(
+    tenant: Tenant,
+    referenceCode: string,
+): Promise<{ status: "updated" | "not_found"; runId: string }> {
+    const { integration, config } = await loadSyncContext(tenant);
+    const provider = createErpProvider(
+        integration.provider,
+        integration.credentials,
+        createExternalApiCallReporter(tenant, SYSTEM_ACTOR, integration.provider),
+    );
+    const run = await withTenantTransaction(tenant, SYSTEM_ACTOR, (client) =>
+        insertCatalogSyncRunRow(client, {
+            integrationId: integration.id, mode: "incremental", windowEnd: new Date(),
+        }),
+    );
+    const runtime: SyncRuntime = { tenant, integration, config, provider, run };
+    try {
+        const found = await processReference(runtime, referenceCode);
+        if (found && provider.fetchCompositions) {
+            const compositions = await provider.fetchCompositions(referenceCode);
+            await withTenantTransaction(tenant, SYSTEM_ACTOR, async (client) => {
+                const productId = await findInternalIdByExternalId(
+                    client, integration.id, "product", referenceCode,
+                );
+                if (productId) {
+                    await replaceProductCompositionsRow(client, {
+                        productId, provider: integration.provider, compositions,
+                    });
+                }
+            });
+        }
+        await withTenantTransaction(tenant, SYSTEM_ACTOR, (client) =>
+            finishCatalogSyncRunRow(client, run.id, true),
+        );
+        return { status: found ? "updated" : "not_found", runId: run.id };
+    } catch (error) {
+        await withTenantTransaction(tenant, SYSTEM_ACTOR, (client) =>
+            markCatalogSyncRunFailedRow(client, run.id, errorMessage(error)),
+        ).catch(() => undefined);
+        throw error;
+    }
 }
 
 async function finalizeRuns(runtime: SyncRuntime): Promise<void> {

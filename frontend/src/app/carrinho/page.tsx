@@ -39,7 +39,7 @@ function unselectedProductNames(cart: CartItem[]): string[] {
 export default function CarrinhoPage() {
   const router = useRouter();
   const { tenant, href } = useTenant();
-  const { cart, cartCount, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, saveOrderToHistory, shipping } = useCart();
+  const { cart, cartCount, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, saveOrderToHistory, freight } = useCart();
   const { showPrices } = useAuthUser();
   const [pendingAction, setPendingAction] = useState<{ names: string[]; run: () => void } | null>(null);
   const [similar, setSimilar] = useState<Product[]>([]);
@@ -133,7 +133,7 @@ export default function CarrinhoPage() {
     router.push(href('/frete'));
   }
 
-  const reachable = shipping ? 3 : cartCount > 0 ? 2 : 1;
+  const reachable = freight ? 3 : cartCount > 0 ? 2 : 1;
 
   return (
     <main className={`${publicUi.container} py-5 pb-14`}>

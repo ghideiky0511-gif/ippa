@@ -1,21 +1,23 @@
 import type { PoolClient } from "pg";
-import type { CartItem, Order, OrderSession } from "@/lib/types";
+import type { CartItem, FreightProviderKind, Order, OrderSession } from "@/lib/types";
 
 export interface OrderSessionRow {
     id: string; order_book_id: string; client_name: string; client_id: string | null; seller_id: string;
     channel: OrderSession["channel"]; status: OrderSession["status"]; order_id: string | null;
-    shipping: OrderSession["shipping"]; payment_token_created_at: Date | null;
+    freight_quote_id: string | null; freight_provider_id: string | null; freight_kind: FreightProviderKind | null;
+    freight_label: string | null; freight_price: string | null; freight_eta_label: string | null;
+    payment_token_created_at: Date | null;
     notes: string | null; created_at: Date; updated_at: Date;
 }
 export interface OrderSessionItemRow { session_id: string; snapshot: CartItem }
 export interface OrderRow {
     id: string; order_number: number; created_at: Date; updated_at: Date; client_id: string | null; seller_id: string | null;
     client_name: string | null; channel: string; status: Order["status"]; total: string;
-    shipping: Order["shipping"]; payment_method: string | null; discount: Order["discount"];
+    payment_method: string | null; discount: Order["discount"];
 }
 export interface OrderItemRow { order_id: string; item_key: string; snapshot: CartItem }
 
-const sessionFields = "id, order_book_id, client_name, client_id, seller_id, channel, status, order_id, shipping, payment_token_created_at, notes, created_at, updated_at";
+const sessionFields = "id, order_book_id, client_name, client_id, seller_id, channel, status, order_id, freight_quote_id, freight_provider_id, freight_kind, freight_label, freight_price, freight_eta_label, payment_token_created_at, notes, created_at, updated_at";
 
 export async function listOrderSessionRowsBySeller(client: PoolClient, sellerId: string): Promise<OrderSessionRow[]> {
     const result = await client.query<OrderSessionRow>(
@@ -109,14 +111,14 @@ export async function countOpenOrderSessionRowsBySeller(client: PoolClient): Pro
 
 export async function insertOrderSessionRow(
     client: PoolClient,
-    value: Omit<OrderSession, "id" | "items" | "createdAt" | "updatedAt">,
+    value: Omit<OrderSession, "id" | "items" | "createdAt" | "updatedAt" | "freight">,
 ): Promise<OrderSessionRow> {
     const result = await client.query<OrderSessionRow>(
-        `INSERT INTO order_sessions (tenant_id, order_book_id, client_name, client_id, seller_id, channel, status, order_id, shipping, notes)
-         VALUES (app_tenant_id(), $1,$2,$3,$4,$5,$6,$7,$8,$9)
+        `INSERT INTO order_sessions (tenant_id, order_book_id, client_name, client_id, seller_id, channel, status, order_id, notes)
+         VALUES (app_tenant_id(), $1,$2,$3,$4,$5,$6,$7,$8)
          RETURNING ${sessionFields}`,
         [value.orderBookId, value.clientName, value.clientId ?? null, value.sellerId, value.channel, value.status,
-         value.orderId ?? null, value.shipping ? JSON.stringify(value.shipping) : null, value.notes ?? null],
+         value.orderId ?? null, value.notes ?? null],
     );
     return result.rows[0];
 }
@@ -139,20 +141,39 @@ export async function replaceOrderSessionItemRows(client: PoolClient, sessionId:
 
 export async function updateOrderSessionRow(client: PoolClient, id: string, value: {
     clientName: string; clientId?: string; status: OrderSession["status"]; orderId?: string;
-    shipping?: OrderSession["shipping"]; notes?: string; clearPaymentToken?: boolean;
+    notes?: string; clearPaymentToken?: boolean;
 }): Promise<OrderSessionRow | null> {
     const result = await client.query<OrderSessionRow>(
         `UPDATE order_sessions SET client_name = $2, client_id = $3, status = $4,
-           order_id = COALESCE($8, order_id),
-           shipping = $5, notes = $6,
-           payment_token_hash = CASE WHEN $7 THEN NULL ELSE payment_token_hash END,
-           payment_token_created_at = CASE WHEN $7 THEN NULL ELSE payment_token_created_at END,
+           order_id = COALESCE($7, order_id),
+           notes = $5,
+           payment_token_hash = CASE WHEN $6 THEN NULL ELSE payment_token_hash END,
+           payment_token_created_at = CASE WHEN $6 THEN NULL ELSE payment_token_created_at END,
            updated_at = now()
          WHERE tenant_id = app_tenant_id() AND id = $1
          RETURNING ${sessionFields}`,
-        [id, value.clientName, value.clientId ?? null, value.status,
-         value.shipping ? JSON.stringify(value.shipping) : null, value.notes ?? null,
+        [id, value.clientName, value.clientId ?? null, value.status, value.notes ?? null,
          value.clearPaymentToken === true, value.orderId ?? null],
+    );
+    return result.rows[0] ?? null;
+}
+
+// Snapshot da cotação escolhida (ver freightQuotesModel.selectFreightQuoteRow,
+// chamado antes deste na mesma transação) -- separado do update genérico
+// acima porque só orderSessionService.selectFreightQuote deve alterar
+// frete, nunca um PATCH solto de sessão.
+export async function setOrderSessionFreightRow(client: PoolClient, id: string, value: {
+    quoteId: string | null; providerId: string | null; kind: FreightProviderKind;
+    label: string; price: number; etaLabel: string | null;
+}): Promise<OrderSessionRow | null> {
+    const result = await client.query<OrderSessionRow>(
+        `UPDATE order_sessions SET
+           freight_quote_id = $2, freight_provider_id = $3, freight_kind = $4,
+           freight_label = $5, freight_price = $6, freight_eta_label = $7,
+           updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND id = $1
+         RETURNING ${sessionFields}`,
+        [id, value.quoteId, value.providerId, value.kind, value.label, value.price, value.etaLabel],
     );
     return result.rows[0] ?? null;
 }
@@ -219,7 +240,9 @@ export async function closeStaleOrderSessionRowsByClient(client: PoolClient, cli
            AND session.status IN ('aberto', 'aguardando_pagamento')
            AND "order".status IN ('pago', 'cancelado')
          RETURNING session.id, session.order_book_id, session.client_name, session.client_id,
-           session.seller_id, session.channel, session.status, session.order_id, session.shipping,
+           session.seller_id, session.channel, session.status, session.order_id,
+           session.freight_quote_id, session.freight_provider_id, session.freight_kind,
+           session.freight_label, session.freight_price, session.freight_eta_label,
            session.payment_token_created_at, session.notes, session.created_at, session.updated_at`,
         [clientId],
     );
@@ -274,13 +297,13 @@ export interface OrderWriteRow {
     // pedido antes do pagamento (ex. sync do ERP, que importa pedido já
     // fechado) continua inserindo o registro pronto, sem passar status.
     status?: Order["status"];
-    total: number; shipping?: Order["shipping"]; paymentMethod?: string; discount?: Order["discount"];
+    total: number; paymentMethod?: string; discount?: Order["discount"];
     // Data original do pedido (ex. vinda do ERP) — sem valor, cai no now()
     // do banco (pedido criado agora mesmo, fluxo local de sempre).
     createdAt?: string;
 }
 
-const orderFields = "id, order_number, created_at, updated_at, client_id, seller_id, client_name, channel, status, total, shipping, payment_method, discount";
+const orderFields = "id, order_number, created_at, updated_at, client_id, seller_id, client_name, channel, status, total, payment_method, discount";
 
 export async function insertOrderRow(client: PoolClient, value: OrderWriteRow): Promise<OrderRow> {
     const result = await client.query<OrderRow>(
@@ -291,12 +314,12 @@ export async function insertOrderRow(client: PoolClient, value: OrderWriteRow): 
              SET next_order_number = tenant_order_counters.next_order_number + 1
            RETURNING next_order_number - 1 AS order_number
          )
-         INSERT INTO orders (tenant_id, order_number, client_id, seller_id, client_name, channel, status, total, shipping, payment_method, discount, created_at)
-         SELECT app_tenant_id(), allocated_number.order_number, $1,$2,$3,$4,$5,$6,$7,$8,$9, COALESCE($10, now())
+         INSERT INTO orders (tenant_id, order_number, client_id, seller_id, client_name, channel, status, total, payment_method, discount, created_at)
+         SELECT app_tenant_id(), allocated_number.order_number, $1,$2,$3,$4,$5,$6,$7,$8, COALESCE($9, now())
          FROM allocated_number
          RETURNING ${orderFields}`,
         [value.clientId ?? null, value.sellerId ?? null, value.clientName ?? null, value.channel,
-         value.status ?? "pago", value.total, value.shipping ? JSON.stringify(value.shipping) : null,
+         value.status ?? "pago", value.total,
          value.paymentMethod ?? null, value.discount ? JSON.stringify(value.discount) : null,
          value.createdAt ?? null],
     );
@@ -341,18 +364,16 @@ export async function findOpenOrderRowForAttachment(
 
 export async function updateOrderRow(client: PoolClient, id: string, value: {
     status: Order["status"]; total?: number; paymentMethod?: string;
-    discount?: Order["discount"]; shipping?: Order["shipping"];
+    discount?: Order["discount"];
 }): Promise<OrderRow | null> {
     const result = await client.query<OrderRow>(
         `UPDATE orders SET status = $2, total = COALESCE($3, total),
            payment_method = COALESCE($4, payment_method),
-           discount = COALESCE($5::jsonb, discount),
-           shipping = COALESCE($6::jsonb, shipping), updated_at = now()
+           discount = COALESCE($5::jsonb, discount), updated_at = now()
          WHERE tenant_id = app_tenant_id() AND id = $1
          RETURNING ${orderFields}`,
         [id, value.status, value.total ?? null, value.paymentMethod ?? null,
-         value.discount ? JSON.stringify(value.discount) : null,
-         value.shipping ? JSON.stringify(value.shipping) : null],
+         value.discount ? JSON.stringify(value.discount) : null],
     );
     return result.rows[0] ?? null;
 }

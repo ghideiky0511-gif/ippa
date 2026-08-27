@@ -17,8 +17,8 @@ function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 }
 
-function sessionTotal(session: Pick<OrderSession, 'items' | 'shipping'>) {
-  return session.items.reduce((sum, item) => sum + item.price * item.qty, 0) + (session.shipping?.price ?? 0);
+function sessionTotal(session: Pick<OrderSession, 'items' | 'freight'>) {
+  return session.items.reduce((sum, item) => sum + item.price * item.qty, 0) + (session.freight?.price ?? 0);
 }
 
 function itemCount(items: OrderSession['items']) {

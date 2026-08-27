@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
-import type { AuthUser, CartItem, Discount, Order, OrderSession } from "@/lib/types";
+import type { AuthUser, CartItem, Discount, Order, OrderSession, SessionFreight } from "@/lib/types";
 import {
   closeOpenOrderSessionRowsByOrder,
   findOrderRowById,
@@ -10,6 +10,7 @@ import {
   listOrderItemRowsByOrder,
   updateOrderRow,
 } from "@/models/ordersModel";
+import { insertOrderFreightRow, type OrderFreightRow } from "@/models/orderFreightsModel";
 import { getOrCreateOpenOrder } from "./orderItemSync";
 import {
   findStoreSettingsRow,
@@ -24,7 +25,7 @@ import { enqueueOrderPush } from "@/services/erp/orderPushService";
 import { GoneError, NotFoundError } from "@/services/shared/errors";
 import { getCartDiscount } from "@/services/settings";
 import { PAYMENT_LINK_EXPIRATION_DEFAULT_MINUTES } from "@/services/settings";
-import { toOrder, toOrderBook, toOrderSession } from "./orderMapper";
+import { sessionFreightFromRow, toOrder, toOrderBook, toOrderSession } from "./orderMapper";
 import { closeOrderBookWhenFinished } from "./orderBookLifecycle";
 import type { OrderBookRow } from "@/models/orderBooksModel";
 
@@ -89,7 +90,7 @@ export interface PaymentSummary {
   cartDiscountLabel: string | null;
   cartDiscountTotal: number;
   cartTotal: number;
-  shipping?: OrderSession["shipping"];
+  freight?: SessionFreight;
   total: number;
 }
 
@@ -103,8 +104,8 @@ export async function paymentSummary(tenant: Tenant, token: string): Promise<Pay
       cartDiscountLabel: context.discount.label,
       cartDiscountTotal: context.discount.totalAmount,
       cartTotal: context.cartTotal,
-      shipping: context.session.shipping ?? undefined,
-      total: context.cartTotal + (context.session.shipping?.price ?? 0),
+      freight: sessionFreightFromRow(context.session),
+      total: context.cartTotal + Number(context.session.freight_price ?? 0),
     };
   });
 }
@@ -119,18 +120,33 @@ export async function confirmPayment(
   let sellerRecipient: Pick<AuthUser, "id" | "role"> | undefined;
   const order = await withTenantTransaction(tenant, {}, async (client) => {
     const context = await paymentContext(client, token, true);
-    const total = context.cartTotal + (context.session.shipping?.price ?? 0);
+    const freightPrice = Number(context.session.freight_price ?? 0);
+    const total = context.cartTotal + freightPrice;
     // Sem motor de pagamentos de verdade, este link só confirma o pedido
     // (fecha o carrinho pra separação) -- não paga mais (ver migration 036).
     const row = await updateOrderRow(client, context.orderId, {
       status: "novo",
       total,
-      shipping: context.session.shipping ?? undefined,
       discount: context.discount.totalAmount > 0
         ? { label: context.discount.label!, amount: context.discount.totalAmount }
         : undefined,
     });
     if (!row) throw new NotFoundError("ORDER_NOT_FOUND");
+    // Mesmo snapshot que finalizeOrderSession grava em order_freights --
+    // este link é a outra forma de fechar uma sessão (fluxo público sem
+    // vendedora presente).
+    let freightRow: OrderFreightRow | undefined;
+    if (context.session.freight_kind) {
+      freightRow = await insertOrderFreightRow(client, {
+        orderId: context.orderId,
+        providerId: context.session.freight_provider_id,
+        quoteId: context.session.freight_quote_id,
+        kind: context.session.freight_kind,
+        label: context.session.freight_label!,
+        price: freightPrice,
+        etaLabel: context.session.freight_eta_label,
+      });
+    }
     const seller = await findUserRowById(client, context.session.seller_id);
     if (seller) sellerRecipient = { id: seller.id, role: seller.role };
     // Fecha toda sessão irmã ainda aberta apontando pro mesmo pedido
@@ -145,7 +161,7 @@ export async function confirmPayment(
       const user = await findUserRowByClientId(client, context.session.client_id);
       if (user) recipient = { id: user.id, role: user.role, email: user.email, name: user.name };
     }
-    return toOrder(row, context.items);
+    return toOrder(row, context.items, freightRow);
   });
   for (const changedSession of changedSessions) notifySession(tenant.id, changedSession);
   for (const book of changedBooks) notifyOrderBook(tenant.id, toOrderBook(book));

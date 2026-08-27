@@ -6,8 +6,9 @@ import {
   IsoDateTimeSchema,
   MoneySchema,
   OptionalTextSchema,
+  OrderFreightSchema,
   RequiredTextSchema,
-  ShippingOptionSchema,
+  SessionFreightSchema,
 } from './shared';
 
 export const OrderChannelSchema = z.enum(['presencial', 'whatsapp', 'online']);
@@ -70,7 +71,7 @@ export const OrderSessionSchema = z.object({
   // Frete escolhido pela vendedora (ver /frete) — precisa sobreviver até a
   // cliente abrir o link de pagamento, por isso persistido aqui em vez de
   // ficar só no estado transitório que CartProvider usa pra compra direta.
-  shipping: ShippingOptionSchema.optional(),
+  freight: SessionFreightSchema.optional(),
   // 'aguardando_pagamento': vendedora já montou carrinho + frete e gerou o
   // link (ver paymentToken abaixo) — só falta a cliente pagar. Continua
   // contando como "aberto" no painel do talão, com um badge próprio pra
@@ -134,7 +135,7 @@ export const OrderSchema = z.object({
   items: z.array(CartItemSchema),
   total: MoneySchema, // já líquido de desconto
   channel: OrderChannelSchema,
-  shipping: ShippingOptionSchema.optional(),
+  freight: OrderFreightSchema.optional(),
   paymentMethod: z.string().optional(),
   discount: z.object({ label: RequiredTextSchema, amount: MoneySchema }).optional(), // snapshot do desconto aplicado no momento da compra, pra "Meus pedidos" mostrar mesmo se a regra mudar depois
   // Presentes só nos pedidos gravados no servidor, não nos antigos/locais
@@ -166,7 +167,6 @@ export const UpdateOrderSessionInputSchema = z.object({
   clientId: EntityIdSchema.optional(),
   notes: OptionalTextSchema,
   status: OrderSessionStatusSchema.optional(),
-  shipping: ShippingOptionSchema.nullable().optional(),
   items: z.array(CartItemSchema).optional(),
 });
 export type UpdateOrderSessionInput = z.infer<typeof UpdateOrderSessionInputSchema>;
@@ -176,15 +176,17 @@ export const CreateOrderBookInputSchema = z.object({
 });
 export type CreateOrderBookInput = z.infer<typeof CreateOrderBookInputSchema>;
 
-// O snapshot ainda é aceito porque frete e pagamento são mockados. Quando a
-// cotação real entrar, este comando deve reduzir items a variantId + qty e o
-// backend passa a calcular preço/frete a partir do catálogo.
+// O snapshot de itens ainda é aceito porque pagamento é mockado (payload
+// completo, não só variantId+qty). Frete já não é mais um snapshot livre --
+// o cliente escolhe um `freight_providers` ativo e o backend calcula
+// preço/label/prazo a partir da config do provider (ver
+// orderService.createCustomerOrder).
 export const CreateCustomerOrderInputSchema = z.object({
   items: z.array(CartItemSchema),
   total: MoneySchema,
   channel: CheckoutChannelSchema.optional(),
   sessionId: EntityIdSchema.optional(),
-  shipping: ShippingOptionSchema.optional(),
+  freightProviderId: EntityIdSchema,
   paymentMethod: OptionalTextSchema,
   discount: z.object({ label: RequiredTextSchema, amount: MoneySchema }).optional(),
 });

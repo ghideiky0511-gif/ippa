@@ -1,7 +1,7 @@
 'use client';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
-import { OrderSessionSchema, type CartItem, type OrderSession, type ShippingOption } from '@/domain/orders/types';
+import { OrderSessionSchema, type CartItem, type OrderSession } from '@/domain/orders/types';
 import { pedidoRealtimeEventMessage, usePedidoRealtime, type PedidoParticipant, type PedidoPresence } from '@/lib/realtime/usePedidoRealtime';
 import { apiFetch } from '@/lib/api-client';
 import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
@@ -16,7 +16,6 @@ interface ClientSessionContextValue {
   presence: PedidoPresence[];
   participants: PedidoParticipant[];
   updateActiveItems: (items: CartItem[]) => Promise<void>;
-  updateActiveShipping: (shipping: ShippingOption | null) => Promise<void>;
   createActiveSession: (items: CartItem[]) => Promise<OrderSession | null>;
   adoptSession: (session: OrderSession) => void;
   releaseActiveSession: (sessionId: string) => void;
@@ -134,22 +133,6 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function updateActiveShipping(shipping: ShippingOption | null) {
-    if (!activeSession) return;
-    const id = activeSession.id;
-    setActiveSession((prev) => (prev && prev.id === id ? { ...prev, shipping: shipping || undefined } : prev));
-    try {
-      await realtime.updateSession({ shipping: shipping || undefined });
-    } catch (error) {
-      const current = await refetch();
-      toast.error(
-        current?.status === 'fechado' || current?.status === 'cancelado'
-          ? 'Este pedido já foi fechado. Atualizando...'
-          : error instanceof Error ? error.message : 'Não foi possível atualizar o pedido. Tente novamente.',
-      );
-    }
-  }
-
   async function createActiveSession(items: CartItem[]): Promise<OrderSession | null> {
     // Sem ninguém disponível, o carrinho continua local e o checkout direto
     // permanece liberado. Evita pedir uma nova atribuição a cada alteração.
@@ -185,7 +168,7 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
   }
 
   const value = useMemo<ClientSessionContextValue>(
-    () => ({ activeSession, presence, participants, updateActiveItems, updateActiveShipping, createActiveSession, adoptSession, releaseActiveSession }),
+    () => ({ activeSession, presence, participants, updateActiveItems, createActiveSession, adoptSession, releaseActiveSession }),
     [activeSession, participants, presence]
   );
 

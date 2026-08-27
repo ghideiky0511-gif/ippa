@@ -135,8 +135,36 @@ export const ProductPublicSchema = ProductSchema.omit({
 });
 export type ProductPublic = z.infer<typeof ProductPublicSchema>;
 
-export const ProductAdminSchema = ProductSchema;
+export const ProductSourceOriginSchema = z.enum(['manual', 'bootstrap', 'erp']);
+export type ProductSourceOrigin = z.infer<typeof ProductSourceOriginSchema>;
+
+export const ProductCompositionItemSchema = z.object({
+  material: RequiredTextSchema,
+  percentage: z.number().finite().min(0).max(100),
+});
+export type ProductCompositionItem = z.infer<typeof ProductCompositionItemSchema>;
+
+export const ProductCompositionSchema = z.object({
+  id: EntityIdSchema,
+  description: z.string(),
+  typeDescription: z.string().optional(),
+  items: z.array(ProductCompositionItemSchema),
+});
+export type ProductComposition = z.infer<typeof ProductCompositionSchema>;
+
+// A origem faz parte exclusivamente da visão administrativa: a vitrine pública
+// não precisa saber se a peça veio do ERP, de um bootstrap ou foi cadastrada.
+export const ProductAdminSchema = ProductSchema.extend({
+  sourceOrigin: ProductSourceOriginSchema,
+  compositions: z.array(ProductCompositionSchema).optional(),
+});
 export type ProductAdmin = z.infer<typeof ProductAdminSchema>;
+
+export const RefreshProductFromErpResultSchema = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('updated'), runId: EntityIdSchema, product: ProductAdminSchema }),
+  z.object({ status: z.literal('not_found'), runId: EntityIdSchema }),
+]);
+export type RefreshProductFromErpResult = z.infer<typeof RefreshProductFromErpResultSchema>;
 
 export const CreateProductInputSchema = z.object({
   name: RequiredTextSchema,
@@ -151,3 +179,37 @@ export type CreateProductInput = z.infer<typeof CreateProductInputSchema>;
 
 export const CreateProductResultSchema = z.object({ id: EntityIdSchema });
 export type CreateProductResult = z.infer<typeof CreateProductResultSchema>;
+
+const OptionalHttpUrlSchema = z.preprocess(
+  (value) => typeof value === 'string' && !value.trim() ? undefined : value,
+  HttpUrlSchema.optional(),
+);
+
+// Payload fechado para a edição do cadastro local. Campos derivados, como
+// cores/tamanhos, descontos ativos e estoque, nunca entram por esta fronteira.
+export const UpdateManualProductInputSchema = z.object({
+  name: RequiredTextSchema,
+  description: z.string().trim(),
+  category: RequiredTextSchema,
+  subcategory: OptionalTextSchema,
+  collection: OptionalTextSchema,
+  brand: OptionalTextSchema,
+  referenceId: OptionalTextSchema,
+  price: MoneySchema,
+  suggestedRetailPrice: MoneySchema.optional(),
+  markup: z.number().finite().nonnegative().optional(),
+  image: OptionalHttpUrlSchema,
+  images: z.array(HttpUrlSchema).max(12).optional(),
+  imagesByColor: z.record(z.string(), HttpUrlSchema).optional(),
+  videoUrl: OptionalHttpUrlSchema,
+  variants: z.array(z.object({
+    id: EntityIdSchema.optional(),
+    color: RequiredTextSchema,
+    size: RequiredTextSchema,
+    price: MoneySchema,
+    availability: AvailabilitySchema,
+  })).max(200),
+  similarProductIdsQuickview: z.array(EntityIdSchema).max(24).optional(),
+  similarProductIdsCart: z.array(EntityIdSchema).max(24).optional(),
+}).strict();
+export type UpdateManualProductInput = z.infer<typeof UpdateManualProductInputSchema>;

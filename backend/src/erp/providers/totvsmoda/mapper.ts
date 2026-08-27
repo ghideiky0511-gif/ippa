@@ -1,6 +1,7 @@
 import type { CartItem, Client, Company, Order, Product, Variant } from "@/lib/types";
 import { OrderChannelSchema } from "@/contracts/orders";
 import type {
+    ErpCompositionSnapshot,
     ErpOrderPushContext,
     ErpReferenceSnapshot,
     NonRetryableErpOrderError,
@@ -225,6 +226,50 @@ export function mapTotvsModaReferenceSnapshot(
             }];
         }),
     };
+}
+
+// CompositionGroupProductResultModel (product/v2/composition-group-product,
+// "composição por grupo" — ver comentário em client.ts:searchCompositionGroupProducts):
+// um grupo pode ter mais de uma composição (ex.: "PRINCIPAL" x tecido de forro),
+// cada uma com sua lista de fibras. Achatamos direto pra uma lista de
+// ErpCompositionSnapshot, sem representar o grupo como entidade própria — o
+// que interessa pro produto é "quais composições ele tem", não o grupo em si.
+interface TotvsModaCompositionItemRow {
+    fiberCode?: number;
+    fiberDescription?: string;
+    fiberPercentage?: number;
+}
+
+interface TotvsModaCompositionRow {
+    code?: number | string;
+    description?: string;
+    typeDescription?: string;
+    itemsComposition?: TotvsModaCompositionItemRow[];
+}
+
+export interface TotvsModaCompositionGroupRow {
+    groupCode?: string;
+    groupDescription?: string;
+    compositions?: TotvsModaCompositionRow[];
+}
+
+export function mapTotvsModaCompositions(
+    rows: TotvsModaCompositionGroupRow[],
+): ErpCompositionSnapshot[] {
+    return rows.flatMap((group) =>
+        (group.compositions ?? []).map((composition) => ({
+            externalCode: String(composition.code ?? "").trim(),
+            description: composition.description ?? "",
+            typeDescription: composition.typeDescription,
+            externalGroupCode: group.groupCode,
+            groupDescription: group.groupDescription,
+            items: (composition.itemsComposition ?? []).map((item) => ({
+                externalCode: item.fiberCode !== undefined ? String(item.fiberCode) : undefined,
+                material: item.fiberDescription ?? "",
+                percentage: item.fiberPercentage ?? 0,
+            })),
+        })),
+    ).filter((composition) => composition.externalCode);
 }
 
 function sumStock(productCode: number | undefined, balanceByCode: Map<number, TotvsModaBalanceRow>): number {
@@ -456,7 +501,7 @@ export function mapOrderToTotvsModaOrderInDto(
     // (ver paymentService.confirmPayment). Sem freightValue/discounts abaixo,
     // qualquer pedido com frete ou desconto manda um totalAmountOrder que não
     // bate com a soma dos itens sozinha, e o TOTVS rejeitaria o pedido.
-    const freightValue = order.shipping?.price;
+    const freightValue = order.freight?.price;
     let discounts: TotvsModaOrderDiscountInput[] | undefined;
     if (order.discount && order.discount.amount > 0) {
         if (!credentials.defaultDiscountTypeCode) {

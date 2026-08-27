@@ -63,6 +63,13 @@ CREATE TYPE public."discount_type" AS ENUM (
 	'quantity',
 	'products');
 
+-- DROP TYPE public."freight_provider_kind";
+
+CREATE TYPE public."freight_provider_kind" AS ENUM (
+	'pickup',
+	'fixed',
+	'carrier');
+
 -- DROP TYPE public."home_section_type";
 
 CREATE TYPE public."home_section_type" AS ENUM (
@@ -111,6 +118,16 @@ CREATE TYPE public."order_channel" AS ENUM (
 	'presencial',
 	'whatsapp',
 	'online');
+
+-- DROP TYPE public."order_freight_status";
+
+CREATE TYPE public."order_freight_status" AS ENUM (
+	'aguardando',
+	'etiqueta_emitida',
+	'em_transporte',
+	'entregue',
+	'devolvido',
+	'cancelado');
 
 -- DROP TYPE public."platform_plan_code";
 
@@ -535,6 +552,43 @@ CREATE POLICY external_api_request_log_tenant_isolation ON public.external_api_r
  AS PERMISSIVE
  FOR ALL
  TO ippa_app
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+
+-- public.freight_providers definition
+
+-- Drop table
+
+-- DROP TABLE public.freight_providers;
+
+CREATE TABLE public.freight_providers (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NOT NULL,
+	code text NOT NULL,
+	"name" text NOT NULL,
+	kind public."freight_provider_kind" NOT NULL,
+	active bool DEFAULT true NOT NULL,
+	"configuration" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	credentials jsonb DEFAULT '{}'::jsonb NOT NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	updated_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT freight_providers_code_check CHECK ((code ~ '^[a-z0-9][a-z0-9_-]{0,62}$'::text)),
+	CONSTRAINT freight_providers_configuration_check CHECK ((jsonb_typeof(configuration) = 'object'::text)),
+	CONSTRAINT freight_providers_credentials_check CHECK ((jsonb_typeof(credentials) = 'object'::text)),
+	CONSTRAINT freight_providers_pkey PRIMARY KEY (id),
+	CONSTRAINT freight_providers_tenant_id_code_key UNIQUE (tenant_id, code),
+	CONSTRAINT freight_providers_tenant_id_id_key UNIQUE (tenant_id, id),
+	CONSTRAINT freight_providers_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
+);
+CREATE INDEX freight_providers_tenant_active_idx ON public.freight_providers USING btree (tenant_id) WHERE active;
+ALTER TABLE public.freight_providers ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.freight_providers
+ AS PERMISSIVE
+ FOR ALL
  USING ((tenant_id = app_tenant_id()))
  WITH CHECK ((tenant_id = app_tenant_id()));
 
@@ -1768,6 +1822,44 @@ CREATE POLICY commercial_group_members_tenant_isolation ON public.commercial_gro
  WITH CHECK ((tenant_id = app_tenant_id()));
 
 
+-- public.freight_quotes definition
+
+-- Drop table
+
+-- DROP TABLE public.freight_quotes;
+
+CREATE TABLE public.freight_quotes (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NOT NULL,
+	order_session_id uuid NOT NULL,
+	provider_id uuid NULL,
+	kind public."freight_provider_kind" NOT NULL,
+	"label" text NOT NULL,
+	price numeric(12, 2) NOT NULL,
+	eta_label text NULL,
+	destination_cep text NULL,
+	external_quote_id text NULL,
+	raw_response jsonb DEFAULT '{}'::jsonb NOT NULL,
+	selected bool DEFAULT false NOT NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT freight_quotes_pkey PRIMARY KEY (id),
+	CONSTRAINT freight_quotes_price_check CHECK ((price >= (0)::numeric)),
+	CONSTRAINT freight_quotes_raw_response_check CHECK ((jsonb_typeof(raw_response) = 'object'::text)),
+	CONSTRAINT freight_quotes_tenant_id_id_key UNIQUE (tenant_id, id)
+);
+CREATE INDEX freight_quotes_session_idx ON public.freight_quotes USING btree (tenant_id, order_session_id, created_at DESC);
+CREATE UNIQUE INDEX freight_quotes_one_selected_per_session_idx ON public.freight_quotes USING btree (tenant_id, order_session_id) WHERE selected;
+ALTER TABLE public.freight_quotes ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.freight_quotes
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+
 -- public.notification_subscriptions definition
 
 -- Drop table
@@ -1878,6 +1970,78 @@ ALTER TABLE public.order_books ENABLE ROW LEVEL SECURITY;
 -- Table Policies
 
 CREATE POLICY tenant_isolation ON public.order_books
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+
+-- public.order_freight_tracking_events definition
+
+-- Drop table
+
+-- DROP TABLE public.order_freight_tracking_events;
+
+CREATE TABLE public.order_freight_tracking_events (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NOT NULL,
+	order_freight_id uuid NOT NULL,
+	status public."order_freight_status" NOT NULL,
+	description text NULL,
+	occurred_at timestamptz DEFAULT now() NOT NULL,
+	raw_payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT order_freight_tracking_events_pkey PRIMARY KEY (id),
+	CONSTRAINT order_freight_tracking_events_raw_payload_check CHECK ((jsonb_typeof(raw_payload) = 'object'::text))
+);
+CREATE INDEX order_freight_tracking_events_freight_idx ON public.order_freight_tracking_events USING btree (tenant_id, order_freight_id, occurred_at DESC);
+ALTER TABLE public.order_freight_tracking_events ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.order_freight_tracking_events
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+
+-- public.order_freights definition
+
+-- Drop table
+
+-- DROP TABLE public.order_freights;
+
+CREATE TABLE public.order_freights (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NOT NULL,
+	order_id uuid NOT NULL,
+	provider_id uuid NULL,
+	quote_id uuid NULL,
+	kind public."freight_provider_kind" NOT NULL,
+	"label" text NOT NULL,
+	price numeric(12, 2) NOT NULL,
+	eta_label text NULL,
+	destination_cep text NULL,
+	tracking_code text NULL,
+	tracking_url text NULL,
+	status public."order_freight_status" DEFAULT 'aguardando'::order_freight_status NOT NULL,
+	shipped_at timestamptz NULL,
+	delivered_at timestamptz NULL,
+	cancelled_at timestamptz NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	updated_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT order_freights_pkey PRIMARY KEY (id),
+	CONSTRAINT order_freights_price_check CHECK ((price >= (0)::numeric)),
+	CONSTRAINT order_freights_tenant_id_id_key UNIQUE (tenant_id, id),
+	CONSTRAINT order_freights_tenant_id_order_id_key UNIQUE (tenant_id, order_id)
+);
+CREATE INDEX order_freights_tenant_pending_idx ON public.order_freights USING btree (tenant_id, status, updated_at DESC) WHERE (status <> ALL (ARRAY['entregue'::order_freight_status, 'cancelado'::order_freight_status]));
+ALTER TABLE public.order_freights ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.order_freights
  AS PERMISSIVE
  FOR ALL
  USING ((tenant_id = app_tenant_id()))
@@ -2063,8 +2227,15 @@ CREATE TABLE public.order_sessions (
 	updated_at timestamptz DEFAULT now() NOT NULL,
 	order_book_id uuid NOT NULL,
 	order_id uuid NULL,
+	freight_quote_id uuid NULL,
+	freight_provider_id uuid NULL,
+	freight_kind public."freight_provider_kind" NULL,
+	freight_label text NULL,
+	freight_price numeric(12, 2) NULL,
+	freight_eta_label text NULL,
 	CONSTRAINT order_sessions_payment_token_hash_key UNIQUE (payment_token_hash),
-	CONSTRAINT order_sessions_pkey PRIMARY KEY (id)
+	CONSTRAINT order_sessions_pkey PRIMARY KEY (id),
+	CONSTRAINT order_sessions_freight_price_check CHECK (((freight_price IS NULL) OR (freight_price >= (0)::numeric)))
 );
 CREATE INDEX order_sessions_order_idx ON public.order_sessions USING btree (tenant_id, order_id) WHERE (order_id IS NOT NULL);
 CREATE INDEX order_sessions_tenant_book_status_idx ON public.order_sessions USING btree (tenant_id, order_book_id, status, updated_at DESC);
@@ -2324,6 +2495,13 @@ ALTER TABLE public.commercial_group_members ADD CONSTRAINT commercial_group_memb
 ALTER TABLE public.commercial_group_members ADD CONSTRAINT commercial_group_members_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
 
 
+-- public.freight_quotes foreign keys
+
+ALTER TABLE public.freight_quotes ADD CONSTRAINT freight_quotes_order_session_id_fkey FOREIGN KEY (order_session_id) REFERENCES public.order_sessions(id) ON DELETE CASCADE;
+ALTER TABLE public.freight_quotes ADD CONSTRAINT freight_quotes_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.freight_quotes ADD CONSTRAINT freight_quotes_tenant_id_provider_id_fkey FOREIGN KEY (tenant_id,provider_id) REFERENCES public.freight_providers(tenant_id,id) ON DELETE SET NULL;
+
+
 -- public.notification_subscriptions foreign keys
 
 ALTER TABLE public.notification_subscriptions ADD CONSTRAINT notification_subscriptions_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
@@ -2340,6 +2518,20 @@ ALTER TABLE public.notifications ADD CONSTRAINT notifications_user_id_fkey FOREI
 
 ALTER TABLE public.order_books ADD CONSTRAINT order_books_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id) ON DELETE RESTRICT;
 ALTER TABLE public.order_books ADD CONSTRAINT order_books_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+-- public.order_freight_tracking_events foreign keys
+
+ALTER TABLE public.order_freight_tracking_events ADD CONSTRAINT order_freight_tracking_events_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.order_freight_tracking_events ADD CONSTRAINT order_freight_tracking_events_tenant_id_order_freight_id_fkey FOREIGN KEY (tenant_id,order_freight_id) REFERENCES public.order_freights(tenant_id,id) ON DELETE CASCADE;
+
+
+-- public.order_freights foreign keys
+
+ALTER TABLE public.order_freights ADD CONSTRAINT order_freights_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id) ON DELETE CASCADE;
+ALTER TABLE public.order_freights ADD CONSTRAINT order_freights_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.order_freights ADD CONSTRAINT order_freights_tenant_id_provider_id_fkey FOREIGN KEY (tenant_id,provider_id) REFERENCES public.freight_providers(tenant_id,id) ON DELETE SET NULL;
+ALTER TABLE public.order_freights ADD CONSTRAINT order_freights_tenant_id_quote_id_fkey FOREIGN KEY (tenant_id,quote_id) REFERENCES public.freight_quotes(tenant_id,id) ON DELETE SET NULL;
 
 
 -- public.order_item_events foreign keys
@@ -2376,6 +2568,8 @@ ALTER TABLE public.order_session_participants ADD CONSTRAINT order_session_parti
 -- public.order_sessions foreign keys
 
 ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_client_id_fkey FOREIGN KEY (client_id) REFERENCES public.clients(id) ON DELETE SET NULL;
+ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_freight_provider_fkey FOREIGN KEY (tenant_id,freight_provider_id) REFERENCES public.freight_providers(tenant_id,id) ON DELETE SET NULL;
+ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_freight_quote_fkey FOREIGN KEY (tenant_id,freight_quote_id) REFERENCES public.freight_quotes(tenant_id,id) ON DELETE SET NULL;
 ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_order_book_id_fkey FOREIGN KEY (order_book_id) REFERENCES public.order_books(id) ON DELETE RESTRICT;
 ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id) ON DELETE SET NULL;
 ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id) ON DELETE RESTRICT;

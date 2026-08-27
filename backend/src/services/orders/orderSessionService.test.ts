@@ -23,7 +23,8 @@ test("pedido cancelado não aceita mutação de nenhuma origem", () => {
 test("upsell recalcula total preservando desconto e frete do pedido", () => {
     const total = totalAfterItemMutation(
         [{ price: 100, qty: 2 }, { price: 75.5, qty: 1 }],
-        { discount: { label: "Comercial", amount: 25 }, shipping: { id: "entrega", label: "Entrega", prazo: "3 dias", price: 20 } },
+        { discount: { label: "Comercial", amount: 25 } },
+        20,
     );
     assert.equal(total, 270.5);
 });

@@ -25,7 +25,7 @@ const PAYMENT_METHODS = [
 export default function PagamentoPage() {
   const router = useRouter();
   const { href } = useTenant();
-  const { cart, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, shipping, saveOrderToHistory } = useCart();
+  const { cart, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, freight, saveOrderToHistory } = useCart();
   const talao = useTalao();
   const activeSession = talao?.activeSession ?? null;
   const gate = useTalaoClientGate();
@@ -45,7 +45,7 @@ export default function PagamentoPage() {
     );
   }
 
-  if (!shipping) {
+  if (!freight) {
     return (
       <main className={`${publicUi.container} py-5 pb-14`}>
         <CheckoutSteps current="/pagamento" reachable={2} />
@@ -111,7 +111,7 @@ export default function PagamentoPage() {
     );
   }
 
-  const total = cartTotal + shipping.price;
+  const total = cartTotal + freight.price;
 
   // Pedido de talão: a vendedora monta carrinho + frete e finaliza aqui
   // mesmo, sem link de pagamento (mesma finalização usada em
@@ -127,7 +127,6 @@ export default function PagamentoPage() {
       } else {
         await saveOrderToHistory(cart, total, {
           channel: 'site',
-          shipping: shipping ?? undefined,
           discount: cartDiscountTotal > 0 ? { label: cartDiscountLabel!, amount: cartDiscountTotal } : undefined,
         });
       }
@@ -164,8 +163,8 @@ export default function PagamentoPage() {
           </div>
         )}
         <div className={publicUi.summaryLine}>
-          <span>Frete ({shipping.label})</span>
-          <span>{shipping.price === 0 ? 'Grátis' : formatBRL(shipping.price)}</span>
+          <span>Frete ({freight.label})</span>
+          <span>{freight.price === 0 ? 'Grátis' : formatBRL(freight.price)}</span>
         </div>
         <div className={`${publicUi.summaryLine} border-t border-border/60 pt-1.5 text-sm font-bold text-brand-text`}>
           <span>Total</span>

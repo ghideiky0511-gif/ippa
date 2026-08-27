@@ -12,6 +12,21 @@ export async function OPTIONS() {
     return new NextResponse(null, { status: 204 });
 }
 
+export async function GET(
+    request: NextRequest,
+    context: RouteContext,
+): Promise<Response> {
+    const route = await resolveTenantRoute(request, context.params);
+    if (isTenantRouteError(route)) return route;
+    const authenticated = await authentication.getAuthenticatedSession(
+        route.tenant,
+        requestToken(request, route.tenant.slug),
+    );
+    if (!authenticated)
+        return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+    return execute(() => catalog.listProductsAdmin(route.tenant, authenticated.user));
+}
+
 export async function POST(
     request: NextRequest,
     context: RouteContext,

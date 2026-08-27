@@ -1,20 +1,17 @@
 import ProductsApp from '@/workspace/components/products/ProductsApp';
-import { fetchCatalog } from '@/workspace/lib/catalogClient.server';
-import { fetchProductOverrides } from '@/workspace/lib/productOverridesClient.server';
+import { fetchAdminProducts } from '@/workspace/lib/catalogClient.server';
 import { fetchStoreSettings } from '@/workspace/lib/storeSettingsClient.server';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ProdutosPage() {
-  let products: Awaited<ReturnType<typeof fetchCatalog>> = [];
-  let overrides: Awaited<ReturnType<typeof fetchProductOverrides>> = {};
+  let products: Awaited<ReturnType<typeof fetchAdminProducts>> = [];
   let settings: Awaited<ReturnType<typeof fetchStoreSettings>> = {};
   let loadError: string | null = null;
 
   try {
-    [products, overrides, settings] = await Promise.all([
-      fetchCatalog(),
-      fetchProductOverrides(),
+    [products, settings] = await Promise.all([
+      fetchAdminProducts(),
       fetchStoreSettings(),
     ]);
   } catch (err) {
@@ -30,5 +27,5 @@ export default async function ProdutosPage() {
     );
   }
 
-  return <ProductsApp products={products} initialOverrides={overrides} initialSettings={settings} />;
+  return <ProductsApp products={products} initialSettings={settings} />;
 }

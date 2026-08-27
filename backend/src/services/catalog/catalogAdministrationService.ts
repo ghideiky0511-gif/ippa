@@ -4,11 +4,13 @@ import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser } from "@/lib/types";
 import type { ClassificationEntry } from "@/contracts/catalog";
 import { ProductOverridesSchema } from "@/contracts/catalog";
-import { CreateProductInputSchema } from "@/contracts/products";
+import { CreateProductInputSchema, UpdateManualProductInputSchema, type ProductAdmin, type ProductSourceOrigin } from "@/contracts/products";
 import {
     clearProductOverrideRows,
     insertProductRow,
     insertProductVariantRow,
+    findProductByIdRow,
+    findProductSourceOriginsByIds,
   listCatalogOrderRows,
   listClassificationRows,
   listProductOverrideRows,
@@ -17,8 +19,13 @@ import {
     setProductOverrideRow,
     setPrimaryProductCategoryRow,
     productReferenceIdExists,
+    replaceManualProductRow,
+    replaceManualProductVariantsRow,
     type ProductOverrideRow,
 } from "@/models/catalogModel";
+import { listAdminProducts } from "./catalogService";
+import { listProductCompositionsRow } from "@/models/productCompositionModel";
+import { syncReferenceOnDemand } from "@/services/erp/catalogSyncService";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
 
 function requireAdministrator(user: AuthUser): void {
@@ -56,6 +63,95 @@ export async function createProduct(tenant: Tenant, actor: AuthUser, value: unkn
     });
     return { id: product.id };
   });
+}
+
+export function assertProductEditableInWorkspace(sourceOrigin: ProductSourceOrigin): void {
+  if (sourceOrigin === "erp") throw new ForbiddenError("ERP_PRODUCT_READ_ONLY");
+}
+
+export async function listProductsAdmin(tenant: Tenant, actor: AuthUser): Promise<ProductAdmin[]> {
+  requireAdministrator(actor);
+  return listAdminProducts(tenant);
+}
+
+export async function getProductAdmin(tenant: Tenant, actor: AuthUser, id: string): Promise<ProductAdmin> {
+  requireAdministrator(actor);
+  const product = (await listAdminProducts(tenant)).find((item) => item.id === id);
+  if (!product) throw new NotFoundError("PRODUCT_NOT_FOUND");
+  const compositions = await withTenantTransaction(tenant, actor, (client) => listProductCompositionsRow(client, id));
+  return {
+    ...product,
+    compositions: compositions.map((composition) => ({
+      id: composition.id,
+      description: composition.description,
+      typeDescription: composition.type_description ?? undefined,
+      items: composition.items,
+    })),
+  };
+}
+
+export async function refreshProductFromErp(
+  tenant: Tenant,
+  actor: AuthUser,
+  id: string,
+): Promise<{ status: "updated"; runId: string; product: ProductAdmin } | { status: "not_found"; runId: string }> {
+  requireAdministrator(actor);
+  const current = await withTenantTransaction(tenant, actor, (client) => findProductByIdRow(client, id));
+  if (!current) throw new NotFoundError("PRODUCT_NOT_FOUND");
+  if (current.source_origin === "manual" || !current.reference_id) {
+    throw new ValidationError("INVALID_INPUT", "Este produto não possui uma referência vinculada ao ERP.");
+  }
+  const result = await syncReferenceOnDemand(tenant, current.reference_id);
+  if (result.status === "not_found") return { status: "not_found", runId: result.runId };
+  return { status: "updated", runId: result.runId, product: await getProductAdmin(tenant, actor, id) };
+}
+
+export async function updateManualProduct(
+  tenant: Tenant,
+  actor: AuthUser,
+  id: string,
+  value: unknown,
+): Promise<ProductAdmin> {
+  requireAdministrator(actor);
+  const parsed = UpdateManualProductInputSchema.safeParse(value);
+  if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
+  const input = parsed.data;
+  await withTenantTransaction(tenant, actor, async (client) => {
+    const current = await findProductByIdRow(client, id);
+    if (!current) throw new NotFoundError("PRODUCT_NOT_FOUND");
+    assertProductEditableInWorkspace(current.source_origin);
+    if (input.referenceId && input.referenceId !== current.reference_id && await productReferenceIdExists(client, input.referenceId)) {
+      throw new ConflictError("PRODUCT_REFERENCE_ID_TAKEN");
+    }
+    const attributes = { ...(current.attributes as Record<string, unknown>) };
+    delete attributes.manualOverride;
+    await replaceManualProductRow(client, id, {
+      name: input.name,
+      description: input.description,
+      category: input.category,
+      subcategory: input.subcategory,
+      collection: input.collection,
+      brand: input.brand,
+      referenceId: input.referenceId,
+      price: input.price,
+      suggestedRetailPrice: input.suggestedRetailPrice,
+      markup: input.markup,
+      media: {
+        image: input.image,
+        images: input.images,
+        imagesByColor: input.imagesByColor,
+        videoUrl: input.videoUrl,
+      },
+      attributes: {
+        ...attributes,
+        ...(input.similarProductIdsQuickview ? { similarProductIdsQuickview: input.similarProductIdsQuickview } : {}),
+        ...(input.similarProductIdsCart ? { similarProductIdsCart: input.similarProductIdsCart } : {}),
+      },
+    });
+    await replaceManualProductVariantsRow(client, id, input.variants);
+    await setPrimaryProductCategoryRow(client, id, input.category, classificationSlug(input.category));
+  });
+  return getProductAdmin(tenant, actor, id);
 }
 
 export async function listClassifications(tenant: Tenant, actor: AuthUser): Promise<ClassificationEntry[]> {
@@ -121,6 +217,10 @@ export async function replaceProductOverrides(
   if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
   const overrides = parsed.data;
   await withTenantTransaction(tenant, actor, async (client) => {
+    const origins = await findProductSourceOriginsByIds(client, Object.keys(overrides));
+    if (Object.entries(origins).some(([, source]) => source === "erp")) {
+      throw new ForbiddenError("ERP_PRODUCT_READ_ONLY");
+    }
     await clearProductOverrideRows(client);
     for (const [productId, override] of Object.entries(overrides)) {
       await setProductOverrideRow(client, productId, override);

@@ -176,9 +176,9 @@ export const SimilarProductsSettingsSchema = z.object({
 });
 export type SimilarProductsSettings = z.infer<typeof SimilarProductsSettingsSchema>;
 
-// Campos de Product editáveis pela loja por cima do que vem do ERP/Bippa
-// (ver /produtos) — mesmo shape que backend/src/models/catalogModel.ts
-// (`ProductOverrideRow`) grava no banco.
+// Campos de Product editáveis pela loja apenas em produtos locais (manual ou
+// bootstrap). Produtos com origem ERP são sempre a fonte de verdade do ERP;
+// a API administrativa rejeita overrides para eles.
 export const ProductOverrideSchema = ProductSchema.pick({
   referenceId: true,
   suggestedRetailPrice: true,

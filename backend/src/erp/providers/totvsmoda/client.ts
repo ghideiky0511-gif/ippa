@@ -34,6 +34,7 @@ import {
     BRANCHES_LIST_PATH,
     BRANCHES_PATH,
     CLASSIFICATIONS_PATH,
+    COMPOSITION_GROUP_PRODUCT_PATH,
     EMAIL_TYPES_PATH,
     INDIVIDUALS_SEARCH_PATH,
     LEGAL_ENTITIES_SEARCH_PATH,
@@ -514,6 +515,23 @@ export class TotvsModaClient {
             PRODUCT_PRICES_SEARCH_PATH,
             payload,
             "Busca de preços retornou formato inválido.",
+        );
+    }
+
+    // CompositionGroupProductInDto (GET, ReferenceCodeList na query): nível de
+    // grupo ("composição por grupo") — este tenant usa esse modo, não o de
+    // composição por produto (ver docs/erp/totvsmoda/products.json). Uma
+    // referência só, não uma lista batch, porque hoje só é chamado sob
+    // demanda (catalogSyncService.syncReferenceOnDemand), nunca no sync
+    // periódico em lote.
+    async searchCompositionGroupProducts(
+        referenceCode: string,
+    ): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
+        return this.getAndValidate(
+            "searchCompositionGroupProducts",
+            COMPOSITION_GROUP_PRODUCT_PATH,
+            { ReferenceCodeList: referenceCode },
+            "Busca de composição retornou formato inválido.",
         );
     }
 

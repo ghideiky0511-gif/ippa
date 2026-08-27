@@ -10,12 +10,14 @@ import {
   OrderSchema,
   type CartItem,
   type CreateCustomerOrderInput,
-  type ShippingOption,
+  type FreightQuote,
+  type SessionFreight,
 } from '@/domain/orders/types';
 import { DiscountSchema, type Discount } from '@/domain/catalog/types';
 import { ProductSchema, type Product } from '@/domain/products/types';
 import { z } from 'zod';
 import { adminJson } from '@/lib/http';
+import { selectFreightQuote } from '@/lib/shipping';
 
 type OrderSubmissionExtra = Omit<Partial<CreateCustomerOrderInput>, 'items' | 'total' | 'sessionId'>;
 
@@ -78,9 +80,11 @@ interface CartContextValue {
   replaceItems: (removeKeys: string[], addItems: CartItem[]) => void;
   clearCart: () => void;
   saveOrderToHistory: (items: CartItem[], total: number, extra?: OrderSubmissionExtra) => Promise<void>;
-  shipping: ShippingOption | null;
-  setShipping: (shipping: ShippingOption | null) => void;
-  clearShipping: () => void;
+  freight: SessionFreight | null;
+  setFreight: (quote: FreightQuote | null) => void;
+  // Sessão (talão ou online) que fetchFreightQuotes deve cotar -- null no
+  // checkout direto, que usa fetchFreightProviders (sem sessão) em vez disso.
+  freightSessionId: string | null;
   // Catálogo indexado por id — usado por GroupedCartItems.tsx pra achar o
   // Product completo de um item do carrinho (reabrir o quick-view daquele
   // produto pra editar a grade). Carrinho só guarda id/nome/imagem/preço
@@ -94,7 +98,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   // checkout direto. A sessão remota continua sendo a fonte de verdade só
   // quando uma vendedora assumiu o atendimento.
   const [personalCart, setPersonalCart] = useState<CartItem[]>([]);
-  const [personalShipping, setPersonalShipping] = useState<ShippingOption | null>(null);
+  const [personalFreight, setPersonalFreight] = useState<SessionFreight | null>(null);
   const customerSessionCreation = useRef(false);
   const [isCartOpen, setCartOpen] = useState(false);
   const authUserCtx = useAuthUser();
@@ -118,7 +122,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const sessionActions = talaoOpen || clientOpen;
   const activeSession = sessionActions?.activeSession ?? null;
 
-  const shipping = activeSession?.shipping ?? personalShipping;
+  const freight = activeSession?.freight ?? personalFreight;
 
   const [catalogById, setCatalogById] = useState<Record<string, Product>>({});
   const [discounts, setDiscounts] = useState<Discount[]>([]);
@@ -259,16 +263,19 @@ export function CartProvider({ children }: { children: ReactNode }) {
     updateItems([]);
   }
 
-  function setShipping(next: ShippingOption | null) {
+  function setFreight(quote: FreightQuote | null) {
     if (activeSession) {
-      void sessionActions!.updateActiveShipping(next);
+      // Sessão: a escolha vira uma linha em freight_quotes/order_sessions no
+      // backend (ver selectFreightQuote) -- o novo estado chega de volta via
+      // realtime (activeSession.freight), não precisa setar nada localmente
+      // aqui. Sem endpoint de "limpar frete de sessão" (ver plano da fase 2).
+      if (quote) void selectFreightQuote(activeSession.id, quote.id);
       return;
     }
-    if (authUserCtx.authUser?.role === 'cliente') setPersonalShipping(next);
-  }
-
-  function clearShipping() {
-    setShipping(null);
+    if (authUserCtx.authUser?.role !== 'cliente') return;
+    setPersonalFreight(quote
+      ? { quoteId: null, providerId: quote.providerId, kind: quote.kind, label: quote.label, price: quote.price, etaLabel: quote.etaLabel }
+      : null);
   }
 
   // Confirma primeiro no backend e só então limpa o estado local. Antes, o
@@ -277,10 +284,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
   async function saveOrderToHistory(items: CartItem[], total: number, extra: OrderSubmissionExtra = {}): Promise<void> {
     const sessionId = clientSession?.activeSession?.id;
     if (authUserCtx.authUser?.role === 'cliente') {
+      // Checkout direto (sem sessão) não tem freight_quote persistida --
+      // manda o provider escolhido, o backend calcula preço/label/prazo de
+      // novo a partir dele (ver orderService.createCustomerOrder).
       const payload = CreateCustomerOrderInputSchema.parse({
         items,
         total,
         channel: 'whatsapp',
+        freightProviderId: personalFreight?.providerId ?? undefined,
         ...extra,
         sessionId,
       });
@@ -292,7 +303,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
       if (sessionId) clientSession?.releaseActiveSession(sessionId);
       setPersonalCart([]);
-      setPersonalShipping(null);
+      setPersonalFreight(null);
       return;
     }
 
@@ -301,7 +312,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     // ali seria uma mutação real do pedido, não uma simples limpeza de UI.
     if (!activeSession) {
       setPersonalCart([]);
-      setPersonalShipping(null);
+      setPersonalFreight(null);
     }
   }
 
@@ -334,12 +345,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
       replaceItems,
       clearCart,
       saveOrderToHistory,
-      shipping,
-      setShipping,
-      clearShipping,
+      freight,
+      setFreight,
+      freightSessionId: activeSession?.id ?? null,
       catalogById,
     }),
-    [effectiveCart, cartCount, cartSubtotal, cartDiscount, cartTotal, discounts, isCartOpen, shipping, catalogById]
+    [effectiveCart, cartCount, cartSubtotal, cartDiscount, cartTotal, discounts, isCartOpen, freight, activeSession?.id, catalogById]
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

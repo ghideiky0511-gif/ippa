@@ -21,7 +21,7 @@ interface PaySummary {
   cartDiscountLabel: string | null;
   cartDiscountTotal: number;
   cartTotal: number;
-  shipping?: { id: string; label: string; price: number; prazo: string };
+  freight?: { label: string; price: number; etaLabel: string | null };
   total: number;
 }
 
@@ -109,10 +109,10 @@ export default function PagarPage({ params }: { params: Promise<{ token: string 
                   <span>-{formatBRL(summary.cartDiscountTotal)}</span>
                 </div>
               )}
-              {summary.shipping && (
+              {summary.freight && (
                 <div className={publicUi.summaryLine}>
-                  <span>Frete ({summary.shipping.label})</span>
-                  <span>{summary.shipping.price === 0 ? 'Grátis' : formatBRL(summary.shipping.price)}</span>
+                  <span>Frete ({summary.freight.label})</span>
+                  <span>{summary.freight.price === 0 ? 'Grátis' : formatBRL(summary.freight.price)}</span>
                 </div>
               )}
               <div className="contents">

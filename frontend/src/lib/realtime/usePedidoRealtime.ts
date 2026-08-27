@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { useTenant } from '@/components/TenantProvider';
 import type { AuthUser } from '@/domain/clients/types';
-import type { CartItem, OrderSession, ShippingOption } from '@/domain/orders/types';
+import type { CartItem, OrderSession, SessionFreight } from '@/domain/orders/types';
 import { apiFetch } from '@/lib/api-client';
 
 export interface PedidoPresence {
@@ -37,7 +37,9 @@ interface SocketWaiter {
 }
 
 export interface PedidoRealtimeConnection {
-  updateSession: (changes: Partial<Pick<OrderSession, 'items' | 'shipping'>>) => Promise<void>;
+  // Frete não passa mais por aqui -- é escolhido via POST
+  // /sessions/:id/freight-quotes (ver @/lib/shipping.selectFreightQuote).
+  updateSession: (changes: Partial<Pick<OrderSession, 'items'>>) => Promise<void>;
   createCustomerSession: (items: CartItem[]) => Promise<{
     session: OrderSession | null;
     pendingAssignment: boolean;
@@ -48,7 +50,7 @@ export interface PedidoRealtimeConnection {
 export type PedidoRealtimeEvent =
   | { type: 'peca_adicionada'; item: CartItem; quantity: number }
   | { type: 'peca_retirada'; item: CartItem; quantity: number }
-  | { type: 'frete_alterado'; shipping?: ShippingOption }
+  | { type: 'frete_alterado'; freight?: SessionFreight }
   | { type: 'seller_entrou'; seller: PedidoPresence }
   | { type: 'seller_saiu'; seller: PedidoPresence };
 
@@ -59,7 +61,7 @@ export function pedidoRealtimeEventMessage(event: PedidoRealtimeEvent): string {
     case 'peca_retirada':
       return `${event.quantity}x ${event.item.name} retirada do pedido.`;
     case 'frete_alterado':
-      return event.shipping ? `Frete alterado para ${event.shipping.label}.` : 'Frete removido do pedido.';
+      return event.freight ? `Frete alterado para ${event.freight.label}.` : 'Frete removido do pedido.';
     case 'seller_entrou':
       return `${event.seller.name} entrou no pedido.`;
     case 'seller_saiu':
@@ -67,8 +69,8 @@ export function pedidoRealtimeEventMessage(event: PedidoRealtimeEvent): string {
   }
 }
 
-function sameShipping(a?: ShippingOption, b?: ShippingOption): boolean {
-  return a?.id === b?.id && a?.label === b?.label && a?.price === b?.price && a?.prazo === b?.prazo;
+function sameFreight(a?: SessionFreight, b?: SessionFreight): boolean {
+  return a?.quoteId === b?.quoteId && a?.label === b?.label && a?.price === b?.price && a?.etaLabel === b?.etaLabel;
 }
 
 function sessionEvents(previous: OrderSession, current: OrderSession): PedidoRealtimeEvent[] {
@@ -84,7 +86,7 @@ function sessionEvents(previous: OrderSession, current: OrderSession): PedidoRea
   for (const [key, item] of before) {
     if (!after.has(key) && item.qty > 0) events.push({ type: 'peca_retirada', item, quantity: item.qty });
   }
-  if (!sameShipping(previous.shipping, current.shipping)) events.push({ type: 'frete_alterado', shipping: current.shipping });
+  if (!sameFreight(previous.freight, current.freight)) events.push({ type: 'frete_alterado', freight: current.freight });
   return events;
 }
 
@@ -252,7 +254,7 @@ export function usePedidoRealtime({ sessionId, onSession, onPresence, onParticip
   }, [allowCustomerSessionCreation, sessionId, tenant.slug]);
 
   return useMemo(() => ({
-    async updateSession(changes: Partial<Pick<OrderSession, 'items' | 'shipping'>>) {
+    async updateSession(changes: Partial<Pick<OrderSession, 'items'>>) {
       await emitWithAck<{ ok: boolean; motivo?: string }>('atualizar_sessao', changes);
     },
     async createCustomerSession(items: CartItem[]) {

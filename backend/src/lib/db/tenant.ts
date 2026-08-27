@@ -19,6 +19,14 @@ export async function findActiveTenant(slug: string): Promise<Tenant | null> {
   return result.rows[0] ?? null;
 }
 
+export async function findActiveTenantById(id: string): Promise<Tenant | null> {
+  const result = await getPool().query<Tenant>(
+    "SELECT id, slug, name FROM tenants WHERE id = $1 AND active = true AND status = 'active'",
+    [id],
+  );
+  return result.rows[0] ?? null;
+}
+
 /** Contexto é local à transação para nunca vazar em conexões reutilizadas pelo pool. */
 export async function withTenantTransaction<T>(
   tenant: Tenant,

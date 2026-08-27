@@ -1,377 +1,144 @@
-// @ts-nocheck
 'use client';
-import { adminUi } from '@/workspace/lib/ui';
-import { useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { HubHeader } from '@/workspace/components/shared/HubHeader';
-import SimilarProductsField from './SimilarProductsField';
-import { formatBRL, formatMarkup } from '@/workspace/lib/format';
-import { saveProductOverrides } from '@/workspace/lib/productOverridesClient';
-import { saveStoreSettings } from '@/workspace/lib/storeSettingsClient';
-import { createProduct } from '@/workspace/lib/catalogClient';
 
-function toNumberOrUndefined(raw) {
-  if (raw === '') return undefined;
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : undefined;
+import { useMemo, useState } from 'react';
+import { ImageOff, Plus, Settings2 } from 'lucide-react';
+import Link from '@/components/TenantLink';
+import ProductImage from '@/components/ProductImage';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Dialog, DialogCloseButton, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import type { ProductAdmin } from '@/domain/products/types';
+import type { StoreSettings } from '@/domain/catalog/types';
+import { adminUi } from '@/workspace/lib/ui';
+import { HubHeader } from '@/workspace/components/shared/HubHeader';
+import { KpiCard } from '@/workspace/components/shared/KpiCard';
+import { createProduct } from '@/workspace/lib/catalogClient';
+import { saveStoreSettings } from '@/workspace/lib/storeSettingsClient';
+import { useRouter } from 'next/navigation';
+
+function money(value: number) {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 }
 
-export default function ProductsApp({ products, initialOverrides, initialSettings }) {
+function sourceLabel(source: ProductAdmin['sourceOrigin']) {
+  return source === 'erp' ? 'ERP' : source === 'bootstrap' ? 'Importado' : 'Manual';
+}
+
+function sourceClass(source: ProductAdmin['sourceOrigin']) {
+  return source === 'erp' ? 'bg-blue-50 text-blue-700' : source === 'bootstrap' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700';
+}
+
+function productHasImage(product: ProductAdmin) {
+  return Boolean(product.image || product.images?.length);
+}
+
+function productIsAvailable(product: ProductAdmin) {
+  return product.variants.some((variant) => variant.availability === 'in_stock');
+}
+
+const EMPTY_PRODUCT = { name: '', price: '', category: '', referenceId: '', description: '', image: '', color: '', size: '' };
+
+export default function ProductsApp({ products, initialSettings }: { products: ProductAdmin[]; initialSettings: StoreSettings }) {
   const router = useRouter();
-  const [overrides, setOverrides] = useState(initialOverrides || {});
-  const [rowSaveState, setRowSaveState] = useState({}); // productId -> 'saving' | 'saved' | 'error'
   const [query, setQuery] = useState('');
+  const [source, setSource] = useState<'all' | ProductAdmin['sourceOrigin']>('all');
+  const [availability, setAvailability] = useState<'all' | 'available' | 'unavailable'>('all');
+  const [creating, setCreating] = useState(false);
+  const [configuringMarkup, setConfiguringMarkup] = useState(false);
+  const [newProduct, setNewProduct] = useState(EMPTY_PRODUCT);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [creatingState, setCreatingState] = useState(false);
+  const [markup, setMarkup] = useState(initialSettings.defaultMarkup?.toString() ?? '');
+  const [markupState, setMarkupState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
-  const [defaultMarkupInput, setDefaultMarkupInput] = useState(
-    initialSettings?.defaultMarkup != null ? String(initialSettings.defaultMarkup) : ''
-  );
-  const [defaultMarkupSaveState, setDefaultMarkupSaveState] = useState('idle');
-  const [newProduct, setNewProduct] = useState({
-    name: '', price: '', category: '', referenceId: '', description: '', image: '', color: '', size: '',
-  });
-  const [newProductState, setNewProductState] = useState('idle');
-  const [newProductError, setNewProductError] = useState('');
-
-  const q = query.trim().toLowerCase();
-  const results = useMemo(() => {
-    if (!q) return [];
-    return (products || [])
-      .filter((p) => {
-        const referenceId = overrides[p.id]?.referenceId || '';
-        return (p.name || '').toLowerCase().includes(q) || referenceId.toLowerCase().includes(q);
-      })
-      .slice(0, 20);
-  }, [products, overrides, q]);
-
-  // Sugestões pros datalists de categoria/subcategoria/coleção — juntando o
-  // que já existe no catálogo (ERP + overrides salvos) com o que foi digitado
-  // nesta sessão mas ainda não salvo, pra já sugerir de volta sem precisar
-  // recarregar a página.
-  const classificationOptions = useMemo(() => {
-    const categories = new Set();
-    const subcategories = new Set();
-    const collections = new Set();
-    for (const p of products || []) {
-      if (p.category) categories.add(p.category);
-      if (p.subcategory) subcategories.add(p.subcategory);
-      if (p.collection) collections.add(p.collection);
-    }
-    for (const o of Object.values(overrides)) {
-      if (o?.category) categories.add(o.category);
-      if (o?.subcategory) subcategories.add(o.subcategory);
-      if (o?.collection) collections.add(o.collection);
-    }
-    return {
-      categories: Array.from(categories).sort(),
-      subcategories: Array.from(subcategories).sort(),
-      collections: Array.from(collections).sort(),
-    };
-  }, [products, overrides]);
-
-  function updateField(id, field, value) {
-    setOverrides((prev) => {
-      const next = { ...(prev[id] || {}), [field]: value };
-      if (value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) delete next[field];
-      return { ...prev, [id]: next };
+  const filtered = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    return products.filter((product) => {
+      const queryOk = !term || [product.name, product.referenceId, product.category].some((value) => value?.toLowerCase().includes(term));
+      const sourceOk = source === 'all' || product.sourceOrigin === source;
+      const available = productIsAvailable(product);
+      const availabilityOk = availability === 'all' || (availability === 'available' && available) || (availability === 'unavailable' && !available);
+      return queryOk && sourceOk && availabilityOk;
     });
-    setRowSaveState((prev) => ({ ...prev, [id]: undefined }));
-  }
+  }, [availability, products, query, source]);
 
-  function addSimilarProduct(id, field, productId) {
-    const current = overrides[id]?.[field] || [];
-    if (current.includes(productId)) return;
-    updateField(id, field, [...current, productId]);
-  }
+  const kpis = useMemo(() => ({
+    total: products.length,
+    erp: products.filter((product) => product.sourceOrigin === 'erp').length,
+    available: products.filter(productIsAvailable).length,
+    withoutImage: products.filter((product) => !productHasImage(product)).length,
+  }), [products]);
 
-  function removeSimilarProduct(id, field, productId) {
-    const current = overrides[id]?.[field] || [];
-    updateField(id, field, current.filter((pid) => pid !== productId));
-  }
-
-  async function handleAlterar(id) {
-    setRowSaveState((prev) => ({ ...prev, [id]: 'saving' }));
-    try {
-      const cleaned = Object.fromEntries(
-        Object.entries(overrides).filter(([, o]) => o && Object.keys(o).length > 0)
-      );
-      await saveProductOverrides(cleaned);
-      setOverrides(cleaned);
-      setRowSaveState((prev) => ({ ...prev, [id]: 'saved' }));
-    } catch {
-      setRowSaveState((prev) => ({ ...prev, [id]: 'error' }));
-    }
-  }
-
-  async function handleApplyDefaultMarkup() {
-    setDefaultMarkupSaveState('saving');
-    try {
-      const defaultMarkup = toNumberOrUndefined(defaultMarkupInput);
-      await saveStoreSettings(defaultMarkup ? { defaultMarkup } : {});
-      setDefaultMarkupSaveState('saved');
-    } catch {
-      setDefaultMarkupSaveState('error');
-    }
-  }
-
-  function updateNewProduct(field, value) {
-    setNewProduct((current) => ({ ...current, [field]: value }));
-    setNewProductState('idle');
-    setNewProductError('');
-  }
-
-  async function handleCreateProduct(event) {
+  async function submitCreate(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const price = Number(newProduct.price);
     if (!newProduct.name.trim() || !Number.isFinite(price) || price < 0) {
-      setNewProductError('Informe nome e preço de atacado igual ou maior que zero.');
+      setCreateError('Informe nome e preço de atacado válido.');
       return;
     }
-    if ((newProduct.color.trim() && !newProduct.size.trim()) || (!newProduct.color.trim() && newProduct.size.trim())) {
-      setNewProductError('Preencha cor e tamanho juntos, ou deixe ambos em branco.');
+    if (Boolean(newProduct.color.trim()) !== Boolean(newProduct.size.trim())) {
+      setCreateError('Preencha cor e tamanho juntos, ou deixe ambos vazios.');
       return;
     }
-    setNewProductState('saving');
-    setNewProductError('');
+    setCreatingState(true);
+    setCreateError(null);
     try {
-      await createProduct({
-        name: newProduct.name,
-        price,
-        category: newProduct.category || undefined,
-        referenceId: newProduct.referenceId || undefined,
-        description: newProduct.description || undefined,
-        image: newProduct.image || undefined,
-        variant: newProduct.color && newProduct.size
-          ? { color: newProduct.color, size: newProduct.size }
-          : undefined,
-      });
-      setNewProduct({ name: '', price: '', category: '', referenceId: '', description: '', image: '', color: '', size: '' });
-      setNewProductState('saved');
+      await createProduct({ name: newProduct.name, price, category: newProduct.category || undefined, referenceId: newProduct.referenceId || undefined, description: newProduct.description || undefined, image: newProduct.image || undefined, variant: newProduct.color && newProduct.size ? { color: newProduct.color, size: newProduct.size } : undefined });
+      setNewProduct(EMPTY_PRODUCT);
+      setCreating(false);
       router.refresh();
     } catch (error) {
-      setNewProductState('error');
-      setNewProductError(error instanceof Error ? error.message : 'Não foi possível cadastrar o produto.');
+      setCreateError(error instanceof Error ? error.message : 'Não foi possível cadastrar o produto.');
+    } finally {
+      setCreatingState(false);
     }
   }
 
-  return (
-    <div className="products-page">
-      <HubHeader title="Produtos" description="Cadastre peças e ajuste código, preço sugerido e markup." />
+  async function saveMarkup(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const value = markup.trim() ? Number(markup) : undefined;
+    if (value !== undefined && (!Number.isFinite(value) || value <= 0)) {
+      setMarkupState('error');
+      return;
+    }
+    setMarkupState('saving');
+    try {
+      await saveStoreSettings(value ? { defaultMarkup: value } : {});
+      setMarkupState('saved');
+      router.refresh();
+    } catch {
+      setMarkupState('error');
+    }
+  }
 
-      <main className={adminUi.productsEditor}>
-        <form className={`${adminUi.defaultMarkup} grid gap-3`} onSubmit={handleCreateProduct}>
-          <div>
-            <h2 className="text-base font-bold">Adicionar produto ao catálogo</h2>
-            <p className={adminUi.hint}>Cadastre o básico agora. A grade e o estoque podem ser configurados depois.</p>
-          </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className={adminUi.field}>
-              <label>Nome *</label>
-              <input value={newProduct.name} onChange={(e) => updateNewProduct('name', e.target.value)} required />
-            </div>
-            <div className={adminUi.field}>
-              <label>Preço de atacado *</label>
-              <input type="number" step="0.01" min="0" value={newProduct.price} onChange={(e) => updateNewProduct('price', e.target.value)} required />
-            </div>
-            <div className={adminUi.field}>
-              <label>Referência (REF)</label>
-              <input value={newProduct.referenceId} onChange={(e) => updateNewProduct('referenceId', e.target.value)} placeholder="Único por loja" />
-            </div>
-            <div className={adminUi.field}>
-              <label>Categoria</label>
-              <input list="classification-categories" value={newProduct.category} onChange={(e) => updateNewProduct('category', e.target.value)} placeholder="Sem categoria" />
-            </div>
-            <div className={adminUi.field}>
-              <label>Cor da primeira variante</label>
-              <input value={newProduct.color} onChange={(e) => updateNewProduct('color', e.target.value)} placeholder="Ex.: Preto" />
-            </div>
-            <div className={adminUi.field}>
-              <label>Tamanho da primeira variante</label>
-              <input value={newProduct.size} onChange={(e) => updateNewProduct('size', e.target.value)} placeholder="Ex.: M" />
-            </div>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className={adminUi.field}>
-              <label>URL da imagem</label>
-              <input type="url" value={newProduct.image} onChange={(e) => updateNewProduct('image', e.target.value)} placeholder="https://..." />
-            </div>
-            <div className={adminUi.field}>
-              <label>Descrição</label>
-              <input value={newProduct.description} onChange={(e) => updateNewProduct('description', e.target.value)} placeholder="Opcional" />
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <button className={adminUi.primaryButton} disabled={newProductState === 'saving'}>
-              {newProductState === 'saving' ? 'Cadastrando…' : 'Adicionar produto'}
-            </button>
-            {newProductState === 'saved' && <span className={adminUi.status}>Produto adicionado ao catálogo.</span>}
-            {newProductError && <span className="text-[13px] text-red-700">{newProductError}</span>}
-          </div>
-        </form>
-        <p className={adminUi.previewEmpty}>
-          Código, preço sugerido de revenda e markup são dados opcionais da loja — quando o Bippa/ERP mandar
-          esses campos direto no catálogo, eles aparecem sozinhos; o que for editado aqui tem prioridade sobre
-          o dado do ERP. O chip de markup no catálogo só aparece com o preço sugerido preenchido (por aqui,
-          pelo markup padrão abaixo, ou pelo ERP), e só se a loja tiver essa funcionalidade ligada em{' '}
-          <code>CONFIG.features.suggestedPrice</code>.
-        </p>
-        <p className={adminUi.previewEmpty}>
-          Categoria e subcategoria já vêm do ERP, mas podem ser corrigidas aqui — a edição tem prioridade sobre
-          o que foi importado. Coleção não tem origem no ERP: fica em branco pra peças atemporais (vendem o ano
-          todo) e só é preenchida pra marcar uma peça própria de uma época, ex. &quot;Verão 2027&quot;.
-        </p>
+  return <div>
+    <HubHeader title="Hub de produtos" description="Acompanhe o catálogo e abra cada peça para consultar ou editar seu cadastro local." primaryAction={{ label: 'Cadastrar produto', onClick: () => setCreating(true), icon: <Plus className="size-4" aria-hidden="true" /> }} secondaryActions={<Button type="button" variant="outline" size="sm" onClick={() => setConfiguringMarkup(true)}><Settings2 className="size-4" aria-hidden="true" />Markup padrão</Button>} />
 
-        <div className={adminUi.defaultMarkup}>
-          <div className={adminUi.field} style={{ maxWidth: 200 }}>
-            <label>Markup sugerido padrão (todas as peças)</label>
-            <input
-              type="number"
-              step="0.1"
-              min="0"
-              value={defaultMarkupInput}
-              onChange={(e) => {
-                setDefaultMarkupInput(e.target.value);
-                setDefaultMarkupSaveState('idle');
-              }}
-              placeholder="ex.: 2.3"
-            />
-          </div>
-          <button
-            className={adminUi.primaryButton}
-            onClick={handleApplyDefaultMarkup}
-            disabled={defaultMarkupSaveState === 'saving'}
-          >
-            {defaultMarkupSaveState === 'saving' ? 'Aplicando…' : 'Aplicar a todas as peças'}
-          </button>
-          {defaultMarkupSaveState === 'saved' && <span className={adminUi.status}>Aplicado</span>}
-          {defaultMarkupSaveState === 'error' && <span className={adminUi.status}>Erro ao salvar</span>}
-        </div>
-        <p className={adminUi.previewEmpty}>
-          Vale só pra peça sem preço sugerido/markup próprio (nem do ERP, nem editado abaixo). Pra uma peça
-          específica ficar diferente do padrão, busque ela abaixo e altere direto — a edição da peça sempre
-          tem prioridade sobre o padrão.
-        </p>
+    <main className={`${adminUi.productsEditor} flex flex-col gap-6`}>
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <KpiCard label="Produtos ativos" value={kpis.total} hint="Catálogo publicado" />
+        <KpiCard label="Sincronizados com ERP" value={kpis.erp} hint="Somente leitura no workspace" />
+        <KpiCard label="Disponíveis" value={kpis.available} hint="Ao menos uma variante pronta-entrega" />
+        <KpiCard label="Sem foto" value={kpis.withoutImage} hint="Precisam de mídia no cadastro" />
+      </section>
 
-        <div className={adminUi.field} style={{ maxWidth: 360 }}>
-          <label>Buscar produto</label>
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Nome ou código..." />
+      <section className="rounded-brand border border-border bg-surface p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className={`${adminUi.field} min-w-[15rem] flex-1`}><label htmlFor="product-search">Buscar produto</label><Input id="product-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nome, referência ou categoria..." /></div>
+          <div className={`${adminUi.field} w-full sm:w-44`}><label htmlFor="product-source">Origem</label><select id="product-source" value={source} onChange={(event) => setSource(event.target.value as typeof source)}><option value="all">Todas</option><option value="erp">ERP</option><option value="manual">Manual</option><option value="bootstrap">Importado</option></select></div>
+          <div className={`${adminUi.field} w-full sm:w-48`}><label htmlFor="product-availability">Disponibilidade</label><select id="product-availability" value={availability} onChange={(event) => setAvailability(event.target.value as typeof availability)}><option value="all">Todas</option><option value="available">Pronta-entrega</option><option value="unavailable">Sem pronta-entrega</option></select></div>
         </div>
 
-        <datalist id="classification-categories">
-          {classificationOptions.categories.map((c) => (
-            <option key={c} value={c} />
-          ))}
-        </datalist>
-        <datalist id="classification-subcategories">
-          {classificationOptions.subcategories.map((c) => (
-            <option key={c} value={c} />
-          ))}
-        </datalist>
-        <datalist id="classification-collections">
-          {classificationOptions.collections.map((c) => (
-            <option key={c} value={c} />
-          ))}
-        </datalist>
+        {filtered.length === 0 ? <p className={`${adminUi.previewEmpty} mt-4`}>Nenhum produto encontrado com estes filtros.</p> : <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {filtered.map((product) => <Card key={product.id} className="overflow-hidden"><div className="flex gap-3 p-3"><ProductImage src={product.image} alt={product.name} className="h-28 w-20 shrink-0 rounded-control bg-brand-background" /><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><p className="line-clamp-2 font-bold text-foreground">{product.name}</p><Badge className={sourceClass(product.sourceOrigin)}>{sourceLabel(product.sourceOrigin)}</Badge></div><p className="mt-1 text-xs text-muted-foreground">REF {product.referenceId || 'não informada'} · {product.category}</p><p className="mt-2 text-sm font-semibold text-foreground">{money(product.price)}</p><p className="mt-1 text-xs text-muted-foreground">{product.variants.length} variante{product.variants.length === 1 ? '' : 's'} · {productIsAvailable(product) ? 'pronta-entrega' : 'sem pronta-entrega'}</p></div></div><div className="flex items-center justify-between border-t border-border px-3 py-2">{!productHasImage(product) ? <span className="inline-flex items-center gap-1 text-xs text-amber-700"><ImageOff className="size-3.5" />Sem foto</span> : <span className="max-w-[11rem] truncate text-xs text-muted-foreground">{product.colors.join(', ') || 'Sem grade'}</span>}<Button asChild size="sm" variant="outline"><Link href={`/workspace/produtos/${product.id}`}>Ver detalhes</Link></Button></div></Card>)}
+        </div>}
+      </section>
+    </main>
 
-        <div className={adminUi.overridesList}>
-          {results.map((p) => {
-            const o = overrides[p.id] || {};
-            const state = rowSaveState[p.id];
-            return (
-              <div key={p.id} className={adminUi.overrideCard}>
-                <div className={adminUi.overrideRow}>
-                  <img src={p.image || ''} alt={p.name} />
-                  <div className={adminUi.productInfo}>
-                    <span className={adminUi.productName}>{p.name}</span>
-                    <span className={adminUi.productPrice}>Atacado: {formatBRL(p.price)}</span>
-                  </div>
-                  <div className={adminUi.field}>
-                    <label>Referência</label>
-                    <input
-                      value={o.referenceId ?? ''}
-                      onChange={(e) => updateField(p.id, 'referenceId', e.target.value)}
-                      placeholder="Opcional"
-                    />
-                  </div>
-                  <div className={adminUi.field}>
-                    <label>Preço sugerido</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={o.suggestedRetailPrice ?? ''}
-                      onChange={(e) => updateField(p.id, 'suggestedRetailPrice', toNumberOrUndefined(e.target.value))}
-                      placeholder="Opcional"
-                    />
-                  </div>
-                  <div className={adminUi.field}>
-                    <label>Markup {p.markup ? `(${formatMarkup(p.markup)} hoje)` : ''}</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      value={o.markup ?? ''}
-                      onChange={(e) => updateField(p.id, 'markup', toNumberOrUndefined(e.target.value))}
-                      placeholder="Auto"
-                    />
-                  </div>
-                  <div className={adminUi.overrideActions}>
-                    <button className={adminUi.primaryButton} onClick={() => handleAlterar(p.id)} disabled={state === 'saving'}>
-                      {state === 'saving' ? 'Alterando…' : 'Alterar'}
-                    </button>
-                    {state === 'saved' && <span className={adminUi.status}>Alterado</span>}
-                    {state === 'error' && <span className={adminUi.status}>Erro</span>}
-                  </div>
-                </div>
-                <div className="contents">
-                  <div className={adminUi.field}>
-                    <label>Categoria</label>
-                    <input
-                      list="classification-categories"
-                      value={o.category ?? p.category ?? ''}
-                      onChange={(e) => updateField(p.id, 'category', e.target.value)}
-                      placeholder="Categoria do ERP"
-                    />
-                  </div>
-                  <div className={adminUi.field}>
-                    <label>Subcategoria</label>
-                    <input
-                      list="classification-subcategories"
-                      value={o.subcategory ?? p.subcategory ?? ''}
-                      onChange={(e) => updateField(p.id, 'subcategory', e.target.value)}
-                      placeholder="Opcional"
-                    />
-                  </div>
-                  <div className={adminUi.field}>
-                    <label>Coleção</label>
-                    <input
-                      list="classification-collections"
-                      value={o.collection ?? p.collection ?? ''}
-                      onChange={(e) => updateField(p.id, 'collection', e.target.value)}
-                      placeholder="Vazio = atemporal"
-                    />
-                  </div>
-                </div>
-                <SimilarProductsField
-                  label="Produtos similares — quick-view"
-                  productIds={o.similarProductIdsQuickview || []}
-                  allProducts={products}
-                  onAdd={(id) => addSimilarProduct(p.id, 'similarProductIdsQuickview', id)}
-                  onRemove={(id) => removeSimilarProduct(p.id, 'similarProductIdsQuickview', id)}
-                />
-                <SimilarProductsField
-                  label="Produtos similares — carrinho"
-                  productIds={o.similarProductIdsCart || []}
-                  allProducts={products}
-                  onAdd={(id) => addSimilarProduct(p.id, 'similarProductIdsCart', id)}
-                  onRemove={(id) => removeSimilarProduct(p.id, 'similarProductIdsCart', id)}
-                />
-              </div>
-            );
-          })}
-          {q && results.length === 0 && <p className={adminUi.previewEmpty}>Nenhum produto encontrado.</p>}
-          {!q && <p className={adminUi.previewEmpty}>Busque um produto pra editar código, preço sugerido ou markup.</p>}
-        </div>
-      </main>
-    </div>
-  );
+    <Dialog open={creating} onOpenChange={setCreating}><DialogContent className="max-h-[90dvh] overflow-y-auto md:max-w-2xl"><DialogHeader><div><DialogTitle>Cadastrar produto manual</DialogTitle><DialogDescription>Produtos cadastrados aqui podem ser editados no detalhe.</DialogDescription></div><DialogCloseButton /></DialogHeader><form className="grid gap-3" onSubmit={submitCreate}><div className="grid gap-3 sm:grid-cols-2">{([['name', 'Nome *'], ['price', 'Preço de atacado *'], ['referenceId', 'Referência'], ['category', 'Categoria'], ['color', 'Cor da primeira variante'], ['size', 'Tamanho da primeira variante']] as const).map(([field, label]) => <div className={adminUi.field} key={field}><label>{label}</label><Input type={field === 'price' ? 'number' : 'text'} step={field === 'price' ? '0.01' : undefined} min={field === 'price' ? '0' : undefined} value={newProduct[field]} onChange={(event) => setNewProduct((current) => ({ ...current, [field]: event.target.value }))} /></div>)}</div><div className={adminUi.field}><label>Imagem principal</label><Input type="url" value={newProduct.image} onChange={(event) => setNewProduct((current) => ({ ...current, image: event.target.value }))} placeholder="https://..." /></div><div className={adminUi.field}><label>Descrição</label><textarea className="min-h-20 rounded-lg border border-[#ddd] bg-white px-3 py-2.5 text-sm" value={newProduct.description} onChange={(event) => setNewProduct((current) => ({ ...current, description: event.target.value }))} /></div>{createError && <p className="text-sm text-[#b00020]">{createError}</p>}<div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setCreating(false)}>Cancelar</Button><Button loading={creatingState}>Cadastrar</Button></div></form></DialogContent></Dialog>
+
+    <Dialog open={configuringMarkup} onOpenChange={setConfiguringMarkup}><DialogContent><DialogHeader><div><DialogTitle>Markup padrão</DialogTitle><DialogDescription>Aplica-se apenas a produtos que não vêm do ERP e não possuem valor próprio.</DialogDescription></div><DialogCloseButton /></DialogHeader><form className="grid gap-3" onSubmit={saveMarkup}><div className={adminUi.field}><label>Multiplicador</label><Input type="number" step="0.1" min="0" value={markup} onChange={(event) => { setMarkup(event.target.value); setMarkupState('idle'); }} placeholder="Ex.: 2.3" /></div>{markupState === 'error' && <p className="text-sm text-[#b00020]">Informe um markup positivo ou deixe vazio para remover.</p>}{markupState === 'saved' && <p className="text-sm text-emerald-700">Markup padrão salvo.</p>}<div className="flex justify-end"><Button loading={markupState === 'saving'}>Salvar</Button></div></form></DialogContent></Dialog>
+  </div>;
 }

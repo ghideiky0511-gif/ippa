@@ -137,7 +137,6 @@ export async function syncTenantOrders(tenant: Tenant, actor: AuthUser): Promise
                 clientName: data.clientName,
                 channel: data.channel,
                 total: data.total,
-                shipping: data.shipping,
                 paymentMethod: data.paymentMethod,
                 discount: data.discount,
                 createdAt: data.date,
