@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { headers } from "next/headers";
 import { publicUi } from "@/lib/ui";
 import Link from "@/components/TenantLink";
 import { notFound } from "next/navigation";
@@ -7,6 +8,7 @@ import { backendJson } from "@/lib/backend";
 import { ProductSchema, type Product } from "@/domain/products/types";
 import ProductPageDetail from "@/components/ProductPageDetail";
 import SimilarProducts from "@/components/SimilarProducts";
+import { cacheTag } from "@/lib/cacheTags";
 
 const SimilarProductsResultSchema = z.object({
     products: z.array(ProductSchema),
@@ -22,7 +24,10 @@ export default async function ProductPage({
     params: Promise<{ id: string }>;
 }) {
     const { id } = await params;
-    const catalog = await backendJson("/api/catalog", z.array(ProductSchema));
+    const tenantSlug = (await headers()).get("x-ippa-tenant") ?? "";
+    const catalog = await backendJson("/api/catalog", z.array(ProductSchema), {
+        next: { revalidate: 20, tags: tenantSlug ? [cacheTag("catalog", tenantSlug)] : [] },
+    });
     const product = catalog.find((p) => p.id === id);
     if (!product) notFound();
 

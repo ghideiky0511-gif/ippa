@@ -71,8 +71,15 @@ export async function generateMetadata({
     backendJson('/api/tenant', TenantProfileSchema, {
       next: { revalidate: 60, tags: tenantSlug ? [cacheTag('tenant', tenantSlug)] : [] },
     }),
-    backendJson(`/api/catalog-sections?${sectionsQuery.toString()}`, CatalogSectionsResultSchema),
-    backendJson('/api/highlights', z.array(HighlightSchema)),
+    // Dados de produto (vitrines/highlights) mudam por edição no admin ou
+    // sync do ERP, não por visitante — cabe a mesma janela curta de
+    // segurança que já usamos pra classificações.
+    backendJson(`/api/catalog-sections?${sectionsQuery.toString()}`, CatalogSectionsResultSchema, {
+      next: { revalidate: 20, tags: tenantSlug ? [cacheTag('catalog', tenantSlug)] : [] },
+    }),
+    backendJson('/api/highlights', z.array(HighlightSchema), {
+      next: { revalidate: 20, tags: tenantSlug ? [cacheTag('catalog', tenantSlug)] : [] },
+    }),
     params.sharedBy
       ? backendJson(`/api/catalog-share?sharedBy=${encodeURIComponent(params.sharedBy)}`, CatalogShareSchema)
       : Promise.resolve({ name: null }),
@@ -145,7 +152,9 @@ export default async function Page({
     backendJson('/api/catalog-filters', CatalogFilterOptionsSchema, {
       next: { revalidate: 30, tags: tenantSlug ? [cacheTag('classifications', tenantSlug)] : [] },
     }),
-    backendJson(`/api/catalog-sections?${sectionsQuery.toString()}`, CatalogSectionsResultSchema),
+    backendJson(`/api/catalog-sections?${sectionsQuery.toString()}`, CatalogSectionsResultSchema, {
+      next: { revalidate: 20, tags: tenantSlug ? [cacheTag('catalog', tenantSlug)] : [] },
+    }),
   ]);
 
   return (

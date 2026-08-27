@@ -1,14 +1,14 @@
 import type { PoolClient } from "pg";
-import type { FreightProviderKind, OrderFreightStatus } from "@/lib/types";
+import type { FreightProviderKind, OrderFreightMethod, OrderFreightStatus } from "@/lib/types";
 
 export interface OrderFreightRow {
     id: string; order_id: string; provider_id: string | null; quote_id: string | null;
-    kind: FreightProviderKind; label: string; price: string; eta_label: string | null;
+    kind: FreightProviderKind; method: OrderFreightMethod | null; label: string; price: string; eta_label: string | null;
     tracking_code: string | null; tracking_url: string | null; status: OrderFreightStatus;
     shipped_at: Date | null; delivered_at: Date | null; cancelled_at: Date | null;
 }
 
-const orderFreightFields = "id, order_id, provider_id, quote_id, kind, label, price, eta_label, tracking_code, tracking_url, status, shipped_at, delivered_at, cancelled_at";
+const orderFreightFields = "id, order_id, provider_id, quote_id, kind, method, label, price, eta_label, tracking_code, tracking_url, status, shipped_at, delivered_at, cancelled_at";
 
 export interface OrderFreightWriteRow {
     orderId: string; providerId: string | null; quoteId: string | null;
@@ -29,6 +29,22 @@ export async function findOrderFreightRowByOrderId(client: PoolClient, orderId: 
     const result = await client.query<OrderFreightRow>(
         `SELECT ${orderFreightFields} FROM order_freights WHERE tenant_id = app_tenant_id() AND order_id = $1`,
         [orderId],
+    );
+    return result.rows[0] ?? null;
+}
+
+/** Troca o tipo de frete de um pedido já fechado -- ver
+ * updateOrderFreightMethod em orderService.ts pras regras de quando isso é
+ * permitido (frete ainda não despachado, pedido não cancelado). */
+export async function updateOrderFreightMethodRow(
+    client: PoolClient,
+    orderId: string,
+    method: OrderFreightMethod,
+): Promise<OrderFreightRow | null> {
+    const result = await client.query<OrderFreightRow>(
+        `UPDATE order_freights SET method = $1 WHERE tenant_id = app_tenant_id() AND order_id = $2
+         RETURNING ${orderFreightFields}`,
+        [method, orderId],
     );
     return result.rows[0] ?? null;
 }

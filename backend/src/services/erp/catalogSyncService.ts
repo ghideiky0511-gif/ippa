@@ -193,8 +193,9 @@ export async function processSku(
 //     (ex.: g:id do Vesti), gravado antes de existir integração ERP.
 //     Determinístico como (1), mas ainda não promovido a external reference.
 //  3. sku (código de barra/productSku) coincidindo por valor.
-//  4. fallback heurístico por (color, size) entre variantes bootstrap --
-//     último recurso, lança erro se houver ambiguidade.
+//  4. fallback heurístico por (color, size), inclusive para variantes ERP
+//     legadas sem external reference. A chave é única no banco, portanto é
+//     seguro reconciliar uma única ocorrência independentemente da origem.
 export function matchExistingVariantId(input: {
     sku: ErpSkuSnapshot;
     variants: ProductVariantRow[];
@@ -218,15 +219,14 @@ export function matchExistingVariantId(input: {
         if (bySku.length === 1) existingId = bySku[0].id;
     }
     if (!existingId) {
-        const bootstrapMatch = variants.filter((variant) =>
-            variant.source_origin === "bootstrap"
-            && variant.color === sku.color && variant.size === sku.size
+        const colorSizeMatch = variants.filter((variant) =>
+            variant.color === sku.color && variant.size === sku.size
             && !usedVariantIds.has(variant.id),
         );
-        if (bootstrapMatch.length > 1) {
+        if (colorSizeMatch.length > 1) {
             throw new Error(`CATALOG_VARIANT_MATCH_AMBIGUOUS:${sku.externalId}`);
         }
-        if (bootstrapMatch.length === 1) existingId = bootstrapMatch[0].id;
+        if (colorSizeMatch.length === 1) existingId = colorSizeMatch[0].id;
     }
     return existingId;
 }

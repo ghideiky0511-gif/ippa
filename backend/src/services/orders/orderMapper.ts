@@ -53,6 +53,7 @@ export function toOrderFreight(row: OrderFreightRow): OrderFreight {
         providerId: row.provider_id,
         quoteId: row.quote_id,
         kind: row.kind,
+        method: row.method,
         label: row.label,
         price: Number(row.price),
         etaLabel: row.eta_label,

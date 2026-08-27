@@ -7,6 +7,7 @@ const CACHE_SCOPES = {
   tenant: 'tenant',
   classifications: 'classifications',
   storeSettings: 'store-settings',
+  catalog: 'catalog',
 } as const;
 
 export type CacheScope = keyof typeof CACHE_SCOPES;

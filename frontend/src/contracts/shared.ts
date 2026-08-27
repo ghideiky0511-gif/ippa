@@ -108,6 +108,15 @@ export const OrderFreightStatusSchema = z.enum([
 ]);
 export type OrderFreightStatus = z.infer<typeof OrderFreightStatusSchema>;
 
+// Tipo de frete escolhido operacionalmente pra este pedido -- granularidade
+// maior que FreightProviderKindSchema (pickup/fixed/carrier), editável depois
+// do pedido fechado enquanto o frete ainda não foi despachado (ver
+// updateOrderFreightMethod em orderService.ts).
+export const OrderFreightMethodSchema = z.enum([
+  'transportadora', 'correios', 'excursao', 'loja_vizinha', 'retirada_local', 'motoboy', 'entrega_propria',
+]);
+export type OrderFreightMethod = z.infer<typeof OrderFreightMethodSchema>;
+
 // O que a tela de frete lista pra escolher (uma linha por `freight_providers`
 // ativo do tenant no momento em que a sessão pediu cotação).
 export const FreightQuoteSchema = z.object({
@@ -139,6 +148,7 @@ export const OrderFreightSchema = z.object({
   providerId: EntityIdSchema.nullable(),
   quoteId: EntityIdSchema.nullable(),
   kind: FreightProviderKindSchema,
+  method: OrderFreightMethodSchema.nullable(),
   label: RequiredTextSchema,
   price: MoneySchema,
   etaLabel: z.string().nullable(),

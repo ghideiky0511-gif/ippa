@@ -14,7 +14,7 @@ import type { Product } from '@/domain/products/types';
 // marcar sugestão" — só importa pra colaboradoras da loja (ver handleClick abaixo).
 const SUGGEST_WINDOW_MS = 300;
 
-export default function ProductCard({ product, priority }: { product: Product; priority?: boolean }) {
+export default function ProductCard({ product, priority, index }: { product: Product; priority?: boolean; index?: number }) {
   const { addProductDraft, removeProduct, cart } = useCart();
   const { openQuickView } = useQuickView();
   const { authUser, showPrices, suggestedPiecesEnabled } = useAuthUser();
@@ -109,5 +109,5 @@ export default function ProductCard({ product, priority }: { product: Product; p
     </div>
   ) : <div className="text-base font-bold text-foreground">{formatBRL(product.price)}</div>;
 
-  return <CatalogProductCard product={product} onOpen={() => openQuickView(product)} imageAction={imageAction} title={title} price={price} priority={priority} />;
+  return <CatalogProductCard product={product} onOpen={() => openQuickView(product)} imageAction={imageAction} title={title} price={price} priority={priority} index={index} />;
 }

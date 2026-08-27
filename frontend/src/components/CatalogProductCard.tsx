@@ -8,6 +8,7 @@ import { productClassificationSummary } from '@/lib/classifications';
 import { publicUi } from '@/lib/ui';
 import type { Product } from '@/domain/products/types';
 import ProductImage from './ProductImage';
+import { useRowAutoplay } from './RowAutoplayGrid';
 
 const MAX_COLOR_DOTS = 6;
 
@@ -21,40 +22,64 @@ interface CatalogProductCardProps {
   price: ReactNode;
   /** Card já visível no primeiro paint — ver ProductImage. */
   priority?: boolean;
+  /** Posição do card na grade (mesma ordem do `.map()` que o renderizou) —
+   * usada só pra saber em qual fileira ele cai, ver RowAutoplayGrid. */
+  index?: number;
 }
 
 /** A apresentação do produto é única; carrinho e talão injetam apenas suas ações. */
-export default function CatalogProductCard({ product, onOpen, imageAction, title, price, priority }: CatalogProductCardProps) {
+export default function CatalogProductCard({ product, onOpen, imageAction, title, price, priority, index }: CatalogProductCardProps) {
   const colors = product.colors || [];
   const shownColors = colors.slice(0, MAX_COLOR_DOTS);
   const extraColors = colors.length - shownColors.length;
 
   // Um card de vídeo decodificando em segundo plano pesa muito mais que uma
-  // imagem parada — com dezenas deles numa vitrine, "autoPlay" em todos ao
-  // mesmo tempo é o maior consumidor de memória/CPU da grade, de longe.
-  // Só toca quando o card realmente está visível; `preload="metadata"`
-  // evita baixar o vídeo inteiro antes disso.
+  // imagem parada — com dezenas deles numa vitrine, tocar todos ao mesmo
+  // tempo é o maior consumidor de memória/CPU da grade, de longe. Dentro de
+  // um RowAutoplayGrid, só um vídeo por fileira toca por vez (revezando
+  // entre os visíveis); fora dele, mantém o comportamento antigo: toca
+  // sempre que o card está visível. `preload="metadata"` evita baixar o
+  // vídeo inteiro antes de tocar.
+  const hasVideo = !!product.videoUrl;
+  const { rowAutoplayEnabled, isActive, setVisible } = useRowAutoplay(index, hasVideo);
   const videoRef = useRef<HTMLVideoElement>(null);
+
   useEffect(() => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || !hasVideo) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) video.play().catch(() => {});
-        else video.pause();
+        const visible = entry.isIntersecting;
+        setVisible(visible);
+        if (!rowAutoplayEnabled) {
+          if (visible) video.play().catch(() => {});
+          else video.pause();
+        }
       },
       { threshold: 0.25 },
     );
     observer.observe(video);
     return () => observer.disconnect();
-  }, []);
+  }, [hasVideo, rowAutoplayEnabled, setVisible]);
+
+  useEffect(() => {
+    if (!rowAutoplayEnabled) return;
+    const video = videoRef.current;
+    if (!video) return;
+    if (isActive) {
+      video.play().catch(() => {});
+    } else {
+      video.pause();
+      video.currentTime = 0;
+    }
+  }, [rowAutoplayEnabled, isActive]);
 
   return (
     <Card className={publicUi.catalogCard}>
       <div className={publicUi.catalogCardMedia}>
         <button type="button" className="block size-full cursor-pointer border-0 bg-transparent p-0" aria-label={`Ver cores e tamanhos de ${product.name}`} onClick={onOpen}>
           {product.videoUrl ? (
-            <video ref={videoRef} className="block size-full bg-brand-background object-cover transition-transform duration-[250ms] group-hover:scale-[1.04]" src={product.videoUrl} preload="metadata" loop muted playsInline disablePictureInPicture />
+            <video ref={videoRef} className="block size-full bg-brand-background object-cover transition-transform duration-[250ms] group-hover:scale-[1.04]" src={product.videoUrl} poster={product.image} preload="metadata" loop muted playsInline disablePictureInPicture />
           ) : (
             <ProductImage src={product.image} alt={product.name} priority={priority} className="size-full bg-brand-background transition-transform duration-[250ms] group-hover:scale-[1.04]" />
           )}

@@ -78,6 +78,8 @@ export const ERROR_MESSAGES: Record<string, string> = {
     ORDER_NOT_READY_FOR_PAYMENT: "Este pedido ainda está em montagem — finalize o checkout antes de marcar como pago.",
     ORDER_ALREADY_PAID: "Este pedido já está marcado como pago.",
     ORDER_ALREADY_CANCELLED: "Este pedido já foi cancelado.",
+    ORDER_FREIGHT_NOT_FOUND: "Este pedido não tem frete registrado.",
+    ORDER_FREIGHT_ALREADY_SHIPPED: "Este frete já foi despachado e não pode mais ser alterado.",
 };
 
 export function cookieOptions() {
@@ -178,8 +180,12 @@ export function tooManyRequests(retryAfterSeconds: number): NextResponse {
 }
 
 // Limites de aplicação geral: baseline "por app" aplicado em toda rota de
-// tenant (ver resolveTenantRoute em lib/http/tenantRoute.ts).
-export const GENERAL_RATE_LIMIT = { limit: 120, windowMs: 60_000 };
+// tenant (ver resolveTenantRoute em lib/http/tenantRoute.ts). 120/min era
+// apertado demais: uma única navegação no catálogo público já dispara vários
+// GETs em paralelo (tenant, categorias, config da loja, seções, destaques,
+// filtros) e todo tráfego atrás do mesmo IP (proxy/NAT, ou o próprio SSR
+// local em dev) soma no mesmo balde.
+export const GENERAL_RATE_LIMIT = { limit: 300, windowMs: 60_000 };
 
 // Limites para rotas sensíveis a força bruta / enumeração (login, cadastro,
 // consulta de documento) — mais apertado que o baseline geral, contado à

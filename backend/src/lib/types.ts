@@ -5,7 +5,7 @@
 // (@/lib/types); só reexporta em vez de definir.
 export type { Availability, Variant, PackScope, PackItem, Pack, Product } from '@/contracts/products';
 export type {
-  CartItem, FreightProviderKind, FreightQuote, SessionFreight, OrderFreight, OrderFreightStatus,
+  CartItem, FreightProviderKind, FreightQuote, SessionFreight, OrderFreight, OrderFreightMethod, OrderFreightStatus,
 } from '@/contracts/shared';
 export type { Client } from '@/contracts/clients';
 export type {

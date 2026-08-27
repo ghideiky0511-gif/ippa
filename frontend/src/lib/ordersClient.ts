@@ -14,6 +14,7 @@ import {
   type CreateOrderSessionInput,
   type Order,
   type OrderBook,
+  type OrderFreightMethod,
   type OrderSession,
   type UpdateOrderSessionInput,
 } from '@/domain/orders/types';
@@ -109,6 +110,17 @@ export function markOrderPaid(orderId: string, paymentMethod?: string): Promise<
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ paymentMethod }),
   }, 'Não foi possível marcar o pedido como pago.');
+}
+
+// Troca o tipo de frete (transportadora/correios/motoboy/etc.) de um pedido
+// já fechado -- ver comentário em updateOrderFreightMethod (orderService.ts)
+// pras regras de quando isso é permitido.
+export function updateOrderFreightMethod(orderId: string, method: OrderFreightMethod): Promise<Order> {
+  return adminJson(`/api/admin/orders/${orderId}/freight`, OrderSchema, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ method }),
+  }, 'Não foi possível alterar o frete.');
 }
 
 const CancelOrderResultSchema = z.object({ order: OrderSchema, erpWarning: z.string().optional() });

@@ -110,4 +110,10 @@ test("matchExistingVariantId cai para sku e depois para cor+tamanho sem bootstra
         matchExistingVariantId({ sku: sku(), variants: byColorSize, externalVariantId: new Map(), usedVariantIds: new Set() }),
         "variant-2",
     );
+
+    const legacyErpByColorSize = [variant({ id: "variant-3", color: "Preto", size: "M", source_origin: "erp" })];
+    assert.equal(
+        matchExistingVariantId({ sku: sku(), variants: legacyErpByColorSize, externalVariantId: new Map(), usedVariantIds: new Set() }),
+        "variant-3",
+    );
 });

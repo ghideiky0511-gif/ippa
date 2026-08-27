@@ -1,6 +1,6 @@
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
-import type { AuthUser, FreightQuote, Order, OrderChannel, OrderSession } from "@/lib/types";
+import type { AuthUser, FreightQuote, Order, OrderChannel, OrderFreightMethod, OrderSession } from "@/lib/types";
 import { CreateCustomerOrderInputSchema } from "@/contracts/orders";
 import {
     cancelOpenOrderSessionRowsByOrder,
@@ -15,7 +15,7 @@ import {
     updateOrderRow,
 } from "@/models/ordersModel";
 import { findFreightProviderRow, listActiveFreightProviderRows } from "@/models/freightProvidersModel";
-import { findOrderFreightRowByOrderId, insertOrderFreightRow, listOrderFreightRows } from "@/models/orderFreightsModel";
+import { findOrderFreightRowByOrderId, insertOrderFreightRow, listOrderFreightRows, updateOrderFreightMethodRow } from "@/models/orderFreightsModel";
 import { computeFreightPrice } from "./freightPricing";
 import { getOrCreateOpenOrder, syncOrderItems } from "./orderItemSync";
 import { findUserRowById } from "@/models/usersModel";
@@ -325,4 +325,41 @@ export async function cancelOrder(
     notifyOrder(tenant.id, order);
     const erpResult = await cancelProviderOrderForOrder(tenant, user, orderId, auditRequestContext);
     return { order, erpWarning: erpResult.cancelled ? undefined : erpResult.error };
+}
+
+// Troca o tipo de frete (transportadora/correios/motoboy/etc.) de um pedido
+// já fechado -- só permitido enquanto o frete ainda não foi despachado
+// ('aguardando'/'etiqueta_emitida'; ver order_freight_status, migration 043)
+// e o pedido não está cancelado. Não reenvia ao ERP: freightType do TOTVS
+// Moda é modalidade fiscal (CIF/FOB/...), não corresponde a este campo.
+export async function updateOrderFreightMethod(
+    tenant: Tenant,
+    user: AuthUser,
+    orderId: string,
+    method: OrderFreightMethod,
+    auditRequestContext: AuditRequestContext,
+): Promise<Order> {
+    requireInternal(user);
+    const order = await withTenantTransaction(tenant, user, async (client) => {
+        const existing = await findOrderRowById(client, orderId);
+        if (!existing) throw new NotFoundError("ORDER_NOT_FOUND");
+        if (existing.status === "cancelado") throw new ValidationError("ORDER_ALREADY_CANCELLED");
+        const items = (await listOrderItemRowsByOrder(client, orderId)).map((item) => item.snapshot);
+        const currentFreight = await findOrderFreightRowByOrderId(client, orderId);
+        if (!currentFreight) throw new ValidationError("ORDER_FREIGHT_NOT_FOUND");
+        if (currentFreight.status !== "aguardando" && currentFreight.status !== "etiqueta_emitida") {
+            throw new ValidationError("ORDER_FREIGHT_ALREADY_SHIPPED");
+        }
+        const freightRow = await updateOrderFreightMethodRow(client, orderId, method);
+        await recordAuditEvent(client, {
+            action: ORDER_AUDIT_ACTIONS.FREIGHT_METHOD_CHANGED,
+            entityId: orderId,
+            actor: user,
+            context: auditRequestContext,
+            metadata: { method },
+        });
+        return toOrder(existing, items, freightRow);
+    });
+    notifyOrder(tenant.id, order);
+    return order;
 }

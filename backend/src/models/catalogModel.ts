@@ -303,8 +303,16 @@ export async function upsertErpProductVariantRow(
             `UPDATE product_variants SET
                color = $3, size = $4, price = $5, availability = $6,
                sku = COALESCE($7, sku), track_inventory = true,
-               is_active = $8, source_origin = 'erp'
+               is_active = $8, source_origin = 'erp', updated_at = now()
              WHERE tenant_id = app_tenant_id() AND id = $1 AND product_id = $2
+               AND NOT EXISTS (
+                 SELECT 1 FROM product_variants AS conflicting
+                 WHERE conflicting.tenant_id = app_tenant_id()
+                   AND conflicting.product_id = $2
+                   AND conflicting.color = $3
+                   AND conflicting.size = $4
+                   AND conflicting.id <> $1
+               )
              RETURNING id`,
             [input.id, input.productId, input.value.color, input.value.size,
              input.value.price, input.value.availability ?? "out_of_stock",
@@ -317,6 +325,14 @@ export async function upsertErpProductVariantRow(
            tenant_id, product_id, color, size, price, availability, sku,
            track_inventory, is_active, source_origin
          ) VALUES (app_tenant_id(), $1,$2,$3,$4,$5,$6,true,$7,'erp')
+         ON CONFLICT (tenant_id, product_id, color, size) DO UPDATE SET
+           price = EXCLUDED.price,
+           availability = EXCLUDED.availability,
+           sku = COALESCE(EXCLUDED.sku, product_variants.sku),
+           track_inventory = true,
+           is_active = EXCLUDED.is_active,
+           source_origin = 'erp',
+           updated_at = now()
          RETURNING id`,
         [input.productId, input.value.color, input.value.size, input.value.price,
          input.value.availability ?? "out_of_stock", input.value.sku ?? null,
