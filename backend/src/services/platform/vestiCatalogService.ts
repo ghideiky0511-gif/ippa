@@ -106,7 +106,13 @@ export async function importVestiCatalog(
         findVestiCatalogSlugRow,
     );
     if (!slug) throw new Error("VESTI_SLUG_NOT_CONFIGURED");
-    if (await withTenantTransaction(tenant, CONTROL_ACTOR, findActiveErpIntegrationRow)) {
+    if (
+        await withTenantTransaction(
+            tenant,
+            CONTROL_ACTOR,
+            findActiveErpIntegrationRow,
+        )
+    ) {
         throw new Error("VESTI_BOOTSTRAP_AFTER_ERP");
     }
     logger.info("vesti-import", "Iniciando importação do catálogo Vesti", {
@@ -138,21 +144,27 @@ export async function importVestiCatalog(
     const mediaFailureReasons = new Map<string, number>();
     const recordMediaFailure = (error: unknown): void => {
         mediaFailed++;
-        const reason = error instanceof Error && error.message
-            ? error.message.slice(0, 120)
-            : "UNKNOWN_MEDIA_ERROR";
-        mediaFailureReasons.set(reason, (mediaFailureReasons.get(reason) ?? 0) + 1);
+        const reason =
+            error instanceof Error && error.message
+                ? error.message.slice(0, 120)
+                : "UNKNOWN_MEDIA_ERROR";
+        mediaFailureReasons.set(
+            reason,
+            (mediaFailureReasons.get(reason) ?? 0) + 1,
+        );
     };
-    const copyProductMedia = async (product: typeof feed.products[number]): Promise<void> => {
+    const copyProductMedia = async (
+        product: (typeof feed.products)[number],
+    ): Promise<void> => {
         const imageKeysByColor: Record<string, string> = {};
         let primaryUrl = product.imageUrl;
         if (!primaryUrl && product.productUrl) {
-            primaryUrl = (await scrapePrimaryImageUrl(product.productUrl)) ?? "";
+            primaryUrl =
+                (await scrapePrimaryImageUrl(product.productUrl)) ?? "";
         }
-        const imageUrls = Array.from(new Set([
-            primaryUrl,
-            ...product.imageUrls,
-        ].filter(Boolean)));
+        const imageUrls = Array.from(
+            new Set([primaryUrl, ...product.imageUrls].filter(Boolean)),
+        );
         const imageKeys: string[] = [];
         for (const [index, imageUrl] of imageUrls.entries()) {
             try {
@@ -182,7 +194,12 @@ export async function importVestiCatalog(
             }
         }
         for (const variant of variantsByRef.get(product.ref) ?? []) {
-            if (!variant.imageUrl || !variant.color || imageKeysByColor[variant.color]) continue;
+            if (
+                !variant.imageUrl ||
+                !variant.color ||
+                imageKeysByColor[variant.color]
+            )
+                continue;
             try {
                 imageKeysByColor[variant.color] = await mediaSession.copy(
                     variant.imageUrl,
@@ -198,14 +215,15 @@ export async function importVestiCatalog(
             imageKey: imageKeys[0],
             imageKeys: imageKeys.length > 0 ? imageKeys : undefined,
             videoKeys: videoKeys.length > 0 ? videoKeys : undefined,
-            imageKeysByColor: Object.keys(imageKeysByColor).length > 0
-                ? imageKeysByColor
-                : undefined,
+            imageKeysByColor:
+                Object.keys(imageKeysByColor).length > 0
+                    ? imageKeysByColor
+                    : undefined,
         });
         productsWithMediaProcessed++;
         if (
-            productsWithMediaProcessed === feed.products.length
-            || productsWithMediaProcessed % MEDIA_PROGRESS_INTERVAL === 0
+            productsWithMediaProcessed === feed.products.length ||
+            productsWithMediaProcessed % MEDIA_PROGRESS_INTERVAL === 0
         ) {
             logger.info("vesti-import", "Cópia de mídias Vesti em andamento", {
                 tenantId,
@@ -222,15 +240,17 @@ export async function importVestiCatalog(
         concurrency: MEDIA_COPY_CONCURRENCY,
     });
     let nextProductIndex = 0;
-    await Promise.all(Array.from(
-        { length: Math.min(MEDIA_COPY_CONCURRENCY, feed.products.length) },
-        async () => {
-            while (nextProductIndex < feed.products.length) {
-                const product = feed.products[nextProductIndex++];
-                await copyProductMedia(product);
-            }
-        },
-    ));
+    await Promise.all(
+        Array.from(
+            { length: Math.min(MEDIA_COPY_CONCURRENCY, feed.products.length) },
+            async () => {
+                while (nextProductIndex < feed.products.length) {
+                    const product = feed.products[nextProductIndex++];
+                    await copyProductMedia(product);
+                }
+            },
+        ),
+    );
 
     const summary: VestiImportSummary = {
         productsCreated: 0,
@@ -241,14 +261,18 @@ export async function importVestiCatalog(
         mediaFailed,
     };
     if (summary.mediaFailed > 0) {
-        logger.warn("vesti-import", "Parte das mídias da Vesti não pôde ser copiada", {
-            tenantId,
-            mediaCopied: summary.mediaCopied,
-            mediaFailed: summary.mediaFailed,
-            failureReasons: Array.from(mediaFailureReasons.entries())
-                .map(([reason, count]) => `${reason}:${count}`)
-                .join(","),
-        });
+        logger.warn(
+            "vesti-import",
+            "Parte das mídias da Vesti não pôde ser copiada",
+            {
+                tenantId,
+                mediaCopied: summary.mediaCopied,
+                mediaFailed: summary.mediaFailed,
+                failureReasons: Array.from(mediaFailureReasons.entries())
+                    .map(([reason, count]) => `${reason}:${count}`)
+                    .join(","),
+            },
+        );
     }
     try {
         await withTenantTransaction(tenant, CONTROL_ACTOR, async (client) => {
@@ -256,50 +280,60 @@ export async function importVestiCatalog(
                 throw new Error("VESTI_BOOTSTRAP_AFTER_ERP");
             }
             for (const product of feed.products) {
-            const productVariants = variantsByRef.get(product.ref) ?? [];
-            const definedPrices = productVariants
-                .map((variant) => variant.price)
-                .filter((price): price is number => price !== undefined);
-            const basePrice = definedPrices.length
-                ? Math.min(...definedPrices)
-                : 0;
+                const productVariants = variantsByRef.get(product.ref) ?? [];
+                const definedPrices = productVariants
+                    .map((variant) => variant.price)
+                    .filter((price): price is number => price !== undefined);
+                const basePrice = definedPrices.length
+                    ? Math.min(...definedPrices)
+                    : 0;
 
-            const writeRow: ProductWriteRow & { referenceId: string } = {
-                name: product.catalogTitle || product.name,
-                category: product.externalCategory || "Sem categoria",
-                brand: product.brand || undefined,
-                referenceId: product.ref,
-                price: basePrice,
-                media: mediaByRef.get(product.ref),
-                attributes: product.productUrl
-                    ? { vestiProductUrl: product.productUrl }
-                    : undefined,
-                isActive: product.active,
-                sourceOrigin: "bootstrap",
-            };
-            const { row, created } = await upsertProductByReferenceIdRow(
-                client,
-                writeRow,
-            );
-            if (created) summary.productsCreated++;
-            else summary.productsUpdated++;
+                const writeRow: ProductWriteRow & { referenceId: string } = {
+                    name: product.catalogTitle || product.name,
+                    category: product.externalCategory || "Sem categoria",
+                    brand: product.brand || undefined,
+                    referenceId: product.ref,
+                    price: basePrice,
+                    media: mediaByRef.get(product.ref),
+                    attributes: product.productUrl
+                        ? { vestiProductUrl: product.productUrl }
+                        : undefined,
+                    isActive: product.active,
+                    sourceOrigin: "bootstrap",
+                };
+                const { row, created } = await upsertProductByReferenceIdRow(
+                    client,
+                    writeRow,
+                );
+                if (created) summary.productsCreated++;
+                else summary.productsUpdated++;
 
-            for (const variant of productVariants) {
-                const { created: variantCreated } =
-                    await upsertProductVariantRow(client, row.id, {
-                        color: variant.color,
-                        size: variant.size,
-                        price: variant.price ?? basePrice,
-                        availability: variant.active
-                            ? "in_stock"
-                            : "out_of_stock",
-                        sku: variant.productCode,
-                        isActive: variant.active,
-                        sourceOrigin: "bootstrap",
-                    });
-                if (variantCreated) summary.variantsCreated++;
-                else summary.variantsUpdated++;
-            }
+                for (const variant of productVariants) {
+                    const { created: variantCreated } =
+                        await upsertProductVariantRow(client, row.id, {
+                            color: variant.color,
+                            size: variant.size,
+                            price: variant.price ?? basePrice,
+                            availability: variant.active
+                                ? "in_stock"
+                                : "out_of_stock",
+                            // variant.productCode é o "g:id" do feed do Vesti --
+                            // no fashiongirl, isso é o productCode interno da
+                            // TOTVS reaproveitado, não o productSku (código de
+                            // barra) que o sync de ERP usa nessa mesma coluna
+                            // (ver mapper.ts:mapTotvsModaReferenceSnapshot). Gravar
+                            // aqui já causou colisão real com UNIQUE(tenant_id,
+                            // sku): o productCode de um produto bateu com o
+                            // productSku de outro. A convergência bootstrap->erp
+                            // já casa por (product_id, color, size) em
+                            // catalogSyncService.processReference, sem precisar
+                            // de sku aqui.
+                            isActive: variant.active,
+                            sourceOrigin: "bootstrap",
+                        });
+                    if (variantCreated) summary.variantsCreated++;
+                    else summary.variantsUpdated++;
+                }
             }
         });
     } catch (error) {
@@ -339,16 +373,23 @@ export function startVestiCatalogImport(tenantId: string): VestiImportJob {
         })
         .catch((error) => {
             job.status = "failed";
-            job.error = error instanceof Error ? error.message : "VESTI_IMPORT_FAILED";
+            job.error =
+                error instanceof Error ? error.message : "VESTI_IMPORT_FAILED";
             job.finishedAt = new Date().toISOString();
-            logger.error("vesti-import", "Importação Vesti em segundo plano falhou", {
-                tenantId,
-                ...errorMeta(error),
-            });
+            logger.error(
+                "vesti-import",
+                "Importação Vesti em segundo plano falhou",
+                {
+                    tenantId,
+                    ...errorMeta(error),
+                },
+            );
         });
     return { ...job };
 }
 
 export function getVestiCatalogImportJob(tenantId: string): VestiImportJob {
-    return { ...(importJobsByTenantId.get(tenantId) ?? { status: "not_started" }) };
+    return {
+        ...(importJobsByTenantId.get(tenantId) ?? { status: "not_started" }),
+    };
 }

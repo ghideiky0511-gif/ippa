@@ -16,7 +16,19 @@ CREATE TYPE public."audit_action" AS ENUM (
 	'company.updated',
 	'erp_integration.configured',
 	'erp_integration.activated',
-	'erp_integration.deactivated');
+	'erp_integration.deactivated',
+	'commercial_group.created',
+	'commercial_group.updated',
+	'commercial_group.activated',
+	'commercial_group.deactivated',
+	'commercial_group.member_added',
+	'commercial_group.member_removed',
+	'commercial_group.primary_member_changed',
+	'provider_order.resend_requested',
+	'user.updated',
+	'order.manually_marked_paid',
+	'order.manually_cancelled',
+	'provider_order.cancel_requested');
 
 -- DROP TYPE public."audit_entity_type";
 
@@ -26,7 +38,10 @@ CREATE TYPE public."audit_entity_type" AS ENUM (
 	'order_session',
 	'user',
 	'company',
-	'erp_integration');
+	'erp_integration',
+	'commercial_group',
+	'provider_order',
+	'order');
 
 -- DROP TYPE public."banner_media_type";
 
@@ -164,6 +179,24 @@ CREATE SEQUENCE public.external_api_request_log_id_seq
 	START 1
 	CACHE 1
 	NO CYCLE;
+-- DROP SEQUENCE public.order_item_events_id_seq;
+
+CREATE SEQUENCE public.order_item_events_id_seq
+	INCREMENT BY 1
+	MINVALUE 1
+	MAXVALUE 9223372036854775807
+	START 1
+	CACHE 1
+	NO CYCLE;
+-- DROP SEQUENCE public.order_item_fulfillment_events_id_seq;
+
+CREATE SEQUENCE public.order_item_fulfillment_events_id_seq
+	INCREMENT BY 1
+	MINVALUE 1
+	MAXVALUE 9223372036854775807
+	START 1
+	CACHE 1
+	NO CYCLE;
 -- DROP SEQUENCE public.session_events_id_seq;
 
 CREATE SEQUENCE public.session_events_id_seq
@@ -172,7 +205,7 @@ CREATE SEQUENCE public.session_events_id_seq
 	MAXVALUE 9223372036854775807
 	START 1
 	CACHE 1
-	NO CYCLE;-- public.platform_plans definição
+	NO CYCLE;-- public.platform_plans definition
 
 -- Drop table
 
@@ -188,9 +221,10 @@ CREATE TABLE public.platform_plans (
 	CONSTRAINT platform_plans_code_key UNIQUE (code),
 	CONSTRAINT platform_plans_pkey PRIMARY KEY (id)
 );
+ALTER TABLE public.platform_plans ENABLE ROW LEVEL SECURITY;
 
 
--- public.platform_users definição
+-- public.platform_users definition
 
 -- Drop table
 
@@ -207,9 +241,10 @@ CREATE TABLE public.platform_users (
 	CONSTRAINT platform_users_email_key UNIQUE (email),
 	CONSTRAINT platform_users_pkey PRIMARY KEY (id)
 );
+ALTER TABLE public.platform_users ENABLE ROW LEVEL SECURITY;
 
 
--- public.schema_migrations definição
+-- public.schema_migrations definition
 
 -- Drop table
 
@@ -222,7 +257,7 @@ CREATE TABLE public.schema_migrations (
 );
 
 
--- public.tenants definição
+-- public.tenants definition
 
 -- Drop table
 
@@ -243,7 +278,56 @@ CREATE TABLE public.tenants (
 );
 
 
--- public.classification_types definição
+-- public.ai_tool_prompt_versions definition
+
+-- Drop table
+
+-- DROP TABLE public.ai_tool_prompt_versions;
+
+CREATE TABLE public.ai_tool_prompt_versions (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NOT NULL,
+	tool_key text NOT NULL,
+	"version" int4 NOT NULL,
+	instructions text NOT NULL,
+	status text DEFAULT 'draft'::text NOT NULL,
+	created_by_platform_user_id uuid NULL,
+	activated_by_platform_user_id uuid NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	activated_at timestamptz NULL,
+	CONSTRAINT ai_tool_prompt_versions_check CHECK ((((status = 'active'::text) AND (activated_at IS NOT NULL)) OR (status <> 'active'::text))),
+	CONSTRAINT ai_tool_prompt_versions_instructions_check CHECK (((length(btrim(instructions)) >= 20) AND (length(btrim(instructions)) <= 20000))),
+	CONSTRAINT ai_tool_prompt_versions_pkey PRIMARY KEY (id),
+	CONSTRAINT ai_tool_prompt_versions_status_check CHECK ((status = ANY (ARRAY['draft'::text, 'active'::text, 'archived'::text]))),
+	CONSTRAINT ai_tool_prompt_versions_tenant_id_id_key UNIQUE (tenant_id, id),
+	CONSTRAINT ai_tool_prompt_versions_tenant_id_tool_key_version_key UNIQUE (tenant_id, tool_key, version),
+	CONSTRAINT ai_tool_prompt_versions_tool_key_check CHECK ((tool_key ~ '^[a-z][a-z0-9._-]{1,63}$'::text)),
+	CONSTRAINT ai_tool_prompt_versions_version_check CHECK ((version > 0)),
+	CONSTRAINT ai_tool_prompt_versions_activated_by_platform_user_id_fkey FOREIGN KEY (activated_by_platform_user_id) REFERENCES public.platform_users(id) ON DELETE SET NULL,
+	CONSTRAINT ai_tool_prompt_versions_created_by_platform_user_id_fkey FOREIGN KEY (created_by_platform_user_id) REFERENCES public.platform_users(id) ON DELETE SET NULL,
+	CONSTRAINT ai_tool_prompt_versions_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
+);
+CREATE INDEX ai_tool_prompt_versions_history_idx ON public.ai_tool_prompt_versions USING btree (tenant_id, tool_key, version DESC);
+CREATE UNIQUE INDEX ai_tool_prompt_versions_one_active_idx ON public.ai_tool_prompt_versions USING btree (tenant_id, tool_key) WHERE (status = 'active'::text);
+
+-- Table Triggers
+
+create trigger ai_tool_prompt_versions_immutable_content before
+update
+    on
+    public.ai_tool_prompt_versions for each row execute function prevent_ai_tool_prompt_version_content_update();
+ALTER TABLE public.ai_tool_prompt_versions ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY ai_tool_prompt_versions_tenant_read ON public.ai_tool_prompt_versions
+ AS PERMISSIVE
+ FOR SELECT
+ TO ippa_app
+ USING (((tenant_id = app_tenant_id()) AND (status = 'active'::text)));
+
+
+-- public.classification_types definition
 
 -- Drop table
 
@@ -263,9 +347,18 @@ CREATE TABLE public.classification_types (
 	CONSTRAINT classification_types_tenant_id_kind_key UNIQUE (tenant_id, kind),
 	CONSTRAINT classification_types_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
+ALTER TABLE public.classification_types ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.classification_types
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.classifications definição
+-- public.classifications definition
 
 -- Drop table
 
@@ -292,9 +385,49 @@ CREATE TABLE public.classifications (
 	CONSTRAINT classifications_tenant_id_parent_id_fkey FOREIGN KEY (tenant_id,parent_id) REFERENCES public.classifications(tenant_id,id) ON DELETE RESTRICT
 );
 CREATE INDEX classifications_tenant_type_parent_position_idx ON public.classifications USING btree (tenant_id, classification_type_id, parent_id, "position", name);
+ALTER TABLE public.classifications ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.classifications
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.companies definição
+-- public.commercial_groups definition
+
+-- Drop table
+
+-- DROP TABLE public.commercial_groups;
+
+CREATE TABLE public.commercial_groups (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NOT NULL,
+	"name" text NOT NULL,
+	group_type text DEFAULT 'client'::text NOT NULL,
+	is_active bool DEFAULT true NOT NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	updated_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT commercial_groups_group_type_check CHECK ((group_type = 'client'::text)),
+	CONSTRAINT commercial_groups_pkey PRIMARY KEY (id),
+	CONSTRAINT commercial_groups_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
+);
+CREATE INDEX commercial_groups_tenant_name_idx ON public.commercial_groups USING btree (tenant_id, name);
+ALTER TABLE public.commercial_groups ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY commercial_groups_tenant_isolation ON public.commercial_groups
+ AS PERMISSIVE
+ FOR ALL
+ TO ippa_app
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+
+-- public.companies definition
 
 -- Drop table
 
@@ -324,9 +457,18 @@ CREATE TABLE public.companies (
 	CONSTRAINT companies_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
 CREATE UNIQUE INDEX companies_one_matriz_per_tenant_idx ON public.companies USING btree (tenant_id) WHERE is_matriz;
+ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.companies
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.discounts definição
+-- public.discounts definition
 
 -- Drop table
 
@@ -343,9 +485,18 @@ CREATE TABLE public.discounts (
 	CONSTRAINT discounts_pkey PRIMARY KEY (id),
 	CONSTRAINT discounts_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
+ALTER TABLE public.discounts ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.discounts
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.external_api_request_log definição
+-- public.external_api_request_log definition
 
 -- Drop table
 
@@ -376,9 +527,19 @@ CREATE TABLE public.external_api_request_log (
 	CONSTRAINT external_api_request_log_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
 CREATE INDEX external_api_request_log_tenant_provider_idx ON public.external_api_request_log USING btree (tenant_id, provider, created_at DESC);
+ALTER TABLE public.external_api_request_log ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY external_api_request_log_tenant_isolation ON public.external_api_request_log
+ AS PERMISSIVE
+ FOR ALL
+ TO ippa_app
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.highlights definição
+-- public.highlights definition
 
 -- Drop table
 
@@ -388,12 +549,22 @@ CREATE TABLE public.highlights (
 	id uuid DEFAULT gen_random_uuid() NOT NULL,
 	tenant_id uuid NOT NULL,
 	"label" text NOT NULL,
+	show_in_catalog bool DEFAULT false NOT NULL,
 	CONSTRAINT highlights_pkey PRIMARY KEY (id),
 	CONSTRAINT highlights_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
+ALTER TABLE public.highlights ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.highlights
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.home_ai_history definição
+-- public.home_ai_history definition
 
 -- Drop table
 
@@ -408,9 +579,18 @@ CREATE TABLE public.home_ai_history (
 	CONSTRAINT home_ai_history_pkey PRIMARY KEY (id),
 	CONSTRAINT home_ai_history_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
+ALTER TABLE public.home_ai_history ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.home_ai_history
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.inventory_reservations definição
+-- public.inventory_reservations definition
 
 -- Drop table
 
@@ -432,9 +612,18 @@ CREATE TABLE public.inventory_reservations (
 	CONSTRAINT inventory_reservations_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
 CREATE INDEX inventory_reservations_active_expiry_idx ON public.inventory_reservations USING btree (tenant_id, expires_at) WHERE (status = 'active'::inventory_reservation_status);
+ALTER TABLE public.inventory_reservations ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.inventory_reservations
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.inventory_sources definição
+-- public.inventory_sources definition
 
 -- Drop table
 
@@ -457,9 +646,18 @@ CREATE TABLE public.inventory_sources (
 	CONSTRAINT inventory_sources_tenant_id_id_key UNIQUE (tenant_id, id),
 	CONSTRAINT inventory_sources_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
+ALTER TABLE public.inventory_sources ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.inventory_sources
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.platform_sessions definição
+-- public.platform_sessions definition
 
 -- Drop table
 
@@ -477,9 +675,10 @@ CREATE TABLE public.platform_sessions (
 	CONSTRAINT platform_sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.platform_users(id) ON DELETE CASCADE
 );
 CREATE INDEX platform_sessions_active_token_idx ON public.platform_sessions USING btree (token_hash, expires_at) WHERE (revoked_at IS NULL);
+ALTER TABLE public.platform_sessions ENABLE ROW LEVEL SECURITY;
 
 
--- public.products definição
+-- public.products definition
 
 -- Drop table
 
@@ -503,16 +702,29 @@ CREATE TABLE public.products (
 	"attributes" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	created_at timestamptz DEFAULT now() NOT NULL,
 	updated_at timestamptz DEFAULT now() NOT NULL,
+	is_active bool DEFAULT true NOT NULL,
+	source_origin text DEFAULT 'manual'::text NOT NULL,
 	CONSTRAINT products_pkey PRIMARY KEY (id),
 	CONSTRAINT products_price_check CHECK ((price >= (0)::numeric)),
+	CONSTRAINT products_source_origin_check CHECK ((source_origin = ANY (ARRAY['manual'::text, 'bootstrap'::text, 'erp'::text]))),
 	CONSTRAINT products_tenant_id_id_key UNIQUE (tenant_id, id),
 	CONSTRAINT products_tenant_id_reference_id_key UNIQUE (tenant_id, reference_id),
 	CONSTRAINT products_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
+CREATE INDEX products_tenant_active_idx ON public.products USING btree (tenant_id, updated_at DESC) WHERE is_active;
 CREATE INDEX products_tenant_position_idx ON public.products USING btree (tenant_id, display_position);
+ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.products
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.session_events definição
+-- public.session_events definition
 
 -- Drop table
 
@@ -527,9 +739,18 @@ CREATE TABLE public.session_events (
 	CONSTRAINT session_events_pkey PRIMARY KEY (id),
 	CONSTRAINT session_events_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
+ALTER TABLE public.session_events ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.session_events
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.tenant_contracts definição
+-- public.tenant_contracts definition
 
 -- Drop table
 
@@ -558,9 +779,10 @@ CREATE TABLE public.tenant_contracts (
 	CONSTRAINT tenant_contracts_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE RESTRICT
 );
 CREATE INDEX tenant_contracts_current_by_tenant_idx ON public.tenant_contracts USING btree (tenant_id, created_at DESC) WHERE (status = ANY (ARRAY['draft'::tenant_contract_status, 'trialing'::tenant_contract_status, 'active'::tenant_contract_status, 'past_due'::tenant_contract_status, 'suspended'::tenant_contract_status]));
+ALTER TABLE public.tenant_contracts ENABLE ROW LEVEL SECURITY;
 
 
--- public.tenant_erp_integrations definição
+-- public.tenant_erp_integrations definition
 
 -- Drop table
 
@@ -582,9 +804,207 @@ CREATE TABLE public.tenant_erp_integrations (
 	CONSTRAINT tenant_erp_integrations_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
 CREATE UNIQUE INDEX tenant_erp_integrations_one_active_idx ON public.tenant_erp_integrations USING btree (tenant_id) WHERE active;
+ALTER TABLE public.tenant_erp_integrations ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.tenant_erp_integrations
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.discount_products definição
+-- public.tenant_order_counters definition
+
+-- Drop table
+
+-- DROP TABLE public.tenant_order_counters;
+
+CREATE TABLE public.tenant_order_counters (
+	tenant_id uuid NOT NULL,
+	next_order_number int4 NOT NULL,
+	CONSTRAINT tenant_order_counters_next_order_number_check CHECK ((next_order_number > 0)),
+	CONSTRAINT tenant_order_counters_pkey PRIMARY KEY (tenant_id),
+	CONSTRAINT tenant_order_counters_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
+);
+ALTER TABLE public.tenant_order_counters ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.tenant_order_counters
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+
+-- public.ai_tool_executions definition
+
+-- Drop table
+
+-- DROP TABLE public.ai_tool_executions;
+
+CREATE TABLE public.ai_tool_executions (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NOT NULL,
+	actor_id uuid NULL,
+	actor_role text NULL,
+	tool_key text NOT NULL,
+	tool_version text NOT NULL,
+	provider text DEFAULT 'openai'::text NOT NULL,
+	model text NOT NULL,
+	input_hash text NOT NULL,
+	status text NOT NULL,
+	"output" jsonb NULL,
+	source_execution_id uuid NULL,
+	provider_response_id text NULL,
+	attempt_count int4 DEFAULT 0 NOT NULL,
+	input_tokens int4 NULL,
+	output_tokens int4 NULL,
+	cached_input_tokens int4 NULL,
+	duration_ms int4 NULL,
+	error_code text NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	completed_at timestamptz NULL,
+	prompt_revision text DEFAULT 'code:legacy'::text NOT NULL,
+	prompt_version_id uuid NULL,
+	CONSTRAINT ai_tool_executions_attempt_count_check CHECK ((attempt_count >= 0)),
+	CONSTRAINT ai_tool_executions_cached_input_tokens_check CHECK (((cached_input_tokens IS NULL) OR (cached_input_tokens >= 0))),
+	CONSTRAINT ai_tool_executions_duration_ms_check CHECK (((duration_ms IS NULL) OR (duration_ms >= 0))),
+	CONSTRAINT ai_tool_executions_input_hash_check CHECK ((input_hash ~ '^[0-9a-f]{64}$'::text)),
+	CONSTRAINT ai_tool_executions_input_tokens_check CHECK (((input_tokens IS NULL) OR (input_tokens >= 0))),
+	CONSTRAINT ai_tool_executions_output_tokens_check CHECK (((output_tokens IS NULL) OR (output_tokens >= 0))),
+	CONSTRAINT ai_tool_executions_pkey PRIMARY KEY (id),
+	CONSTRAINT ai_tool_executions_status_check CHECK ((status = ANY (ARRAY['processing'::text, 'succeeded'::text, 'failed'::text, 'cached'::text]))),
+	CONSTRAINT ai_tool_executions_tenant_id_id_key UNIQUE (tenant_id, id),
+	CONSTRAINT ai_tool_executions_prompt_version_fk FOREIGN KEY (tenant_id,prompt_version_id) REFERENCES public.ai_tool_prompt_versions(tenant_id,id) ON DELETE SET NULL,
+	CONSTRAINT ai_tool_executions_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE,
+	CONSTRAINT ai_tool_executions_tenant_id_source_execution_id_fkey FOREIGN KEY (tenant_id,source_execution_id) REFERENCES public.ai_tool_executions(tenant_id,id) ON DELETE SET NULL
+);
+CREATE INDEX ai_tool_executions_cache_idx ON public.ai_tool_executions USING btree (tenant_id, tool_key, tool_version, prompt_revision, model, input_hash, completed_at DESC) WHERE (status = 'succeeded'::text);
+CREATE INDEX ai_tool_executions_history_idx ON public.ai_tool_executions USING btree (tenant_id, tool_key, created_at DESC);
+ALTER TABLE public.ai_tool_executions ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY ai_tool_executions_tenant_isolation ON public.ai_tool_executions
+ AS PERMISSIVE
+ FOR ALL
+ TO ippa_app
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+
+-- public.catalog_sync_configs definition
+
+-- Drop table
+
+-- DROP TABLE public.catalog_sync_configs;
+
+CREATE TABLE public.catalog_sync_configs (
+	tenant_id uuid NOT NULL,
+	integration_id uuid NOT NULL,
+	enabled bool DEFAULT false NOT NULL,
+	classification_type_code int4 NULL,
+	classification_codes _text DEFAULT '{}'::text[] NOT NULL,
+	poll_interval_seconds int4 DEFAULT 300 NOT NULL,
+	overlap_seconds int4 DEFAULT 120 NOT NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	updated_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT catalog_sync_configs_check CHECK (((NOT enabled) OR ((classification_type_code IS NOT NULL) AND (cardinality(classification_codes) > 0)))),
+	CONSTRAINT catalog_sync_configs_overlap_seconds_check CHECK (((overlap_seconds >= 0) AND (overlap_seconds <= 3600))),
+	CONSTRAINT catalog_sync_configs_pkey PRIMARY KEY (tenant_id, integration_id),
+	CONSTRAINT catalog_sync_configs_poll_interval_seconds_check CHECK (((poll_interval_seconds >= 60) AND (poll_interval_seconds <= 86400))),
+	CONSTRAINT catalog_sync_configs_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE,
+	CONSTRAINT catalog_sync_configs_tenant_id_integration_id_fkey FOREIGN KEY (tenant_id,integration_id) REFERENCES public.tenant_erp_integrations(tenant_id,id) ON DELETE CASCADE
+);
+ALTER TABLE public.catalog_sync_configs ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.catalog_sync_configs
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+
+-- public.catalog_sync_runs definition
+
+-- Drop table
+
+-- DROP TABLE public.catalog_sync_runs;
+
+CREATE TABLE public.catalog_sync_runs (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NOT NULL,
+	integration_id uuid NOT NULL,
+	"mode" text NOT NULL,
+	status text DEFAULT 'discovering'::text NOT NULL,
+	window_start timestamptz NULL,
+	window_end timestamptz NULL,
+	discovered_count int4 DEFAULT 0 NOT NULL,
+	processed_count int4 DEFAULT 0 NOT NULL,
+	failed_count int4 DEFAULT 0 NOT NULL,
+	error_message text NULL,
+	started_at timestamptz DEFAULT now() NOT NULL,
+	finished_at timestamptz NULL,
+	updated_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT catalog_sync_runs_discovered_count_check CHECK ((discovered_count >= 0)),
+	CONSTRAINT catalog_sync_runs_failed_count_check CHECK ((failed_count >= 0)),
+	CONSTRAINT catalog_sync_runs_mode_check CHECK ((mode = ANY (ARRAY['incremental'::text, 'full'::text]))),
+	CONSTRAINT catalog_sync_runs_pkey PRIMARY KEY (id),
+	CONSTRAINT catalog_sync_runs_processed_count_check CHECK ((processed_count >= 0)),
+	CONSTRAINT catalog_sync_runs_status_check CHECK ((status = ANY (ARRAY['discovering'::text, 'processing'::text, 'partial'::text, 'succeeded'::text, 'failed'::text]))),
+	CONSTRAINT catalog_sync_runs_tenant_id_id_key UNIQUE (tenant_id, id),
+	CONSTRAINT catalog_sync_runs_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE,
+	CONSTRAINT catalog_sync_runs_tenant_id_integration_id_fkey FOREIGN KEY (tenant_id,integration_id) REFERENCES public.tenant_erp_integrations(tenant_id,id) ON DELETE CASCADE
+);
+CREATE INDEX catalog_sync_runs_integration_started_idx ON public.catalog_sync_runs USING btree (tenant_id, integration_id, started_at DESC);
+ALTER TABLE public.catalog_sync_runs ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.catalog_sync_runs
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+
+-- public.catalog_sync_states definition
+
+-- Drop table
+
+-- DROP TABLE public.catalog_sync_states;
+
+CREATE TABLE public.catalog_sync_states (
+	tenant_id uuid NOT NULL,
+	integration_id uuid NOT NULL,
+	checkpoint_at timestamptz NULL,
+	next_incremental_at timestamptz DEFAULT now() NOT NULL,
+	last_full_sync_at timestamptz NULL,
+	lease_token uuid NULL,
+	lease_until timestamptz NULL,
+	last_error text NULL,
+	updated_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT catalog_sync_states_pkey PRIMARY KEY (tenant_id, integration_id),
+	CONSTRAINT catalog_sync_states_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE,
+	CONSTRAINT catalog_sync_states_tenant_id_integration_id_fkey FOREIGN KEY (tenant_id,integration_id) REFERENCES public.tenant_erp_integrations(tenant_id,id) ON DELETE CASCADE
+);
+ALTER TABLE public.catalog_sync_states ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.catalog_sync_states
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+
+-- public.discount_products definition
 
 -- Drop table
 
@@ -599,9 +1019,18 @@ CREATE TABLE public.discount_products (
 	CONSTRAINT discount_products_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE CASCADE,
 	CONSTRAINT discount_products_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
+ALTER TABLE public.discount_products ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.discount_products
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.discount_tiers definição
+-- public.discount_tiers definition
 
 -- Drop table
 
@@ -620,9 +1049,18 @@ CREATE TABLE public.discount_tiers (
 	CONSTRAINT discount_tiers_discount_id_fkey FOREIGN KEY (discount_id) REFERENCES public.discounts(id) ON DELETE CASCADE,
 	CONSTRAINT discount_tiers_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
+ALTER TABLE public.discount_tiers ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.discount_tiers
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.erp_external_references definição
+-- public.erp_external_references definition
 
 -- Drop table
 
@@ -638,7 +1076,7 @@ CREATE TABLE public.erp_external_references (
 	metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
 	created_at timestamptz DEFAULT now() NOT NULL,
 	updated_at timestamptz DEFAULT now() NOT NULL,
-	CONSTRAINT erp_external_references_entity_type_check CHECK ((entity_type = ANY (ARRAY['product'::text, 'order'::text, 'client'::text, 'company'::text]))),
+	CONSTRAINT erp_external_references_entity_type_check CHECK ((entity_type = ANY (ARRAY['product'::text, 'product_variant'::text, 'order'::text, 'client'::text, 'company'::text]))),
 	CONSTRAINT erp_external_references_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
 	CONSTRAINT erp_external_references_pkey PRIMARY KEY (id),
 	CONSTRAINT erp_external_references_tenant_id_integration_id_entity_ty_key1 UNIQUE (tenant_id, integration_id, entity_type, internal_id),
@@ -646,9 +1084,18 @@ CREATE TABLE public.erp_external_references (
 	CONSTRAINT erp_external_references_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE,
 	CONSTRAINT erp_external_references_tenant_id_integration_id_fkey FOREIGN KEY (tenant_id,integration_id) REFERENCES public.tenant_erp_integrations(tenant_id,id) ON DELETE CASCADE
 );
+ALTER TABLE public.erp_external_references ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.erp_external_references
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.external_api_provider_status definição
+-- public.external_api_provider_status definition
 
 -- Drop table
 
@@ -674,9 +1121,19 @@ CREATE TABLE public.external_api_provider_status (
 	CONSTRAINT external_api_provider_status_last_request_log_id_fkey FOREIGN KEY (last_request_log_id) REFERENCES public.external_api_request_log(id) ON DELETE SET NULL,
 	CONSTRAINT external_api_provider_status_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
+ALTER TABLE public.external_api_provider_status ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY external_api_provider_status_tenant_isolation ON public.external_api_provider_status
+ AS PERMISSIVE
+ FOR ALL
+ TO ippa_app
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.highlight_products definição
+-- public.highlight_products definition
 
 -- Drop table
 
@@ -692,9 +1149,18 @@ CREATE TABLE public.highlight_products (
 	CONSTRAINT highlight_products_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE CASCADE,
 	CONSTRAINT highlight_products_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
+ALTER TABLE public.highlight_products ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.highlight_products
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.home_sections definição
+-- public.home_sections definition
 
 -- Drop table
 
@@ -711,9 +1177,18 @@ CREATE TABLE public.home_sections (
 	CONSTRAINT home_sections_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE SET NULL,
 	CONSTRAINT home_sections_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
+ALTER TABLE public.home_sections ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.home_sections
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.inventory_locations definição
+-- public.inventory_locations definition
 
 -- Drop table
 
@@ -738,9 +1213,18 @@ CREATE TABLE public.inventory_locations (
 	CONSTRAINT inventory_locations_tenant_id_source_id_fkey FOREIGN KEY (tenant_id,source_id) REFERENCES public.inventory_sources(tenant_id,id) ON DELETE SET NULL
 );
 CREATE UNIQUE INDEX inventory_locations_one_default_per_tenant_idx ON public.inventory_locations USING btree (tenant_id) WHERE is_default;
+ALTER TABLE public.inventory_locations ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.inventory_locations
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.product_classifications definição
+-- public.product_classifications definition
 
 -- Drop table
 
@@ -759,9 +1243,18 @@ CREATE TABLE public.product_classifications (
 	CONSTRAINT product_classifications_tenant_id_product_id_fkey FOREIGN KEY (tenant_id,product_id) REFERENCES public.products(tenant_id,id) ON DELETE CASCADE
 );
 CREATE UNIQUE INDEX product_classifications_primary_idx ON public.product_classifications USING btree (tenant_id, product_id, classification_type_id) WHERE is_primary;
+ALTER TABLE public.product_classifications ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.product_classifications
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.product_packs definição
+-- public.product_packs definition
 
 -- Drop table
 
@@ -781,9 +1274,18 @@ CREATE TABLE public.product_packs (
 	CONSTRAINT product_packs_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE CASCADE,
 	CONSTRAINT product_packs_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
+ALTER TABLE public.product_packs ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.product_packs
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.product_variants definição
+-- public.product_variants definition
 
 -- Drop table
 
@@ -800,18 +1302,31 @@ CREATE TABLE public.product_variants (
 	available_from text NULL,
 	sku text NULL,
 	track_inventory bool DEFAULT false NOT NULL,
+	is_active bool DEFAULT true NOT NULL,
+	source_origin text DEFAULT 'manual'::text NOT NULL,
 	CONSTRAINT product_variants_pkey PRIMARY KEY (id),
 	CONSTRAINT product_variants_price_check CHECK ((price >= (0)::numeric)),
+	CONSTRAINT product_variants_source_origin_check CHECK ((source_origin = ANY (ARRAY['manual'::text, 'bootstrap'::text, 'erp'::text]))),
 	CONSTRAINT product_variants_tenant_id_id_key UNIQUE (tenant_id, id),
 	CONSTRAINT product_variants_tenant_id_product_id_color_size_key UNIQUE (tenant_id, product_id, color, size),
 	CONSTRAINT product_variants_tenant_sku_key UNIQUE (tenant_id, sku),
 	CONSTRAINT product_variants_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE CASCADE,
 	CONSTRAINT product_variants_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
+CREATE INDEX product_variants_tenant_product_active_idx ON public.product_variants USING btree (tenant_id, product_id) WHERE is_active;
 CREATE INDEX product_variants_tenant_product_idx ON public.product_variants USING btree (tenant_id, product_id);
+ALTER TABLE public.product_variants ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.product_variants
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.store_settings definição
+-- public.store_settings definition
 
 -- Drop table
 
@@ -832,9 +1347,56 @@ CREATE TABLE public.store_settings (
 	CONSTRAINT store_settings_default_inventory_location_fk FOREIGN KEY (tenant_id,default_inventory_location_id) REFERENCES public.inventory_locations(tenant_id,id) ON DELETE RESTRICT,
 	CONSTRAINT store_settings_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
+ALTER TABLE public.store_settings ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.store_settings
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.home_banners definição
+-- public.catalog_sync_items definition
+
+-- Drop table
+
+-- DROP TABLE public.catalog_sync_items;
+
+CREATE TABLE public.catalog_sync_items (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NOT NULL,
+	integration_id uuid NOT NULL,
+	run_id uuid NOT NULL,
+	reference_code text NOT NULL,
+	status text DEFAULT 'pending'::text NOT NULL,
+	attempts int4 DEFAULT 0 NOT NULL,
+	next_attempt_at timestamptz DEFAULT now() NOT NULL,
+	last_error text NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	updated_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT catalog_sync_items_attempts_check CHECK (((attempts >= 0) AND (attempts <= 6))),
+	CONSTRAINT catalog_sync_items_pkey PRIMARY KEY (id),
+	CONSTRAINT catalog_sync_items_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'processing'::text, 'succeeded'::text, 'failed'::text]))),
+	CONSTRAINT catalog_sync_items_tenant_id_run_id_reference_code_key UNIQUE (tenant_id, run_id, reference_code),
+	CONSTRAINT catalog_sync_items_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE,
+	CONSTRAINT catalog_sync_items_tenant_id_integration_id_fkey FOREIGN KEY (tenant_id,integration_id) REFERENCES public.tenant_erp_integrations(tenant_id,id) ON DELETE CASCADE,
+	CONSTRAINT catalog_sync_items_tenant_id_run_id_fkey FOREIGN KEY (tenant_id,run_id) REFERENCES public.catalog_sync_runs(tenant_id,id) ON DELETE CASCADE
+);
+CREATE INDEX catalog_sync_items_due_idx ON public.catalog_sync_items USING btree (tenant_id, integration_id, next_attempt_at, created_at) WHERE (status = 'pending'::text);
+ALTER TABLE public.catalog_sync_items ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.catalog_sync_items
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+
+-- public.home_banners definition
 
 -- Drop table
 
@@ -853,9 +1415,18 @@ CREATE TABLE public.home_banners (
 	CONSTRAINT home_banners_home_section_id_fkey FOREIGN KEY (home_section_id) REFERENCES public.home_sections(id) ON DELETE CASCADE,
 	CONSTRAINT home_banners_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
+ALTER TABLE public.home_banners ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.home_banners
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.inventory_balances definição
+-- public.inventory_balances definition
 
 -- Drop table
 
@@ -876,9 +1447,18 @@ CREATE TABLE public.inventory_balances (
 	CONSTRAINT inventory_balances_tenant_id_location_id_fkey FOREIGN KEY (tenant_id,location_id) REFERENCES public.inventory_locations(tenant_id,id) ON DELETE CASCADE,
 	CONSTRAINT inventory_balances_tenant_id_variant_id_fkey FOREIGN KEY (tenant_id,variant_id) REFERENCES public.product_variants(tenant_id,id) ON DELETE CASCADE
 );
+ALTER TABLE public.inventory_balances ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.inventory_balances
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.inventory_external_references definição
+-- public.inventory_external_references definition
 
 -- Drop table
 
@@ -901,9 +1481,18 @@ CREATE TABLE public.inventory_external_references (
 	CONSTRAINT inventory_external_references_tenant_id_source_id_fkey FOREIGN KEY (tenant_id,source_id) REFERENCES public.inventory_sources(tenant_id,id) ON DELETE CASCADE,
 	CONSTRAINT inventory_external_references_tenant_id_variant_id_fkey FOREIGN KEY (tenant_id,variant_id) REFERENCES public.product_variants(tenant_id,id) ON DELETE CASCADE
 );
+ALTER TABLE public.inventory_external_references ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.inventory_external_references
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.inventory_movements definição
+-- public.inventory_movements definition
 
 -- Drop table
 
@@ -934,9 +1523,18 @@ CREATE TABLE public.inventory_movements (
 );
 CREATE UNIQUE INDEX inventory_movements_external_reference_idx ON public.inventory_movements USING btree (tenant_id, source_id, external_reference) WHERE ((source_id IS NOT NULL) AND (external_reference IS NOT NULL));
 CREATE INDEX inventory_movements_tenant_variant_occurred_idx ON public.inventory_movements USING btree (tenant_id, variant_id, occurred_at DESC);
+ALTER TABLE public.inventory_movements ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.inventory_movements
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.inventory_reservation_items definição
+-- public.inventory_reservation_items definition
 
 -- Drop table
 
@@ -955,9 +1553,18 @@ CREATE TABLE public.inventory_reservation_items (
 	CONSTRAINT inventory_reservation_items_tenant_id_reservation_id_fkey FOREIGN KEY (tenant_id,reservation_id) REFERENCES public.inventory_reservations(tenant_id,id) ON DELETE CASCADE,
 	CONSTRAINT inventory_reservation_items_tenant_id_variant_id_fkey FOREIGN KEY (tenant_id,variant_id) REFERENCES public.product_variants(tenant_id,id) ON DELETE RESTRICT
 );
+ALTER TABLE public.inventory_reservation_items ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.inventory_reservation_items
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.product_pack_items definição
+-- public.product_pack_items definition
 
 -- Drop table
 
@@ -975,9 +1582,18 @@ CREATE TABLE public.product_pack_items (
 	CONSTRAINT product_pack_items_pack_id_fkey FOREIGN KEY (pack_id) REFERENCES public.product_packs(id) ON DELETE CASCADE,
 	CONSTRAINT product_pack_items_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
 );
+ALTER TABLE public.product_pack_items ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.product_pack_items
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.audit_events definição
+-- public.audit_events definition
 
 -- Drop table
 
@@ -1005,9 +1621,23 @@ CREATE INDEX audit_events_tenant_action_idx ON public.audit_events USING btree (
 CREATE INDEX audit_events_tenant_actor_idx ON public.audit_events USING btree (tenant_id, actor_id, occurred_at DESC);
 CREATE INDEX audit_events_tenant_entity_idx ON public.audit_events USING btree (tenant_id, entity_type, entity_id, occurred_at DESC);
 CREATE INDEX audit_events_tenant_request_idx ON public.audit_events USING btree (tenant_id, request_id, occurred_at DESC);
+ALTER TABLE public.audit_events ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY audit_events_read ON public.audit_events
+ AS PERMISSIVE
+ FOR SELECT
+ TO ippa_app
+ USING ((tenant_id = app_tenant_id()));
+CREATE POLICY audit_events_insert ON public.audit_events
+ AS PERMISSIVE
+ FOR INSERT
+ TO ippa_app
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.client_account_confirmations definição
+-- public.client_account_confirmations definition
 
 -- Drop table
 
@@ -1026,9 +1656,18 @@ CREATE TABLE public.client_account_confirmations (
 	CONSTRAINT client_account_confirmations_token_hash_key UNIQUE (token_hash)
 );
 CREATE INDEX client_account_confirmations_token_idx ON public.client_account_confirmations USING btree (token_hash);
+ALTER TABLE public.client_account_confirmations ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.client_account_confirmations
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.client_cart_items definição
+-- public.client_cart_items definition
 
 -- Drop table
 
@@ -1045,9 +1684,18 @@ CREATE TABLE public.client_cart_items (
 	CONSTRAINT client_cart_items_pkey PRIMARY KEY (id),
 	CONSTRAINT client_cart_items_tenant_id_client_id_cart_key_key UNIQUE (tenant_id, client_id, cart_key)
 );
+ALTER TABLE public.client_cart_items ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.client_cart_items
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.clients definição
+-- public.clients definition
 
 -- Drop table
 
@@ -1075,9 +1723,52 @@ CREATE TABLE public.clients (
 	CONSTRAINT clients_tenant_document_unique UNIQUE (tenant_id, cpf_cnpj)
 );
 CREATE INDEX clients_tenant_name_idx ON public.clients USING btree (tenant_id, name);
+ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.clients
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.notification_subscriptions definição
+-- public.commercial_group_members definition
+
+-- Drop table
+
+-- DROP TABLE public.commercial_group_members;
+
+CREATE TABLE public.commercial_group_members (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NOT NULL,
+	group_id uuid NOT NULL,
+	client_id uuid NOT NULL,
+	is_primary bool DEFAULT false NOT NULL,
+	is_active bool DEFAULT true NOT NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	updated_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT commercial_group_members_pkey PRIMARY KEY (id),
+	CONSTRAINT commercial_group_members_tenant_id_group_id_client_id_key UNIQUE (tenant_id, group_id, client_id)
+);
+CREATE UNIQUE INDEX commercial_group_members_client_active_unique ON public.commercial_group_members USING btree (tenant_id, client_id) WHERE is_active;
+CREATE INDEX commercial_group_members_client_idx ON public.commercial_group_members USING btree (tenant_id, client_id);
+CREATE INDEX commercial_group_members_group_idx ON public.commercial_group_members USING btree (tenant_id, group_id);
+CREATE UNIQUE INDEX commercial_group_members_group_primary_unique ON public.commercial_group_members USING btree (tenant_id, group_id) WHERE (is_primary AND is_active);
+ALTER TABLE public.commercial_group_members ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY commercial_group_members_tenant_isolation ON public.commercial_group_members
+ AS PERMISSIVE
+ FOR ALL
+ TO ippa_app
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+
+-- public.notification_subscriptions definition
 
 -- Drop table
 
@@ -1101,9 +1792,19 @@ CREATE TABLE public.notification_subscriptions (
 	CONSTRAINT notification_subscriptions_tenant_id_installation_id_key UNIQUE (tenant_id, installation_id)
 );
 CREATE INDEX notification_subscriptions_user_active_idx ON public.notification_subscriptions USING btree (tenant_id, user_id) WHERE active;
+ALTER TABLE public.notification_subscriptions ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY notification_subscriptions_tenant_isolation ON public.notification_subscriptions
+ AS PERMISSIVE
+ FOR ALL
+ TO ippa_app
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.notifications definição
+-- public.notifications definition
 
 -- Drop table
 
@@ -1140,9 +1841,19 @@ CREATE TABLE public.notifications (
 CREATE INDEX notifications_dispatch_idx ON public.notifications USING btree (tenant_id, delivery_status, next_attempt_at) WHERE ((delivery_status)::text = ANY ((ARRAY['pending'::character varying, 'processing'::character varying])::text[]));
 CREATE INDEX notifications_inbox_idx ON public.notifications USING btree (tenant_id, user_id, created_at DESC);
 CREATE INDEX notifications_unread_idx ON public.notifications USING btree (tenant_id, user_id, created_at DESC) WHERE (read_at IS NULL);
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY notifications_tenant_isolation ON public.notifications
+ AS PERMISSIVE
+ FOR ALL
+ TO ippa_app
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.order_books definição
+-- public.order_books definition
 
 -- Drop table
 
@@ -1162,9 +1873,83 @@ CREATE TABLE public.order_books (
 );
 CREATE UNIQUE INDEX order_books_one_active_per_seller_idx ON public.order_books USING btree (tenant_id, seller_id) WHERE (is_active AND (status = 'aberto'::text));
 CREATE INDEX order_books_tenant_seller_updated_idx ON public.order_books USING btree (tenant_id, seller_id, updated_at DESC);
+ALTER TABLE public.order_books ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.order_books
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.order_items definição
+-- public.order_item_events definition
+
+-- Drop table
+
+-- DROP TABLE public.order_item_events;
+
+CREATE TABLE public.order_item_events (
+	id int8 GENERATED ALWAYS AS IDENTITY( INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854775807 START 1 CACHE 1 NO CYCLE) NOT NULL,
+	tenant_id uuid NOT NULL,
+	order_id uuid NOT NULL,
+	item_key text NOT NULL,
+	event_type text NOT NULL,
+	qty_delta int4 NOT NULL,
+	actor_id uuid NOT NULL,
+	actor_role public."user_role" NOT NULL,
+	occurred_at timestamptz DEFAULT now() NOT NULL,
+	metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+	CONSTRAINT order_item_events_event_type_check CHECK ((event_type = ANY (ARRAY['item_added'::text, 'item_removed'::text, 'qty_adjusted'::text]))),
+	CONSTRAINT order_item_events_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
+	CONSTRAINT order_item_events_pkey PRIMARY KEY (id),
+	CONSTRAINT order_item_events_qty_delta_check CHECK ((qty_delta <> 0))
+);
+CREATE INDEX order_item_events_order_idx ON public.order_item_events USING btree (tenant_id, order_id, occurred_at DESC);
+ALTER TABLE public.order_item_events ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.order_item_events
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+
+-- public.order_item_fulfillment_events definition
+
+-- Drop table
+
+-- DROP TABLE public.order_item_fulfillment_events;
+
+CREATE TABLE public.order_item_fulfillment_events (
+	id int8 GENERATED ALWAYS AS IDENTITY( INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854775807 START 1 CACHE 1 NO CYCLE) NOT NULL,
+	tenant_id uuid NOT NULL,
+	order_id uuid NOT NULL,
+	item_key text NOT NULL,
+	qty_delta int4 NOT NULL,
+	external_reference text NULL,
+	occurred_at timestamptz DEFAULT now() NOT NULL,
+	metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+	CONSTRAINT order_item_fulfillment_events_metadata_check CHECK ((jsonb_typeof(metadata) = 'object'::text)),
+	CONSTRAINT order_item_fulfillment_events_pkey PRIMARY KEY (id),
+	CONSTRAINT order_item_fulfillment_events_qty_delta_check CHECK ((qty_delta <> 0))
+);
+CREATE INDEX order_item_fulfillment_events_order_idx ON public.order_item_fulfillment_events USING btree (tenant_id, order_id, occurred_at DESC);
+ALTER TABLE public.order_item_fulfillment_events ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.order_item_fulfillment_events
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+
+-- public.order_items definition
 
 -- Drop table
 
@@ -1177,11 +1962,28 @@ CREATE TABLE public.order_items (
 	item_key text NOT NULL,
 	product_id uuid NULL,
 	"snapshot" jsonb NOT NULL,
-	CONSTRAINT order_items_pkey PRIMARY KEY (id)
+	variant_id uuid NULL,
+	qty int4 NOT NULL,
+	unit_price numeric(12, 2) NULL,
+	qty_separated int4 DEFAULT 0 NOT NULL,
+	CONSTRAINT order_items_pkey PRIMARY KEY (id),
+	CONSTRAINT order_items_qty_check CHECK ((qty > 0)),
+	CONSTRAINT order_items_qty_separated_check CHECK ((qty_separated >= 0)),
+	CONSTRAINT order_items_tenant_id_order_id_item_key_key UNIQUE (tenant_id, order_id, item_key),
+	CONSTRAINT order_items_unit_price_check CHECK ((unit_price >= (0)::numeric))
 );
+ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.order_items
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.order_session_items definição
+-- public.order_session_items definition
 
 -- Drop table
 
@@ -1197,9 +1999,18 @@ CREATE TABLE public.order_session_items (
 	CONSTRAINT order_session_items_pkey PRIMARY KEY (id),
 	CONSTRAINT order_session_items_tenant_id_session_id_item_key_key UNIQUE (tenant_id, session_id, item_key)
 );
+ALTER TABLE public.order_session_items ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.order_session_items
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.order_session_participants definição
+-- public.order_session_participants definition
 
 -- Drop table
 
@@ -1219,9 +2030,18 @@ CREATE TABLE public.order_session_participants (
 	CONSTRAINT order_session_participants_tenant_id_order_session_id_user__key UNIQUE (tenant_id, order_session_id, user_id)
 );
 CREATE INDEX order_session_participants_session_idx ON public.order_session_participants USING btree (tenant_id, order_session_id, last_joined_at DESC);
+ALTER TABLE public.order_session_participants ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.order_session_participants
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.order_sessions definição
+-- public.order_sessions definition
 
 -- Drop table
 
@@ -1242,14 +2062,25 @@ CREATE TABLE public.order_sessions (
 	created_at timestamptz DEFAULT now() NOT NULL,
 	updated_at timestamptz DEFAULT now() NOT NULL,
 	order_book_id uuid NOT NULL,
+	order_id uuid NULL,
 	CONSTRAINT order_sessions_payment_token_hash_key UNIQUE (payment_token_hash),
 	CONSTRAINT order_sessions_pkey PRIMARY KEY (id)
 );
+CREATE INDEX order_sessions_order_idx ON public.order_sessions USING btree (tenant_id, order_id) WHERE (order_id IS NOT NULL);
 CREATE INDEX order_sessions_tenant_book_status_idx ON public.order_sessions USING btree (tenant_id, order_book_id, status, updated_at DESC);
 CREATE INDEX order_sessions_tenant_seller_status_idx ON public.order_sessions USING btree (tenant_id, seller_id, status);
+ALTER TABLE public.order_sessions ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.order_sessions
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.orders definição
+-- public.orders definition
 
 -- Drop table
 
@@ -1267,14 +2098,108 @@ CREATE TABLE public.orders (
 	payment_method text NULL,
 	discount jsonb NULL,
 	created_at timestamptz DEFAULT now() NOT NULL,
+	status text DEFAULT 'novo'::text NOT NULL,
+	updated_at timestamptz DEFAULT now() NOT NULL,
+	order_number int4 NOT NULL,
 	CONSTRAINT orders_pkey PRIMARY KEY (id),
+	CONSTRAINT orders_status_check CHECK ((status = ANY (ARRAY['aberto'::text, 'aguardando_pagamento'::text, 'novo'::text, 'separado'::text, 'pago'::text, 'cancelado'::text]))),
 	CONSTRAINT orders_total_check CHECK ((total >= (0)::numeric))
 );
 CREATE INDEX orders_tenant_client_idx ON public.orders USING btree (tenant_id, client_id, created_at DESC);
+CREATE INDEX orders_tenant_client_paid_created_idx ON public.orders USING btree (tenant_id, client_id, created_at DESC) WHERE (status = 'pago'::text);
+CREATE UNIQUE INDEX orders_tenant_order_number_key ON public.orders USING btree (tenant_id, order_number);
+CREATE INDEX orders_tenant_paid_created_idx ON public.orders USING btree (tenant_id, created_at DESC) WHERE (status = 'pago'::text);
 CREATE INDEX orders_tenant_seller_idx ON public.orders USING btree (tenant_id, seller_id, created_at DESC);
+ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.orders
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.realtime_tickets definição
+-- public.provider_order_attempts definition
+
+-- Drop table
+
+-- DROP TABLE public.provider_order_attempts;
+
+CREATE TABLE public.provider_order_attempts (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NOT NULL,
+	provider_order_id uuid NOT NULL,
+	order_id uuid NOT NULL,
+	provider text NOT NULL,
+	attempt_number int4 NOT NULL,
+	outcome text NOT NULL,
+	external_id text NULL,
+	"error" text NULL,
+	payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+	response jsonb DEFAULT '{}'::jsonb NOT NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT provider_order_attempts_outcome_check CHECK ((outcome = ANY (ARRAY['sent'::text, 'failed'::text, 'retry_pending'::text, 'retry_cancelling'::text]))),
+	CONSTRAINT provider_order_attempts_payload_check CHECK ((jsonb_typeof(payload) = 'object'::text)),
+	CONSTRAINT provider_order_attempts_pkey PRIMARY KEY (id),
+	CONSTRAINT provider_order_attempts_response_check CHECK ((jsonb_typeof(response) = 'object'::text))
+);
+CREATE INDEX provider_order_attempts_order_idx ON public.provider_order_attempts USING btree (tenant_id, order_id, created_at DESC);
+ALTER TABLE public.provider_order_attempts ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY provider_order_attempts_tenant_isolation ON public.provider_order_attempts
+ AS PERMISSIVE
+ FOR ALL
+ TO ippa_app
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+
+-- public.provider_orders definition
+
+-- Drop table
+
+-- DROP TABLE public.provider_orders;
+
+CREATE TABLE public.provider_orders (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NOT NULL,
+	integration_id uuid NOT NULL,
+	order_id uuid NOT NULL,
+	provider text NOT NULL,
+	external_id text NULL,
+	status text DEFAULT 'pending'::text NOT NULL,
+	attempts int4 DEFAULT 0 NOT NULL,
+	next_attempt_at timestamptz DEFAULT now() NOT NULL,
+	payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+	response jsonb DEFAULT '{}'::jsonb NOT NULL,
+	last_error text NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	updated_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT provider_orders_attempts_check CHECK ((attempts >= 0)),
+	CONSTRAINT provider_orders_payload_check CHECK ((jsonb_typeof(payload) = 'object'::text)),
+	CONSTRAINT provider_orders_pkey PRIMARY KEY (id),
+	CONSTRAINT provider_orders_response_check CHECK ((jsonb_typeof(response) = 'object'::text)),
+	CONSTRAINT provider_orders_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'processing'::text, 'cancelling'::text, 'sent'::text, 'failed'::text, 'cancelled'::text]))),
+	CONSTRAINT provider_orders_tenant_id_order_id_key UNIQUE (tenant_id, order_id)
+);
+CREATE INDEX provider_orders_dispatch_idx ON public.provider_orders USING btree (tenant_id, status, next_attempt_at) WHERE (status = ANY (ARRAY['pending'::text, 'cancelling'::text]));
+ALTER TABLE public.provider_orders ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY provider_orders_tenant_isolation ON public.provider_orders
+ AS PERMISSIVE
+ FOR ALL
+ TO ippa_app
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+
+-- public.realtime_tickets definition
 
 -- Drop table
 
@@ -1294,9 +2219,18 @@ CREATE TABLE public.realtime_tickets (
 );
 CREATE INDEX realtime_tickets_session_idx ON public.realtime_tickets USING btree (order_session_id);
 CREATE UNIQUE INDEX realtime_tickets_token_hash_idx ON public.realtime_tickets USING btree (token_hash);
+ALTER TABLE public.realtime_tickets ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.realtime_tickets
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.user_sessions definição
+-- public.user_sessions definition
 
 -- Drop table
 
@@ -1313,9 +2247,18 @@ CREATE TABLE public.user_sessions (
 	CONSTRAINT user_sessions_pkey PRIMARY KEY (id),
 	CONSTRAINT user_sessions_token_hash_key UNIQUE (token_hash)
 );
+ALTER TABLE public.user_sessions ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.user_sessions
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.users definição
+-- public.users definition
 
 -- Drop table
 
@@ -1333,102 +2276,147 @@ CREATE TABLE public.users (
 	created_at timestamptz DEFAULT now() NOT NULL,
 	updated_at timestamptz DEFAULT now() NOT NULL,
 	deleted_at timestamptz NULL,
+	avatar_key text NULL,
 	CONSTRAINT users_pkey PRIMARY KEY (id)
 );
 CREATE INDEX users_tenant_active_role_idx ON public.users USING btree (tenant_id, role) WHERE (deleted_at IS NULL);
 CREATE UNIQUE INDEX users_tenant_email_active_key ON public.users USING btree (tenant_id, email) WHERE (deleted_at IS NULL);
 CREATE INDEX users_tenant_role_idx ON public.users USING btree (tenant_id, role);
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.users
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.audit_events chaves estrangeiras
+-- public.audit_events foreign keys
 
 ALTER TABLE public.audit_events ADD CONSTRAINT audit_events_session_id_fkey FOREIGN KEY (session_id) REFERENCES public.user_sessions(id) ON DELETE SET NULL;
 ALTER TABLE public.audit_events ADD CONSTRAINT audit_events_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
 
 
--- public.client_account_confirmations chaves estrangeiras
+-- public.client_account_confirmations foreign keys
 
 ALTER TABLE public.client_account_confirmations ADD CONSTRAINT client_account_confirmations_client_id_fkey FOREIGN KEY (client_id) REFERENCES public.clients(id) ON DELETE CASCADE;
 ALTER TABLE public.client_account_confirmations ADD CONSTRAINT client_account_confirmations_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
 
 
--- public.client_cart_items chaves estrangeiras
+-- public.client_cart_items foreign keys
 
 ALTER TABLE public.client_cart_items ADD CONSTRAINT client_cart_items_client_id_fkey FOREIGN KEY (client_id) REFERENCES public.clients(id) ON DELETE CASCADE;
 ALTER TABLE public.client_cart_items ADD CONSTRAINT client_cart_items_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
 
 
--- public.clients chaves estrangeiras
+-- public.clients foreign keys
 
 ALTER TABLE public.clients ADD CONSTRAINT clients_last_seller_id_fkey FOREIGN KEY (last_seller_id) REFERENCES public.users(id) ON DELETE SET NULL;
 ALTER TABLE public.clients ADD CONSTRAINT clients_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
 
 
--- public.notification_subscriptions chaves estrangeiras
+-- public.commercial_group_members foreign keys
+
+ALTER TABLE public.commercial_group_members ADD CONSTRAINT commercial_group_members_client_id_fkey FOREIGN KEY (client_id) REFERENCES public.clients(id) ON DELETE CASCADE;
+ALTER TABLE public.commercial_group_members ADD CONSTRAINT commercial_group_members_group_id_fkey FOREIGN KEY (group_id) REFERENCES public.commercial_groups(id) ON DELETE CASCADE;
+ALTER TABLE public.commercial_group_members ADD CONSTRAINT commercial_group_members_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+-- public.notification_subscriptions foreign keys
 
 ALTER TABLE public.notification_subscriptions ADD CONSTRAINT notification_subscriptions_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.notification_subscriptions ADD CONSTRAINT notification_subscriptions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 
--- public.notifications chaves estrangeiras
+-- public.notifications foreign keys
 
 ALTER TABLE public.notifications ADD CONSTRAINT notifications_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.notifications ADD CONSTRAINT notifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 
--- public.order_books chaves estrangeiras
+-- public.order_books foreign keys
 
 ALTER TABLE public.order_books ADD CONSTRAINT order_books_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id) ON DELETE RESTRICT;
 ALTER TABLE public.order_books ADD CONSTRAINT order_books_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
 
 
--- public.order_items chaves estrangeiras
+-- public.order_item_events foreign keys
+
+ALTER TABLE public.order_item_events ADD CONSTRAINT order_item_events_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id) ON DELETE CASCADE;
+ALTER TABLE public.order_item_events ADD CONSTRAINT order_item_events_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+-- public.order_item_fulfillment_events foreign keys
+
+ALTER TABLE public.order_item_fulfillment_events ADD CONSTRAINT order_item_fulfillment_events_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id) ON DELETE CASCADE;
+ALTER TABLE public.order_item_fulfillment_events ADD CONSTRAINT order_item_fulfillment_events_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+-- public.order_items foreign keys
 
 ALTER TABLE public.order_items ADD CONSTRAINT order_items_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id) ON DELETE CASCADE;
 ALTER TABLE public.order_items ADD CONSTRAINT order_items_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.order_items ADD CONSTRAINT order_items_tenant_id_variant_id_fkey FOREIGN KEY (tenant_id,variant_id) REFERENCES public.product_variants(tenant_id,id) ON DELETE RESTRICT;
 
 
--- public.order_session_items chaves estrangeiras
+-- public.order_session_items foreign keys
 
 ALTER TABLE public.order_session_items ADD CONSTRAINT order_session_items_session_id_fkey FOREIGN KEY (session_id) REFERENCES public.order_sessions(id) ON DELETE CASCADE;
 ALTER TABLE public.order_session_items ADD CONSTRAINT order_session_items_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
 
 
--- public.order_session_participants chaves estrangeiras
+-- public.order_session_participants foreign keys
 
 ALTER TABLE public.order_session_participants ADD CONSTRAINT order_session_participants_order_session_id_fkey FOREIGN KEY (order_session_id) REFERENCES public.order_sessions(id) ON DELETE CASCADE;
 ALTER TABLE public.order_session_participants ADD CONSTRAINT order_session_participants_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
 
 
--- public.order_sessions chaves estrangeiras
+-- public.order_sessions foreign keys
 
 ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_client_id_fkey FOREIGN KEY (client_id) REFERENCES public.clients(id) ON DELETE SET NULL;
 ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_order_book_id_fkey FOREIGN KEY (order_book_id) REFERENCES public.order_books(id) ON DELETE RESTRICT;
+ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id) ON DELETE SET NULL;
 ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id) ON DELETE RESTRICT;
 ALTER TABLE public.order_sessions ADD CONSTRAINT order_sessions_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
 
 
--- public.orders chaves estrangeiras
+-- public.orders foreign keys
 
 ALTER TABLE public.orders ADD CONSTRAINT orders_client_id_fkey FOREIGN KEY (client_id) REFERENCES public.clients(id) ON DELETE SET NULL;
 ALTER TABLE public.orders ADD CONSTRAINT orders_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.users(id) ON DELETE SET NULL;
 ALTER TABLE public.orders ADD CONSTRAINT orders_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
 
 
--- public.realtime_tickets chaves estrangeiras
+-- public.provider_order_attempts foreign keys
+
+ALTER TABLE public.provider_order_attempts ADD CONSTRAINT provider_order_attempts_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id) ON DELETE CASCADE;
+ALTER TABLE public.provider_order_attempts ADD CONSTRAINT provider_order_attempts_provider_order_id_fkey FOREIGN KEY (provider_order_id) REFERENCES public.provider_orders(id) ON DELETE CASCADE;
+ALTER TABLE public.provider_order_attempts ADD CONSTRAINT provider_order_attempts_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+
+
+-- public.provider_orders foreign keys
+
+ALTER TABLE public.provider_orders ADD CONSTRAINT provider_orders_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id) ON DELETE CASCADE;
+ALTER TABLE public.provider_orders ADD CONSTRAINT provider_orders_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.provider_orders ADD CONSTRAINT provider_orders_tenant_id_integration_id_fkey FOREIGN KEY (tenant_id,integration_id) REFERENCES public.tenant_erp_integrations(tenant_id,id) ON DELETE CASCADE;
+
+
+-- public.realtime_tickets foreign keys
 
 ALTER TABLE public.realtime_tickets ADD CONSTRAINT realtime_tickets_order_session_id_fkey FOREIGN KEY (order_session_id) REFERENCES public.order_sessions(id) ON DELETE CASCADE;
 ALTER TABLE public.realtime_tickets ADD CONSTRAINT realtime_tickets_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.realtime_tickets ADD CONSTRAINT realtime_tickets_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 
--- public.user_sessions chaves estrangeiras
+-- public.user_sessions foreign keys
 
 ALTER TABLE public.user_sessions ADD CONSTRAINT user_sessions_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.user_sessions ADD CONSTRAINT user_sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 
--- public.users chaves estrangeiras
+-- public.users foreign keys
 
 ALTER TABLE public.users ADD CONSTRAINT users_client_id_fk FOREIGN KEY (client_id) REFERENCES public.clients(id) ON DELETE SET NULL;
 ALTER TABLE public.users ADD CONSTRAINT users_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE RESTRICT;
@@ -1441,6 +2429,7 @@ CREATE OR REPLACE FUNCTION public.app_role()
  RETURNS text
  LANGUAGE sql
  STABLE
+ SET search_path TO 'public', 'pg_temp'
 AS $function$ SELECT NULLIF(current_setting('app.role', true), '') $function$
 ;
 
@@ -1450,6 +2439,7 @@ CREATE OR REPLACE FUNCTION public.app_tenant_id()
  RETURNS uuid
  LANGUAGE sql
  STABLE
+ SET search_path TO 'public', 'pg_temp'
 AS $function$ SELECT NULLIF(current_setting('app.tenant_id', true), '')::uuid $function$
 ;
 
@@ -1459,6 +2449,7 @@ CREATE OR REPLACE FUNCTION public.app_user_id()
  RETURNS uuid
  LANGUAGE sql
  STABLE
+ SET search_path TO 'public', 'pg_temp'
 AS $function$ SELECT NULLIF(current_setting('app.user_id', true), '')::uuid $function$
 ;
 
@@ -1516,18 +2507,18 @@ CREATE OR REPLACE FUNCTION public.decrypt_iv(bytea, bytea, bytea, text)
 AS '$libdir/pgcrypto', $function$pg_decrypt_iv$function$
 ;
 
--- DROP FUNCTION public.digest(text, text);
+-- DROP FUNCTION public.digest(bytea, text);
 
-CREATE OR REPLACE FUNCTION public.digest(text, text)
+CREATE OR REPLACE FUNCTION public.digest(bytea, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
 AS '$libdir/pgcrypto', $function$pg_digest$function$
 ;
 
--- DROP FUNCTION public.digest(bytea, text);
+-- DROP FUNCTION public.digest(text, text);
 
-CREATE OR REPLACE FUNCTION public.digest(bytea, text)
+CREATE OR REPLACE FUNCTION public.digest(text, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1588,18 +2579,18 @@ CREATE OR REPLACE FUNCTION public.gen_salt(text, integer)
 AS '$libdir/pgcrypto', $function$pg_gen_salt_rounds$function$
 ;
 
--- DROP FUNCTION public.hmac(text, text, text);
+-- DROP FUNCTION public.hmac(bytea, bytea, text);
 
-CREATE OR REPLACE FUNCTION public.hmac(text, text, text)
+CREATE OR REPLACE FUNCTION public.hmac(bytea, bytea, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
 AS '$libdir/pgcrypto', $function$pg_hmac$function$
 ;
 
--- DROP FUNCTION public.hmac(bytea, bytea, text);
+-- DROP FUNCTION public.hmac(text, text, text);
 
-CREATE OR REPLACE FUNCTION public.hmac(bytea, bytea, text)
+CREATE OR REPLACE FUNCTION public.hmac(text, text, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1660,18 +2651,18 @@ CREATE OR REPLACE FUNCTION public.pgp_pub_decrypt_bytea(bytea, bytea, text, text
 AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
 ;
 
--- DROP FUNCTION public.pgp_pub_decrypt_bytea(bytea, bytea);
+-- DROP FUNCTION public.pgp_pub_decrypt_bytea(bytea, bytea, text);
 
-CREATE OR REPLACE FUNCTION public.pgp_pub_decrypt_bytea(bytea, bytea)
+CREATE OR REPLACE FUNCTION public.pgp_pub_decrypt_bytea(bytea, bytea, text)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
 AS '$libdir/pgcrypto', $function$pgp_pub_decrypt_bytea$function$
 ;
 
--- DROP FUNCTION public.pgp_pub_decrypt_bytea(bytea, bytea, text);
+-- DROP FUNCTION public.pgp_pub_decrypt_bytea(bytea, bytea);
 
-CREATE OR REPLACE FUNCTION public.pgp_pub_decrypt_bytea(bytea, bytea, text)
+CREATE OR REPLACE FUNCTION public.pgp_pub_decrypt_bytea(bytea, bytea)
  RETURNS bytea
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT
@@ -1696,18 +2687,18 @@ CREATE OR REPLACE FUNCTION public.pgp_pub_encrypt(text, bytea)
 AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_text$function$
 ;
 
--- DROP FUNCTION public.pgp_pub_encrypt_bytea(bytea, bytea, text);
+-- DROP FUNCTION public.pgp_pub_encrypt_bytea(bytea, bytea);
 
-CREATE OR REPLACE FUNCTION public.pgp_pub_encrypt_bytea(bytea, bytea, text)
+CREATE OR REPLACE FUNCTION public.pgp_pub_encrypt_bytea(bytea, bytea)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
 AS '$libdir/pgcrypto', $function$pgp_pub_encrypt_bytea$function$
 ;
 
--- DROP FUNCTION public.pgp_pub_encrypt_bytea(bytea, bytea);
+-- DROP FUNCTION public.pgp_pub_encrypt_bytea(bytea, bytea, text);
 
-CREATE OR REPLACE FUNCTION public.pgp_pub_encrypt_bytea(bytea, bytea)
+CREATE OR REPLACE FUNCTION public.pgp_pub_encrypt_bytea(bytea, bytea, text)
  RETURNS bytea
  LANGUAGE c
  PARALLEL SAFE STRICT
@@ -1784,4 +2775,25 @@ CREATE OR REPLACE FUNCTION public.pgp_sym_encrypt_bytea(bytea, text)
  LANGUAGE c
  PARALLEL SAFE STRICT
 AS '$libdir/pgcrypto', $function$pgp_sym_encrypt_bytea$function$
+;
+
+-- DROP FUNCTION public.prevent_ai_tool_prompt_version_content_update();
+
+CREATE OR REPLACE FUNCTION public.prevent_ai_tool_prompt_version_content_update()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+BEGIN
+  IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+     OR NEW.tool_key IS DISTINCT FROM OLD.tool_key
+     OR NEW.version IS DISTINCT FROM OLD.version
+     OR NEW.instructions IS DISTINCT FROM OLD.instructions
+     OR NEW.created_by_platform_user_id IS DISTINCT FROM OLD.created_by_platform_user_id
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'AI prompt version content is immutable';
+  END IF;
+  RETURN NEW;
+END;
+$function$
 ;

@@ -144,9 +144,20 @@ export interface TotvsModaRepresentativeSearchOptions extends TotvsModaPersonSea
 // DocumentInputType (docs/erp/totvsmoda/sales-order.json) — forma de
 // pagamento de uma parcela em PaymentInDto.
 export type TotvsModaDocumentType =
-    | "InvoiceMarketplace" | "Cash" | "Billet" | "CreditCard" | "DebitCard"
-    | "RecebimentoPdv" | "Paypal" | "ReceiptCheck" | "Credev" | "Invoice"
-    | "Advance" | "Voucher" | "Pix" | "PicPay";
+    | "InvoiceMarketplace"
+    | "Cash"
+    | "Billet"
+    | "CreditCard"
+    | "DebitCard"
+    | "RecebimentoPdv"
+    | "Paypal"
+    | "ReceiptCheck"
+    | "Credev"
+    | "Invoice"
+    | "Advance"
+    | "Voucher"
+    | "Pix"
+    | "PicPay";
 
 // ItemInDto (só os campos que mapper.ts preenche — a lista completa aceita
 // bem mais, ver a doc).
@@ -408,36 +419,62 @@ export class TotvsModaClient {
             filter: {
                 change: options.updatedSince
                     ? {
-                        startDate: options.updatedSince,
-                        endDate: options.changedUntil,
-                        inProduct: options.includeCatalogChanges || undefined,
-                        inBranchInfo: options.includeCatalogChanges || undefined,
-                        branchInfoCodeList: options.includeCatalogChanges ? [this.credentials.branchCode] : undefined,
-                        inPrice: options.includeCatalogChanges || undefined,
-                        inPromotionalPrice: options.includeCatalogChanges || undefined,
-                        inScheduledPrice: options.includeCatalogChanges || undefined,
-                        inDigitalPromotionPrice: options.includeCatalogChanges || undefined,
-                        branchPriceCodeList: options.includeCatalogChanges ? [this.credentials.branchCode] : undefined,
-                        priceCodeList: options.includeCatalogChanges ? this.credentials.priceCodeList : undefined,
-                        inStock: options.includeCatalogChanges || undefined,
-                        branchStockCodeList: options.includeCatalogChanges ? [this.credentials.branchCode] : undefined,
-                        stockCodeList: options.includeCatalogChanges ? this.credentials.stockCodeList : undefined,
-                        inBarCode: options.includeCatalogChanges || undefined,
-                        inWebInfo: options.includeCatalogChanges || undefined,
-                    }
+                          startDate: options.updatedSince,
+                          endDate: options.changedUntil,
+                          inProduct: options.includeCatalogChanges || undefined,
+                          inBranchInfo:
+                              options.includeCatalogChanges || undefined,
+                          branchInfoCodeList: options.includeCatalogChanges
+                              ? [this.credentials.branchCode]
+                              : undefined,
+                          inPrice: options.includeCatalogChanges || undefined,
+                          inPromotionalPrice:
+                              options.includeCatalogChanges || undefined,
+                          inScheduledPrice:
+                              options.includeCatalogChanges || undefined,
+                          inDigitalPromotionPrice:
+                              options.includeCatalogChanges || undefined,
+                          branchPriceCodeList: options.includeCatalogChanges
+                              ? [this.credentials.branchCode]
+                              : undefined,
+                          priceCodeList: options.includeCatalogChanges
+                              ? this.credentials.priceCodeList
+                              : undefined,
+                          inStock: options.includeCatalogChanges || undefined,
+                          branchStockCodeList: options.includeCatalogChanges
+                              ? [this.credentials.branchCode]
+                              : undefined,
+                          stockCodeList: options.includeCatalogChanges
+                              ? this.credentials.stockCodeList
+                              : undefined,
+                          inBarCode: options.includeCatalogChanges || undefined,
+                          inWebInfo: options.includeCatalogChanges || undefined,
+                      }
                     : undefined,
                 productCodeList: options.productCodeList,
                 referenceCodeList: options.referenceCodeList,
                 // Catálogo do TOTVS mistura produto acabado (vendável) com
                 // matéria-prima/componente de ficha técnica sob o mesmo
-                // endpoint (ver ProductFilterModel.isFinishedProduct em
-                // docs/erp/totvsmoda/products.json) -- este provider só
+                // endpoint. isFinishedProduct é campo de branchInfo
+                // (ProductBranchInfoFilterModel), não da raiz de
+                // ProductFilterModel -- ver docs/erp/totvsmoda/products.json,
+                // schema ProductFilterModel.branchInfo. Este provider só
                 // publica produto de venda, então filtra na origem em vez de
                 // trazer e descartar depois.
-                isFinishedProduct: true,
-                classifications: options.classificationTypeCode !== undefined && options.classificationCodes?.length
-                    ? [{ type: options.classificationTypeCode, codeList: options.classificationCodes }]
-                    : undefined,
+                branchInfo: {
+                    branchCode: this.credentials.branchCode,
+                    isFinishedProduct: true,
+                },
+                classifications:
+                    options.classificationTypeCode !== undefined &&
+                    options.classificationCodes?.length
+                        ? [
+                              {
+                                  type: options.classificationTypeCode,
+                                  codeList: options.classificationCodes,
+                              },
+                          ]
+                        : undefined,
             },
             option: { branchInfoCode: this.credentials.branchCode },
             page: options.page,
@@ -520,14 +557,23 @@ export class TotvsModaClient {
     // venda. orderCode (o id que o TOTVS atribui) precisa vir preenchido —
     // sem ele não há "id do ERP" nenhum pra guardar, então uma resposta 201
     // sem orderCode é tratada como formato inválido, não como sucesso.
-    async createB2COrder(payload: TotvsModaOrderInput): Promise<TotvsModaOrderOutput> {
+    async createB2COrder(
+        payload: TotvsModaOrderInput,
+    ): Promise<TotvsModaOrderOutput> {
         const result = await this.request<TotvsModaOrderOutput>(
             "POST",
             B2C_ORDERS_PATH,
             "createB2COrder",
             { jsonBody: payload },
-        ).catch((exc) => { throw toOrderRequestError(exc); });
-        if (!result || typeof result !== "object" || result.orderCode === undefined || result.orderCode === null) {
+        ).catch((exc) => {
+            throw toOrderRequestError(exc);
+        });
+        if (
+            !result ||
+            typeof result !== "object" ||
+            result.orderCode === undefined ||
+            result.orderCode === null
+        ) {
             throw new TotvsModaResponseError(
                 "TOTVS Moda não retornou orderCode ao criar o pedido.",
                 { payload: result },
@@ -542,12 +588,11 @@ export class TotvsModaClient {
     // TotvsModaOrderRejectedError (ver toOrderRequestError), não uma falha
     // passageira.
     async cancelOrder(payload: TotvsModaCancelOrderInput): Promise<void> {
-        await this.request<unknown>(
-            "POST",
-            ORDERS_CANCEL_PATH,
-            "cancelOrder",
-            { jsonBody: payload },
-        ).catch((exc) => { throw toOrderRequestError(exc); });
+        await this.request<unknown>("POST", ORDERS_CANCEL_PATH, "cancelOrder", {
+            jsonBody: payload,
+        }).catch((exc) => {
+            throw toOrderRequestError(exc);
+        });
     }
 
     // IndividualSearchInDto: filter.cpfList busca pessoas físicas por CPF —
