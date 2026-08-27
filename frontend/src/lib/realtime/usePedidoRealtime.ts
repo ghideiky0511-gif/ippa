@@ -39,7 +39,7 @@ interface SocketWaiter {
 export interface PedidoRealtimeConnection {
   // Frete não passa mais por aqui -- é escolhido via POST
   // /sessions/:id/freight-quotes (ver @/lib/shipping.selectFreightQuote).
-  updateSession: (changes: Partial<Pick<OrderSession, 'items'>>) => Promise<void>;
+  updateSession: (changes: { itemsDelta: { set: CartItem[]; del: string[] } }) => Promise<void>;
   createCustomerSession: (items: CartItem[]) => Promise<{
     session: OrderSession | null;
     pendingAssignment: boolean;
@@ -254,7 +254,7 @@ export function usePedidoRealtime({ sessionId, onSession, onPresence, onParticip
   }, [allowCustomerSessionCreation, sessionId, tenant.slug]);
 
   return useMemo(() => ({
-    async updateSession(changes: Partial<Pick<OrderSession, 'items'>>) {
+    async updateSession(changes: { itemsDelta: { set: CartItem[]; del: string[] } }) {
       await emitWithAck<{ ok: boolean; motivo?: string }>('atualizar_sessao', changes);
     },
     async createCustomerSession(items: CartItem[]) {

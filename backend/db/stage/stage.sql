@@ -53,15 +53,21 @@ CREATE TYPE public."banner_media_type" AS ENUM (
 	'image',
 	'video');
 
+-- DROP TYPE public.discount_source;
+
+CREATE TYPE public.discount_source AS ENUM (
+	'manual',
+	'erp');
+
 -- DROP TYPE public."discount_type";
 
 CREATE TYPE public."discount_type" AS ENUM (
 	'quantity',
 	'products');
 
--- DROP TYPE public.freight_provider_kind;
+-- DROP TYPE public."freight_provider_kind";
 
-CREATE TYPE public.freight_provider_kind AS ENUM (
+CREATE TYPE public."freight_provider_kind" AS ENUM (
 	'pickup',
 	'fixed',
 	'carrier');
@@ -115,9 +121,20 @@ CREATE TYPE public."order_channel" AS ENUM (
 	'whatsapp',
 	'online');
 
--- DROP TYPE public.order_freight_status;
+-- DROP TYPE public."order_freight_method";
 
-CREATE TYPE public.order_freight_status AS ENUM (
+CREATE TYPE public."order_freight_method" AS ENUM (
+	'transportadora',
+	'correios',
+	'excursao',
+	'loja_vizinha',
+	'retirada_local',
+	'motoboy',
+	'entrega_propria');
+
+-- DROP TYPE public."order_freight_status";
+
+CREATE TYPE public."order_freight_status" AS ENUM (
 	'aguardando',
 	'etiqueta_emitida',
 	'em_transporte',
@@ -125,16 +142,16 @@ CREATE TYPE public.order_freight_status AS ENUM (
 	'devolvido',
 	'cancelado');
 
--- DROP TYPE public.payment_charge_method;
+-- DROP TYPE public."payment_charge_method";
 
-CREATE TYPE public.payment_charge_method AS ENUM (
+CREATE TYPE public."payment_charge_method" AS ENUM (
 	'pix',
 	'boleto',
 	'cartao');
 
--- DROP TYPE public.payment_charge_status;
+-- DROP TYPE public."payment_charge_status";
 
-CREATE TYPE public.payment_charge_status AS ENUM (
+CREATE TYPE public."payment_charge_status" AS ENUM (
 	'pending',
 	'processing',
 	'authorized',
@@ -358,79 +375,6 @@ CREATE POLICY ai_tool_prompt_versions_tenant_read ON public.ai_tool_prompt_versi
  USING (((tenant_id = app_tenant_id()) AND (status = 'active'::text)));
 
 
--- public.classification_types definition
-
--- Drop table
-
--- DROP TABLE public.classification_types;
-
-CREATE TABLE public.classification_types (
-	id uuid DEFAULT gen_random_uuid() NOT NULL,
-	tenant_id uuid NOT NULL,
-	integration_id uuid NOT NULL,
-	external_code text NOT NULL,
-	"label" text NOT NULL,
-	auxiliary_label text NULL,
-	category_level int4 NULL,
-	active bool DEFAULT true NOT NULL,
-	created_at timestamptz DEFAULT now() NOT NULL,
-	updated_at timestamptz DEFAULT now() NOT NULL,
-	CONSTRAINT classification_types_pkey PRIMARY KEY (id),
-	CONSTRAINT classification_types_tenant_id_id_key UNIQUE (tenant_id, id),
-	CONSTRAINT classification_types_category_level_check CHECK ((category_level IS NULL) OR (category_level >= 1 AND category_level <= 3)),
-	CONSTRAINT classification_types_tenant_integration_external_code_key UNIQUE (tenant_id, integration_id, external_code),
-	CONSTRAINT classification_types_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
-);
-CREATE UNIQUE INDEX classification_types_tenant_integration_level_key ON public.classification_types USING btree (tenant_id, integration_id, category_level) WHERE (category_level IS NOT NULL);
-ALTER TABLE public.classification_types ENABLE ROW LEVEL SECURITY;
-
--- Table Policies
-
-CREATE POLICY tenant_isolation ON public.classification_types
- AS PERMISSIVE
- FOR ALL
- USING ((tenant_id = app_tenant_id()))
- WITH CHECK ((tenant_id = app_tenant_id()));
-
-
--- public.classifications definition
-
--- Drop table
-
--- DROP TABLE public.classifications;
-
-CREATE TABLE public.classifications (
-	id uuid DEFAULT gen_random_uuid() NOT NULL,
-	tenant_id uuid NOT NULL,
-	classification_type_id uuid NOT NULL,
-	parent_id uuid NULL,
-	external_code text NOT NULL,
-	"name" text NOT NULL,
-	auxiliary_name text NULL,
-	"position" int4 DEFAULT 0 NOT NULL,
-	active bool DEFAULT true NOT NULL,
-	created_at timestamptz DEFAULT now() NOT NULL,
-	updated_at timestamptz DEFAULT now() NOT NULL,
-	CONSTRAINT classifications_pkey PRIMARY KEY (id),
-	CONSTRAINT classifications_tenant_id_classification_type_id_parent_id_external_code_key UNIQUE NULLS NOT DISTINCT (tenant_id, classification_type_id, parent_id, external_code),
-	CONSTRAINT classifications_tenant_id_id_classification_type_id_key UNIQUE (tenant_id, id, classification_type_id),
-	CONSTRAINT classifications_tenant_id_id_key UNIQUE (tenant_id, id),
-	CONSTRAINT classifications_tenant_id_classification_type_id_fkey FOREIGN KEY (tenant_id,classification_type_id) REFERENCES public.classification_types(tenant_id,id) ON DELETE CASCADE,
-	CONSTRAINT classifications_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE,
-	CONSTRAINT classifications_tenant_id_parent_id_fkey FOREIGN KEY (tenant_id,parent_id) REFERENCES public.classifications(tenant_id,id) ON DELETE RESTRICT
-);
-CREATE INDEX classifications_tenant_type_parent_position_idx ON public.classifications USING btree (tenant_id, classification_type_id, parent_id, "position", name);
-ALTER TABLE public.classifications ENABLE ROW LEVEL SECURITY;
-
--- Table Policies
-
-CREATE POLICY tenant_isolation ON public.classifications
- AS PERMISSIVE
- FOR ALL
- USING ((tenant_id = app_tenant_id()))
- WITH CHECK ((tenant_id = app_tenant_id()));
-
-
 -- public.commercial_groups definition
 
 -- Drop table
@@ -503,34 +447,6 @@ CREATE POLICY tenant_isolation ON public.companies
  WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.discounts definition
-
--- Drop table
-
--- DROP TABLE public.discounts;
-
-CREATE TABLE public.discounts (
-	id uuid DEFAULT gen_random_uuid() NOT NULL,
-	tenant_id uuid NOT NULL,
-	"label" text NOT NULL,
-	active bool DEFAULT true NOT NULL,
-	"type" public."discount_type" NOT NULL,
-	"percent" numeric(5, 2) DEFAULT 0 NOT NULL,
-	CONSTRAINT discounts_percent_check CHECK (((percent >= (0)::numeric) AND (percent <= (100)::numeric))),
-	CONSTRAINT discounts_pkey PRIMARY KEY (id),
-	CONSTRAINT discounts_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
-);
-ALTER TABLE public.discounts ENABLE ROW LEVEL SECURITY;
-
--- Table Policies
-
-CREATE POLICY tenant_isolation ON public.discounts
- AS PERMISSIVE
- FOR ALL
- USING ((tenant_id = app_tenant_id()))
- WITH CHECK ((tenant_id = app_tenant_id()));
-
-
 -- public.external_api_request_log definition
 
 -- Drop table
@@ -585,7 +501,7 @@ CREATE TABLE public.freight_providers (
 	tenant_id uuid NOT NULL,
 	code text NOT NULL,
 	"name" text NOT NULL,
-	kind public.freight_provider_kind NOT NULL,
+	kind public."freight_provider_kind" NOT NULL,
 	active bool DEFAULT true NOT NULL,
 	"configuration" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	credentials jsonb DEFAULT '{}'::jsonb NOT NULL,
@@ -882,11 +798,6 @@ CREATE POLICY tenant_isolation ON public.tenant_erp_integrations
  USING ((tenant_id = app_tenant_id()))
  WITH CHECK ((tenant_id = app_tenant_id()));
 
-ALTER TABLE public.classification_types
-  ADD CONSTRAINT classification_types_tenant_integration_fkey
-  FOREIGN KEY (tenant_id, integration_id)
-  REFERENCES public.tenant_erp_integrations(tenant_id, id) ON DELETE CASCADE;
-
 
 -- public.tenant_order_counters definition
 
@@ -1112,56 +1023,110 @@ CREATE POLICY tenant_isolation ON public.catalog_sync_states
  WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.discount_products definition
+-- public.classification_types definition
 
 -- Drop table
 
--- DROP TABLE public.discount_products;
+-- DROP TABLE public.classification_types;
 
-CREATE TABLE public.discount_products (
+CREATE TABLE public.classification_types (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
 	tenant_id uuid NOT NULL,
-	discount_id uuid NOT NULL,
-	product_id uuid NOT NULL,
-	CONSTRAINT discount_products_pkey PRIMARY KEY (tenant_id, discount_id, product_id),
-	CONSTRAINT discount_products_discount_id_fkey FOREIGN KEY (discount_id) REFERENCES public.discounts(id) ON DELETE CASCADE,
-	CONSTRAINT discount_products_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE CASCADE,
-	CONSTRAINT discount_products_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
+	integration_id uuid NOT NULL,
+	external_code text NOT NULL,
+	"label" text NOT NULL,
+	auxiliary_label text NULL,
+	category_level int2 NULL,
+	active bool DEFAULT true NOT NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	updated_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT classification_types_category_level_check CHECK (((category_level >= 1) AND (category_level <= 3))),
+	CONSTRAINT classification_types_external_code_check CHECK ((btrim(external_code) <> ''::text)),
+	CONSTRAINT classification_types_label_check CHECK ((btrim(label) <> ''::text)),
+	CONSTRAINT classification_types_pkey PRIMARY KEY (id),
+	CONSTRAINT classification_types_tenant_id_id_key UNIQUE (tenant_id, id),
+	CONSTRAINT classification_types_tenant_id_integration_id_external_code_key UNIQUE (tenant_id, integration_id, external_code),
+	CONSTRAINT classification_types_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE,
+	CONSTRAINT classification_types_tenant_id_integration_id_fkey FOREIGN KEY (tenant_id,integration_id) REFERENCES public.tenant_erp_integrations(tenant_id,id) ON DELETE CASCADE
 );
-ALTER TABLE public.discount_products ENABLE ROW LEVEL SECURITY;
+CREATE UNIQUE INDEX classification_types_category_level_idx ON public.classification_types USING btree (tenant_id, integration_id, category_level) WHERE (category_level IS NOT NULL);
+ALTER TABLE public.classification_types ENABLE ROW LEVEL SECURITY;
 
 -- Table Policies
 
-CREATE POLICY tenant_isolation ON public.discount_products
+CREATE POLICY tenant_isolation ON public.classification_types
  AS PERMISSIVE
  FOR ALL
  USING ((tenant_id = app_tenant_id()))
  WITH CHECK ((tenant_id = app_tenant_id()));
 
 
--- public.discount_tiers definition
+-- public.classifications definition
 
 -- Drop table
 
--- DROP TABLE public.discount_tiers;
+-- DROP TABLE public.classifications;
 
-CREATE TABLE public.discount_tiers (
+CREATE TABLE public.classifications (
 	id uuid DEFAULT gen_random_uuid() NOT NULL,
 	tenant_id uuid NOT NULL,
-	discount_id uuid NOT NULL,
-	min_qty int4 NOT NULL,
-	"percent" numeric(5, 2) NOT NULL,
-	CONSTRAINT discount_tiers_min_qty_check CHECK ((min_qty > 0)),
-	CONSTRAINT discount_tiers_percent_check CHECK (((percent >= (0)::numeric) AND (percent <= (100)::numeric))),
-	CONSTRAINT discount_tiers_pkey PRIMARY KEY (id),
-	CONSTRAINT discount_tiers_tenant_id_discount_id_min_qty_key UNIQUE (tenant_id, discount_id, min_qty),
-	CONSTRAINT discount_tiers_discount_id_fkey FOREIGN KEY (discount_id) REFERENCES public.discounts(id) ON DELETE CASCADE,
-	CONSTRAINT discount_tiers_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
+	classification_type_id uuid NOT NULL,
+	parent_id uuid NULL,
+	external_code text NOT NULL,
+	"name" text NOT NULL,
+	auxiliary_name text NULL,
+	"position" int4 DEFAULT 0 NOT NULL,
+	active bool DEFAULT true NOT NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	updated_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT classifications_external_code_check CHECK ((btrim(external_code) <> ''::text)),
+	CONSTRAINT classifications_name_check CHECK ((btrim(name) <> ''::text)),
+	CONSTRAINT classifications_pkey PRIMARY KEY (id),
+	CONSTRAINT classifications_tenant_id_classification_type_id_parent_id__key UNIQUE NULLS NOT DISTINCT (tenant_id, classification_type_id, parent_id, external_code),
+	CONSTRAINT classifications_tenant_id_id_classification_type_id_key UNIQUE (tenant_id, id, classification_type_id),
+	CONSTRAINT classifications_tenant_id_id_key UNIQUE (tenant_id, id),
+	CONSTRAINT classifications_tenant_id_classification_type_id_fkey FOREIGN KEY (tenant_id,classification_type_id) REFERENCES public.classification_types(tenant_id,id) ON DELETE CASCADE,
+	CONSTRAINT classifications_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE,
+	CONSTRAINT classifications_tenant_id_parent_id_fkey FOREIGN KEY (tenant_id,parent_id) REFERENCES public.classifications(tenant_id,id) ON DELETE RESTRICT
 );
-ALTER TABLE public.discount_tiers ENABLE ROW LEVEL SECURITY;
+CREATE INDEX classifications_tenant_type_parent_position_idx ON public.classifications USING btree (tenant_id, classification_type_id, parent_id, "position", name);
+ALTER TABLE public.classifications ENABLE ROW LEVEL SECURITY;
 
 -- Table Policies
 
-CREATE POLICY tenant_isolation ON public.discount_tiers
+CREATE POLICY tenant_isolation ON public.classifications
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+
+-- public.discounts definition
+
+-- Drop table
+
+-- DROP TABLE public.discounts;
+
+CREATE TABLE public.discounts (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NOT NULL,
+	"label" text NOT NULL,
+	active bool DEFAULT true NOT NULL,
+	"type" public."discount_type" NOT NULL,
+	"percent" numeric(5, 2) DEFAULT 0 NOT NULL,
+	"source" public.discount_source DEFAULT 'manual'::discount_source NOT NULL,
+	product_id uuid NULL,
+	CONSTRAINT discounts_percent_check CHECK (((percent >= (0)::numeric) AND (percent <= (100)::numeric))),
+	CONSTRAINT discounts_pkey PRIMARY KEY (id),
+	CONSTRAINT discounts_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE CASCADE,
+	CONSTRAINT discounts_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX discounts_erp_product_unique ON public.discounts USING btree (tenant_id, product_id) WHERE (source = 'erp'::discount_source);
+ALTER TABLE public.discounts ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.discounts
  AS PERMISSIVE
  FOR ALL
  USING ((tenant_id = app_tenant_id()))
@@ -1419,6 +1384,7 @@ CREATE TABLE public.product_variants (
 	is_active bool DEFAULT true NOT NULL,
 	source_origin text DEFAULT 'manual'::text NOT NULL,
 	bootstrap_external_code text NULL,
+	updated_at timestamptz DEFAULT now() NOT NULL,
 	CONSTRAINT product_variants_pkey PRIMARY KEY (id),
 	CONSTRAINT product_variants_price_check CHECK ((price >= (0)::numeric)),
 	CONSTRAINT product_variants_source_origin_check CHECK ((source_origin = ANY (ARRAY['manual'::text, 'bootstrap'::text, 'erp'::text]))),
@@ -1436,29 +1402,6 @@ ALTER TABLE public.product_variants ENABLE ROW LEVEL SECURITY;
 -- Table Policies
 
 CREATE POLICY tenant_isolation ON public.product_variants
- AS PERMISSIVE
- FOR ALL
- USING ((tenant_id = app_tenant_id()))
- WITH CHECK ((tenant_id = app_tenant_id()));
-
--- public.variant_classifications definition
-
-CREATE TABLE public.variant_classifications (
-	tenant_id uuid NOT NULL,
-	variant_id uuid NOT NULL,
-	classification_id uuid NOT NULL,
-	classification_type_id uuid NOT NULL,
-	created_at timestamptz DEFAULT now() NOT NULL,
-	CONSTRAINT variant_classifications_pkey PRIMARY KEY (tenant_id, variant_id, classification_id),
-	CONSTRAINT variant_classifications_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE,
-	CONSTRAINT variant_classifications_tenant_variant_fkey FOREIGN KEY (tenant_id,variant_id) REFERENCES public.product_variants(tenant_id,id) ON DELETE CASCADE,
-	CONSTRAINT variant_classifications_tenant_classification_type_fkey FOREIGN KEY (tenant_id,classification_id,classification_type_id) REFERENCES public.classifications(tenant_id,id,classification_type_id) ON DELETE CASCADE
-);
-CREATE INDEX variant_classifications_variant_idx ON public.variant_classifications USING btree (tenant_id, variant_id);
-CREATE INDEX variant_classifications_type_idx ON public.variant_classifications USING btree (tenant_id, classification_type_id);
-CREATE INDEX variant_classifications_classification_idx ON public.variant_classifications USING btree (tenant_id, classification_id);
-ALTER TABLE public.variant_classifications ENABLE ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation ON public.variant_classifications
  AS PERMISSIVE
  FOR ALL
  USING ((tenant_id = app_tenant_id()))
@@ -1497,6 +1440,36 @@ CREATE POLICY tenant_isolation ON public.store_settings
  WITH CHECK ((tenant_id = app_tenant_id()));
 
 
+-- public.variant_classifications definition
+
+-- Drop table
+
+-- DROP TABLE public.variant_classifications;
+
+CREATE TABLE public.variant_classifications (
+	tenant_id uuid NOT NULL,
+	variant_id uuid NOT NULL,
+	classification_id uuid NOT NULL,
+	classification_type_id uuid NOT NULL,
+	created_at timestamptz DEFAULT now() NOT NULL,
+	CONSTRAINT variant_classifications_pkey PRIMARY KEY (tenant_id, variant_id, classification_id),
+	CONSTRAINT variant_classifications_tenant_id_classification_id_classi_fkey FOREIGN KEY (tenant_id,classification_id,classification_type_id) REFERENCES public.classifications(tenant_id,id,classification_type_id) ON DELETE CASCADE,
+	CONSTRAINT variant_classifications_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE,
+	CONSTRAINT variant_classifications_tenant_id_variant_id_fkey FOREIGN KEY (tenant_id,variant_id) REFERENCES public.product_variants(tenant_id,id) ON DELETE CASCADE
+);
+CREATE INDEX variant_classifications_classification_idx ON public.variant_classifications USING btree (tenant_id, classification_id, variant_id);
+CREATE INDEX variant_classifications_variant_type_idx ON public.variant_classifications USING btree (tenant_id, variant_id, classification_type_id);
+ALTER TABLE public.variant_classifications ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.variant_classifications
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+
 -- public.catalog_sync_items definition
 
 -- Drop table
@@ -1529,6 +1502,62 @@ ALTER TABLE public.catalog_sync_items ENABLE ROW LEVEL SECURITY;
 -- Table Policies
 
 CREATE POLICY tenant_isolation ON public.catalog_sync_items
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+
+-- public.discount_products definition
+
+-- Drop table
+
+-- DROP TABLE public.discount_products;
+
+CREATE TABLE public.discount_products (
+	tenant_id uuid NOT NULL,
+	discount_id uuid NOT NULL,
+	product_id uuid NOT NULL,
+	CONSTRAINT discount_products_pkey PRIMARY KEY (tenant_id, discount_id, product_id),
+	CONSTRAINT discount_products_discount_id_fkey FOREIGN KEY (discount_id) REFERENCES public.discounts(id) ON DELETE CASCADE,
+	CONSTRAINT discount_products_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE CASCADE,
+	CONSTRAINT discount_products_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
+);
+ALTER TABLE public.discount_products ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.discount_products
+ AS PERMISSIVE
+ FOR ALL
+ USING ((tenant_id = app_tenant_id()))
+ WITH CHECK ((tenant_id = app_tenant_id()));
+
+
+-- public.discount_tiers definition
+
+-- Drop table
+
+-- DROP TABLE public.discount_tiers;
+
+CREATE TABLE public.discount_tiers (
+	id uuid DEFAULT gen_random_uuid() NOT NULL,
+	tenant_id uuid NOT NULL,
+	discount_id uuid NOT NULL,
+	min_qty int4 NOT NULL,
+	"percent" numeric(5, 2) NOT NULL,
+	CONSTRAINT discount_tiers_min_qty_check CHECK ((min_qty > 0)),
+	CONSTRAINT discount_tiers_percent_check CHECK (((percent >= (0)::numeric) AND (percent <= (100)::numeric))),
+	CONSTRAINT discount_tiers_pkey PRIMARY KEY (id),
+	CONSTRAINT discount_tiers_tenant_id_discount_id_min_qty_key UNIQUE (tenant_id, discount_id, min_qty),
+	CONSTRAINT discount_tiers_discount_id_fkey FOREIGN KEY (discount_id) REFERENCES public.discounts(id) ON DELETE CASCADE,
+	CONSTRAINT discount_tiers_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE
+);
+ALTER TABLE public.discount_tiers ENABLE ROW LEVEL SECURITY;
+
+-- Table Policies
+
+CREATE POLICY tenant_isolation ON public.discount_tiers
  AS PERMISSIVE
  FOR ALL
  USING ((tenant_id = app_tenant_id()))
@@ -1949,7 +1978,7 @@ CREATE TABLE public.freight_quotes (
 	tenant_id uuid NOT NULL,
 	order_session_id uuid NOT NULL,
 	provider_id uuid NULL,
-	kind public.freight_provider_kind NOT NULL,
+	kind public."freight_provider_kind" NOT NULL,
 	"label" text NOT NULL,
 	price numeric(12, 2) NOT NULL,
 	eta_label text NULL,
@@ -2102,7 +2131,7 @@ CREATE TABLE public.order_freight_tracking_events (
 	id uuid DEFAULT gen_random_uuid() NOT NULL,
 	tenant_id uuid NOT NULL,
 	order_freight_id uuid NOT NULL,
-	status public.order_freight_status NOT NULL,
+	status public."order_freight_status" NOT NULL,
 	description text NULL,
 	occurred_at timestamptz DEFAULT now() NOT NULL,
 	raw_payload jsonb DEFAULT '{}'::jsonb NOT NULL,
@@ -2134,19 +2163,20 @@ CREATE TABLE public.order_freights (
 	order_id uuid NOT NULL,
 	provider_id uuid NULL,
 	quote_id uuid NULL,
-	kind public.freight_provider_kind NOT NULL,
+	kind public."freight_provider_kind" NOT NULL,
 	"label" text NOT NULL,
 	price numeric(12, 2) NOT NULL,
 	eta_label text NULL,
 	destination_cep text NULL,
 	tracking_code text NULL,
 	tracking_url text NULL,
-	status public.order_freight_status DEFAULT 'aguardando'::order_freight_status NOT NULL,
+	status public."order_freight_status" DEFAULT 'aguardando'::order_freight_status NOT NULL,
 	shipped_at timestamptz NULL,
 	delivered_at timestamptz NULL,
 	cancelled_at timestamptz NULL,
 	created_at timestamptz DEFAULT now() NOT NULL,
 	updated_at timestamptz DEFAULT now() NOT NULL,
+	"method" public."order_freight_method" NULL,
 	CONSTRAINT order_freights_pkey PRIMARY KEY (id),
 	CONSTRAINT order_freights_price_check CHECK ((price >= (0)::numeric)),
 	CONSTRAINT order_freights_tenant_id_id_key UNIQUE (tenant_id, id),
@@ -2344,7 +2374,7 @@ CREATE TABLE public.order_sessions (
 	order_id uuid NULL,
 	freight_quote_id uuid NULL,
 	freight_provider_id uuid NULL,
-	freight_kind public.freight_provider_kind NULL,
+	freight_kind public."freight_provider_kind" NULL,
 	freight_label text NULL,
 	freight_price numeric(12, 2) NULL,
 	freight_eta_label text NULL,
@@ -2422,8 +2452,8 @@ CREATE TABLE public.payment_charges (
 	provider text NOT NULL,
 	order_id uuid NOT NULL,
 	order_session_id uuid NULL,
-	"method" public.payment_charge_method NOT NULL,
-	status public.payment_charge_status DEFAULT 'pending'::payment_charge_status NOT NULL,
+	"method" public."payment_charge_method" NOT NULL,
+	status public."payment_charge_status" DEFAULT 'pending'::payment_charge_status NOT NULL,
 	amount numeric(12, 2) NOT NULL,
 	external_id text NULL,
 	external_status text NULL,

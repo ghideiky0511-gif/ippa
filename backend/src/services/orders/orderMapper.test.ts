@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { OrderSessionRow } from "@/models/ordersModel";
-import { diffCartItems, toOrderSession } from "./orderMapper";
+import { applyCartItemsDelta, diffCartItems, toOrderSession } from "./orderMapper";
 
 function fakeRow(overrides: Partial<OrderSessionRow> = {}): OrderSessionRow {
     return {
@@ -57,4 +57,25 @@ test("diffCartItems não marca nada quando nada mudou", () => {
     const { set, del } = diffCartItems(items, items);
     assert.deepEqual(set, []);
     assert.deepEqual(del, []);
+});
+
+test("applyCartItemsDelta é o inverso de diffCartItems", () => {
+    const before = [
+        { key: "a", id: "a", name: "Peça A", price: 10, qty: 1 },
+        { key: "b", id: "b", name: "Peça B", price: 20, qty: 2 },
+    ];
+    const after = [
+        { key: "a", id: "a", name: "Peça A", price: 10, qty: 3 },
+        { key: "c", id: "c", name: "Peça C", price: 30, qty: 1 },
+    ];
+    const delta = diffCartItems(before, after);
+    const resolved = applyCartItemsDelta(before, delta);
+    assert.deepEqual(resolved.map((item) => item.key).sort(), ["a", "c"]);
+    assert.deepEqual(resolved.find((item) => item.key === "a")?.qty, 3);
+});
+
+test("applyCartItemsDelta com delta vazio devolve a lista original", () => {
+    const items = [{ key: "a", id: "a", name: "Peça A", price: 10, qty: 1 }];
+    const resolved = applyCartItemsDelta(items, { set: [], del: [] });
+    assert.deepEqual(resolved, items);
 });

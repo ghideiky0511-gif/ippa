@@ -1,5 +1,6 @@
-import type { OrderBook, OrderSession, CartItem } from '@/domain/orders/types';
+import type { OrderBook, OrderSession } from '@/domain/orders/types';
 import type { RealtimeEvent } from '@/contracts/realtime';
+import { applyItemsDelta } from '@/lib/cartItemsDelta';
 
 /**
  * Regra de aplicação incremental dos eventos de `/atualizacoes` — substitui
@@ -14,13 +15,6 @@ import type { RealtimeEvent } from '@/contracts/realtime';
  */
 function isStale(localUpdatedAt: string, eventAt: string): boolean {
   return eventAt < localUpdatedAt;
-}
-
-function applyItemsDelta(items: CartItem[], set: CartItem[], del: readonly string[]): CartItem[] {
-  const byKey = new Map(items.map((item) => [item.key, item]));
-  for (const item of set) byKey.set(item.key, item);
-  for (const key of del) byKey.delete(key);
-  return Array.from(byKey.values());
 }
 
 export interface ListApplyResult {

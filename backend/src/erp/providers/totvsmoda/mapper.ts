@@ -101,6 +101,30 @@ function valueOfTotvsModaPrice(item: TotvsModaPriceItem): number | undefined {
     return validPrice(item.promotionalPrice) ?? validPrice(item.price);
 }
 
+// price = preço normal/cheio, sempre o que vai para products.price/
+// product_variants.price. promotionalPrice só aparece quando válido E menor
+// que o preço normal -- nunca substitui `price`, quem decide o que fazer com
+// a promoção é o chamador (ver catalogSyncService.processReference, que
+// grava como desconto "peças específicas", não como troca de preço base).
+export interface TotvsModaPriceSelection {
+    price: number;
+    promotionalPrice?: number;
+}
+
+function detailOfTotvsModaPrice(item: TotvsModaPriceItem): TotvsModaPriceSelection | undefined {
+    const price = validPrice(item.price);
+    const promotionalPrice = validPrice(item.promotionalPrice);
+    if (price === undefined) {
+        // Sem preço normal cadastrado: usa a promoção como valor único
+        // (mesmo fallback que o comportamento antigo tinha), já que não há
+        // preço "cheio" para comparar.
+        return promotionalPrice !== undefined ? { price: promotionalPrice } : undefined;
+    }
+    return promotionalPrice !== undefined && promotionalPrice < price
+        ? { price, promotionalPrice }
+        : { price };
+}
+
 /**
  * Escolhe o primeiro código configurado que realmente tenha valor. A API pode
  * devolver o item de um código solicitado com os campos de valor vazios; isso
@@ -109,18 +133,18 @@ function valueOfTotvsModaPrice(item: TotvsModaPriceItem): number | undefined {
 export function selectTotvsModaPrice(
     row: TotvsModaPriceRow,
     priceCodeList: number[],
-): number | undefined {
+): TotvsModaPriceSelection | undefined {
     for (const priceCode of priceCodeList) {
         const candidates =
             row.prices?.filter((item) => item.priceCode === priceCode) ?? [];
         for (const candidate of candidates) {
-            const value = valueOfTotvsModaPrice(candidate);
-            if (value !== undefined) return value;
+            const detail = detailOfTotvsModaPrice(candidate);
+            if (detail !== undefined) return detail;
         }
     }
     for (const candidate of row.prices ?? []) {
-        const value = valueOfTotvsModaPrice(candidate);
-        if (value !== undefined) return value;
+        const detail = detailOfTotvsModaPrice(candidate);
+        if (detail !== undefined) return detail;
     }
     return undefined;
 }

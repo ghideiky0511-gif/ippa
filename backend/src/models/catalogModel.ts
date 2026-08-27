@@ -54,6 +54,86 @@ export async function listProductRows(client: PoolClient): Promise<ProductRow[]>
     return result.rows;
 }
 
+export interface CatalogPageProductQuery {
+    term?: string;
+    classificationId?: string;
+    color?: string;
+    size?: string;
+    restrictIds?: string[];
+    excludeIds?: string[];
+    limit: number;
+    offset: number;
+}
+
+// Página real de produtos do catálogo público -- filtra, ordena e corta no
+// banco (LIMIT/OFFSET), em vez de carregar o catálogo inteiro e fatiar em
+// memória (ver listCatalog/loadCatalog em catalogService.ts). `count(*)
+// OVER()` traz o total na mesma query, sem round-trip extra. `id` como
+// desempate final evita duplicar/pular itens entre páginas quando
+// display_position/created_at empatam (ex.: import em lote).
+export async function listCatalogProductPage(
+    client: PoolClient,
+    query: CatalogPageProductQuery,
+): Promise<{ rows: ProductRow[]; total: number }> {
+    const term = query.term?.trim().toLowerCase() || null;
+    const result = await client.query<ProductRow & { total_count: string }>(
+        `SELECT id, name, description, reference_id, price, suggested_retail_price, markup, media, attributes, is_active, source_origin,
+                count(*) OVER() AS total_count
+         FROM products p
+         WHERE p.tenant_id = app_tenant_id()
+           AND p.is_active
+           AND p.price > 0
+           AND ($1::text IS NULL OR p.name ILIKE '%' || $1 || '%' OR p.reference_id ILIKE '%' || $1 || '%')
+           AND ($2::uuid[] IS NULL OR p.id = ANY($2))
+           AND ($3::uuid[] IS NULL OR NOT (p.id = ANY($3)))
+           AND (
+             ($4::uuid IS NULL AND $5::text IS NULL AND $6::text IS NULL)
+             OR EXISTS (
+               SELECT 1 FROM product_variants v
+               WHERE v.tenant_id = p.tenant_id AND v.product_id = p.id AND v.is_active
+                 AND ($5::text IS NULL OR v.color = $5)
+                 AND ($6::text IS NULL OR v.size = $6)
+                 AND ($4::uuid IS NULL OR EXISTS (
+                   SELECT 1 FROM variant_classifications vc
+                   WHERE vc.tenant_id = v.tenant_id AND vc.variant_id = v.id AND vc.classification_id = $4
+                 ))
+             )
+           )
+         ORDER BY p.display_position NULLS LAST, p.created_at, p.id
+         LIMIT $7 OFFSET $8`,
+        [
+            term,
+            query.restrictIds && query.restrictIds.length > 0 ? query.restrictIds : null,
+            query.excludeIds && query.excludeIds.length > 0 ? query.excludeIds : null,
+            query.classificationId ?? null,
+            query.color ?? null,
+            query.size ?? null,
+            query.limit,
+            query.offset,
+        ],
+    );
+    const total = result.rows[0] ? Number(result.rows[0].total_count) : 0;
+    const rows = result.rows.map((row) => ({
+        id: row.id, name: row.name, description: row.description, reference_id: row.reference_id,
+        price: row.price, suggested_retail_price: row.suggested_retail_price, markup: row.markup,
+        media: row.media, attributes: row.attributes, is_active: row.is_active, source_origin: row.source_origin,
+    }));
+    return { rows, total };
+}
+
+// Conjunto pequeno e limitado pelo caller (ex.: produtos de um Highlight) --
+// usado pelo modo `ids` de listCatalogPage, que ignora paginação e devolve
+// exatamente o conjunto pedido.
+export async function findProductRowsByIds(client: PoolClient, productIds: string[]): Promise<ProductRow[]> {
+    if (productIds.length === 0) return [];
+    const result = await client.query<ProductRow>(
+        `SELECT id, name, description, reference_id, price, suggested_retail_price, markup, media, attributes, is_active, source_origin
+         FROM products WHERE tenant_id = app_tenant_id() AND is_active AND price > 0 AND id = ANY($1::uuid[])`,
+        [productIds],
+    );
+    return result.rows;
+}
+
 // Só os pares (id, reference_id) de um lote pontual de produtos -- usada
 // pelo envio de pedido ao ERP (ver services/erp/orderPushService), que
 // precisa do código bruto do ERP por item do pedido sem carregar o
@@ -80,10 +160,37 @@ export async function listProductVariantRows(client: PoolClient): Promise<Produc
     return result.rows;
 }
 
+// Escopadas por id -- usadas pela página real de catálogo (listCatalogPage
+// em catalogService.ts), que só precisa das associações dos produtos da
+// página atual, não do tenant inteiro. Mesmo padrão de
+// findProductReferenceIdsByIds acima.
+export async function listProductVariantRowsByProductIds(client: PoolClient, productIds: string[]): Promise<ProductVariantRow[]> {
+    if (productIds.length === 0) return [];
+    const result = await client.query<ProductVariantRow>(
+        `SELECT product_id, id, color, size, price, availability, available_from,
+                track_inventory, sku, bootstrap_external_code, is_active, source_origin
+         FROM product_variants
+         WHERE tenant_id = app_tenant_id() AND is_active AND product_id = ANY($1::uuid[])
+         ORDER BY color, size`,
+        [productIds],
+    );
+    return result.rows;
+}
+
 export async function listProductPackRows(client: PoolClient): Promise<ProductPackRow[]> {
     const result = await client.query<ProductPackRow>(
         `SELECT id, product_id, scope, label, color, price FROM product_packs
          WHERE tenant_id = app_tenant_id() ORDER BY label`,
+    );
+    return result.rows;
+}
+
+export async function listProductPackRowsByProductIds(client: PoolClient, productIds: string[]): Promise<ProductPackRow[]> {
+    if (productIds.length === 0) return [];
+    const result = await client.query<ProductPackRow>(
+        `SELECT id, product_id, scope, label, color, price FROM product_packs
+         WHERE tenant_id = app_tenant_id() AND product_id = ANY($1::uuid[]) ORDER BY label`,
+        [productIds],
     );
     return result.rows;
 }
@@ -96,6 +203,16 @@ export async function listProductPackItemRows(client: PoolClient): Promise<Produ
     return result.rows;
 }
 
+export async function listProductPackItemRowsByPackIds(client: PoolClient, packIds: string[]): Promise<ProductPackItemRow[]> {
+    if (packIds.length === 0) return [];
+    const result = await client.query<ProductPackItemRow>(
+        `SELECT pack_id, size, color, quantity FROM product_pack_items
+         WHERE tenant_id = app_tenant_id() AND pack_id = ANY($1::uuid[]) ORDER BY id`,
+        [packIds],
+    );
+    return result.rows;
+}
+
 export async function listInventoryBalanceRows(client: PoolClient): Promise<InventoryBalanceRow[]> {
     const result = await client.query<InventoryBalanceRow>(
         `SELECT balance.variant_id, SUM(balance.available_qty)::integer AS stock_qty
@@ -103,6 +220,19 @@ export async function listInventoryBalanceRows(client: PoolClient): Promise<Inve
          JOIN inventory_locations location ON location.id = balance.location_id
          WHERE balance.tenant_id = app_tenant_id() AND location.active
          GROUP BY balance.variant_id`,
+    );
+    return result.rows;
+}
+
+export async function listInventoryBalanceRowsByVariantIds(client: PoolClient, variantIds: string[]): Promise<InventoryBalanceRow[]> {
+    if (variantIds.length === 0) return [];
+    const result = await client.query<InventoryBalanceRow>(
+        `SELECT balance.variant_id, SUM(balance.available_qty)::integer AS stock_qty
+         FROM inventory_balances balance
+         JOIN inventory_locations location ON location.id = balance.location_id
+         WHERE balance.tenant_id = app_tenant_id() AND location.active AND balance.variant_id = ANY($1::uuid[])
+         GROUP BY balance.variant_id`,
+        [variantIds],
     );
     return result.rows;
 }

@@ -2,9 +2,9 @@
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
 import ProductImage from '@/components/ProductImage';
+import ProductPrice from '@/components/ProductPrice';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { formatBRL } from '@/workspace/lib/format';
 
 export default function SortableProductRow({ id, product, onRemove }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
@@ -21,7 +21,7 @@ export default function SortableProductRow({ id, product, onRemove }) {
           <span className={`${adminUi.productName} flex-1`}>
             {product.name}
           </span>
-          <span className={adminUi.productPrice}>{formatBRL(product.price)}</span>
+          <ProductPrice price={product.price} discount={product.activeDiscount} presentation="compact" />
         </>
       ) : (
         <span className="flex-1 text-sm text-danger">

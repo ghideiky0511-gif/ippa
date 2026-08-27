@@ -1,8 +1,8 @@
 // @ts-nocheck
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
-import { formatBRL } from '@/workspace/lib/format';
 import ProductImage from '@/components/ProductImage';
+import ProductPrice from '@/components/ProductPrice';
 
 export default function ProductPreview({ section, products }) {
   const product = (products || []).find((p) => p.id === section.productId);
@@ -21,7 +21,7 @@ export default function ProductPreview({ section, products }) {
       <div className="min-w-0">
         {product.category && <p className="truncate text-xs font-semibold tracking-wide text-muted-foreground uppercase">{product.category}</p>}
         <h3 className="mt-1 truncate text-sm font-extrabold text-foreground">{product.name}</h3>
-        <p className="mt-1 text-sm font-semibold text-brand-primary">{formatBRL(product.price)}</p>
+        <ProductPrice price={product.price} discount={product.activeDiscount} presentation="card" />
       </div>
     </article>
   );

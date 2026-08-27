@@ -48,6 +48,25 @@ export async function listVariantClassificationRows(client: PoolClient): Promise
   return result.rows;
 }
 
+// Escopada por variant_id -- usada pela página real de catálogo
+// (listCatalogPage em catalogService.ts), que só precisa das classificações
+// dos produtos da página atual.
+export async function listVariantClassificationRowsByVariantIds(client: PoolClient, variantIds: string[]): Promise<ClassificationJoinedRow[]> {
+  if (variantIds.length === 0) return [];
+  const result = await client.query<ClassificationJoinedRow>(
+    `SELECT link.variant_id, ${joinedFields}
+     FROM variant_classifications link
+     JOIN classifications classification
+       ON classification.tenant_id = link.tenant_id AND classification.id = link.classification_id
+     JOIN classification_types type
+       ON type.tenant_id = link.tenant_id AND type.id = link.classification_type_id
+     WHERE link.tenant_id = app_tenant_id() AND link.variant_id = ANY($1::uuid[])
+     ORDER BY link.variant_id, type.category_level NULLS LAST, type.label, classification.position, classification.name`,
+    [variantIds],
+  );
+  return result.rows;
+}
+
 export async function listCategoryMenuRows(client: PoolClient): Promise<ClassificationJoinedRow[]> {
   const result = await client.query<ClassificationJoinedRow>(
     `SELECT DISTINCT ${joinedFields}

@@ -6,8 +6,8 @@ import {
     selectTotvsModaPrice,
 } from "./mapper";
 
-test("seleciona preço pela prioridade configurada e prefere promoção", () => {
-    assert.equal(
+test("seleciona preço pela prioridade configurada e preserva o preço normal junto da promoção", () => {
+    assert.deepEqual(
         selectTotvsModaPrice(
             {
                 productCode: 10,
@@ -18,10 +18,10 @@ test("seleciona preço pela prioridade configurada e prefere promoção", () => 
             },
             [1, 2],
         ),
-        110,
+        { price: 110 },
     );
 
-    assert.equal(
+    assert.deepEqual(
         selectTotvsModaPrice(
             {
                 productCode: 10,
@@ -32,7 +32,7 @@ test("seleciona preço pela prioridade configurada e prefere promoção", () => 
             },
             [1, 2],
         ),
-        99.9,
+        { price: 120, promotionalPrice: 99.9 },
     );
 });
 
@@ -52,8 +52,8 @@ test("ignora valores inválidos em vez de persistir preço negativo", () => {
     );
 });
 
-test("normaliza preço decimal serializado como string pelo ERP", () => {
-    assert.equal(
+test("normaliza preço decimal serializado como string pelo ERP e mantém a promoção separada", () => {
+    assert.deepEqual(
         selectTotvsModaPrice(
             {
                 productCode: 10,
@@ -63,7 +63,20 @@ test("normaliza preço decimal serializado como string pelo ERP", () => {
             },
             [1],
         ),
-        109.9,
+        { price: 129.9, promotionalPrice: 109.9 },
+    );
+});
+
+test("ignora promotionalPrice maior ou igual ao preço normal", () => {
+    assert.deepEqual(
+        selectTotvsModaPrice(
+            {
+                productCode: 10,
+                prices: [{ priceCode: 1, price: 100, promotionalPrice: 100 }],
+            },
+            [1],
+        ),
+        { price: 100 },
     );
 });
 

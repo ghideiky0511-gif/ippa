@@ -49,19 +49,28 @@ export async function findFreightQuoteRow(client: PoolClient, id: string): Promi
 }
 
 // O índice único parcial (tenant_id, order_session_id) WHERE selected (ver
-// migration 043) garante que só uma linha por sessão fica marcada -- por
-// isso o UPDATE abaixo pode setar `selected` em massa numa única instrução
-// sem violar a constraint.
+// migration 043) garante que só uma linha por sessão fica marcada. Setar
+// `selected` em massa numa única instrução (`selected = (id = $2)`) parece
+// seguro mas NÃO é: dentro de um único UPDATE o Postgres verifica o índice
+// linha a linha, na ordem (não garantida) do scan -- se a linha nova for
+// processada antes da antiga ser desmarcada, as duas ficam `true` ao mesmo
+// tempo e o _bt_check_unique estoura duplicate key. Por isso desmarca tudo
+// primeiro (numa instrução separada) e só depois marca a nova.
 export async function selectFreightQuoteRow(
     client: PoolClient,
     sessionId: string,
     quoteId: string,
 ): Promise<FreightQuoteRow | null> {
+    await client.query(
+        `UPDATE freight_quotes SET selected = false
+         WHERE tenant_id = app_tenant_id() AND order_session_id = $1 AND selected`,
+        [sessionId],
+    );
     const result = await client.query<FreightQuoteRow>(
-        `UPDATE freight_quotes SET selected = (id = $2)
-         WHERE tenant_id = app_tenant_id() AND order_session_id = $1
+        `UPDATE freight_quotes SET selected = true
+         WHERE tenant_id = app_tenant_id() AND order_session_id = $1 AND id = $2
          RETURNING ${quoteFields}`,
         [sessionId, quoteId],
     );
-    return result.rows.find((row) => row.id === quoteId) ?? null;
+    return result.rows[0] ?? null;
 }

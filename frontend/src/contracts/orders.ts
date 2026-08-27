@@ -170,7 +170,15 @@ export const UpdateOrderSessionInputSchema = z.object({
   clientId: EntityIdSchema.optional(),
   notes: OptionalTextSchema,
   status: OrderSessionStatusSchema.optional(),
-  items: z.array(CartItemSchema).optional(),
+  // Delta por chave (set/del), não o array inteiro — evita reescrever a
+  // grade toda por causa de uma peça só (ver diffCartItems/
+  // applyCartItemsDelta em orderMapper.ts). Sessão nova ainda usa `items`
+  // completo em CreateOrderSessionInputSchema, pois aí não há "antes" pra
+  // diffar.
+  itemsDelta: z.object({
+    set: z.array(CartItemSchema),
+    del: z.array(EntityIdSchema),
+  }).optional(),
 });
 export type UpdateOrderSessionInput = z.infer<typeof UpdateOrderSessionInputSchema>;
 

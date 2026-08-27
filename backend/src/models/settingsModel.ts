@@ -7,7 +7,8 @@ export interface StoreSettingsRow {
     payment_link_expiration_minutes: number;
     features: StoreFeatures;
 }
-export interface DiscountRow { id: string; label: string; active: boolean; type: DiscountType; percent: string }
+export type DiscountSource = "manual" | "erp";
+export interface DiscountRow { id: string; label: string; active: boolean; type: DiscountType; percent: string; source: DiscountSource }
 export interface DiscountTierRow { discount_id: string; min_qty: number; percent: string }
 export interface DiscountProductRow { discount_id: string; product_id: string }
 export interface HighlightRow { id: string; label: string; show_in_catalog: boolean }
@@ -44,7 +45,7 @@ export async function upsertStoreSettingsRow(client: PoolClient, settings: {
 
 export async function listDiscountRows(client: PoolClient): Promise<DiscountRow[]> {
     const result = await client.query<DiscountRow>(
-        "SELECT id, label, active, type, percent FROM discounts WHERE tenant_id = app_tenant_id() ORDER BY label",
+        "SELECT id, label, active, type, percent, source FROM discounts WHERE tenant_id = app_tenant_id() ORDER BY label",
     );
     return result.rows;
 }
@@ -107,8 +108,11 @@ export async function upsertVestiCatalogSlugRow(client: PoolClient, slug: string
     );
 }
 
+// Escopado a 'manual': descontos de origem ERP (ver upsertErpDiscountRow)
+// são geridos só pelo sync, nunca pela tela /descontos -- sem esse filtro,
+// salvar qualquer desconto manual apagaria as promoções vindas do ERP.
 export async function deleteDiscountRows(client: PoolClient): Promise<void> {
-    await client.query("DELETE FROM discounts WHERE tenant_id = app_tenant_id()");
+    await client.query("DELETE FROM discounts WHERE tenant_id = app_tenant_id() AND source = 'manual'");
 }
 
 export async function insertDiscountRow(client: PoolClient, discount: {
@@ -118,6 +122,46 @@ export async function insertDiscountRow(client: PoolClient, discount: {
         `INSERT INTO discounts (id, tenant_id, label, active, type, percent)
          VALUES ($1, app_tenant_id(), $2, $3, $4, $5)`,
         [discount.id, discount.label, discount.active, discount.type, discount.percent],
+    );
+}
+
+// Upsert idempotente do desconto "peças específicas" derivado da promoção
+// do ERP (ver catalogSyncService.processReference) -- um produto tem no
+// máximo um desconto source='erp' (índice único parcial em
+// product_id WHERE source='erp'), reaproveitado a cada sincronização em vez
+// de acumular linhas. discount_products continua sendo a relação de
+// verdade lida pelo catálogo (getActiveProductDiscount/buildDiscounts);
+// product_id na própria linha é só a chave de upsert.
+export async function upsertErpDiscountRow(client: PoolClient, discount: {
+    productId: string; label: string; percent: number; active: boolean;
+}): Promise<string> {
+    const result = await client.query<{ id: string }>(
+        `INSERT INTO discounts (id, tenant_id, label, active, type, percent, source, product_id)
+         VALUES (gen_random_uuid(), app_tenant_id(), $1, $2, 'products', $3, 'erp', $4)
+         ON CONFLICT (tenant_id, product_id) WHERE source = 'erp'
+         DO UPDATE SET label = EXCLUDED.label, active = EXCLUDED.active, percent = EXCLUDED.percent
+         RETURNING id`,
+        [discount.label, discount.active, discount.percent, discount.productId],
+    );
+    const discountId = result.rows[0].id;
+    await client.query(
+        `INSERT INTO discount_products (tenant_id, discount_id, product_id)
+         VALUES (app_tenant_id(), $1, $2)
+         ON CONFLICT DO NOTHING`,
+        [discountId, discount.productId],
+    );
+    return discountId;
+}
+
+// Produto voltou a não ter promoção válida no ERP (ou perdeu o preço
+// promocional na última sincronização) -- desativa em vez de apagar, para
+// manter o histórico e o comportamento idempotente de upsertErpDiscountRow
+// se a promoção voltar depois.
+export async function deactivateErpDiscountRow(client: PoolClient, productId: string): Promise<void> {
+    await client.query(
+        `UPDATE discounts SET active = false
+         WHERE tenant_id = app_tenant_id() AND source = 'erp' AND product_id = $1 AND active`,
+        [productId],
     );
 }
 

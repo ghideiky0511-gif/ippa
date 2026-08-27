@@ -69,6 +69,13 @@ export interface ErpReferenceSnapshot {
 export interface ErpPriceSnapshot {
     skuExternalId: string;
     price: number;
+    // Preço promocional do ERP para este SKU, quando o provider distinguir
+    // dos dois valores (ver TotvsModaPriceItem.promotionalPrice). `price`
+    // continua sendo o preço normal/cheio -- nunca sobrescrito pela
+    // promoção -- e a promoção vira um desconto "peças específicas" (ver
+    // catalogSyncService.processReference), não uma troca silenciosa do
+    // preço base.
+    promotionalPrice?: number;
 }
 
 export interface ErpStockSnapshot {

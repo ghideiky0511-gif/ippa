@@ -6,6 +6,7 @@ import { pedidoRealtimeEventMessage, usePedidoRealtime, type PedidoParticipant, 
 import { apiFetch } from '@/lib/api-client';
 import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
 import { applySessionEventToActive } from '@/lib/realtime/applySessionEvent';
+import { diffCartItems } from '@/lib/cartItemsDelta';
 
 // Contrato mínimo que CartProvider.tsx precisa pra escrever num pedido
 // compartilhado — mesmo formato que TalaoProvider.tsx expõe (ver
@@ -118,9 +119,10 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
   async function updateActiveItems(items: CartItem[]) {
     if (!activeSession) return;
     const id = activeSession.id;
+    const itemsDelta = diffCartItems(activeSession.items, items);
     setActiveSession((prev) => (prev && prev.id === id ? { ...prev, items } : prev));
     try {
-      await realtime.updateSession({ items });
+      await realtime.updateSession({ itemsDelta });
     } catch (error) {
       // Só diz que fechou depois de confirmar isso no servidor. Uma queda ou
       // reconexão do WebSocket não altera o status do pedido.

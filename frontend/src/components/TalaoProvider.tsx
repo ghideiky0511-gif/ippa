@@ -5,6 +5,7 @@ import type { CartItem, OrderBook, OrderSession } from '@/domain/orders/types';
 import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
 import { usePedidoRealtime, type PedidoParticipant, type PedidoPresence } from '@/lib/realtime/usePedidoRealtime';
 import { applyBookUpsert, applySessionEventToList } from '@/lib/realtime/applySessionEvent';
+import { diffCartItems } from '@/lib/cartItemsDelta';
 import { activateOrderBook, cancelOrderBook, createOrderBook, fetchActiveOrderBook, fetchOrderBooks, fetchOrderSession } from '@/lib/ordersClient';
 
 interface TalaoContextValue {
@@ -293,8 +294,9 @@ export function TalaoProvider({ children }: { children: ReactNode }) {
   async function updateActiveItems(items: CartItem[]) {
     if (!activeSession) return;
     const id = activeSession.id;
+    const itemsDelta = diffCartItems(activeSession.items, items);
     setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, items } : s)));
-    await realtime.updateSession({ items });
+    await realtime.updateSession({ itemsDelta });
   }
 
   // Sempre chama a API — o servidor decide se reaproveita o token existente

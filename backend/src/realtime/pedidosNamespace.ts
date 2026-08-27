@@ -193,14 +193,7 @@ export function setupPedidosNamespace(io: Server): Namespace {
                     if (!sessionId) throw new Error("Nenhum pedido ativo.");
                     const { tenant, user: actor } =
                         socket.data as PedidosSocketData;
-                    await orders.updateSession(
-                        tenant,
-                        actor,
-                        sessionId,
-                        (payload ?? {}) as Partial<
-                            import("@/lib/types").OrderSession
-                        >,
-                    );
+                    await orders.updateSession(tenant, actor, sessionId, payload ?? {});
                     ack?.({ ok: true });
                 } catch (error) {
                     ack?.({

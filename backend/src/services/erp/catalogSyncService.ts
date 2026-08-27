@@ -45,6 +45,7 @@ import {
     upsertErpProductVariantRow,
     type ProductVariantRow,
 } from "@/models/catalogModel";
+import { deactivateErpDiscountRow, upsertErpDiscountRow } from "@/models/settingsModel";
 import {
     lockClassificationIntegrationRow,
     replaceVariantClassificationsRow,
@@ -252,11 +253,20 @@ export async function processReference(
         runtime.provider.fetchStock(skuExternalIds),
     ]);
     const priceBySku = new Map(prices.map((price) => [price.skuExternalId, price]));
-    const activePrices = reference.skus
+    const activePriceSnapshots = reference.skus
         .filter((sku) => sku.isActive && !sku.isBlocked)
-        .map((sku) => priceBySku.get(sku.externalId)?.price)
-        .filter((price): price is number => price !== undefined && price >= 0);
+        .map((sku) => priceBySku.get(sku.externalId))
+        .filter((price): price is ErpPriceSnapshot => price !== undefined && price.price >= 0);
+    const activePrices = activePriceSnapshots.map((snapshot) => snapshot.price);
     const productPrice = activePrices.length > 0 ? Math.min(...activePrices) : 0;
+    // Preço promocional do produto: o menor promotionalPrice válido (abaixo
+    // do preço normal escolhido) entre os SKUs ativos -- mesmo critério de
+    // "pega o mais barato entre os SKUs" já usado para productPrice acima,
+    // nunca sobrescreve productPrice, vira desconto separado (ver abaixo).
+    const promotionalPrices = activePriceSnapshots
+        .map((snapshot) => snapshot.promotionalPrice)
+        .filter((value): value is number => value !== undefined && value >= 0 && value < productPrice);
+    const productPromotionalPrice = promotionalPrices.length > 0 ? Math.min(...promotionalPrices) : undefined;
     const missingPriceSkuIds = reference.skus
         .filter((sku) => sku.isActive && !sku.isBlocked && !priceBySku.has(sku.externalId))
         .map((sku) => sku.externalId);
@@ -270,6 +280,7 @@ export async function processReference(
         activePrices: activePrices.join(","),
         missingPriceSkuIds: missingPriceSkuIds.join(","),
         productPrice,
+        productPromotionalPrice: productPromotionalPrice ?? null,
     });
     if (activePrices.length === 0) {
         logger.warn("catalog-sync", "Produto será salvo com preço zero porque o ERP não forneceu preço válido", {
@@ -302,6 +313,38 @@ export async function processReference(
             persistedPrice: product.row.price,
             created: product.created,
         });
+
+        // Preço promocional do ERP vira desconto "peças específicas" deste
+        // produto (source='erp'), nunca troca productPrice -- ver comentário
+        // em ErpPriceSnapshot.promotionalPrice. Sem promoção válida nesta
+        // sincronização, desativa a promoção anterior em vez de deixá-la
+        // travada num preço que o ERP já não pratica mais.
+        if (productPromotionalPrice !== undefined) {
+            const percent = Math.round((1 - productPromotionalPrice / productPrice) * 100);
+            if (percent > 0) {
+                await upsertErpDiscountRow(client, {
+                    productId: product.row.id,
+                    label: "Promoção ERP",
+                    percent,
+                    active: publicationActive,
+                });
+                logger.info("catalog-sync", "Desconto de promoção do ERP salvo", {
+                    tenantId: runtime.tenant.id,
+                    integrationId: runtime.integration.id,
+                    runId: runtime.run.id,
+                    referenceCode: reference.externalId,
+                    productId: product.row.id,
+                    productPrice,
+                    productPromotionalPrice,
+                    percent,
+                });
+            } else {
+                await deactivateErpDiscountRow(client, product.row.id);
+            }
+        } else {
+            await deactivateErpDiscountRow(client, product.row.id);
+        }
+
         await upsertExternalReferenceRow(client, {
             integrationId: runtime.integration.id,
             entityType: "product",

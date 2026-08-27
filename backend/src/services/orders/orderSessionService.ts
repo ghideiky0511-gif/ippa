@@ -8,6 +8,7 @@ import {
     UpdateOrderSessionInputSchema,
 } from "@/contracts/orders";
 import {
+    applyOrderSessionItemDeltaRows,
     closeStaleOrderSessionRowsByClient,
     findLatestOpenOrderSessionRowByClient,
     findOrderSessionRow,
@@ -19,7 +20,6 @@ import {
     listOrderSessionItemRows,
     listOrderSessionRowsBySeller,
     listTenantOrderSessionRows,
-    replaceOrderSessionItemRows,
     updateOrderSessionRow,
     setOrderSessionFreightRow,
     updateOrderRow,
@@ -53,7 +53,7 @@ import { notifyOrder, notifyOrderBook, notifySession, notifySessionCreated } fro
 import { scheduleSessionBroadcast } from "@/services/realtime/sessionBroadcast";
 import { findActiveOrderBookRow, findOrderBookRow, insertOrderBookRow, reopenOrderBookRow, type OrderBookRow } from "@/models/orderBooksModel";
 import { closeOrderBookWhenFinished } from "./orderBookLifecycle";
-import { diffCartItems, toFreightQuote, toOrder, toOrderBook, toOrderSession } from "./orderMapper";
+import { applyCartItemsDelta, diffCartItems, toFreightQuote, toOrder, toOrderBook, toOrderSession } from "./orderMapper";
 import { pickSeller } from "./sellerAssignmentService";
 
 async function reconcileFinalizedCustomerSessions(client: Parameters<typeof findLatestOpenOrderSessionRowByClient>[0], clientId: string) {
@@ -468,11 +468,12 @@ export async function updateSession(
             }
         }
         const currentItems = (await listOrderSessionItemRowsBySession(client, id)).map((item) => item.snapshot);
-        const items = body.items ?? currentItems;
-        // Só o caso quente (itens de fato enviados nesta chamada) vira
+        const itemsChanged = body.itemsDelta !== undefined;
+        const items = body.itemsDelta ? applyCartItemsDelta(currentItems, body.itemsDelta) : currentItems;
+        // Só o caso quente (itens de fato alterados nesta chamada) vira
         // session_items — as demais mutações (status, cliente, frete...)
         // seguem só no session_patch abaixo, que nunca toca em itens.
-        if (body.items !== undefined) {
+        if (itemsChanged) {
             changes.itemsDelta = {
                 prevUpdatedAt: currentRow.updated_at.toISOString(),
                 ...diffCartItems(currentItems, items),
@@ -481,11 +482,11 @@ export async function updateSession(
         // O lock/estado do pedido é validado antes de mexer no snapshot da
         // sessão. Assim um update atrasado falha sem apagar nenhuma das duas
         // fontes de itens dentro da transação.
-        if (body.items !== undefined) await replaceOrderSessionItemRows(client, id, items);
+        if (body.itemsDelta !== undefined) await applyOrderSessionItemDeltaRows(client, id, body.itemsDelta);
         if (orderId) {
             if (justAttached) {
                 await syncOrderItems(client, { orderId, currentItems: [], nextItems: items, actorId: user.id, actorRole: user.role });
-            } else if (body.items !== undefined) {
+            } else if (itemsChanged) {
                 // Diff é (itens ANTES desta MESMA sessão -> itens depois),
                 // não (todo o pedido -> body). Com upsell, o pedido pode ter
                 // itens vindos de outra sessão (ex. atendimento fechado
@@ -494,7 +495,7 @@ export async function updateSession(
                 // não estarem no body desta chamada.
                 await syncOrderItems(client, { orderId, currentItems, nextItems: items, actorId: user.id, actorRole: user.role });
             }
-            if (order && body.items !== undefined) {
+            if (order && itemsChanged) {
                 const persistedItems = (await listOrderItemRowsByOrder(client, orderId)).map((item) => item.snapshot);
                 const freightRow = await findOrderFreightRowByOrderId(client, orderId);
                 const updatedOrder = await updateOrderRow(client, orderId, {
@@ -519,7 +520,7 @@ export async function updateSession(
         // mudaram nesta chamada. Comparado contra o estado ANTES desta
         // mutação (currentRow), não contra o que updateOrderSessionRow vai
         // gravar (que é sempre igual a estas variáveis).
-        changes.onlyItemsChanged = body.items !== undefined
+        changes.onlyItemsChanged = itemsChanged
             && clientId === (currentRow.client_id ?? undefined)
             && clientName === currentRow.client_name
             && notes === (currentRow.notes ?? undefined)

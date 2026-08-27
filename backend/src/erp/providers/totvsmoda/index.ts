@@ -335,11 +335,11 @@ export function createTotvsModaErpProvider(
                 });
                 for (const row of response.items as TotvsModaPriceRow[]) {
                     if (row.productCode === undefined) continue;
-                    const price = selectTotvsModaPrice(
+                    const selection = selectTotvsModaPrice(
                         row,
                         normalized.priceCodeList,
                     );
-                    if (price === undefined) {
+                    if (selection === undefined) {
                         logger.warn("totvsmoda-price", "SKU retornado sem preço válido", {
                             productCode: row.productCode,
                             configuredPriceCodes: normalized.priceCodeList.join(","),
@@ -349,12 +349,14 @@ export function createTotvsModaErpProvider(
                     }
                     logger.info("totvsmoda-price", "Preço do SKU selecionado", {
                         productCode: row.productCode,
-                        price,
+                        price: selection.price,
+                        promotionalPrice: selection.promotionalPrice ?? null,
                         returnedPrices: JSON.stringify(row.prices ?? []),
                     });
                     result.push({
                         skuExternalId: String(row.productCode),
-                        price,
+                        price: selection.price,
+                        promotionalPrice: selection.promotionalPrice,
                     });
                 }
             }

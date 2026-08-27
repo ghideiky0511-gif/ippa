@@ -131,12 +131,30 @@ export async function insertOrderSessionItemRow(client: PoolClient, sessionId: s
     );
 }
 
-export async function replaceOrderSessionItemRows(client: PoolClient, sessionId: string, items: CartItem[]): Promise<void> {
-    await client.query(
-        `DELETE FROM order_session_items WHERE tenant_id = app_tenant_id() AND session_id = $1`,
-        [sessionId],
-    );
-    for (const item of items) await insertOrderSessionItemRow(client, sessionId, item);
+// Escreve só as linhas que mudaram (set = upsert por item_key, del = delete
+// pelas keys) em vez de apagar e reinserir a sessão inteira a cada mutação
+// -- ver applyCartItemsDelta/diffCartItems em orderMapper.ts, mesmo par
+// set/del usado no evento de broadcast `session_items`.
+export async function applyOrderSessionItemDeltaRows(
+    client: PoolClient,
+    sessionId: string,
+    delta: { set: CartItem[]; del: string[] },
+): Promise<void> {
+    for (const item of delta.set) {
+        await client.query(
+            `INSERT INTO order_session_items (tenant_id, session_id, item_key, product_id, snapshot)
+             VALUES (app_tenant_id(), $1, $2, $3, $4)
+             ON CONFLICT (tenant_id, session_id, item_key)
+             DO UPDATE SET product_id = excluded.product_id, snapshot = excluded.snapshot`,
+            [sessionId, item.key, item.id || null, JSON.stringify(item)],
+        );
+    }
+    if (delta.del.length > 0) {
+        await client.query(
+            `DELETE FROM order_session_items WHERE tenant_id = app_tenant_id() AND session_id = $1 AND item_key = ANY($2)`,
+            [sessionId, delta.del],
+        );
+    }
 }
 
 export async function updateOrderSessionRow(client: PoolClient, id: string, value: {

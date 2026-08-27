@@ -15,6 +15,7 @@ import {
   updateOrderSession,
 } from '@/lib/ordersClient';
 import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
+import { diffCartItems } from '@/lib/cartItemsDelta';
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -245,7 +246,9 @@ export function OrderTalaoModal({
     setSaving(true);
     setMessage(null);
     try {
-      const updated = await updateOrderSession(session.id, { items, clientId });
+      const delta = diffCartItems(session.items, items);
+      const itemsDelta = delta.set.length > 0 || delta.del.length > 0 ? delta : undefined;
+      const updated = await updateOrderSession(session.id, { itemsDelta, clientId });
       onUpdated(updated);
       setMessage('Talão salvo.');
     } catch (cause) {

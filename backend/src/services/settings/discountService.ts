@@ -11,11 +11,16 @@ import { ValidationError } from "@/services/shared/errors";
 import { requireSettingsAdministrator } from "./settingsAuthorization";
 import { databaseId } from "@/services/shared/identifiers";
 
+// Descontos de origem ERP (ver upsertErpDiscountRow em settingsModel.ts) não
+// aparecem aqui: são geridos só pelo sync, e replaceDiscounts abaixo
+// substitui a lista inteira que a tela devolve -- misturá-los faria o
+// lojista "perder" a promoção do ERP ao salvar qualquer desconto manual.
 export async function listDiscounts(tenant: Tenant): Promise<Discount[]> {
     return withTenantTransaction(tenant, {}, async (client) => {
-        const [discounts, tiers, products] = await Promise.all([
+        const [discountRows, tiers, products] = await Promise.all([
             listDiscountRows(client), listDiscountTierRows(client), listDiscountProductRows(client),
         ]);
+        const discounts = discountRows.filter((discount) => discount.source === "manual");
         return discounts.map((discount) => ({
             id: discount.id,
             label: discount.label,

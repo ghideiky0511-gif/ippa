@@ -9,7 +9,7 @@ type PriceDiscount = {
 type ProductPriceProps = {
   price: number;
   discount?: PriceDiscount | null;
-  presentation?: 'card' | 'detail' | 'workspace';
+  presentation?: 'card' | 'detail' | 'workspace' | 'compact';
   animatePromotion?: boolean;
   onAnimationEnd?: () => void;
 };
@@ -51,9 +51,18 @@ export default function ProductPrice({
   }
 
   if (!hasPromotion || promotionalPrice === undefined) {
-    return presentation === 'card'
-      ? <div className="text-base font-bold text-foreground">{formatBRL(price)}</div>
-      : <div className="contents">{formatBRL(price)}</div>;
+    if (presentation === 'card') return <div className="text-base font-bold text-foreground">{formatBRL(price)}</div>;
+    if (presentation === 'compact') return <span className="text-[13px] text-brand-muted">{formatBRL(price)}</span>;
+    return <div className="contents">{formatBRL(price)}</div>;
+  }
+
+  if (presentation === 'compact') {
+    return (
+      <span className="flex flex-wrap items-baseline gap-x-1.5 text-[13px]" title={discount?.label}>
+        <span className="text-brand-muted line-through">{formatBRL(price)}</span>
+        <span className="font-semibold text-brand-primary">{formatBRL(promotionalPrice)}</span>
+      </span>
+    );
   }
 
   if (presentation === 'detail') {

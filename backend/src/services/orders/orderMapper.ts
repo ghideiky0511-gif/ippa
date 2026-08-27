@@ -122,3 +122,14 @@ export function diffCartItems(before: CartItem[], after: CartItem[]): { set: Car
     }
     return { set, del };
 }
+
+/** Inverso de diffCartItems: aplica um delta set/del sobre uma lista de
+ * itens conhecida (currentItems vindo do banco), pra resolver a lista
+ * completa sem exigir que o cliente mande o carrinho inteiro a cada
+ * mutação. */
+export function applyCartItemsDelta(items: CartItem[], delta: { set: CartItem[]; del: string[] }): CartItem[] {
+    const byKey = new Map(items.map((item) => [item.key, item]));
+    for (const item of delta.set) byKey.set(item.key, item);
+    for (const key of delta.del) byKey.delete(key);
+    return Array.from(byKey.values());
+}

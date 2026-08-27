@@ -2,8 +2,8 @@
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
 import ProductImage from '@/components/ProductImage';
+import ProductPrice from '@/components/ProductPrice';
 import { useState } from 'react';
-import { formatBRL } from '@/workspace/lib/format';
 
 export default function ProductPicker({ products, excludeIds, onAdd }) {
   const [query, setQuery] = useState('');
@@ -37,7 +37,7 @@ export default function ProductPicker({ products, excludeIds, onAdd }) {
               <span className={`${adminUi.productName} flex-1`}>
                 {p.name}
               </span>
-              <span className={adminUi.productPrice}>{formatBRL(p.price)}</span>
+              <ProductPrice price={p.price} discount={p.activeDiscount} presentation="compact" />
             </button>
           ))}
         </div>
