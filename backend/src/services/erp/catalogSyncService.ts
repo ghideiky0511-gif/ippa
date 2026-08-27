@@ -44,6 +44,7 @@ import {
     setProductSyncActiveRow,
     upsertErpProductRow,
     upsertErpProductVariantRow,
+    type ProductVariantRow,
 } from "@/models/catalogModel";
 import {
     findInternalIdByExternalId,
@@ -187,6 +188,52 @@ export async function processSku(
     return variant.id;
 }
 
+// Cascade de matching entre um SKU vindo do ERP e uma variante já existente
+// no banco, do mais para o menos confiável:
+//  1. erp_external_references (entity_type='product_variant') -- já
+//     confirmado num sync anterior.
+//  2. bootstrap_external_code -- código do feed de origem do bootstrap
+//     (ex.: g:id do Vesti), gravado antes de existir integração ERP.
+//     Determinístico como (1), mas ainda não promovido a external reference.
+//  3. sku (código de barra/productSku) coincidindo por valor.
+//  4. fallback heurístico por (color, size) entre variantes bootstrap --
+//     último recurso, lança erro se houver ambiguidade.
+export function matchExistingVariantId(input: {
+    sku: ErpSkuSnapshot;
+    variants: ProductVariantRow[];
+    externalVariantId: Map<string, string>;
+    usedVariantIds: Set<string>;
+}): string | undefined {
+    const { sku, variants, externalVariantId, usedVariantIds } = input;
+    let existingId = externalVariantId.get(sku.externalId);
+
+    if (!existingId) {
+        const byBootstrapCode = variants.filter((variant) =>
+            variant.bootstrap_external_code === sku.externalId && !usedVariantIds.has(variant.id),
+        );
+        if (byBootstrapCode.length > 1) {
+            throw new Error(`CATALOG_VARIANT_MATCH_AMBIGUOUS:${sku.externalId}`);
+        }
+        if (byBootstrapCode.length === 1) existingId = byBootstrapCode[0].id;
+    }
+    if (!existingId && sku.sku) {
+        const bySku = variants.filter((variant) => variant.sku === sku.sku && !usedVariantIds.has(variant.id));
+        if (bySku.length === 1) existingId = bySku[0].id;
+    }
+    if (!existingId) {
+        const bootstrapMatch = variants.filter((variant) =>
+            variant.source_origin === "bootstrap"
+            && variant.color === sku.color && variant.size === sku.size
+            && !usedVariantIds.has(variant.id),
+        );
+        if (bootstrapMatch.length > 1) {
+            throw new Error(`CATALOG_VARIANT_MATCH_AMBIGUOUS:${sku.externalId}`);
+        }
+        if (bootstrapMatch.length === 1) existingId = bootstrapMatch[0].id;
+    }
+    return existingId;
+}
+
 export async function processReference(
     runtime: SyncRuntime,
     referenceCode: string,
@@ -244,21 +291,11 @@ export async function processReference(
         const seenVariantIds: string[] = [];
 
         for (const sku of reference.skus) {
-            let existingId = externalVariantId.get(sku.externalId);
-            if (!existingId && sku.sku) {
-                const bySku = variants.filter((variant) => variant.sku === sku.sku && !usedVariantIds.has(variant.id));
-                if (bySku.length === 1) existingId = bySku[0].id;
-            }
-            if (!existingId) {
-                const bootstrapMatch = variants.filter((variant) =>
-                    variant.source_origin === "bootstrap"
-                    && variant.color === sku.color && variant.size === sku.size
-                    && !usedVariantIds.has(variant.id),
-                );
-                if (bootstrapMatch.length > 1) {
-                    throw new Error(`CATALOG_VARIANT_MATCH_AMBIGUOUS:${reference.externalId}:${sku.externalId}`);
-                }
-                if (bootstrapMatch.length === 1) existingId = bootstrapMatch[0].id;
+            let existingId: string | undefined;
+            try {
+                existingId = matchExistingVariantId({ sku, variants, externalVariantId, usedVariantIds });
+            } catch (error) {
+                throw new Error(`CATALOG_VARIANT_MATCH_AMBIGUOUS:${reference.externalId}:${sku.externalId}`, { cause: error });
             }
             if (existingId) usedVariantIds.add(existingId);
             const variantId = await processSku(client, {

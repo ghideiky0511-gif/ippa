@@ -35,6 +35,7 @@ export interface ProductVariantRow {
     available_from: string | null;
     track_inventory: boolean;
     sku: string | null;
+    bootstrap_external_code: string | null;
     is_active: boolean;
     source_origin: "manual" | "bootstrap" | "erp";
 }
@@ -86,7 +87,7 @@ export async function findProductReferenceIdsByIds(client: PoolClient, productId
 export async function listProductVariantRows(client: PoolClient): Promise<ProductVariantRow[]> {
     const result = await client.query<ProductVariantRow>(
         `SELECT product_id, id, color, size, price, availability, available_from,
-                track_inventory, sku, is_active, source_origin
+                track_inventory, sku, bootstrap_external_code, is_active, source_origin
          FROM product_variants
          WHERE tenant_id = app_tenant_id() AND is_active
          ORDER BY color, size`,
@@ -190,6 +191,7 @@ export interface ProductVariantWriteRow {
     price: number;
     availability?: Availability;
     sku?: string;
+    bootstrapExternalCode?: string;
     trackInventory?: boolean;
     isActive?: boolean;
     sourceOrigin?: ProductVariantRow["source_origin"];
@@ -274,17 +276,18 @@ export async function upsertProductVariantRow(
     value: ProductVariantWriteRow,
 ): Promise<{ id: string; created: boolean }> {
     const result = await client.query<{ id: string; inserted: boolean }>(
-        `INSERT INTO product_variants (tenant_id, product_id, color, size, price, availability, sku, track_inventory, is_active, source_origin)
-         VALUES (app_tenant_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `INSERT INTO product_variants (tenant_id, product_id, color, size, price, availability, sku, bootstrap_external_code, track_inventory, is_active, source_origin)
+         VALUES (app_tenant_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          ON CONFLICT (tenant_id, product_id, color, size)
          DO UPDATE SET price = EXCLUDED.price, availability = EXCLUDED.availability,
            sku = COALESCE(EXCLUDED.sku, product_variants.sku),
+           bootstrap_external_code = COALESCE(EXCLUDED.bootstrap_external_code, product_variants.bootstrap_external_code),
            track_inventory = EXCLUDED.track_inventory,
            is_active = EXCLUDED.is_active, source_origin = EXCLUDED.source_origin
          RETURNING id, (xmax = 0) AS inserted`,
         [productId, value.color, value.size, value.price, value.availability ?? "in_stock",
-         value.sku ?? null, value.trackInventory ?? false, value.isActive ?? true,
-         value.sourceOrigin ?? "bootstrap"],
+         value.sku ?? null, value.bootstrapExternalCode ?? null, value.trackInventory ?? false,
+         value.isActive ?? true, value.sourceOrigin ?? "bootstrap"],
     );
     return { id: result.rows[0].id, created: result.rows[0].inserted };
 }
@@ -332,7 +335,7 @@ export async function listProductVariantsForSyncRow(
 ): Promise<ProductVariantRow[]> {
     const result = await client.query<ProductVariantRow>(
         `SELECT product_id, id, color, size, price, availability, available_from,
-                track_inventory, sku, is_active, source_origin
+                track_inventory, sku, bootstrap_external_code, is_active, source_origin
          FROM product_variants
          WHERE tenant_id = app_tenant_id() AND product_id = $1`,
         [productId],

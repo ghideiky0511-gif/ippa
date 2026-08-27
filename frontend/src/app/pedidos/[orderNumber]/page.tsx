@@ -31,6 +31,12 @@ const CHANNEL_LABELS: Record<Order['channel'], string> = {
   whatsapp: 'WhatsApp',
 };
 
+const PAYMENT_METHODS = [
+  { id: 'pix', label: 'Pix' },
+  { id: 'cartao', label: 'Cartão de crédito' },
+  { id: 'boleto', label: 'Boleto' },
+];
+
 function OrderDetailSkeleton() {
   return (
     <div className="flex flex-col gap-4" aria-hidden="true">
@@ -150,6 +156,21 @@ export default function PedidoDetalhePage() {
               <div className="flex justify-between border-t border-border pt-3 text-base font-bold text-foreground"><span>Total</span><span>{formatBRL(order.total)}</span></div>
             </div>
           </Card>
+
+          {order.status === 'separado' && (
+            <Card className="p-4">
+              <h2 className="font-bold text-foreground">Pagamento</h2>
+              <div className={`${publicUi.paymentOptions} mt-3`}>
+                {PAYMENT_METHODS.map((method) => (
+                  <label key={method.id} className={`${publicUi.paymentOption} opacity-50`}>
+                    <input type="radio" name="payment" disabled />
+                    {method.label} <span className="text-xs">(em breve)</span>
+                  </label>
+                ))}
+              </div>
+              <p className="mt-3 text-sm text-muted-foreground">Pagamento pelo site em breve — a loja entra em contato para combinar o pagamento.</p>
+            </Card>
+          )}
         </div>
       )}
     </main>

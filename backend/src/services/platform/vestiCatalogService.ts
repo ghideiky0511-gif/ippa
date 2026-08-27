@@ -320,14 +320,16 @@ export async function importVestiCatalog(
                             // variant.productCode é o "g:id" do feed do Vesti --
                             // no fashiongirl, isso é o productCode interno da
                             // TOTVS reaproveitado, não o productSku (código de
-                            // barra) que o sync de ERP usa nessa mesma coluna
-                            // (ver mapper.ts:mapTotvsModaReferenceSnapshot). Gravar
-                            // aqui já causou colisão real com UNIQUE(tenant_id,
-                            // sku): o productCode de um produto bateu com o
-                            // productSku de outro. A convergência bootstrap->erp
-                            // já casa por (product_id, color, size) em
-                            // catalogSyncService.processReference, sem precisar
-                            // de sku aqui.
+                            // barra) que o sync de ERP grava em sku (ver
+                            // mapper.ts:mapTotvsModaReferenceSnapshot). Vai para
+                            // bootstrap_external_code, uma coluna própria, para
+                            // nunca mais colidir com o namespace de sku (já
+                            // aconteceu: productCode de um produto bateu com o
+                            // productSku de outro). catalogSyncService usa esse
+                            // valor como camada extra e determinística de
+                            // matching no primeiro sync de ERP, antes do
+                            // fallback por (color, size).
+                            bootstrapExternalCode: variant.productCode,
                             isActive: variant.active,
                             sourceOrigin: "bootstrap",
                         });
