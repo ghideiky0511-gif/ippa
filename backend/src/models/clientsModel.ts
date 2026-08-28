@@ -38,17 +38,15 @@ export async function searchClientRows(client: PoolClient, search: string | null
 export async function searchClientRowsPage(client: PoolClient, search: string | null, page: number, pageSize: number): Promise<ClientSearchPage> {
     const filters = `tenant_id = app_tenant_id()
         AND ($1::text IS NULL OR name ILIKE '%' || $1 || '%' OR cpf_cnpj ILIKE '%' || $1 || '%' OR email ILIKE '%' || $1 || '%')`;
-    const [rowsResult, summaryResult] = await Promise.all([
-        client.query<ClientRow>(`SELECT ${clientFields} FROM clients WHERE ${filters} ORDER BY name, id LIMIT $2 OFFSET $3`, [search, pageSize, (page - 1) * pageSize]),
-        client.query<{ total: string; new_this_month: string; with_email: string; with_address: string }>(
-            `SELECT count(*) AS total,
-                    count(*) FILTER (WHERE created_at >= date_trunc('month', now())) AS new_this_month,
-                    count(*) FILTER (WHERE email IS NOT NULL AND email <> '') AS with_email,
-                    count(*) FILTER (WHERE city IS NOT NULL AND city <> '' AND state IS NOT NULL AND state <> '') AS with_address
-             FROM clients WHERE ${filters}`,
-            [search],
-        ),
-    ]);
+    const rowsResult = await client.query<ClientRow>(`SELECT ${clientFields} FROM clients WHERE ${filters} ORDER BY name, id LIMIT $2 OFFSET $3`, [search, pageSize, (page - 1) * pageSize]);
+    const summaryResult = await client.query<{ total: string; new_this_month: string; with_email: string; with_address: string }>(
+        `SELECT count(*) AS total,
+                count(*) FILTER (WHERE created_at >= date_trunc('month', now())) AS new_this_month,
+                count(*) FILTER (WHERE email IS NOT NULL AND email <> '') AS with_email,
+                count(*) FILTER (WHERE city IS NOT NULL AND city <> '' AND state IS NOT NULL AND state <> '') AS with_address
+         FROM clients WHERE ${filters}`,
+        [search],
+    );
     const summary = summaryResult.rows[0];
     return { rows: rowsResult.rows, total: Number(summary?.total ?? 0), newThisMonth: Number(summary?.new_this_month ?? 0), withEmail: Number(summary?.with_email ?? 0), withAddress: Number(summary?.with_address ?? 0) };
 }

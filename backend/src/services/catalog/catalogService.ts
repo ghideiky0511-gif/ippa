@@ -78,11 +78,9 @@ export function hasPublicCatalogPrice(price: string | number): boolean {
 
 export async function listCatalogFilters(tenant: Tenant): Promise<CatalogFilters> {
     return withTenantTransaction(tenant, {}, async (client) => {
-        const [categories, variants, products] = await Promise.all([
-            categoryMenu(tenant),
-            listProductVariantRows(client),
-            listProductRows(client),
-        ]);
+        const categories = await categoryMenu(tenant);
+        const variants = await listProductVariantRows(client);
+        const products = await listProductRows(client);
         const visibleProductIds = new Set(
             products.filter((product) => hasPublicCatalogPrice(product.price)).map((product) => product.id),
         );
@@ -243,17 +241,15 @@ async function loadCatalog(tenant: Tenant, includeProductsWithoutPrice: boolean)
             : productRows.filter((product) => hasPublicCatalogPrice(product.price));
         if (products.length === 0) return [];
 
-        const [variants, classifications, packs, packItems, colorImages, storeSettings, discountRows, tierRows, discountProductRows] = await Promise.all([
-            listProductVariantRows(client),
-            listVariantClassificationRows(client),
-            listProductPackRows(client),
-            listProductPackItemRows(client),
-            listProductColorImageRows(client),
-            findStoreSettingsRow(client),
-            listDiscountRows(client),
-            listDiscountTierRows(client),
-            listDiscountProductRows(client),
-        ]);
+        const variants = await listProductVariantRows(client);
+        const classifications = await listVariantClassificationRows(client);
+        const packs = await listProductPackRows(client);
+        const packItems = await listProductPackItemRows(client);
+        const colorImages = await listProductColorImageRows(client);
+        const storeSettings = await findStoreSettingsRow(client);
+        const discountRows = await listDiscountRows(client);
+        const tierRows = await listDiscountTierRows(client);
+        const discountProductRows = await listDiscountProductRows(client);
         const stockByVariant = await getStockForVariants(tenant, client, variants.map((variant) => variant.id));
         const discounts = buildDiscounts(discountRows, tierRows, discountProductRows);
         return assembleCatalogProducts(products, { variants, stockByVariant, classifications, packs, packItems, colorImages, storeSettings, discounts });
@@ -375,22 +371,18 @@ function activeProductDiscountIds(discountRows: DiscountRow[], discountProductRo
 async function loadAssociatedCatalogProducts(tenant: Tenant, client: PoolClient, productRows: ProductRow[]): Promise<Product[]> {
     if (productRows.length === 0) return [];
     const productIds = productRows.map((row) => row.id);
-    const [variants, packs, storeSettings, discountRows, tierRows, discountProductRows] = await Promise.all([
-        listProductVariantRowsByProductIds(client, productIds),
-        listProductPackRowsByProductIds(client, productIds),
-        findStoreSettingsRow(client),
-        listDiscountRows(client),
-        listDiscountTierRows(client),
-        listDiscountProductRows(client),
-    ]);
+    const variants = await listProductVariantRowsByProductIds(client, productIds);
+    const packs = await listProductPackRowsByProductIds(client, productIds);
+    const storeSettings = await findStoreSettingsRow(client);
+    const discountRows = await listDiscountRows(client);
+    const tierRows = await listDiscountTierRows(client);
+    const discountProductRows = await listDiscountProductRows(client);
     const variantIds = variants.map((variant) => variant.id);
     const packIds = packs.map((pack) => pack.id);
-    const [stockByVariant, classifications, packItems, colorImages] = await Promise.all([
-        getStockForVariants(tenant, client, variantIds),
-        listVariantClassificationRowsByVariantIds(client, variantIds),
-        listProductPackItemRowsByPackIds(client, packIds),
-        listProductColorImageRowsByProductIds(client, productIds),
-    ]);
+    const stockByVariant = await getStockForVariants(tenant, client, variantIds);
+    const classifications = await listVariantClassificationRowsByVariantIds(client, variantIds);
+    const packItems = await listProductPackItemRowsByPackIds(client, packIds);
+    const colorImages = await listProductColorImageRowsByProductIds(client, productIds);
     const discounts = buildDiscounts(discountRows, tierRows, discountProductRows);
     return assembleCatalogProducts(productRows, { variants, stockByVariant, classifications, packs, packItems, colorImages, storeSettings, discounts });
 }
@@ -399,11 +391,9 @@ export async function listCatalogPage(tenant: Tenant, query: CatalogQuery): Prom
     return withTenantTransaction(tenant, {}, async (client) => {
         const excludeFeaturedIds = new Set<string>();
         if (query.excludeFeatured) {
-            const [highlights, discountRows, discountProductRows] = await Promise.all([
-                listHighlights(tenant),
-                listDiscountRows(client),
-                listDiscountProductRows(client),
-            ]);
+            const highlights = await listHighlights(tenant);
+            const discountRows = await listDiscountRows(client);
+            const discountProductRows = await listDiscountProductRows(client);
             for (const id of activeProductDiscountIds(discountRows, discountProductRows)) excludeFeaturedIds.add(id);
             for (const highlight of highlights) for (const id of highlight.productIds) excludeFeaturedIds.add(id);
         }

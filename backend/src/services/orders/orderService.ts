@@ -23,6 +23,7 @@ import { findStoreSettingsRow } from "@/models/settingsModel";
 import { notifyOrder, notifyOrderBook, notifySession } from "@/services/realtime/updateBroadcast";
 import { notifyNewOrderForSeller, notifyOrderConfirmed } from "@/services/notifications";
 import { cancelProviderOrderForOrder, enqueueOrderPush, requestProviderOrderResend } from "@/services/erp/orderPushService";
+import type { ProviderOrderRow } from "@/models/providerOrdersModel";
 import { logger, errorMeta } from "@/lib/logger";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
 import { toOrder, toOrderBook, toOrderSession } from "./orderMapper";
@@ -61,19 +62,17 @@ export async function userOrders(
 ): Promise<Order[]> {
     if (filters?.clientId && !isAdministrator(user)) throw new ForbiddenError();
     return withTenantTransaction(tenant, user, async (client) => {
-        const [orders, items, freights] = await Promise.all([
-            filters?.clientId
-                ? listOrderRowsBy(client, "client_id", filters.clientId)
-                : isAdministrator(user)
-                  ? listTenantOrderRows(client)
-                  : user.role === "cliente" && user.clientId
-                    ? listOrderRowsBy(client, "client_id", user.clientId)
-                    : user.role === "vendedora"
-                      ? listOrderRowsBy(client, "seller_id", user.id)
-                      : listTenantOrderRows(client),
-            listOrderItemRows(client),
-            listOrderFreightRows(client),
-        ]);
+        const orders = await (filters?.clientId
+            ? listOrderRowsBy(client, "client_id", filters.clientId)
+            : isAdministrator(user)
+              ? listTenantOrderRows(client)
+              : user.role === "cliente" && user.clientId
+                ? listOrderRowsBy(client, "client_id", user.clientId)
+                : user.role === "vendedora"
+                  ? listOrderRowsBy(client, "seller_id", user.id)
+                  : listTenantOrderRows(client));
+        const items = await listOrderItemRows(client);
+        const freights = await listOrderFreightRows(client);
         return orders.map((order) =>
             toOrder(
                 order,
@@ -249,9 +248,11 @@ export async function createCustomerOrder(
         const closedRows = await closeOpenOrderSessionRowsByOrder(client, orderId);
         changedSessions = closedRows.map((closedRow) => toOrderSession(closedRow, orderItems));
         const bookIds = new Set(closedRows.map((closedRow) => closedRow.order_book_id));
-        changedBooks = (await Promise.all(
-            [...bookIds].map((bookId) => closeOrderBookWhenFinished(client, bookId)),
-        )).filter((book): book is OrderBookRow => Boolean(book));
+        changedBooks = [];
+        for (const bookId of bookIds) {
+            const closedBook = await closeOrderBookWhenFinished(client, bookId);
+            if (closedBook) changedBooks.push(closedBook);
+        }
         return toOrder(row, orderItems, freightRow);
     });
     for (const changedSession of changedSessions) notifySession(tenant.id, changedSession);
@@ -322,7 +323,7 @@ export async function cancelOrder(
     user: AuthUser,
     orderId: string,
     auditRequestContext: AuditRequestContext,
-): Promise<{ order: Order; erpWarning?: string }> {
+): Promise<{ order: Order; erpWarning?: string; pushStatus: ProviderOrderRow | null }> {
     requireInternal(user);
     let cancelledSessions: OrderSession[] = [];
     let changedBooks: OrderBookRow[] = [];
@@ -337,9 +338,11 @@ export async function cancelOrder(
         const cancelledRows = await cancelOpenOrderSessionRowsByOrder(client, orderId);
         cancelledSessions = cancelledRows.map((cancelledRow) => toOrderSession(cancelledRow, items));
         const bookIds = new Set(cancelledRows.map((cancelledRow) => cancelledRow.order_book_id));
-        changedBooks = (await Promise.all(
-            [...bookIds].map((bookId) => closeOrderBookWhenFinished(client, bookId)),
-        )).filter((book): book is OrderBookRow => Boolean(book));
+        changedBooks = [];
+        for (const bookId of bookIds) {
+            const closedBook = await closeOrderBookWhenFinished(client, bookId);
+            if (closedBook) changedBooks.push(closedBook);
+        }
         await recordAuditEvent(client, {
             action: ORDER_AUDIT_ACTIONS.MANUALLY_CANCELLED,
             entityId: orderId,
@@ -354,7 +357,7 @@ export async function cancelOrder(
     for (const book of changedBooks) notifyOrderBook(tenant.id, toOrderBook(book));
     notifyOrder(tenant.id, order);
     const erpResult = await cancelProviderOrderForOrder(tenant, user, orderId, auditRequestContext);
-    return { order, erpWarning: erpResult.cancelled ? undefined : erpResult.error };
+    return { order, erpWarning: erpResult.cancelled ? undefined : erpResult.error, pushStatus: erpResult.pushStatus };
 }
 
 // Troca o tipo de frete (transportadora/correios/motoboy/etc.) de um pedido

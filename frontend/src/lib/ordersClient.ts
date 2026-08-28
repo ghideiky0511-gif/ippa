@@ -123,9 +123,13 @@ export function updateOrderFreightMethod(orderId: string, method: OrderFreightMe
   }, 'Não foi possível alterar o frete.');
 }
 
-const CancelOrderResultSchema = z.object({ order: OrderSchema, erpWarning: z.string().optional() });
+// pushStatus foge da validação Zod de propósito -- é o mesmo ProviderOrderRow
+// "cru" (ERP) que fetchOrderPushStatus/requestOrderPushResend já devolvem sem
+// validar (ver erpIntegrationClient.ts), só repassado aqui pra sincronizar o
+// estado de envio ao ERP direto da resposta do cancelamento, sem round-trip.
+const CancelOrderResultSchema = z.object({ order: OrderSchema, erpWarning: z.string().optional(), pushStatus: z.unknown().nullable().optional() });
 
-export function cancelOrder(orderId: string): Promise<{ order: Order; erpWarning?: string }> {
+export function cancelOrder(orderId: string): Promise<{ order: Order; erpWarning?: string; pushStatus?: unknown }> {
   return adminJson(`/api/admin/orders/${orderId}/cancel`, CancelOrderResultSchema, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

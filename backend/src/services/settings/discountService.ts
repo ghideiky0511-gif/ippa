@@ -17,9 +17,9 @@ import { databaseId } from "@/services/shared/identifiers";
 // lojista "perder" a promoção do ERP ao salvar qualquer desconto manual.
 export async function listDiscounts(tenant: Tenant): Promise<Discount[]> {
     return withTenantTransaction(tenant, {}, async (client) => {
-        const [discountRows, tiers, products] = await Promise.all([
-            listDiscountRows(client), listDiscountTierRows(client), listDiscountProductRows(client),
-        ]);
+        const discountRows = await listDiscountRows(client);
+        const tiers = await listDiscountTierRows(client);
+        const products = await listDiscountProductRows(client);
         const discounts = discountRows.filter((discount) => discount.source === "manual");
         return discounts.map((discount) => ({
             id: discount.id,

@@ -26,10 +26,8 @@ export async function listTenants(): Promise<PlatformTenant[]> {
         const rows = await listPlatformTenantRows(client);
         if (rows.length === 0) return [];
         const tenantIds = rows.map((row) => row.id);
-        const [counts, contracts] = await Promise.all([
-            listTenantUserCountRows(client, tenantIds),
-            listLatestTenantContractRows(client, tenantIds),
-        ]);
+        const counts = await listTenantUserCountRows(client, tenantIds);
+        const contracts = await listLatestTenantContractRows(client, tenantIds);
         const countByTenant = new Map(counts.map((row) => [row.tenant_id, Number(row.user_count)]));
         const contractByTenant = new Map<string, PlatformTenantContract>(contracts.map((row) => [row.tenant_id, {
             id: row.id,

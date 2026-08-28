@@ -173,16 +173,16 @@ export async function inbox(
     const [items, summary] = await withTenantTransaction(
         tenant,
         user,
-        async (client) =>
-            Promise.all([
-                listNotifications(
-                    client,
-                    user.id,
-                    unreadOnly,
-                    Math.min(Math.max(limit, 1), 100),
-                ),
-                notificationSummary(client, user.id),
-            ]),
+        async (client) => {
+            const notifications = await listNotifications(
+                client,
+                user.id,
+                unreadOnly,
+                Math.min(Math.max(limit, 1), 100),
+            );
+            const summaryRow = await notificationSummary(client, user.id);
+            return [notifications, summaryRow] as const;
+        },
     );
     return {
         items: items.map((item) => ({ ...item, read: Boolean(item.read_at) })),

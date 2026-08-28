@@ -21,10 +21,8 @@ export async function getOrderBookSessionState(
     client: PoolClient,
     orderBookId: string,
 ): Promise<OrderBookSessionState> {
-    const [sessions, itemRows] = await Promise.all([
-        listOrderSessionRowsByBook(client, orderBookId),
-        listOrderSessionItemRowsByBook(client, orderBookId),
-    ]);
+    const sessions = await listOrderSessionRowsByBook(client, orderBookId);
+    const itemRows = await listOrderSessionItemRowsByBook(client, orderBookId);
     const itemsBySession = new Map<string, CartItem[]>();
     for (const item of itemRows) {
         const items = itemsBySession.get(item.session_id) ?? [];

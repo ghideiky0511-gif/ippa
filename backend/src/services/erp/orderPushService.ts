@@ -121,31 +121,43 @@ export async function cancelProviderOrderForOrder(
     actor: Pick<AuthUser, "id" | "role" | "name">,
     orderId: string,
     auditRequestContext?: AuditRequestContext,
-): Promise<{ cancelled: boolean; error?: string }> {
+): Promise<{ cancelled: boolean; error?: string; pushStatus: ProviderOrderRow | null }> {
     try {
         return await withTenantTransaction(tenant, actor, async (client) => {
             const row = await findProviderOrderRowByOrderId(client, orderId);
-            if (!row) return { cancelled: true };
+            if (!row) return { cancelled: true, pushStatus: null };
             if (row.status === "processing") {
-                return { cancelled: false, error: "Reenvio ao ERP em andamento — tente cancelar novamente em instantes." };
+                return {
+                    cancelled: false,
+                    error: "Reenvio ao ERP em andamento — tente cancelar novamente em instantes.",
+                    pushStatus: row,
+                };
             }
             if (!row.external_id) {
-                await markProviderOrderCancelled(client, orderId);
-                return { cancelled: true };
+                const pushStatus = await markProviderOrderCancelled(client, orderId);
+                return { cancelled: true, pushStatus };
             }
             const integration = await findErpIntegrationRowByProvider(client, row.provider);
             if (!integration) {
-                return { cancelled: false, error: "Integração de ERP não encontrada para cancelar este pedido lá." };
+                return {
+                    cancelled: false,
+                    error: "Integração de ERP não encontrada para cancelar este pedido lá.",
+                    pushStatus: row,
+                };
             }
             const provider = createErpProviderForIntegration(
                 tenant, actor, integration,
                 createExternalApiCallReporter(tenant, actor, integration.provider),
             );
             if (!provider.cancelOrder) {
-                return { cancelled: false, error: "Este provedor de ERP não suporta cancelamento de pedido." };
+                return {
+                    cancelled: false,
+                    error: "Este provedor de ERP não suporta cancelamento de pedido.",
+                    pushStatus: row,
+                };
             }
             await provider.cancelOrder(row.external_id);
-            await markProviderOrderCancelled(client, orderId);
+            const pushStatus = await markProviderOrderCancelled(client, orderId);
             if (auditRequestContext) {
                 await recordAuditEvent(client, {
                     action: PROVIDER_ORDER_AUDIT_ACTIONS.CANCEL_REQUESTED,
@@ -155,11 +167,15 @@ export async function cancelProviderOrderForOrder(
                     metadata: { orderId, provider: row.provider },
                 });
             }
-            return { cancelled: true };
+            return { cancelled: true, pushStatus };
         });
     } catch (error) {
         logger.error("ERP_ORDER_PUSH", "Falha ao cancelar pedido no ERP", { orderId, ...errorMeta(error) });
-        return { cancelled: false, error: error instanceof Error ? error.message : "Falha ao cancelar no ERP." };
+        return {
+            cancelled: false,
+            error: error instanceof Error ? error.message : "Falha ao cancelar no ERP.",
+            pushStatus: await orderPushStatus(tenant, actor, orderId),
+        };
     }
 }
 
@@ -344,11 +360,9 @@ async function attemptProviderOrderPush(
         const freightRow = await findOrderFreightRowByOrderId(client, row.order_id);
         const order = toOrder(orderRow, items, freightRow);
 
-        const [clientRow, productCodesByItemKey, sentCount] = await Promise.all([
-            orderRow.client_id ? findClientRow(client, orderRow.client_id) : Promise.resolve(null),
-            resolveErpProductCodesByItemKey(client, integration.id, items),
-            countSentProviderOrderAttempts(client, row.order_id),
-        ]);
+        const clientRow = orderRow.client_id ? await findClientRow(client, orderRow.client_id) : null;
+        const productCodesByItemKey = await resolveErpProductCodesByItemKey(client, integration.id, items);
+        const sentCount = await countSentProviderOrderAttempts(client, row.order_id);
         const context = { clientDocument: clientRow?.cpf_cnpj ?? undefined, productCodesByItemKey };
 
         await assertProductCodesInStock(provider, items, productCodesByItemKey);

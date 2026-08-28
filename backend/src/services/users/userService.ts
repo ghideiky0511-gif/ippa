@@ -105,7 +105,8 @@ export async function createUserRecordWithPasswordHash(
 export async function users(tenant: Tenant, actor: AuthUser): Promise<Array<AuthUser & Record<string, unknown>>> {
     if (!isAdministrator(actor)) throw new ForbiddenError();
     return withTenantTransaction(tenant, actor, async (client) => {
-        const [userRows, clientRows] = await Promise.all([listUserRows(client), listClientRows(client)]);
+        const userRows = await listUserRows(client);
+        const clientRows = await listClientRows(client);
         const clientsById = new Map(clientRows.map((row) => [row.id, toClient(row)]));
         return Promise.all(userRows.map(async (row) => {
             const user = await toAuthUser(row);

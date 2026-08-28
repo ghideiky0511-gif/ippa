@@ -258,10 +258,8 @@ export async function getTotvsClassificationCatalog(
     requireSettingsAdministrator(user);
     const { integration, types } = await totvsClassificationTypes(tenant, user);
     return withTenantTransaction(tenant, user, async (client) => {
-        const [mapping, usage] = await Promise.all([
-            findCategoryHierarchyMappingRow(client, integration.id),
-            listClassificationTypeUsageRows(client, integration.id),
-        ]);
+        const mapping = await findCategoryHierarchyMappingRow(client, integration.id);
+        const usage = await listClassificationTypeUsageRows(client, integration.id);
         const usageByCode = new Map(usage.map((row) => [row.external_code, row]));
         return {
             mapping,

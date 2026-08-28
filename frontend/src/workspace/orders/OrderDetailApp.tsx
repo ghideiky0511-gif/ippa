@@ -147,8 +147,9 @@ export default function OrderDetailApp({
         setOrder(updated);
         toast.success('Pedido marcado como pago.');
       } else if (confirmAction === 'cancel') {
-        const { order: updated, erpWarning } = await cancelOrder(order.id);
+        const { order: updated, erpWarning, pushStatus: updatedPushStatus } = await cancelOrder(order.id);
         setOrder(updated);
+        if (updatedPushStatus !== undefined) setPushStatus(updatedPushStatus as ProviderOrderRow | null);
         toast.success('Pedido cancelado.');
         if (erpWarning) toast.error(`Cancelado localmente, mas houve um problema ao cancelar no ERP: ${erpWarning}`);
       }
@@ -316,7 +317,7 @@ export default function OrderDetailApp({
             <button
               type="button"
               className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={resending || pushStatus?.status === 'processing'}
+              disabled={resending || pushStatus?.status === 'processing' || order.status === 'cancelado'}
               onClick={() => { setFabOpen(false); void handleResend(); }}
             >
               <RefreshCw className={`mr-2 size-3.5 ${resending ? 'animate-spin' : ''}`} aria-hidden="true" />

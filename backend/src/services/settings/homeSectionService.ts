@@ -13,9 +13,8 @@ import { databaseId } from "@/services/shared/identifiers";
 
 export async function listHomeSections(tenant: Tenant): Promise<HomeSection[]> {
     return withTenantTransaction(tenant, {}, async (client) => {
-        const [sections, banners] = await Promise.all([
-            listHomeSectionRows(client), listHomeBannerRows(client),
-        ]);
+        const sections = await listHomeSectionRows(client);
+        const banners = await listHomeBannerRows(client);
         return sections.map((section): HomeSection => section.type === "product"
             ? { type: "product", id: section.id, productId: section.product_id!, ...section.layout }
             : {

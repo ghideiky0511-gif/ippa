@@ -35,9 +35,9 @@ function digest(token: string): string {
 }
 
 async function discounts(client: PoolClient): Promise<Discount[]> {
-  const [rows, tiers, products] = await Promise.all([
-    listDiscountRows(client), listDiscountTierRows(client), listDiscountProductRows(client),
-  ]);
+  const rows = await listDiscountRows(client);
+  const tiers = await listDiscountTierRows(client);
+  const products = await listDiscountProductRows(client);
   return rows.map((row) => ({
     id: row.id, label: row.label, active: row.active, type: row.type, percent: Number(row.percent),
     tiers: tiers.filter((tier) => tier.discount_id === row.id)
@@ -165,9 +165,11 @@ export async function confirmPayment(
     const closedRows = await closeOpenOrderSessionRowsByOrder(client, context.orderId);
     changedSessions = closedRows.map((closedRow) => toOrderSession(closedRow, context.items));
     const bookIds = new Set(closedRows.map((closedRow) => closedRow.order_book_id));
-    changedBooks = (await Promise.all(
-      [...bookIds].map((bookId) => closeOrderBookWhenFinished(client, bookId)),
-    )).filter((book): book is OrderBookRow => Boolean(book));
+    changedBooks = [];
+    for (const bookId of bookIds) {
+      const closedBook = await closeOrderBookWhenFinished(client, bookId);
+      if (closedBook) changedBooks.push(closedBook);
+    }
     if (context.session.client_id) {
       const user = await findUserRowByClientId(client, context.session.client_id);
       if (user) recipient = { id: user.id, role: user.role, email: user.email, name: user.name };
