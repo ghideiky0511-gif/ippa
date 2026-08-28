@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canMutateLinkedOrder, totalAfterItemMutation } from "./orderSessionService";
+import {
+    canMutateLinkedOrder,
+    isFinalizeBlockedByOrderStatus,
+    isOrderSessionUpsell,
+    totalAfterItemMutation,
+} from "./orderSessionService";
 
 test("a vendedora pode fazer upsell em pedido confirmado", () => {
     assert.equal(canMutateLinkedOrder("novo", false), true);
@@ -27,4 +32,21 @@ test("upsell recalcula total preservando desconto e frete do pedido", () => {
         20,
     );
     assert.equal(total, 270.5);
+});
+
+test("finalizar sessão só é bloqueado de vez em pedido pago ou cancelado", () => {
+    assert.equal(isFinalizeBlockedByOrderStatus("pago"), true);
+    assert.equal(isFinalizeBlockedByOrderStatus("cancelado"), true);
+    assert.equal(isFinalizeBlockedByOrderStatus("aberto"), false);
+    assert.equal(isFinalizeBlockedByOrderStatus("aguardando_pagamento"), false);
+    assert.equal(isFinalizeBlockedByOrderStatus("novo"), false);
+    assert.equal(isFinalizeBlockedByOrderStatus("separado"), false);
+});
+
+test("sessão finalizando sobre pedido já novo/separado é tratada como upsell", () => {
+    assert.equal(isOrderSessionUpsell("aberto"), false);
+    assert.equal(isOrderSessionUpsell("aguardando_pagamento"), false);
+    assert.equal(isOrderSessionUpsell("novo"), true);
+    assert.equal(isOrderSessionUpsell("separado"), true);
+    assert.equal(isOrderSessionUpsell("pago"), true);
 });

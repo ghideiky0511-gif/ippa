@@ -35,7 +35,13 @@ export function QuickViewProvider({ children }: { children: ReactNode }) {
       setTransitioningProductId(null);
       setQuickViewProduct(null);
     },
-    startProductPageTransition: setTransitioningProductId,
+    startProductPageTransition: (productId) => {
+      // Only the product currently open in the Quick View can use the shared
+      // layout transition. This prevents a future trigger from pairing
+      // unrelated layout IDs.
+      if (quickViewProduct?.id !== productId) return;
+      setTransitioningProductId(productId);
+    },
     completeProductPageTransition: (productId) => {
       if (transitioningProductId !== productId) return;
       setTransitioningProductId(null);

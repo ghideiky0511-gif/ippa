@@ -16,6 +16,8 @@ import {
 } from '@/lib/ordersClient';
 import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
 import { diffCartItems } from '@/lib/cartItemsDelta';
+import { ADDABLE_AVAILABILITY } from '@/lib/variants';
+import { buildStockChangeSummary, parseStockChangeDetails } from '@/lib/stockChangeError';
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -25,18 +27,23 @@ function sessionTotal(session: Pick<OrderSession, 'items' | 'freight'>) {
   return session.items.reduce((sum, item) => sum + item.price * item.qty, 0) + (session.freight?.price ?? 0);
 }
 
-function cartItemFromProduct(product: Product): CartItem {
-  const variant = product.variants.find((item) => item.availability !== 'out_of_stock') ?? product.variants[0];
+// Talão ainda não tem seletor de cor/tamanho -- pega a primeira variante
+// vendável do produto (limitação pré-existente, fora do escopo desta
+// correção). null quando nenhuma variante está disponível pra pronta
+// entrega (mesmo critério do storefront, ver lib/variants.ts).
+function cartItemFromProduct(product: Product): CartItem | null {
+  const variant = product.variants.find((item) => ADDABLE_AVAILABILITY.has(item.availability));
+  if (!variant) return null;
   return {
-    key: `${product.id}:${variant?.id ?? 'base'}`,
+    key: `${product.id}:${variant.id}`,
     id: product.id,
     name: product.name,
     image: product.image,
-    color: variant?.color,
-    size: variant?.size,
-    price: variant?.price ?? product.price,
+    color: variant.color,
+    size: variant.size,
+    price: variant.price,
     qty: 1,
-    stockQty: variant?.stockQty,
+    stockQty: variant.stockQty,
   };
 }
 
@@ -227,18 +234,35 @@ export function OrderTalaoModal({
 
   function addProduct(product: Product) {
     const next = cartItemFromProduct(product);
+    if (!next) {
+      setMessage(`${product.name}: sem estoque disponível para pronta entrega.`);
+      return;
+    }
     setItems((current) => {
       const existing = current.find((item) => item.key === next.key);
-      return existing
-        ? current.map((item) => item.key === next.key ? { ...item, qty: item.qty + 1 } : item)
-        : [...current, next];
+      if (!existing) return [...current, next];
+      const cap = existing.stockQty;
+      const nextQty = cap !== undefined ? Math.min(existing.qty + 1, cap) : existing.qty + 1;
+      if (nextQty === existing.qty) {
+        setMessage(`${product.name}: estoque insuficiente para mais uma unidade.`);
+        return current;
+      }
+      return current.map((item) => item.key === next.key ? { ...item, qty: nextQty } : item);
     });
     setProductQuery('');
   }
 
+  // "+" não passa do estoque de pronta entrega conhecido (item.stockQty) --
+  // sem UI de encomenda/programação no talão ainda, ver plano. "−" continua
+  // livre.
   function changeQuantity(key: string, amount: number) {
     setItems((current) => current
-      .map((item) => item.key === key ? { ...item, qty: item.qty + amount } : item)
+      .map((item) => {
+        if (item.key !== key) return item;
+        const rawQty = item.qty + amount;
+        const nextQty = amount > 0 && item.stockQty !== undefined ? Math.min(rawQty, item.stockQty) : rawQty;
+        return { ...item, qty: nextQty };
+      })
       .filter((item) => item.qty > 0));
   }
 
@@ -289,7 +313,18 @@ export function OrderTalaoModal({
       onFinalized(order);
       onClose();
     } catch (cause) {
-      setMessage(cause instanceof Error ? cause.message : 'Não foi possível finalizar o pedido.');
+      const details = parseStockChangeDetails(cause);
+      if (details) {
+        setItems((current) => current
+          .map((item) => {
+            const match = details.find((d) => d.productId === item.id && d.color === item.color && d.size === item.size);
+            return match ? { ...item, qty: match.availableQty } : item;
+          })
+          .filter((item) => item.qty > 0));
+        setMessage(`O estoque de algumas peças mudou, quantidades ajustadas: ${buildStockChangeSummary(details)}. Confira e finalize de novo.`);
+      } else {
+        setMessage(cause instanceof Error ? cause.message : 'Não foi possível finalizar o pedido.');
+      }
     } finally {
       setFinalizing(false);
     }
@@ -330,20 +365,31 @@ export function OrderTalaoModal({
             )}
             {items.length === 0 ? <p className={adminUi.previewEmpty}>Nenhuma peça adicionada.</p> : (
               <div className="flex flex-col gap-2">
-                {items.map((item) => (
-                  <div key={item.key} className="flex flex-wrap items-center gap-3 rounded-lg border border-[#eee] p-3 text-sm">
-                    <div className="min-w-40 flex-1"><strong>{item.name}</strong><div className="text-xs text-brand-muted">{[item.color, item.size].filter(Boolean).join(' · ')}</div></div>
-                    <span>{formatCurrency(item.price)}</span>
-                    {session.status === 'fechado' ? <span>× {item.qty}</span> : (
-                      <div className="flex items-center gap-1">
-                        <button type="button" className={adminUi.button} onClick={() => changeQuantity(item.key, -1)}>−</button>
-                        <span className="min-w-5 text-center">{item.qty}</span>
-                        <button type="button" className={adminUi.button} onClick={() => changeQuantity(item.key, 1)}>+</button>
+                {items.map((item) => {
+                  const atCap = item.stockQty !== undefined && item.qty >= item.stockQty;
+                  return (
+                    <div key={item.key} className="flex flex-wrap items-center gap-3 rounded-lg border border-[#eee] p-3 text-sm">
+                      <div className="min-w-40 flex-1">
+                        <strong>{item.name}</strong>
+                        <div className="text-xs text-brand-muted">{[item.color, item.size].filter(Boolean).join(' · ')}</div>
+                        {item.stockQty !== undefined && (
+                          <div className={`text-xs ${atCap ? 'text-[#b00020]' : 'text-brand-muted'}`}>
+                            {item.stockQty === 0 ? 'Sem estoque disponível' : `${Math.max(0, item.stockQty - item.qty)} disponível para pronta entrega`}
+                          </div>
+                        )}
                       </div>
-                    )}
-                    <strong>{formatCurrency(item.price * item.qty)}</strong>
-                  </div>
-                ))}
+                      <span>{formatCurrency(item.price)}</span>
+                      {session.status === 'fechado' ? <span>× {item.qty}</span> : (
+                        <div className="flex items-center gap-1">
+                          <button type="button" className={adminUi.button} onClick={() => changeQuantity(item.key, -1)}>−</button>
+                          <span className="min-w-5 text-center">{item.qty}</span>
+                          <button type="button" className={adminUi.button} onClick={() => changeQuantity(item.key, 1)} disabled={atCap}>+</button>
+                        </div>
+                      )}
+                      <strong>{formatCurrency(item.price * item.qty)}</strong>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </section>

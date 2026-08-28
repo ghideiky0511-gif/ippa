@@ -3,6 +3,7 @@
 import Link from '@/components/TenantLink';
 import { usePathname } from 'next/navigation';
 import { useTenant } from '@/components/TenantProvider';
+import { adminUi } from '@/workspace/lib/ui';
 import { WORKSPACE_NAV_GROUPS } from '@/workspace/navigation/navigation';
 
 export default function WorkspaceNavList({ onNavigate }: { onNavigate?: () => void }) {
@@ -23,7 +24,7 @@ export default function WorkspaceNavList({ onNavigate }: { onNavigate?: () => vo
                 key={item.href}
                 href={item.href}
                 onClick={onNavigate}
-                className={`flex min-h-11 items-center gap-3 rounded-control px-3 text-sm font-semibold transition-colors ${
+                className={`${adminUi.workspaceNavItem} ${
                   isActive ? 'bg-brand-background text-brand-primary' : 'text-foreground hover:bg-brand-background hover:text-brand-primary'
                 }`}
               >

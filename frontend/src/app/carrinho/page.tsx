@@ -18,6 +18,7 @@ import { useTenant } from '@/components/TenantProvider';
 import { z } from 'zod';
 import type { CartItem } from '@/domain/orders/types';
 import { ProductSchema, type Product } from '@/domain/products/types';
+import { applyStockChangeClamp, buildStockChangeSummary, parseStockChangeDetails } from '@/lib/stockChangeError';
 
 const SimilarProductsResultSchema = z.object({ products: z.array(ProductSchema) });
 
@@ -39,7 +40,7 @@ function unselectedProductNames(cart: CartItem[]): string[] {
 export default function CarrinhoPage() {
   const router = useRouter();
   const { tenant, href } = useTenant();
-  const { cart, cartCount, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, saveOrderToHistory, freight } = useCart();
+  const { cart, cartCount, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, saveOrderToHistory, freight, changeQty, removeFromCart } = useCart();
   const { showPrices } = useAuthUser();
   const [pendingAction, setPendingAction] = useState<{ names: string[]; run: () => void } | null>(null);
   const [similar, setSimilar] = useState<Product[]>([]);
@@ -104,7 +105,13 @@ export default function CarrinhoPage() {
         discount: cartDiscountTotal > 0 ? { label: cartDiscountLabel!, amount: cartDiscountTotal } : undefined,
       });
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : 'Não foi possível registrar o pedido. Seu carrinho foi preservado.');
+      const details = parseStockChangeDetails(cause);
+      if (details) {
+        applyStockChangeClamp(cart, details, changeQty, removeFromCart);
+        toast.error(`O estoque de algumas peças mudou — ajustamos seu carrinho: ${buildStockChangeSummary(details)}`);
+      } else {
+        toast.error(cause instanceof Error ? cause.message : 'Não foi possível registrar o pedido. Seu carrinho foi preservado.');
+      }
     } finally {
       setSendingWhatsapp(false);
     }

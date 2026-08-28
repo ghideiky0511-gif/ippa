@@ -17,6 +17,10 @@ import { useStoreSettings } from './StoreSettingsProvider';
 import ProductImage from './ProductImage';
 import ProductPrice from './ProductPrice';
 import { ProductVariantMatrix } from './ui/product-variant-matrix';
+import {
+  productDetailLayoutId,
+  PRODUCT_DETAIL_LAYOUT_TRANSITION,
+} from './product-detail-motion';
 import type { Availability, Product } from '@/domain/products/types';
 
 type AvailabilityFilter = 'all' | 'in_stock' | 'preorder';
@@ -455,9 +459,9 @@ export default function ProductDetailContent({ product, presentation = 'page', o
 
   return (
     <motion.div
-      layoutId={`product-detail-${product.id}`}
+      layoutId={productDetailLayoutId(product.id)}
       layout
-      transition={{ layout: shouldReduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 280, damping: 30, mass: 0.8 } }}
+      transition={{ layout: shouldReduceMotion ? { duration: 0 } : PRODUCT_DETAIL_LAYOUT_TRANSITION }}
       onLayoutAnimationComplete={onLayoutAnimationComplete}
       className={
         isPanel

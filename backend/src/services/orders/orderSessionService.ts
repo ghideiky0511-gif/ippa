@@ -95,6 +95,21 @@ export function canMutateLinkedOrder(status: Order["status"], isClient: boolean)
     return !isClient || status === "aberto" || status === "aguardando_pagamento";
 }
 
+// Um pedido pago ou cancelado não aceita mais fechamento de sessão por
+// aqui -- nem finalização normal (aberto/aguardando_pagamento -> novo) nem
+// upsell (ver isOrderSessionUpsell abaixo).
+export function isFinalizeBlockedByOrderStatus(status: Order["status"]): boolean {
+    return status === "pago" || status === "cancelado";
+}
+
+// A sessão foi reaberta (ver startUpsell em OrderDetailApp.tsx) sobre um
+// pedido que ela mesma (ou uma sessão irmã) já fechou antes -- itens/total
+// já foram sincronizados ao vivo via updateSession, então "finalizar" de
+// novo só precisa fechar a sessão, sem recriar frete/total.
+export function isOrderSessionUpsell(status: Order["status"]): boolean {
+    return status !== "aberto" && status !== "aguardando_pagamento";
+}
+
 export function totalAfterItemMutation(
     items: Array<Pick<CartItem, "price" | "qty">>,
     order: Pick<NonNullable<Awaited<ReturnType<typeof findOrderRowById>>>, "discount">,
@@ -602,13 +617,16 @@ export async function finalizeOrderSession(
             clientName: session.client_name, channel: session.channel,
         }))!.id;
 
-        // Upsell: mais de uma sessão pode apontar pro mesmo pedido. Se
-        // outra já pagou, não reprocessa (evita recomputar total/duplicar
-        // notificação de "pedido confirmado").
+        // Upsell: a sessão pode ter sido reaberta (ver startUpsell em
+        // OrderDetailApp.tsx) sobre um pedido que ela mesma já fechou antes,
+        // ou uma sessão irmã pode apontar pro mesmo pedido. Só bloqueia de
+        // verdade quando o pedido já foi pago ou cancelado -- essas
+        // transições não aceitam mais alteração por aqui.
         const existingOrder = await findOrderRowById(client, orderId, true);
-        if (existingOrder && existingOrder.status !== "aberto" && existingOrder.status !== "aguardando_pagamento") {
+        if (existingOrder && isFinalizeBlockedByOrderStatus(existingOrder.status)) {
             throw new ValidationError("ORDER_ALREADY_FINALIZED");
         }
+        const isUpsell = Boolean(existingOrder && isOrderSessionUpsell(existingOrder.status));
 
         const items = (await listOrderItemRowsByOrder(client, orderId)).map((item) => item.snapshot);
         if (items.length === 0) throw new ValidationError("EMPTY_ORDER");
@@ -616,34 +634,46 @@ export async function finalizeOrderSession(
         // no instante exato em que ele deixa de ser editável (ver stockGate).
         await assertOrderItemsInStock(tenant, client, items);
 
-        const freightPrice = Number(session.freight_price ?? 0);
-        const total = items.reduce((sum, item) => sum + item.price * item.qty, 0) + freightPrice;
-        // Sem motor de pagamentos de verdade, "finalizar" não paga mais o
-        // pedido -- só fecha o carrinho pra separação (ver migration 036).
-        // paymentMethod fica sem uso aqui até existir cobrança real.
-        const row = await updateOrderRow(client, orderId, { status: "novo", total });
-        if (!row) throw new NotFoundError("ORDER_NOT_FOUND");
-        // Snapshot do frete escolhido na sessão (ver selectFreightQuote) vira
-        // a linha definitiva de order_freights -- sem frete escolhido (sessão
-        // finalizada sem passar por /frete), não há o que gravar.
+        let row: NonNullable<typeof existingOrder>;
         let freightRow: OrderFreightRow | undefined;
-        if (session.freight_kind) {
-            freightRow = await insertOrderFreightRow(client, {
-                orderId,
-                providerId: session.freight_provider_id,
-                quoteId: session.freight_quote_id,
-                kind: session.freight_kind,
-                label: session.freight_label!,
-                price: freightPrice,
-                etaLabel: session.freight_eta_label,
-                deliveryTypeId: session.delivery_type_id,
-                deliveryOfferingId: session.delivery_offering_id,
-                deliveryProviderId: session.delivery_provider_id,
-                fulfillmentMode: session.delivery_fulfillment_mode,
-                deliveryTypeName: session.delivery_type_name,
-                deliveryProviderName: session.delivery_provider_name,
-                destinationCep: session.delivery_destination_cep,
-            });
+        if (isUpsell) {
+            // Itens e total já foram sincronizados ao vivo enquanto a
+            // vendedora adicionava peças (ver itemsDelta em updateSession
+            // acima), e o frete já está gravado em order_freights (1:1 por
+            // pedido -- inserir de novo duplicaria a linha). Só falta
+            // reconfirmar estoque (já feito acima) e fechar a sessão.
+            row = existingOrder!;
+            freightRow = (await findOrderFreightRowByOrderId(client, orderId)) ?? undefined;
+        } else {
+            const freightPrice = Number(session.freight_price ?? 0);
+            const total = items.reduce((sum, item) => sum + item.price * item.qty, 0) + freightPrice;
+            // Sem motor de pagamentos de verdade, "finalizar" não paga mais o
+            // pedido -- só fecha o carrinho pra separação (ver migration 036).
+            // paymentMethod fica sem uso aqui até existir cobrança real.
+            const updatedRow = await updateOrderRow(client, orderId, { status: "novo", total });
+            if (!updatedRow) throw new NotFoundError("ORDER_NOT_FOUND");
+            row = updatedRow;
+            // Snapshot do frete escolhido na sessão (ver selectFreightQuote) vira
+            // a linha definitiva de order_freights -- sem frete escolhido (sessão
+            // finalizada sem passar por /frete), não há o que gravar.
+            if (session.freight_kind) {
+                freightRow = await insertOrderFreightRow(client, {
+                    orderId,
+                    providerId: session.freight_provider_id,
+                    quoteId: session.freight_quote_id,
+                    kind: session.freight_kind,
+                    label: session.freight_label!,
+                    price: freightPrice,
+                    etaLabel: session.freight_eta_label,
+                    deliveryTypeId: session.delivery_type_id,
+                    deliveryOfferingId: session.delivery_offering_id,
+                    deliveryProviderId: session.delivery_provider_id,
+                    fulfillmentMode: session.delivery_fulfillment_mode,
+                    deliveryTypeName: session.delivery_type_name,
+                    deliveryProviderName: session.delivery_provider_name,
+                    destinationCep: session.delivery_destination_cep,
+                });
+            }
         }
         // Fecha TODA sessão irmã ainda aberta que aponte pro mesmo pedido
         // (upsell entre talões), não só a que disparou o fechamento --

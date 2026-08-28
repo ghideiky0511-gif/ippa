@@ -27,12 +27,25 @@ const FRESHNESS_MS = 5_000;
 // finalização, não só "razoavelmente recente" (gate obrigatório pedido pelo
 // usuário). Sem integração ERP ativa, não há autoridade de estoque pra
 // consultar -- no-op, mesma regra que já rege trackInventory hoje.
+// Uma linha com backorderDate já teve a parte excedente do estoque
+// explicitamente aceita como sob encomenda (ver pendingBackorders em
+// ProductDetailContent.tsx / seletor de entrega em CartRows.tsx) -- não é
+// corrida de estoque, é pré-venda por design. Isento do gate ao vivo por
+// enquanto (cobre a linha inteira, já que o contrato não guarda
+// backorderDate por unidade, só por linha color+size). Validação própria
+// do fluxo de programação fica pra outra rodada.
+export function isExemptFromStockGate(item: CartItem): boolean {
+    return Boolean(item.backorderDate);
+}
+
 export async function assertOrderItemsInStock(
     tenant: Tenant,
     client: PoolClient,
     items: CartItem[],
 ): Promise<void> {
-    const relevantItems = items.filter((item) => item.qty > 0 && item.color && item.size);
+    const relevantItems = items.filter(
+        (item) => item.qty > 0 && item.color && item.size && !isExemptFromStockGate(item),
+    );
     if (relevantItems.length === 0) return;
 
     const integration = await findActiveErpIntegrationRow(client);

@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { ChevronRight } from 'lucide-react';
 import { useTenant } from '@/components/TenantProvider';
 import { Button } from '@/components/ui/button';
+import { adminUi } from '@/workspace/lib/ui';
 import WorkspaceSidebar from './WorkspaceSidebar';
 import WorkspaceTopBar from './WorkspaceTopBar';
 
@@ -24,8 +25,9 @@ export default function WorkspaceShell({ children }: { children: ReactNode }) {
         <Button
           variant="ghost"
           size="md"
-          className="fixed left-0 top-1/2 z-20 hidden min-h-0 -translate-y-1/2 rounded-r-full rounded-l-none border border-l-0 border-border bg-surface px-2 shadow-sm lg:flex"
+          className={adminUi.sidebarTrigger}
           aria-label="Abrir menu"
+          title="Abrir menu lateral"
           onClick={() => setSidebarOpen(true)}
         >
           <ChevronRight className="size-5" aria-hidden="true" />

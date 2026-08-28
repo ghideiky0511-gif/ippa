@@ -40,6 +40,9 @@ export default function ProductQuickView({ product, onClose }: { product: Produc
   // — desmonta na hora, sem animação própria do Sheet, senão o painel
   // (já transparente) arrasta esse elemento junto ao deslizar pra fora.
   if (product === null && displayedProduct !== null && wasPageTransitionRef.current) {
+    // `completeProductPageTransition` is called by the destination only after
+    // Motion finishes the shared layout. Skipping the Sheet exit here prevents
+    // a second animation from pulling the already-finished detail sideways.
     setDisplayedProduct(null);
   }
 

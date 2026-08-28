@@ -15,6 +15,7 @@ import { useAuthUser } from '@/components/AuthProvider';
 import CheckoutSteps from '@/components/CheckoutSteps';
 import { useTenant } from '@/components/TenantProvider';
 import { finalizeOrderSession } from '@/lib/ordersClient';
+import { applyStockChangeClamp, buildStockChangeSummary, parseStockChangeDetails } from '@/lib/stockChangeError';
 
 const PAYMENT_METHODS = [
   { id: 'pix', label: 'Pix' },
@@ -25,7 +26,7 @@ const PAYMENT_METHODS = [
 export default function PagamentoPage() {
   const router = useRouter();
   const { href } = useTenant();
-  const { cart, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, freight, saveOrderToHistory } = useCart();
+  const { cart, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, freight, saveOrderToHistory, changeQty, removeFromCart } = useCart();
   const talao = useTalao();
   const activeSession = talao?.activeSession ?? null;
   const gate = useTalaoClientGate();
@@ -132,7 +133,14 @@ export default function PagamentoPage() {
       }
       router.push(href('/pedido-confirmado'));
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : 'Não foi possível confirmar o pedido. Seu carrinho foi preservado.');
+      const details = parseStockChangeDetails(cause);
+      if (details) {
+        applyStockChangeClamp(cart, details, changeQty, removeFromCart);
+        toast.error(`O estoque de algumas peças mudou — ajustamos seu carrinho: ${buildStockChangeSummary(details)}`);
+        router.push(href('/carrinho'));
+      } else {
+        toast.error(cause instanceof Error ? cause.message : 'Não foi possível confirmar o pedido. Seu carrinho foi preservado.');
+      }
       setConfirming(false);
     }
   }
