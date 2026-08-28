@@ -80,6 +80,19 @@ test("ignora promotionalPrice maior ou igual ao preço normal", () => {
     );
 });
 
+test("trata promotionalPrice zero como ausência de promoção", () => {
+    assert.deepEqual(
+        selectTotvsModaPrice(
+            {
+                productCode: 10,
+                prices: [{ priceCode: 1, price: 64.9, promotionalPrice: 0 }],
+            },
+            [1],
+        ),
+        { price: 64.9 },
+    );
+});
+
 test("agrupa todos os SKUs e classificações de uma referência", () => {
     const snapshot = mapTotvsModaReferenceSnapshot([
         {

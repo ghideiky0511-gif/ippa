@@ -265,7 +265,7 @@ export async function processReference(
     // nunca sobrescreve productPrice, vira desconto separado (ver abaixo).
     const promotionalPrices = activePriceSnapshots
         .map((snapshot) => snapshot.promotionalPrice)
-        .filter((value): value is number => value !== undefined && value >= 0 && value < productPrice);
+        .filter((value): value is number => value !== undefined && value > 0 && value < productPrice);
     const productPromotionalPrice = promotionalPrices.length > 0 ? Math.min(...promotionalPrices) : undefined;
     const missingPriceSkuIds = reference.skus
         .filter((sku) => sku.isActive && !sku.isBlocked && !priceBySku.has(sku.externalId))

@@ -13,8 +13,8 @@ import {
   type FreightQuote,
   type SessionFreight,
 } from '@/domain/orders/types';
-import { DiscountSchema, type Discount } from '@/domain/catalog/types';
-import { ProductSchema, type Product } from '@/domain/products/types';
+import { CatalogPageSchema, DiscountSchema, type Discount } from '@/domain/catalog/types';
+import type { Product } from '@/domain/products/types';
 import { z } from 'zod';
 import { adminJson } from '@/lib/http';
 import { selectFreightQuote } from '@/lib/shipping';
@@ -127,16 +127,31 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [catalogById, setCatalogById] = useState<Record<string, Product>>({});
   const [discounts, setDiscounts] = useState<Discount[]>([]);
 
+  const cartProductIds = useMemo(
+    () => Array.from(new Set((activeSession?.items ?? personalCart).map((item) => item.id))),
+    [activeSession, personalCart],
+  );
+
+  // catalogById só precisa do Product completo (variantes, cores, tamanhos,
+  // estoque) das peças que estão de fato no carrinho — não do catálogo
+  // inteiro. Antes buscava tudo em toda navegação, sem relação com o
+  // tamanho real do carrinho; agora pede só os ids que ainda faltam.
   useEffect(() => {
-    fetch('/api/catalog')
-      .then((r) => (r.ok ? r.json() : []))
+    const missingIds = cartProductIds.filter((id) => !(id in catalogById));
+    if (missingIds.length === 0) return;
+    fetch(`/api/catalog?ids=${missingIds.map(encodeURIComponent).join(',')}`)
+      .then((r) => (r.ok ? r.json() : null))
       .then((json) => {
-        const parsed = z.array(ProductSchema).safeParse(json);
-        const products = parsed.success ? parsed.data : [];
-        setCatalogById(Object.fromEntries(products.map((p) => [p.id, p])));
+        const parsed = CatalogPageSchema.safeParse(json);
+        if (!parsed.success) return;
+        setCatalogById((prev) => {
+          const next = { ...prev };
+          for (const product of parsed.data.items) next[product.id] = product;
+          return next;
+        });
       })
       .catch(() => {});
-  }, []);
+  }, [cartProductIds, catalogById]);
 
   // Enquanto a sessão atribuída está sendo criada, o carrinho local absorve
   // cliques sucessivos. Assim que o atendimento existe, ele recebe o estado
