@@ -92,7 +92,8 @@ ALTER TABLE order_sessions
   ADD COLUMN delivery_provider_id uuid,
   ADD COLUMN delivery_fulfillment_mode delivery_fulfillment_mode,
   ADD COLUMN delivery_type_name text,
-  ADD COLUMN delivery_provider_name text;
+  ADD COLUMN delivery_provider_name text,
+  ADD COLUMN delivery_destination_cep text;
 
 ALTER TABLE order_sessions
   ADD CONSTRAINT order_sessions_delivery_type_fkey
