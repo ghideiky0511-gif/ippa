@@ -131,7 +131,7 @@ export default function CatalogProductCard({
                 {imageAction}
                 {shownColors.length > 0 && (
                     <div
-                        className={`pointer-events-none absolute bottom-3 left-2.5 hidden flex-wrap items-center gap-1.5 rounded-full bg-white/90 px-2 py-1.5 backdrop-blur-sm group-hover:flex sm:flex ${imageAction ? "right-14" : "right-2.5"}`}
+                        className={`pointer-events-none absolute bottom-2.5 left-2.5 hidden flex-wrap items-center gap-1.5 rounded-full bg-white/90 px-2 py-1.5 backdrop-blur-sm group-hover:flex sm:flex ${imageAction ? "right-14" : "right-2.5"}`}
                     >
                         {shownColors.map((color) => (
                             <span
@@ -155,11 +155,11 @@ export default function CatalogProductCard({
                 {productClassificationSummary(product) && (
                     <Badge>{productClassificationSummary(product)}</Badge>
                 )}
-                <h3 className="min-h-[2.7em] text-[15px] font-semibold leading-[1.35]">
+                <h3 className="line-clamp-2 min-h-[2.7em] text-[15px] leading-[1.35] font-semibold">
                     {title}
                 </h3>
                 {product.referenceId && (
-                    <div className="-mt-1 text-[11px] text-brand-muted">
+                    <div className="text-[11px] text-brand-muted">
                         {product.referenceId}
                     </div>
                 )}

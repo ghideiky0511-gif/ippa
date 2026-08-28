@@ -45,24 +45,36 @@ export const publicUi = {
   search: 'min-w-[200px] flex-[2] rounded-lg border border-[#ddd] bg-white px-3 py-2.5 text-sm',
   select: 'min-w-[140px] flex-1 rounded-lg border border-[#ddd] bg-white px-3 py-2.5 text-sm',
   resultCount: '-mt-2 mb-3 text-[13px] text-brand-muted',
-  grid: 'grid grid-cols-2 gap-3 pb-12 sm:gap-4 md:grid-cols-3 lg:grid-cols-4',
-  catalogToolbar: 'sticky top-0 z-10 -mx-4 mb-5 border-b border-border bg-surface-muted/90 px-4 py-3 backdrop-blur-xl md:static md:mx-0 md:mb-0 md:border-0 md:bg-transparent md:px-0 md:py-0',
+  // Grade responsiva: 2 colunas no celular, 3 já a partir de sm (640px, cobre
+  // celular grande / tablet pequeno que antes ficava com 2 cards altíssimos),
+  // 4 no desktop. Gutter cresce junto (12 → 16 → 20).
+  grid: 'grid grid-cols-2 gap-3 pb-12 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 lg:gap-5',
+  // Barra de busca/filtro (só mobile — no desktop os filtros viram a coluna
+  // lateral). `top-16` a encaixa logo abaixo do header fixo (min-h-16), sem
+  // ficar escondida atrás dele. Alinha com as margens do container (px-4 /
+  // sm:px-5) via -mx/px iguais.
+  catalogToolbar: 'sticky top-16 z-10 -mx-4 mb-4 border-b border-border bg-surface-muted/90 px-4 py-3 backdrop-blur-xl sm:-mx-5 sm:px-5 md:static md:z-auto md:mx-0 md:mb-0 md:border-0 md:bg-transparent md:px-0 md:py-0',
   catalogLayout: 'md:grid md:grid-cols-[220px_1fr] md:items-start md:gap-8 lg:grid-cols-[248px_1fr] lg:gap-10',
   catalogSidebar: 'md:sticky md:top-20',
   catalogSidebarTitle: 'mb-3 text-sm font-bold tracking-[.02em] text-brand-text uppercase',
   catalogFilterGroup: 'flex flex-col gap-3',
   catalogContent: 'min-w-0',
-  catalogResults: 'mb-4 flex items-center justify-between gap-3 text-[13px] text-brand-muted',
-  catalogGrid: 'grid grid-cols-2 gap-3 pb-12 sm:gap-4 md:grid-cols-3 lg:grid-cols-4',
-  catalogTabs: 'sticky top-16 z-10 -mx-4 mb-6 flex items-end gap-5 overflow-x-auto border-b border-border bg-surface-muted/90 px-4 pt-3 backdrop-blur-xl [scrollbar-width:none] sm:-mx-5 sm:px-5 md:mx-0 md:px-2 [&::-webkit-scrollbar]:hidden',
+  catalogResults: 'mb-3 flex items-center justify-between gap-3 text-[13px] text-brand-muted sm:mb-4',
+  catalogGrid: 'grid grid-cols-2 gap-3 pb-12 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 lg:gap-5',
+  // Abas de vitrine: fixas só no desktop (abaixo do header). No mobile
+  // rolam junto com o conteúdo — evita empilhar 3 barras fixas numa tela
+  // pequena. Alinhadas às margens do container.
+  catalogTabs: '-mx-4 mb-5 flex items-end gap-5 overflow-x-auto border-b border-border bg-surface-muted/90 px-4 pt-3 backdrop-blur-xl [scrollbar-width:none] sm:-mx-5 sm:px-5 md:sticky md:top-16 md:z-10 md:mx-0 md:mb-6 md:px-2 [&::-webkit-scrollbar]:hidden',
   catalogTab: 'relative shrink-0 cursor-pointer border-0 bg-transparent px-0 pb-3.5 text-sm font-semibold whitespace-nowrap text-brand-muted transition-colors hover:text-brand-text',
   catalogTabActive: 'text-brand-primary',
   catalogTabUnderline: 'pointer-events-none absolute bottom-[-1px] left-0 h-0.5 bg-brand-primary transition-[transform,width] duration-300 ease-out',
-  catalogSection: 'scroll-mt-32 pt-1 mb-9',
-  catalogSectionTitle: 'mb-3.5 text-lg font-bold text-brand-text',
-  catalogCard: 'group flex min-w-0 flex-col overflow-hidden rounded-brand border border-border/60 bg-brand-card shadow-[0_1px_3px_rgba(44,28,36,.06)] transition-[border-color,box-shadow,transform] duration-300 ease-out hover:-translate-y-1 hover:border-brand-primary/25 hover:shadow-[0_16px_34px_rgba(44,28,36,.12)]',
+  // scroll-mt = altura do que fica fixo acima ao pular pra uma vitrine:
+  // mobile header (64) + barra de filtro (~70); desktop header (64) + abas (~46).
+  catalogSection: 'scroll-mt-[8.5rem] pt-1 mb-8 sm:mb-10 md:scroll-mt-28',
+  catalogSectionTitle: 'mb-3 text-lg font-bold text-brand-text sm:mb-4',
+  catalogCard: 'group flex min-w-0 flex-col overflow-hidden rounded-brand border border-border/60 bg-brand-card shadow-[0_1px_3px_rgba(44,28,36,.06)] transition-[border-color,box-shadow,transform] duration-300 ease-out hover:-translate-y-0.5 hover:border-brand-primary/25 hover:shadow-[0_16px_34px_rgba(44,28,36,.12)]',
   catalogCardMedia: 'relative aspect-[9/16] overflow-hidden bg-brand-background',
-  catalogCardContent: 'flex flex-1 flex-col gap-2 p-3.5 sm:p-4',
+  catalogCardContent: 'flex flex-1 flex-col gap-1.5 p-3 lg:p-4',
   carouselControl: 'inline-flex size-9 cursor-pointer items-center justify-center rounded-full border border-white/20 bg-black/35 text-white shadow-sm backdrop-blur-sm transition-[background,transform,border-color] duration-200 hover:scale-105 hover:border-white/35 hover:bg-black/55 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40',
   cartItem: 'flex gap-2.5 border-b border-[#f0f0f0] py-2.5',
   cartItemImage: 'h-[72px] w-14 shrink-0 rounded-md bg-[#eee]',
