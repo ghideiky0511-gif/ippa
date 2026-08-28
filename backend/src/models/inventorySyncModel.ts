@@ -50,7 +50,10 @@ export async function applyErpInventorySnapshotRow(
         [sourceId, value.variantId, value.skuExternalId, value.locationExternalId],
     );
 
-    const normalizedQuantity = Math.max(0, Math.trunc(value.quantity));
+    // Sem clamp em 0: o ERP às vezes reporta saldo negativo por erro de
+    // estoque do lado dele, e esse valor real precisa aparecer pro usuário
+    // em vez de ser mascarado como "esgotado" igual a um saldo zero comum.
+    const normalizedQuantity = Math.trunc(value.quantity);
     const previous = await client.query<{ on_hand_qty: number; reserved_qty: number }>(
         `SELECT on_hand_qty, reserved_qty FROM inventory_balances
          WHERE tenant_id = app_tenant_id() AND variant_id = $1 AND location_id = $2
@@ -58,7 +61,7 @@ export async function applyErpInventorySnapshotRow(
         [value.variantId, locationId],
     );
     const previousOnHand = previous.rows[0]?.on_hand_qty ?? 0;
-    const reserved = Math.min(previous.rows[0]?.reserved_qty ?? 0, normalizedQuantity);
+    const reserved = Math.min(previous.rows[0]?.reserved_qty ?? 0, Math.max(0, normalizedQuantity));
     await client.query(
         `INSERT INTO inventory_balances (
            tenant_id, variant_id, location_id, on_hand_qty, reserved_qty

@@ -183,13 +183,13 @@ function ReadOnlyContent({ product }: { product: ProductAdmin }) {
             matrix={matrix}
             renderCell={({ cell }) => {
               if (!cell) return { content: '—', className: 'text-brand-muted/60', title: 'Não existe nessa combinação' };
-              if (cell.availability === 'out_of_stock') return { content: '✕', className: 'text-[#b00020]/60', title: deliveryLabel(cell.availability) };
               return {
                 title: deliveryLabel(cell.availability),
-                content: <div className="flex flex-col items-center gap-0.5 whitespace-nowrap leading-tight"><span className="font-semibold text-foreground">{money(cell.price)}</span><span className="text-[10px] text-muted-foreground">{deliveryLabel(cell.availability)}</span>{cell.stockQty !== undefined && <span className="text-[10px] text-muted-foreground">Estoque: {cell.stockQty}</span>}</div>,
+                content: <div className="flex flex-col items-center gap-0.5 whitespace-nowrap leading-tight"><span className="font-semibold text-foreground">{money(cell.price)}</span><span className="text-[10px] text-muted-foreground">{deliveryLabel(cell.availability)}</span><span className="text-[10px] text-muted-foreground">Estoque: {cell.stockQty ?? 0}</span></div>,
               };
             }}
           />
+          <p className="mt-2 text-xs text-muted-foreground"><span className="text-brand-muted/60">—</span> essa combinação de cor e tamanho não existe nesta referência</p>
         </div>
       )}
     </section>
