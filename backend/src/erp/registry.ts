@@ -1,5 +1,5 @@
 import type { ExternalApiCallReporter } from "@/lib/externalApiCall";
-import type { ErpProvider, ErpProviderCredentials, ErpProviderFactory } from "./types";
+import type { ErpProvider, ErpProviderCredentials, ErpProviderFactory, ErpProviderTokenCache } from "./types";
 import { createMockErpProvider } from "./providers/mock";
 import { createTotvsModaErpProvider } from "./providers/totvsmoda";
 
@@ -15,10 +15,11 @@ export function createErpProvider(
     providerCode: string,
     credentials: ErpProviderCredentials,
     reporter?: ExternalApiCallReporter,
+    tokenCache?: ErpProviderTokenCache,
 ): ErpProvider {
     const factory = PROVIDER_FACTORIES[providerCode];
     if (!factory) throw new Error(`Unknown ERP provider: ${providerCode}`);
-    return factory(credentials, reporter);
+    return factory(credentials, reporter, tokenCache);
 }
 
 export function listSupportedErpProviders(): string[] {

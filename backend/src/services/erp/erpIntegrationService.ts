@@ -2,6 +2,7 @@ import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser } from "@/lib/types";
 import { createErpProvider } from "@/erp/registry";
+import { createErpProviderForIntegration } from "@/services/erp/erpProviderFactory";
 import {
     listVisibleErpProviderCatalog,
     type ErpProviderCatalogEntry,
@@ -240,8 +241,8 @@ async function totvsClassificationTypes(
 ): Promise<{ integration: ErpIntegrationRow; types: Array<{ typeCode: string; typeName: string; typeNameAux?: string }> }> {
     const integration = await withTenantTransaction(tenant, user, (client) => findErpIntegrationRowByProvider(client, "totvsmoda"));
     if (!integration) throw new NotFoundError("ERP_INTEGRATION_NOT_CONFIGURED");
-    const provider = createErpProvider(
-        "totvsmoda", integration.credentials,
+    const provider = createErpProviderForIntegration(
+        tenant, user, integration,
         createExternalApiCallReporter(tenant, user, "totvsmoda"),
     );
     if (!provider.listProductClassificationTypes) {

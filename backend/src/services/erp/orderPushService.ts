@@ -14,7 +14,7 @@ import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser } from "@/lib/types";
 import type { CartItem } from "@/contracts/shared";
 import { logger, errorMeta } from "@/lib/logger";
-import { createErpProvider } from "@/erp/registry";
+import { createErpProviderForIntegration } from "@/services/erp/erpProviderFactory";
 import { isNonRetryableErpOrderError, type ErpProvider } from "@/erp/types";
 import { createExternalApiCallReporter } from "@/services/erp/externalApiLogService";
 import { recordAuditEvent, PROVIDER_ORDER_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
@@ -37,6 +37,7 @@ import {
     type ProviderOrderStatus,
 } from "@/models/providerOrdersModel";
 import {
+    countSentProviderOrderAttempts,
     insertProviderOrderAttemptRow,
     listProviderOrderAttemptRowsByOrderId,
     type ProviderOrderAttemptOutcome,
@@ -136,8 +137,8 @@ export async function cancelProviderOrderForOrder(
             if (!integration) {
                 return { cancelled: false, error: "Integração de ERP não encontrada para cancelar este pedido lá." };
             }
-            const provider = createErpProvider(
-                integration.provider, integration.credentials,
+            const provider = createErpProviderForIntegration(
+                tenant, actor, integration,
                 createExternalApiCallReporter(tenant, actor, integration.provider),
             );
             if (!provider.cancelOrder) {
@@ -247,8 +248,8 @@ async function resolveErpProductCodesByItemKey(
 // se o ERP cair (para não travar a venda), aqui o pedido ainda não existe
 // no ERP -- se a checagem falhar (sem saldo ou ERP fora do ar), a tentativa
 // falha e cai no retry normal do motor, sem inventar uma resposta.
-async function assertProductCodesInStock(
-    provider: ErpProvider,
+export async function assertProductCodesInStock(
+    provider: Pick<ErpProvider, "fetchStock">,
     items: CartItem[],
     productCodesByItemKey: Record<string, string>,
 ): Promise<void> {
@@ -274,6 +275,25 @@ async function assertProductCodesInStock(
     }
 }
 
+// Código de integração humano-friendly do pedido no provider --
+// {marca}{numero_do_pedido}_{versao}, ex. "BIPPA1042_01". A marca vem de
+// APP_COMERCIAL_NAME_INTEGRATION -- separada de APP_COMERCIAL_NAME (nome
+// comercial "de vitrine", pode ter espaço/acento) porque este campo vai
+// direto num identificador de sistema no ERP; número é orders.order_number,
+// sequencial por tenant. `version` é 1 + quantas vezes um pedido de VERDADE
+// já foi criado no provider para este pedido local
+// (countSentProviderOrderAttempts) -- só sobe depois de um
+// cancelamento+recriação de fato (ver comentário sobre cancelar-antes-de-
+// recriar em attemptProviderOrderPush), nunca num retry simples que ainda
+// não chegou a criar nada lá. Manter o mesmo valor num retry simples é
+// proposital: preserva a proteção de idempotência do orderId no TOTVS
+// (reenviar a MESMA chamada não deve virar pedido duplicado lá -- ver
+// comentário de idempotencyKey em erp/types.ts).
+export function buildProviderOrderIdempotencyKey(orderNumber: number, version: number): string {
+    const brand = (process.env.APP_COMERCIAL_NAME_INTEGRATION ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    return `${brand}${orderNumber}_${String(version).padStart(2, "0")}`;
+}
+
 async function attemptProviderOrderPush(
     client: PoolClient,
     tenant: Tenant,
@@ -291,8 +311,8 @@ async function attemptProviderOrderPush(
         });
         return "failed";
     }
-    const provider = createErpProvider(
-        integration.provider, integration.credentials,
+    const provider = createErpProviderForIntegration(
+        tenant, actor, integration,
         createExternalApiCallReporter(tenant, actor, integration.provider),
     );
     if (!provider.sendOrder) {
@@ -324,14 +344,16 @@ async function attemptProviderOrderPush(
         const freightRow = await findOrderFreightRowByOrderId(client, row.order_id);
         const order = toOrder(orderRow, items, freightRow);
 
-        const [clientRow, productCodesByItemKey] = await Promise.all([
+        const [clientRow, productCodesByItemKey, sentCount] = await Promise.all([
             orderRow.client_id ? findClientRow(client, orderRow.client_id) : Promise.resolve(null),
             resolveErpProductCodesByItemKey(client, integration.id, items),
+            countSentProviderOrderAttempts(client, row.order_id),
         ]);
         const context = { clientDocument: clientRow?.cpf_cnpj ?? undefined, productCodesByItemKey };
 
         await assertProductCodesInStock(provider, items, productCodesByItemKey);
-        const result = await provider.sendOrder(order, context, { idempotencyKey: order.id });
+        const idempotencyKey = buildProviderOrderIdempotencyKey(order.orderNumber, sentCount + 1);
+        const result = await provider.sendOrder(order, context, { idempotencyKey });
         await finishAndLogAttempt(client, row, {
             status: "sent", externalId: result.externalId,
             payload: order as unknown as Record<string, unknown>, response: result.raw ?? {}, error: null,

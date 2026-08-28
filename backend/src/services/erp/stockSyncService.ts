@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { Tenant, ActorContext } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import { withControlTransaction } from "@/lib/db/control";
-import { createErpProvider } from "@/erp/registry";
 import { createExternalApiCallReporter } from "@/services/erp/externalApiLogService";
+import { createErpProviderForIntegration } from "@/services/erp/erpProviderFactory";
 import { findActiveErpIntegrationRow, type ErpIntegrationRow } from "@/models/erpIntegrationsModel";
 import {
     acquireStockSyncLeaseRow,
@@ -50,9 +50,8 @@ export async function syncTenantStock(tenant: Tenant): Promise<StockSyncResult> 
         return { integration: integrationRow, config: configRow, state: stateRow };
     });
 
-    const provider = createErpProvider(
-        integration.provider,
-        integration.credentials,
+    const provider = createErpProviderForIntegration(
+        tenant, SYSTEM_ACTOR, integration,
         createExternalApiCallReporter(tenant, SYSTEM_ACTOR, integration.provider),
     );
     // Ausência não é falha -- provider sem esse método (ou ERP que não

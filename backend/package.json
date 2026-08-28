@@ -16,6 +16,7 @@
     "test:orders": "tsx --test src/services/orders/*.test.ts",
     "test:catalog": "tsx --test src/services/catalog/catalogService.test.ts",
     "test:catalog-sync": "tsx --test src/services/erp/catalogSyncService.test.ts src/erp/providers/totvsmoda/client.test.ts src/erp/providers/totvsmoda/mapper.test.ts",
+    "test:erp-order-push": "tsx --test src/services/erp/orderPushService.test.ts",
     "test:payments": "tsx --test src/lib/crypto/paymentCredentials.test.ts src/payments/registry.test.ts",
     "sync-contracts": "node ../scripts/sync-contracts.mjs"
   },

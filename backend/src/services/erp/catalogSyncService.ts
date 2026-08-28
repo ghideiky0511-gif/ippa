@@ -3,7 +3,7 @@ import type { PoolClient } from "pg";
 import type { Tenant, ActorContext } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import { withControlTransaction } from "@/lib/db/control";
-import { createErpProvider } from "@/erp/registry";
+import { createErpProviderForIntegration } from "@/services/erp/erpProviderFactory";
 import type {
     ErpPriceSnapshot,
     ErpProductChangeWindow,
@@ -433,9 +433,8 @@ export async function syncReferenceOnDemand(
         provider: integration.provider,
         referenceCode,
     });
-    const provider = createErpProvider(
-        integration.provider,
-        integration.credentials,
+    const provider = createErpProviderForIntegration(
+        tenant, SYSTEM_ACTOR, integration,
         createExternalApiCallReporter(tenant, SYSTEM_ACTOR, integration.provider),
     );
     const run = await withTenantTransaction(tenant, SYSTEM_ACTOR, (client) =>
@@ -496,9 +495,8 @@ export async function findReferenceCodeByProductCodeOnDemand(
     productCode: string,
 ): Promise<string | null> {
     const { integration } = await loadSyncContext(tenant);
-    const provider = createErpProvider(
-        integration.provider,
-        integration.credentials,
+    const provider = createErpProviderForIntegration(
+        tenant, SYSTEM_ACTOR, integration,
         createExternalApiCallReporter(tenant, SYSTEM_ACTOR, integration.provider),
     );
     if (!provider.findReferenceCodeByProductCode) {
@@ -641,9 +639,8 @@ export async function syncTenantCatalog(
             )
             : null;
         if (openFullRun && openFullRun.status !== "discovering") {
-            const provider = createErpProvider(
-                integration.provider,
-                integration.credentials,
+            const provider = createErpProviderForIntegration(
+                tenant, SYSTEM_ACTOR, integration,
                 createExternalApiCallReporter(tenant, SYSTEM_ACTOR, integration.provider),
             );
             const runtime: SyncRuntime = {
@@ -674,9 +671,8 @@ export async function syncTenantCatalog(
                 integrationId: integration.id, mode, windowStart, windowEnd,
             }),
         );
-        const provider = createErpProvider(
-            integration.provider,
-            integration.credentials,
+        const provider = createErpProviderForIntegration(
+            tenant, SYSTEM_ACTOR, integration,
             createExternalApiCallReporter(tenant, SYSTEM_ACTOR, integration.provider),
         );
         const runtime: SyncRuntime = { tenant, integration, config, provider, run };

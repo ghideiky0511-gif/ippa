@@ -3,13 +3,15 @@ import type { PoolClient } from "pg";
 export interface ErpIntegrationRow {
     id: string; provider: string; credentials: Record<string, unknown>;
     active: boolean; created_at: Date; updated_at: Date;
+    cached_access_token: string | null; cached_access_token_expires_at: Date | null;
 }
 
 export interface ErpIntegrationWriteRow {
     provider: string; credentials: Record<string, unknown>;
 }
 
-const integrationFields = "id, provider, credentials, active, created_at, updated_at";
+const integrationFields =
+    "id, provider, credentials, active, created_at, updated_at, cached_access_token, cached_access_token_expires_at";
 
 export async function findActiveErpIntegrationRow(client: PoolClient): Promise<ErpIntegrationRow | null> {
     const result = await client.query<ErpIntegrationRow>(
@@ -42,7 +44,8 @@ export async function upsertErpIntegrationCredentialsRow(client: PoolClient, val
         `INSERT INTO tenant_erp_integrations (tenant_id, provider, credentials, active)
          VALUES (app_tenant_id(), $1, $2, false)
          ON CONFLICT (tenant_id, provider)
-         DO UPDATE SET credentials = EXCLUDED.credentials, updated_at = now()
+         DO UPDATE SET credentials = EXCLUDED.credentials, updated_at = now(),
+                       cached_access_token = NULL, cached_access_token_expires_at = NULL
          RETURNING ${integrationFields}`,
         [value.provider, JSON.stringify(value.credentials)],
     );
@@ -65,6 +68,24 @@ export async function activateErpIntegrationRow(client: PoolClient, provider: st
         [provider],
     );
     return result.rows[0] ?? null;
+}
+
+// Grava o token de acesso obtido do ERP e sua expiração (ver
+// services/erp/erpProviderFactory.ts, chamado pelo próprio provider quando
+// reautentica) -- não bate updated_at de propósito, já que isto é cache
+// interno, não uma mudança de configuração que deva aparecer como "editado"
+// na UI de integrações.
+export async function updateErpIntegrationTokenCacheRow(
+    client: PoolClient,
+    integrationId: string,
+    token: string,
+    expiresAt: Date | null,
+): Promise<void> {
+    await client.query(
+        `UPDATE tenant_erp_integrations SET cached_access_token = $2, cached_access_token_expires_at = $3
+         WHERE tenant_id = app_tenant_id() AND id = $1`,
+        [integrationId, token, expiresAt],
+    );
 }
 
 // Desliga o ERP inteiro (nenhum provider ativo) sem apagar credenciais

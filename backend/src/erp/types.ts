@@ -108,6 +108,19 @@ export interface ErpClassificationTypeSnapshot {
 
 export type ErpProviderCredentials = Record<string, unknown>;
 
+// Cache de token de acesso repassado por quem cria o provider (ver
+// services/erp/erpProviderFactory.ts) para quem souber persistir -- hoje só
+// o TOTVS Moda autentica de fato (providers/totvsmoda/client.ts); providers
+// que não recebem isto (mock) simplesmente ignoram o parâmetro extra.
+// `expiresAt`/o argumento de onTokenIssued são epoch ms, não Date, porque
+// este arquivo não conhece banco (ver comentário no topo) -- a conversão
+// pra Date acontece em quem persiste.
+export interface ErpProviderTokenCache {
+    token?: string;
+    expiresAt?: number;
+    onTokenIssued?: (token: string, expiresAt: number | null) => void | Promise<void>;
+}
+
 // Dado auxiliar de um pedido que só existe no banco (não em Order/CartItem),
 // resolvido pelo motor (services/erp/orderPushService) antes de chamar
 // sendOrder -- ver comentário em ErpProvider.sendOrder. productCodesByItemKey
@@ -219,6 +232,7 @@ export interface ErpProvider {
 export type ErpProviderFactory = (
     credentials: ErpProviderCredentials,
     reporter?: ExternalApiCallReporter,
+    tokenCache?: ErpProviderTokenCache,
 ) => ErpProvider;
 
 // Marca um erro de sendOrder/cancelOrder como definitivo — o motor

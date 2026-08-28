@@ -23,8 +23,8 @@ import {
 import { findUserRowByClientId } from "@/models/usersModel";
 import { findActiveErpIntegrationRow } from "@/models/erpIntegrationsModel";
 import { findExternalIdByInternalId, upsertExternalReferenceRow } from "@/models/erpExternalReferencesModel";
-import { createErpProvider } from "@/erp/registry";
 import { createExternalApiCallReporter } from "@/services/erp/externalApiLogService";
+import { createErpProviderForIntegration } from "@/services/erp/erpProviderFactory";
 import { recordAuditEvent, CLIENT_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
 import { toClient } from "./clientMapper";
@@ -200,8 +200,8 @@ export async function findOrImportTenantClientByDocument(
         const integration = await findActiveErpIntegrationRow(client);
         if (!integration) return { client: null, source: "not_found" };
 
-        const provider = createErpProvider(
-            integration.provider, integration.credentials,
+        const provider = createErpProviderForIntegration(
+            tenant, user, integration,
             createExternalApiCallReporter(tenant, user, integration.provider),
         );
         if (!provider.lookupClientByDocument) return { client: null, source: "not_found" };
@@ -265,8 +265,8 @@ export async function syncClientFromErp(
 
         const integration = await findActiveErpIntegrationRow(client);
         if (!integration) throw new ValidationError("ERP_INTEGRATION_NOT_CONFIGURED");
-        const provider = createErpProvider(
-            integration.provider, integration.credentials,
+        const provider = createErpProviderForIntegration(
+            tenant, user, integration,
             createExternalApiCallReporter(tenant, user, integration.provider),
         );
         if (!provider.lookupClientByDocument) throw new ValidationError("ERP_SYNC_UNAVAILABLE");

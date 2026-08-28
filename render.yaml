@@ -43,6 +43,14 @@ envVarGroups:
         sync: false
       - key: CATALOG_SYNC_SECRET
         sync: false
+      # Cache opcional (ver backend/src/lib/redis.ts) -- preencha no painel
+      # com a Internal Key Value URL do Redis (redis://..., mesma região do
+      # ippa-backend). Free web service não recebe conexão privada, mas pode
+      # abrir uma para um datastore da mesma região -- por isso interna
+      # funciona aqui mesmo no plano Free, diferente do caso
+      # frontend->backend documentado abaixo em BACKEND_INTERNAL_URL.
+      - key: REDIS_URL
+        sync: false
 
 services:
   - type: web

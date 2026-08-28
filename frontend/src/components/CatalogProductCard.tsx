@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { COLOR_MAP } from "@/lib/config";
@@ -48,7 +48,12 @@ export default function CatalogProductCard({
     // entre os visíveis); fora dele, mantém o comportamento antigo: toca
     // sempre que o card está visível. `preload="metadata"` evita baixar o
     // vídeo inteiro antes de tocar.
-    const hasVideo = !!product.videoUrl;
+    // Se o vídeo falhar ao carregar (URL quebrada, formato não suportado,
+    // CORS etc.), cai pra imagem em vez de deixar o card sem nada — sem
+    // isso, uma falha de carregamento deixava a mídia do card vazia pra
+    // sempre, já que o <video> não tem fallback nativo pra isso.
+    const [videoFailed, setVideoFailed] = useState(false);
+    const hasVideo = !!product.videoUrl && !videoFailed;
     const { rowAutoplayEnabled, isActive, setVisible, notifyEnded } =
         useRowAutoplay(index, hasVideo);
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -106,7 +111,7 @@ export default function CatalogProductCard({
                     aria-label={`Ver cores e tamanhos de ${product.name}`}
                     onClick={onOpen}
                 >
-                    {product.videoUrl ? (
+                    {hasVideo ? (
                         <video
                             ref={videoRef}
                             className="block size-full bg-brand-background object-cover transition-transform duration-[250ms] group-hover:scale-[1.04]"
@@ -115,6 +120,7 @@ export default function CatalogProductCard({
                             preload="metadata"
                             loop={!rowAutoplayEnabled}
                             onEnded={handleEnded}
+                            onError={() => setVideoFailed(true)}
                             muted
                             playsInline
                             disablePictureInPicture

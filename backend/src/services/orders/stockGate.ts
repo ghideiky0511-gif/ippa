@@ -7,8 +7,8 @@ import { listProductVariantRowsByProductIds } from "@/models/catalogModel";
 import { findActiveErpIntegrationRow, type ErpIntegrationRow } from "@/models/erpIntegrationsModel";
 import { findExternalIdByInternalId } from "@/models/erpExternalReferencesModel";
 import { applyErpInventorySnapshotRow } from "@/models/inventorySyncModel";
-import { createErpProvider } from "@/erp/registry";
 import { createExternalApiCallReporter } from "@/services/erp/externalApiLogService";
+import { createErpProviderForIntegration } from "@/services/erp/erpProviderFactory";
 import { getStockForVariants, getStockForVariantsFresh, invalidateVariantStock } from "@/services/inventory/stockCacheService";
 import { logger } from "@/lib/logger";
 
@@ -88,9 +88,8 @@ async function refreshStockLive(
     }
     if (skuByVariant.size === 0) return new Map();
 
-    const provider = createErpProvider(
-        integration.provider,
-        integration.credentials,
+    const provider = createErpProviderForIntegration(
+        tenant, SYSTEM_ACTOR, integration,
         createExternalApiCallReporter(tenant, SYSTEM_ACTOR, integration.provider),
     );
     const runId = randomUUID();

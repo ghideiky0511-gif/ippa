@@ -20,7 +20,8 @@
 // (getPersonStatistics) fora de searchAndValidate.
 
 import type { ExternalApiCallReporter } from "@/lib/externalApiCall";
-import { logger } from "@/lib/logger";
+import type { ErpProviderTokenCache } from "@/erp/types";
+import { logger, errorMeta } from "@/lib/logger";
 import {
     TotvsModaAuthError,
     TotvsModaClientError,
@@ -274,11 +275,23 @@ function toOrderRequestError(error: unknown): Error {
 export class TotvsModaClient {
     private accessToken: string | null = null;
     private tokenExpiresAt: number | null = null;
+    private readonly onTokenIssued?: ErpProviderTokenCache["onTokenIssued"];
 
     constructor(
         private readonly credentials: TotvsModaCredentials,
         private readonly reporter?: ExternalApiCallReporter,
-    ) {}
+        tokenCache?: ErpProviderTokenCache,
+    ) {
+        // Semeia com o token já cacheado em banco (ver
+        // services/erp/erpProviderFactory.ts) -- sem isto, cada
+        // createErpProvider (fábrica pura, uma instância nova por chamada)
+        // reautenticaria do zero mesmo com um token de banco ainda válido.
+        if (tokenCache?.token && tokenCache.expiresAt) {
+            this.accessToken = tokenCache.token;
+            this.tokenExpiresAt = tokenCache.expiresAt;
+        }
+        this.onTokenIssued = tokenCache?.onTokenIssued;
+    }
 
     private async authenticate(force = false): Promise<string> {
         const { clientId, clientSecret, username, password } = this.credentials;
@@ -354,6 +367,16 @@ export class TotvsModaClient {
         this.tokenExpiresAt = payload.expires_in
             ? Date.now() + payload.expires_in * 1000
             : null;
+        if (this.onTokenIssued) {
+            try {
+                await this.onTokenIssued(this.accessToken, this.tokenExpiresAt);
+            } catch (error) {
+                // Best-effort: falha ao persistir o cache não pode derrubar
+                // a chamada que já tem um token válido em mãos -- na pior
+                // hipótese, a próxima chamada só reautentica de novo.
+                logger.error("totvsmoda-client", "Falha ao persistir cache do token de acesso", errorMeta(error));
+            }
+        }
         return this.accessToken;
     }
 

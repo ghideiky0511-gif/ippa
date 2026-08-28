@@ -9,6 +9,7 @@ import type {
     ErpPriceSnapshot,
     ErpProvider,
     ErpProviderCredentials,
+    ErpProviderTokenCache,
     ErpStockSnapshot,
 } from "../../types";
 import {
@@ -211,9 +212,10 @@ function toRelatedParty(
 export function createTotvsModaErpProvider(
     credentials: ErpProviderCredentials,
     reporter?: ExternalApiCallReporter,
+    tokenCache?: ErpProviderTokenCache,
 ): ErpProvider {
     const normalized = normalizeCredentials(credentials);
-    const client = new TotvsModaClient(normalized, reporter);
+    const client = new TotvsModaClient(normalized, reporter, tokenCache);
 
     return {
         code: "totvsmoda",
