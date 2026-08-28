@@ -29,6 +29,7 @@ import { toOrder, toOrderBook, toOrderSession } from "./orderMapper";
 import { closeOrderBookWhenFinished } from "./orderBookLifecycle";
 import type { OrderBookRow } from "@/models/orderBooksModel";
 import { ORDER_AUDIT_ACTIONS, recordAuditEvent, type AuditRequestContext } from "@/services/audit";
+import { assertOrderItemsInStock } from "./stockGate";
 
 // Checkout direto (cliente sem talão/sessão ativa) não passa por
 // freight_quotes -- lista os providers ativos já convertidos pra
@@ -184,6 +185,9 @@ export async function createCustomerOrder(
             await syncOrderItems(client, { orderId, currentItems, nextItems: items, actorId: user.id, actorRole: user.role });
         }
         if (orderItems.filter((item) => item.qty > 0).length === 0) throw new ValidationError("EMPTY_ORDER");
+        // Gate obrigatório: reconfirma que o estoque ainda cobre o pedido
+        // no instante exato em que ele deixa de ser editável (ver stockGate).
+        await assertOrderItemsInStock(tenant, client, orderItems);
         // Checkout direto não passa por freight_quotes (não há sessão pra
         // pendurar a cotação) -- a cliente escolhe um provider ativo e o
         // preço/label/prazo vêm direto da config dele (mesma regra de

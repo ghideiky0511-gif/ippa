@@ -13,6 +13,7 @@ import { ADDABLE_AVAILABILITY, buildVariantMatrix, deliveryLabel, splitStockQty 
 import { resolveGallery, resolveImageForColor } from '@/lib/images';
 import { useCart } from './CartProvider';
 import { useAuthUser } from './AuthProvider';
+import { useStoreSettings } from './StoreSettingsProvider';
 import ProductImage from './ProductImage';
 import ProductPrice from './ProductPrice';
 import { ProductVariantMatrix } from './ui/product-variant-matrix';
@@ -84,29 +85,14 @@ export default function ProductDetailContent({ product, presentation = 'page', o
   }
   // Liga/desliga dos filtros de pré-venda/pronta-entrega (ver /ferramentas
   // na plataforma admin) — cliente, não vem do getCatalog() porque não é
-  // dado de produto, é toggle de página. Mesmo padrão de CatalogApp.tsx
-  // buscando /api/highlights: fetch direto sem forçar a rota a virar
-  // dynamic. Ausente/erro = tratado como ligado (default de quando a
-  // ferramenta foi construída).
-  const [toolFlags, setToolFlags] = useState({ preSale: true, readyToShip: true });
-
-  useEffect(() => {
-    fetch('/api/store-settings')
-      .then((r) => r.json())
-      .then((s) => {
-        const nextToolFlags = {
-          preSale: s?.features?.preSale !== false,
-          readyToShip: s?.features?.readyToShip !== false,
-        };
-        setToolFlags(nextToolFlags);
-        setAvailabilityFilter((current) => {
-          if (current === 'preorder' && !nextToolFlags.preSale) return 'all';
-          if (current === 'in_stock' && !nextToolFlags.readyToShip) return 'all';
-          return current;
-        });
-      })
-      .catch(() => {});
-  }, []);
+  // dado de produto, é toggle de página. Ausente = tratado como ligado
+  // (default de quando a ferramenta foi construída). storeSettings já vem
+  // pronto do RootLayout (server), então não precisa de fetch/efeito aqui.
+  const storeSettings = useStoreSettings();
+  const toolFlags = {
+    preSale: storeSettings.features?.preSale !== false,
+    readyToShip: storeSettings.features?.readyToShip !== false,
+  };
 
   const displayImage = gallery[galleryOrder[0]] ?? resolveImageForColor(product, selectedColor);
   const showSuggestedPrice = !!product.suggestedRetailPrice;

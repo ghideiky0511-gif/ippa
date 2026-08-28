@@ -2,7 +2,7 @@ import type { Namespace } from "socket.io";
 import type { CartItem, Order, OrderBook, OrderSession } from "@/lib/types";
 import type { RealtimeEvent } from "@/contracts/realtime";
 
-export type RealtimeUpdate = "sessions_updated" | "orders_updated" | "order_books_updated";
+export type RealtimeUpdate = "sessions_updated" | "orders_updated" | "order_books_updated" | "notifications_updated";
 
 const globalForRealtimeUpdates = globalThis as unknown as {
     __updatesNamespace?: Namespace;
@@ -20,13 +20,28 @@ function clientRoom(tenantId: string, clientId: string): string {
     return `updates:client:${tenantId}:${clientId}`;
 }
 
+// Notificação (notificationModel) é sempre endereçada a um user_id
+// específico, não a um papel — administrador/expedição/entregador não
+// dividem a mesma fila de notificações como dividem a fila de pedidos
+// (tenantRoom). Toda role entra na própria userRoom (ver
+// updatesRoomsForUser abaixo), então "notifications_updated" sempre chega
+// só a quem de fato recebeu aquela notificação.
+function userRoom(tenantId: string, userId: string): string {
+    return `updates:user:${tenantId}:${userId}`;
+}
+
 export function updatesRoomsForUser(tenantId: string, user: { id: string; role: string; clientId?: string }): string[] {
-    if (user.role === "vendedora") return [sellerRoom(tenantId, user.id)];
+    // userRoom entra pra toda role, sempre — é onde "notifications_updated"
+    // é emitido (ver notifyUserNotification), e notificação é por user_id,
+    // não por papel/sessão/talão.
+    const rooms = [userRoom(tenantId, user.id)];
+    if (user.role === "vendedora") return [...rooms, sellerRoom(tenantId, user.id)];
     if (user.role === "cliente") {
-        // Sem clientId não há como escopar a room a uma única cliente — cair
-        // no tenantRoom (como antes) vazaria toda a fila da loja pra ela.
-        // Ver updateBroadcast.test.ts.
-        return user.clientId ? [clientRoom(tenantId, user.clientId)] : [];
+        // Sem clientId não há como escopar a clientRoom a uma única cliente —
+        // cair no tenantRoom (como antes) vazaria toda a fila da loja pra
+        // ela. Ver updateBroadcast.test.ts. A userRoom continua valendo
+        // (notificações são por user_id, não afetadas por esse bloqueador).
+        return user.clientId ? [...rooms, clientRoom(tenantId, user.clientId)] : rooms;
     }
     // administrador/expedição/entregador: veem a fila do tenant inteiro (ver
     // orderSessions/userOrders), mas talões (order-books) são sempre
@@ -34,7 +49,7 @@ export function updatesRoomsForUser(tenantId: string, user: { id: string; role: 
     // orderBookService.ts) — por isso também entram na própria sellerRoom,
     // senão nunca receberiam os `book_upsert` dos talões que eles mesmos
     // possuem quando estão usando o talão como vendedora.
-    return [tenantRoom(tenantId), sellerRoom(tenantId, user.id)];
+    return [...rooms, tenantRoom(tenantId), sellerRoom(tenantId, user.id)];
 }
 
 export function registerUpdatesNamespace(namespace: Namespace): void {
@@ -160,4 +175,12 @@ export function notifyOrder(tenantId: string, order: Pick<Order, "sellerId" | "c
     emitSignal(tenantRoom(tenantId), "orders_updated");
     if (order.sellerId) emitSignal(sellerRoom(tenantId, order.sellerId), "orders_updated");
     if (order.clientId) emitSignal(clientRoom(tenantId, order.clientId), "orders_updated");
+}
+
+/** Uma notificação nova foi enfileirada pra este usuário (ver
+ * enqueueNotification em pushNotificationService.ts) — sinal sem payload,
+ * NotificationCenter reage refazendo GET /api/notifications/summary em vez
+ * de fazer polling a cada 60s pra descobrir isso. */
+export function notifyUserNotification(tenantId: string, userId: string): void {
+    emitSignal(userRoom(tenantId, userId), "notifications_updated");
 }

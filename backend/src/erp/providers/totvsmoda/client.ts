@@ -589,6 +589,42 @@ export class TotvsModaClient {
         );
     }
 
+    // Mesmo endpoint de searchProductBalances, mas via filter.change em vez
+    // de filter.productCodeList -- pede "o que mudou nessa janela" (saldo)
+    // em vez de "o saldo desses SKUs que eu já conheço". Usado pelo poll de
+    // estoque dedicado (mais rápido que o sync de catálogo completo), que
+    // não sabe de antemão quais productCodes mudaram. Sem productCodeList
+    // pode devolver mais de 1000 linhas numa janela grande, por isso pagina.
+    async searchChangedProductBalances(
+        window: { startDate: Date; endDate: Date },
+        page = 1,
+    ): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {
+        const payload = {
+            filter: {
+                change: {
+                    startDate: window.startDate.toISOString(),
+                    endDate: window.endDate.toISOString(),
+                },
+            },
+            option: {
+                balances: [
+                    {
+                        branchCode: this.credentials.branchCode,
+                        stockCodeList: this.credentials.stockCodeList,
+                    },
+                ],
+            },
+            page,
+            pageSize: 1000,
+        };
+        return this.searchAndValidate(
+            "searchChangedProductBalances",
+            PRODUCT_BALANCES_SEARCH_PATH,
+            payload,
+            "Busca de saldos alterados retornou formato inválido.",
+        );
+    }
+
     async searchOrders(
         payload: TotvsModaSearchPayload,
     ): Promise<TotvsModaSearchResponse<Record<string, unknown>>> {

@@ -1,11 +1,12 @@
 'use client';
 import { publicUi } from '@/lib/ui';
 
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getDocumentType } from '@/lib/document';
 import { apiFetch } from '@/lib/api-client';
 import { useTenant } from '@/components/TenantProvider';
+import { useStoreSettings } from '@/components/StoreSettingsProvider';
 
 type AccessStage = 'document' | 'login' | 'first_access' | 'confirmation_sent';
 
@@ -14,22 +15,14 @@ export default function LoginPage() {
   const { href } = useTenant();
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect');
-  const [allowCpfSignup, setAllowCpfSignup] = useState<boolean | null>(null);
+  const storeSettings = useStoreSettings();
+  const allowCpfSignup = storeSettings.features?.allowCpfSignup !== false;
   const [stage, setStage] = useState<AccessStage>('document');
   const [document, setDocument] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirmation, setPasswordConfirmation] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    apiFetch('/api/store-settings')
-      .then((response) => (response.ok ? response.json() : null))
-      .then((settings) => { if (!cancelled) setAllowCpfSignup(settings?.features?.allowCpfSignup !== false); })
-      .catch(() => { if (!cancelled) setAllowCpfSignup(true); });
-    return () => { cancelled = true; };
-  }, []);
 
   async function readError(response: Response, fallback: string): Promise<string> {
     const data = await response.json().catch(() => ({}));
@@ -105,11 +98,11 @@ export default function LoginPage() {
 
   return (
     <div className={publicUi.loginPage}>
-      <section className={publicUi.loginForm} aria-busy={allowCpfSignup === null || loading}>
+      <section className={publicUi.loginForm} aria-busy={loading}>
         <h1 className="m-0 text-center text-xl font-bold text-[#222]">Entre para comprar</h1>
         <p className="m-0 text-center text-sm leading-5 text-brand-muted">Veja os preços exclusivos para revendedoras.</p>
 
-        {allowCpfSignup === null ? <p className="m-0 text-center text-sm text-brand-muted">Carregando opções de acesso…</p> : stage === 'document' ? (
+        {stage === 'document' ? (
           <form className="flex flex-col gap-4" onSubmit={startAccess}>
             <div className={publicUi.field}>
               <label>{documentLabel}</label>

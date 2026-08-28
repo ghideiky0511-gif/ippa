@@ -5,7 +5,6 @@ import type { CategoryTreeEntry, Classification, ClassificationType, Discount, H
 import type { ProductAdmin, ProductSourceOrigin } from "@/contracts/products";
 import type { CatalogPage, CatalogSectionsResult } from "@/contracts/catalog";
 import type {
-    InventoryBalanceRow,
     ProductColorImageRow,
     ProductPackItemRow,
     ProductPackRow,
@@ -15,8 +14,6 @@ import type {
 import {
     findProductRowsByIds,
     listCatalogProductPage,
-    listInventoryBalanceRows,
-    listInventoryBalanceRowsByVariantIds,
     listProductColorImageRows,
     listProductColorImageRowsByProductIds,
     listProductPackItemRows,
@@ -27,6 +24,7 @@ import {
     listProductVariantRows,
     listProductVariantRowsByProductIds,
 } from "@/models/catalogModel";
+import { getStockForVariants } from "@/services/inventory/stockCacheService";
 import type { ClassificationJoinedRow } from "@/models/classificationModel";
 import {
     listCategoryMenuRows,
@@ -119,7 +117,7 @@ function buildDiscounts(discountRows: DiscountRow[], tierRows: DiscountTierRow[]
 
 interface CatalogAssociations {
     variants: ProductVariantRow[];
-    balances: InventoryBalanceRow[];
+    stockByVariant: Map<string, number>;
     classifications: ClassificationJoinedRow[];
     packs: ProductPackRow[];
     packItems: ProductPackItemRow[];
@@ -134,14 +132,13 @@ interface CatalogAssociations {
 // só diferem em QUAIS linhas são carregadas antes de chegar aqui.
 async function assembleCatalogProducts(productRows: ProductRow[], assoc: CatalogAssociations): Promise<Product[]> {
     if (productRows.length === 0) return [];
-    const { variants, balances, classifications, packs, packItems, colorImages, storeSettings, discounts } = assoc;
+    const { variants, stockByVariant, classifications, packs, packItems, colorImages, storeSettings, discounts } = assoc;
     const colorImagesByProduct = new Map<string, Record<string, string[]>>();
     for (const row of colorImages) {
         const byColor = colorImagesByProduct.get(row.product_id) ?? {};
         (byColor[row.color] ??= []).push(row.image_url);
         colorImagesByProduct.set(row.product_id, byColor);
     }
-    const stockByVariant = new Map(balances.map((row) => [row.variant_id, row.stock_qty]));
     const classificationsByVariant = new Map<string, Classification[]>();
     for (const row of classifications) {
         if (!row.variant_id) continue;
@@ -246,9 +243,8 @@ async function loadCatalog(tenant: Tenant, includeProductsWithoutPrice: boolean)
             : productRows.filter((product) => hasPublicCatalogPrice(product.price));
         if (products.length === 0) return [];
 
-        const [variants, balances, classifications, packs, packItems, colorImages, storeSettings, discountRows, tierRows, discountProductRows] = await Promise.all([
+        const [variants, classifications, packs, packItems, colorImages, storeSettings, discountRows, tierRows, discountProductRows] = await Promise.all([
             listProductVariantRows(client),
-            listInventoryBalanceRows(client),
             listVariantClassificationRows(client),
             listProductPackRows(client),
             listProductPackItemRows(client),
@@ -258,8 +254,9 @@ async function loadCatalog(tenant: Tenant, includeProductsWithoutPrice: boolean)
             listDiscountTierRows(client),
             listDiscountProductRows(client),
         ]);
+        const stockByVariant = await getStockForVariants(tenant, client, variants.map((variant) => variant.id));
         const discounts = buildDiscounts(discountRows, tierRows, discountProductRows);
-        return assembleCatalogProducts(products, { variants, balances, classifications, packs, packItems, colorImages, storeSettings, discounts });
+        return assembleCatalogProducts(products, { variants, stockByVariant, classifications, packs, packItems, colorImages, storeSettings, discounts });
     });
 }
 
@@ -375,7 +372,7 @@ function activeProductDiscountIds(discountRows: DiscountRow[], discountProductRo
 // mídia) só para os produtos dados -- usada pela página real de catálogo
 // (listCatalogPage), que já resolveu no SQL quais produtos entram na página
 // atual e não precisa mais carregar o tenant inteiro para montá-los.
-async function loadAssociatedCatalogProducts(client: PoolClient, productRows: ProductRow[]): Promise<Product[]> {
+async function loadAssociatedCatalogProducts(tenant: Tenant, client: PoolClient, productRows: ProductRow[]): Promise<Product[]> {
     if (productRows.length === 0) return [];
     const productIds = productRows.map((row) => row.id);
     const [variants, packs, storeSettings, discountRows, tierRows, discountProductRows] = await Promise.all([
@@ -388,14 +385,14 @@ async function loadAssociatedCatalogProducts(client: PoolClient, productRows: Pr
     ]);
     const variantIds = variants.map((variant) => variant.id);
     const packIds = packs.map((pack) => pack.id);
-    const [balances, classifications, packItems, colorImages] = await Promise.all([
-        listInventoryBalanceRowsByVariantIds(client, variantIds),
+    const [stockByVariant, classifications, packItems, colorImages] = await Promise.all([
+        getStockForVariants(tenant, client, variantIds),
         listVariantClassificationRowsByVariantIds(client, variantIds),
         listProductPackItemRowsByPackIds(client, packIds),
         listProductColorImageRowsByProductIds(client, productIds),
     ]);
     const discounts = buildDiscounts(discountRows, tierRows, discountProductRows);
-    return assembleCatalogProducts(productRows, { variants, balances, classifications, packs, packItems, colorImages, storeSettings, discounts });
+    return assembleCatalogProducts(productRows, { variants, stockByVariant, classifications, packs, packItems, colorImages, storeSettings, discounts });
 }
 
 export async function listCatalogPage(tenant: Tenant, query: CatalogQuery): Promise<CatalogPage> {
@@ -414,7 +411,7 @@ export async function listCatalogPage(tenant: Tenant, query: CatalogQuery): Prom
 
         if (query.ids) {
             const rows = await findProductRowsByIds(client, query.ids);
-            const products = await loadAssociatedCatalogProducts(client, rows);
+            const products = await loadAssociatedCatalogProducts(tenant, client, rows);
             const matching = products
                 .map((product) => filterCatalogVariants(product, query))
                 .filter((product): product is Product => Boolean(product))
@@ -435,7 +432,7 @@ export async function listCatalogPage(tenant: Tenant, query: CatalogQuery): Prom
             limit: pageSize,
             offset: (page - 1) * pageSize,
         });
-        const products = await loadAssociatedCatalogProducts(client, rows);
+        const products = await loadAssociatedCatalogProducts(tenant, client, rows);
         const items = products
             .map((product) => filterCatalogVariants(product, query))
             .filter((product): product is Product => Boolean(product));

@@ -53,6 +53,18 @@ export function createMockErpProvider(): ErpProvider {
             }));
         },
 
+        // Sem changeDate de verdade no mock -- devolve o saldo de todo o
+        // catálogo mock, independente da janela, só pra exercitar o caminho
+        // do poll de estoque dedicado (stockSyncService) em teste.
+        async fetchStockChanges() {
+            return MOCK_RAW_PRODUCTS.map(({ externalId }) => ({
+                skuExternalId: externalId,
+                locationExternalId: "mock:default",
+                locationName: "Estoque mock",
+                quantity: 0,
+            }));
+        },
+
         async getProducts(): Promise<ErpFetchResult<ReturnType<typeof mapMockProduct>>> {
             return { items: MOCK_RAW_PRODUCTS.map(({ externalId, raw }) => ({ externalId, data: mapMockProduct(raw) })) };
         },

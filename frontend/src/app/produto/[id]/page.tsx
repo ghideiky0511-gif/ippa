@@ -5,7 +5,8 @@ import Link from "@/components/TenantLink";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { backendJson } from "@/lib/backend";
-import { ProductSchema, type Product } from "@/domain/products/types";
+import { ProductSchema } from "@/domain/products/types";
+import { CatalogPageSchema } from "@/domain/catalog/types";
 import ProductPageDetail from "@/components/ProductPageDetail";
 import SimilarProducts from "@/components/SimilarProducts";
 import { cacheTag } from "@/lib/cacheTags";
@@ -25,10 +26,10 @@ export default async function ProductPage({
 }) {
     const { id } = await params;
     const tenantSlug = (await headers()).get("x-ippa-tenant") ?? "";
-    const catalog = await backendJson("/api/catalog", z.array(ProductSchema), {
+    const catalogPage = await backendJson(`/api/catalog?ids=${encodeURIComponent(id)}`, CatalogPageSchema, {
         next: { revalidate: 20, tags: tenantSlug ? [cacheTag("catalog", tenantSlug)] : [] },
     });
-    const product = catalog.find((p) => p.id === id);
+    const product = catalogPage.items.find((item) => item.id === id);
     if (!product) notFound();
 
     // Mesma âncora única do quick-view (o produto sendo visto) — reaproveita

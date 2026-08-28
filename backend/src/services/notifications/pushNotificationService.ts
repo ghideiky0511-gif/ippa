@@ -17,6 +17,7 @@ import {
     upsertPushSubscription,
 } from "@/models/notificationModel";
 import { listAdministradorUserIds } from "@/models/usersModel";
+import { notifyUserNotification } from "@/services/realtime/updateBroadcast";
 
 const maxAttempts = Math.max(1, Number(process.env.PUSH_MAX_ATTEMPTS ?? 5));
 
@@ -81,6 +82,9 @@ export async function enqueueNotification(
             idempotencyKey: keyFor(recipient.id, input),
         }),
     );
+    // NotificationCenter escuta esse sinal em vez de fazer polling de
+    // /api/notifications/summary a cada 60s (ver useUpdatesRealtime).
+    notifyUserNotification(tenant.id, recipient.id);
     // Entrega imediata é uma otimização; a fila persistida permite uma execução posterior sem perda.
     void dispatchNotifications(tenant, recipient, 20).catch((error) =>
         console.error("Falha ao despachar push", error),

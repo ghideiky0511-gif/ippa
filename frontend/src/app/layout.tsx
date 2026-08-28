@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { Cormorant_Garamond, Manrope } from 'next/font/google';
 import ConditionalShell from "@/components/ConditionalShell";
 import { TenantProvider } from '@/components/TenantProvider';
+import { StoreSettingsProvider } from '@/components/StoreSettingsProvider';
 import { AppToaster } from '@/components/ui/toaster';
 import { z } from "zod";
 import { backendJson, backendRequest } from "@/lib/backend";
@@ -82,14 +83,16 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     <html lang="pt-BR" className={`${manrope.variable} ${cormorant.variable}`}>
       <body className="min-h-screen bg-surface-muted font-sans text-foreground">
         <TenantProvider tenant={tenant}>
-          <ConditionalShell
-            categoryTree={categoryTree}
-            authUser={authPayload.user}
-            publicCatalogPrices={storeSettings.features?.publicCatalogPrices !== false}
-            suggestedPiecesEnabled={storeSettings.features?.suggestedPieces !== false}
-          >
-            {children}
-          </ConditionalShell>
+          <StoreSettingsProvider storeSettings={storeSettings}>
+            <ConditionalShell
+              categoryTree={categoryTree}
+              authUser={authPayload.user}
+              publicCatalogPrices={storeSettings.features?.publicCatalogPrices !== false}
+              suggestedPiecesEnabled={storeSettings.features?.suggestedPieces !== false}
+            >
+              {children}
+            </ConditionalShell>
+          </StoreSettingsProvider>
         </TenantProvider>
         <AppToaster />
       </body>

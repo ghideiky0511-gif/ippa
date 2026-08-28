@@ -19,6 +19,13 @@ export const PositiveIntegerSchema = z.number().int().positive('Informe um núme
 export const NonNegativeIntegerSchema = z.number().int().nonnegative('Informe um número inteiro não negativo.');
 export const IsoDateTimeSchema = z.iso.datetime();
 
+// Estoque disponível de uma variante (on_hand - reserved). Ao contrário de
+// uma quantidade pedida, esse valor pode vir negativo do ERP (erro de
+// estoque do lado dele — venda além do saldo, ajuste incorreto etc.) e
+// isso precisa passar pela validação em vez de ser rejeitado, senão a
+// resposta da API quebra pra qualquer produto com esse problema.
+export const StockQtySchema = z.number().int();
+
 // Valor normalizado e reutilizável para todos os e-mails que entram no
 // domínio. A transformação garante que comparações e índices de unicidade
 // trabalhem sempre com o mesmo formato.
@@ -86,7 +93,7 @@ export const CartItemSchema = z.object({
   // carrinho (não recalcula depois — se o estoque mudar, a peça já
   // escolhida não deve "sumir" a previsão combinada). Sem valor = sem
   // controle de estoque, qty inteira é "pronta entrega" (hoje).
-  stockQty: NonNegativeIntegerSchema.optional(),
+  stockQty: StockQtySchema.optional(),
   // Previsão de entrega escolhida pra a parte da qty que excede stockQty
   // (rótulo livre, ex. "Em 30 dias" — vem de CONFIG.backorderDeliveryOptions,
   // que é por loja). Sem valor = ainda não escolhida. Rótulo livre, não é

@@ -402,6 +402,39 @@ export function createTotvsModaErpProvider(
             return result;
         },
 
+        async fetchStockChanges(window): Promise<ErpStockSnapshot[]> {
+            const result: ErpStockSnapshot[] = [];
+            let page = 1;
+            while (true) {
+                const response = await client.searchChangedProductBalances(window, page);
+                for (const row of response.items as TotvsModaBalanceRow[]) {
+                    if (row.productCode === undefined) continue;
+                    for (const stockCode of normalized.stockCodeList) {
+                        const balance = row.balances?.find(
+                            (candidate) =>
+                                candidate.stockCode === stockCode &&
+                                (candidate.branchCode ??
+                                    normalized.branchCode) ===
+                                    normalized.branchCode,
+                        );
+                        const branchCode =
+                            balance?.branchCode ?? normalized.branchCode;
+                        result.push({
+                            skuExternalId: String(row.productCode),
+                            locationExternalId: `${branchCode}:${stockCode}`,
+                            locationName: `Filial ${branchCode} / estoque ${stockCode}`,
+                            quantity: Number.isFinite(balance?.stock)
+                                ? Number(balance?.stock)
+                                : 0,
+                        });
+                    }
+                }
+                if (!response.hasNext) break;
+                page += 1;
+            }
+            return result;
+        },
+
         async getProducts(
             options?: ErpFetchOptions,
         ): Promise<

@@ -4,8 +4,7 @@ import HomeApp from '@/components/HomeApp';
 import { resolveHomeSections } from '@/lib/catalogFacets';
 import { backendJson } from '@/lib/backend';
 import { cacheTag } from '@/lib/cacheTags';
-import { HomeSectionSchema } from '@/domain/catalog/types';
-import { ProductSchema } from '@/domain/products/types';
+import { CatalogPageSchema, HomeSectionSchema } from '@/domain/catalog/types';
 
 // Força renderização em tempo de request: os blocos da home são editados no
 // workspace (Editor da home) e precisam refletir aqui sem rebuild. As duas
@@ -36,10 +35,21 @@ export default async function Page() {
   }
 
   const tags = [cacheTag('catalog', tenantSlug)];
-  const [catalog, rawSections] = await Promise.all([
-    backendJson('/api/catalog', z.array(ProductSchema), { next: { revalidate: 20, tags } }),
-    backendJson('/api/home-sections', z.array(HomeSectionSchema), { next: { revalidate: 20, tags } }),
-  ]);
+  const rawSections = await backendJson('/api/home-sections', z.array(HomeSectionSchema), {
+    next: { revalidate: 20, tags },
+  });
+  const productIds = [...new Set(
+    rawSections
+      .filter((section) => section.type === 'product')
+      .map((section) => section.productId),
+  )];
+  const catalog = productIds.length > 0
+    ? (await backendJson(
+        `/api/catalog?ids=${productIds.map(encodeURIComponent).join(',')}`,
+        CatalogPageSchema,
+        { next: { revalidate: 20, tags } },
+      )).items
+    : [];
 
   return <HomeApp sections={resolveHomeSections(catalog, rawSections)} />;
 }

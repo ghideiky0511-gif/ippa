@@ -133,6 +133,15 @@ export interface ErpProvider {
     findReferenceCodeByProductCode?(productCode: string): Promise<string | null>;
     fetchPrices(productCodes: string[]): Promise<ErpPriceSnapshot[]>;
     fetchStock(productCodes: string[]): Promise<ErpStockSnapshot[]>;
+    // Saldo de TODOS os SKUs alterados numa janela de tempo, sem precisar
+    // saber de antemão quais productCodes mudaram (ao contrário de
+    // fetchStock, que exige a lista). Alimenta o poll de estoque dedicado
+    // (services/erp/stockSyncService), independente da descoberta de
+    // referência (discoverProductChanges) -- um provider sem esse endpoint
+    // simplesmente não implementa, e o poll dedicado vira no-op pra ele
+    // (a resolução por variantId acontece no chamador via
+    // erp_external_references, não aqui, pois este arquivo não conhece banco).
+    fetchStockChanges?(window: { startDate: Date; endDate: Date }): Promise<ErpStockSnapshot[]>;
     listProductClassificationTypes?(): Promise<ErpClassificationTypeSnapshot[]>;
     // Composição (material/percentual de fibra) de uma referência. Opcional
     // pelo mesmo motivo dos demais métodos duck-typed abaixo: um provider sem

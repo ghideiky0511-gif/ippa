@@ -27,6 +27,8 @@ export default function FretePage() {
   const [cep, setCep] = useState('');
   const [options, setOptions] = useState<FreightQuote[] | null>(null);
   const [savedCep, setSavedCep] = useState<string | null>(null);
+  const [loadingOptions, setLoadingOptions] = useState(false);
+  const [optionsError, setOptionsError] = useState<string | null>(null);
 
   // CEP salvo no cadastro — atalho pra não digitar de novo (ver
   // GET /api/clients/[id]). Duas origens possíveis: a própria cliente
@@ -49,10 +51,19 @@ export default function FretePage() {
   }, [activeSession?.clientId, authUser?.clientId]);
 
   async function loadOptions(value: string) {
-    const quotes = freightSessionId
-      ? await fetchFreightQuotes(freightSessionId, value || undefined)
-      : await fetchFreightProviders();
-    setOptions(quotes);
+    setLoadingOptions(true);
+    setOptionsError(null);
+    try {
+      const quotes = freightSessionId
+        ? await fetchFreightQuotes(freightSessionId, value || undefined)
+        : await fetchFreightProviders();
+      setOptions(quotes);
+    } catch (cause) {
+      setOptions(null);
+      setOptionsError(cause instanceof Error ? cause.message : 'Não foi possível calcular o frete.');
+    } finally {
+      setLoadingOptions(false);
+    }
   }
 
   function handleCalculate(e: FormEvent) {
@@ -162,10 +173,22 @@ export default function FretePage() {
           onChange={(e) => setCep(e.target.value)}
           className={publicUi.input}
         />
-        <button type="submit" className={publicUi.primaryButton}>Calcular</button>
+        <button type="submit" className={publicUi.primaryButton} disabled={loadingOptions}>
+          {loadingOptions ? 'Calculando…' : 'Calcular'}
+        </button>
       </form>
 
-      {options && (
+      {optionsError && (
+        <p className="mt-3 max-w-[420px] text-sm text-danger" role="alert">{optionsError}</p>
+      )}
+
+      {options?.length === 0 && (
+        <p className="mt-3 max-w-[420px] text-sm text-brand-muted" role="status">
+          Nenhuma opção de frete está disponível. Tente novamente ou fale com a loja.
+        </p>
+      )}
+
+      {options && options.length > 0 && (
         <div className="my-4 flex flex-col gap-2.5 max-w-[420px]">
           {options.map((opt) => {
             const selected = freightSessionId ? freight?.quoteId === opt.id : freight?.providerId === opt.providerId;
@@ -213,7 +236,7 @@ export default function FretePage() {
 
       <div className={publicUi.checkoutActions}>
         <button className={publicUi.primaryButton} disabled={!freight} onClick={handleContinue}>
-          Continuar para pagamento
+          Continuar para finalização
         </button>
       </div>
 

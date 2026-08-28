@@ -3,10 +3,10 @@ import {
   EntityIdSchema,
   HttpUrlSchema,
   MoneySchema,
-  NonNegativeIntegerSchema,
   OptionalTextSchema,
   PositiveIntegerSchema,
   RequiredTextSchema,
+  StockQtySchema,
 } from './shared';
 import { ClassificationSchema } from './classifications';
 
@@ -31,7 +31,7 @@ export const VariantSchema = z.object({
   // stepper de quantidade não tem limite). Com valor, é o que separa
   // "pronta entrega" de "excedente sob encomenda" no seletor de quantidade
   // — ver splitStockQty em frontend/src/lib/variants.ts.
-  stockQty: NonNegativeIntegerSchema.optional(),
+  stockQty: StockQtySchema.optional(),
   classifications: z.array(ClassificationSchema),
 });
 export type Variant = z.infer<typeof VariantSchema>;

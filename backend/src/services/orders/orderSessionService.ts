@@ -55,6 +55,7 @@ import { findActiveOrderBookRow, findOrderBookRow, insertOrderBookRow, reopenOrd
 import { closeOrderBookWhenFinished } from "./orderBookLifecycle";
 import { applyCartItemsDelta, diffCartItems, toFreightQuote, toOrder, toOrderBook, toOrderSession } from "./orderMapper";
 import { pickSeller } from "./sellerAssignmentService";
+import { assertOrderItemsInStock } from "./stockGate";
 
 async function reconcileFinalizedCustomerSessions(client: Parameters<typeof findLatestOpenOrderSessionRowByClient>[0], clientId: string) {
     const sessions = await closeStaleOrderSessionRowsByClient(client, clientId);
@@ -604,6 +605,9 @@ export async function finalizeOrderSession(
 
         const items = (await listOrderItemRowsByOrder(client, orderId)).map((item) => item.snapshot);
         if (items.length === 0) throw new ValidationError("EMPTY_ORDER");
+        // Gate obrigatório: reconfirma que o estoque ainda cobre o pedido
+        // no instante exato em que ele deixa de ser editável (ver stockGate).
+        await assertOrderItemsInStock(tenant, client, items);
 
         const freightPrice = Number(session.freight_price ?? 0);
         const total = items.reduce((sum, item) => sum + item.price * item.qty, 0) + freightPrice;

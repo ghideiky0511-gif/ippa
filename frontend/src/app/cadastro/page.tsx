@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { getDocumentType } from '@/lib/document';
 import { apiFetch } from '@/lib/api-client';
 import { useTenant } from '@/components/TenantProvider';
+import { useStoreSettings } from '@/components/StoreSettingsProvider';
 import { CustomerSignupSchema } from '@/domain/clients/types';
 
 interface ViaCepResponse {
@@ -39,9 +40,8 @@ export default function CadastroPage() {
   const [neighborhood, setNeighborhood] = useState('');
   const [city, setCity] = useState('');
   const [state, setState] = useState('');
-  // Só exibe o campo depois de resolver a regra do tenant, evitando que CPF
-  // pareça aceito em uma loja que permite apenas CNPJ.
-  const [allowCpfSignup, setAllowCpfSignup] = useState<boolean | null>(null);
+  const storeSettings = useStoreSettings();
+  const allowCpfSignup = storeSettings.features?.allowCpfSignup !== false;
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -51,20 +51,6 @@ export default function CadastroPage() {
     if (redirect) params.set('redirect', redirect);
     router.replace(href(`/login${params.size ? `?${params.toString()}` : ''}`));
   }, [href, redirect, requestedDocument, router]);
-
-  useEffect(() => {
-    let cancelled = false;
-    apiFetch('/api/store-settings')
-      .then((response) => (response.ok ? response.json() : null))
-      .then((settings) => {
-        if (!cancelled) setAllowCpfSignup(settings?.features?.allowCpfSignup !== false);
-      })
-      // Mantém o comportamento atual se o carregamento falhar.
-      .catch(() => {
-        if (!cancelled) setAllowCpfSignup(true);
-      });
-    return () => { cancelled = true; };
-  }, []);
 
   // Busca automática por CEP (ViaCEP, serviço público sem chave) — dispara
   // só quando o CEP tem 8 dígitos, evitando bater a API a cada tecla.
@@ -93,7 +79,7 @@ export default function CadastroPage() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (allowCpfSignup === false && getDocumentType(cpfCnpj) !== 'cnpj') {
+    if (!allowCpfSignup && getDocumentType(cpfCnpj) !== 'cnpj') {
       setError('Informe um CNPJ com 14 dígitos.');
       return;
     }
@@ -129,7 +115,7 @@ export default function CadastroPage() {
     <div className={publicUi.loginPage}>
       <form className={publicUi.loginForm} onSubmit={handleSubmit}>
         <h1>Criar conta</h1>
-        {!requestedDocument || allowCpfSignup === null ? (
+        {!requestedDocument ? (
           <p>Carregando opções de cadastro…</p>
         ) : <>
         <div className={publicUi.field}>

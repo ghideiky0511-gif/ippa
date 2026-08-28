@@ -7,7 +7,7 @@ import { apiFetch } from '@/lib/api-client';
 import { RealtimeEventSchema, type RealtimeEvent } from '@/contracts/realtime';
 import { realtimeUrl } from './usePedidoRealtime';
 
-export type RealtimeUpdate = 'sessions_updated' | 'orders_updated' | 'order_books_updated';
+export type RealtimeUpdate = 'sessions_updated' | 'orders_updated' | 'order_books_updated' | 'notifications_updated';
 
 interface UpdatesRealtimeOptions {
   /** Evento tipado com payload (canal 'atualizacao_v2') — ver

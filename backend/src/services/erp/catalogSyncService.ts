@@ -56,6 +56,7 @@ import {
     upsertExternalReferenceRow,
 } from "@/models/erpExternalReferencesModel";
 import { applyErpInventorySnapshotRow } from "@/models/inventorySyncModel";
+import { invalidateVariantStock } from "@/services/inventory/stockCacheService";
 import { errorMeta, logger } from "@/lib/logger";
 
 const SYSTEM_ACTOR: ActorContext = { role: "catalog_sync" };
@@ -293,6 +294,7 @@ export async function processReference(
     }
     const publicationActive = shouldPublishReference(reference, runtime.config);
 
+    let touchedVariantIds: string[] = [];
     await withTenantTransaction(runtime.tenant, SYSTEM_ACTOR, async (client) => {
         await lockClassificationIntegrationRow(client, runtime.integration.id);
         const product = await upsertErpProductRow(client, {
@@ -388,7 +390,12 @@ export async function processReference(
         }
         await deactivateMissingProductVariantsRow(client, product.row.id, seenVariantIds);
         await setProductSyncActiveRow(client, product.row.id, publicationActive);
+        touchedVariantIds = seenVariantIds;
     });
+    // Depois do commit, não antes -- invalidar antes deixaria um leitor
+    // concorrente recachear o valor antigo (ainda visível via MVCC) bem no
+    // instante em que o novo valor está sendo gravado.
+    await invalidateVariantStock(runtime.tenant, touchedVariantIds);
     return true;
 }
 

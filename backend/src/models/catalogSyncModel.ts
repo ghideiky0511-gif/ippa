@@ -10,6 +10,7 @@ export interface CatalogSyncConfigRow {
     classification_codes: string[];
     poll_interval_seconds: number;
     overlap_seconds: number;
+    stock_poll_interval_seconds: number;
 }
 
 export interface CatalogSyncStateRow {
@@ -19,6 +20,10 @@ export interface CatalogSyncStateRow {
     last_full_sync_at: Date | null;
     lease_token: string | null;
     lease_until: Date | null;
+    stock_checkpoint_at: Date | null;
+    next_stock_poll_at: Date;
+    stock_lease_token: string | null;
+    stock_lease_until: Date | null;
 }
 
 export interface CatalogSyncRunRow {
@@ -67,7 +72,7 @@ export async function findCatalogSyncConfigRow(
 ): Promise<CatalogSyncConfigRow | null> {
     const result = await client.query<CatalogSyncConfigRow>(
         `SELECT integration_id, enabled, classification_type_code, classification_codes,
-                poll_interval_seconds, overlap_seconds
+                poll_interval_seconds, overlap_seconds, stock_poll_interval_seconds
          FROM catalog_sync_configs
          WHERE tenant_id = app_tenant_id() AND integration_id = $1`,
         [integrationId],
@@ -84,7 +89,8 @@ export async function ensureCatalogSyncStateRow(
          VALUES (app_tenant_id(), $1)
          ON CONFLICT (tenant_id, integration_id) DO UPDATE SET integration_id = EXCLUDED.integration_id
          RETURNING integration_id, checkpoint_at, next_incremental_at, last_full_sync_at,
-                   lease_token, lease_until`,
+                   lease_token, lease_until, stock_checkpoint_at, next_stock_poll_at,
+                   stock_lease_token, stock_lease_until`,
         [integrationId],
     );
     return result.rows[0];
@@ -119,6 +125,54 @@ export async function releaseCatalogSyncLeaseRow(
            lease_token = NULL, lease_until = NULL, last_error = $3, updated_at = now()
          WHERE tenant_id = app_tenant_id() AND integration_id = $1 AND lease_token = $2::uuid`,
         [integrationId, leaseToken, error ?? null],
+    );
+}
+
+export async function acquireStockSyncLeaseRow(
+    client: PoolClient,
+    integrationId: string,
+    leaseToken: string,
+    durationSeconds = 300,
+): Promise<boolean> {
+    const result = await client.query(
+        `UPDATE catalog_sync_states SET
+           stock_lease_token = $2::uuid,
+           stock_lease_until = now() + make_interval(secs => $3),
+           updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND integration_id = $1
+           AND (stock_lease_until IS NULL OR stock_lease_until < now() OR stock_lease_token = $2::uuid)`,
+        [integrationId, leaseToken, durationSeconds],
+    );
+    return (result.rowCount ?? 0) === 1;
+}
+
+export async function releaseStockSyncLeaseRow(
+    client: PoolClient,
+    integrationId: string,
+    leaseToken: string,
+    error?: string,
+): Promise<void> {
+    await client.query(
+        `UPDATE catalog_sync_states SET
+           stock_lease_token = NULL, stock_lease_until = NULL, last_error = COALESCE($3, last_error), updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND integration_id = $1 AND stock_lease_token = $2::uuid`,
+        [integrationId, leaseToken, error ?? null],
+    );
+}
+
+export async function updateStockCheckpointRow(
+    client: PoolClient,
+    integrationId: string,
+    checkpointAt: Date,
+    pollIntervalSeconds: number,
+): Promise<void> {
+    await client.query(
+        `UPDATE catalog_sync_states SET
+           stock_checkpoint_at = $2,
+           next_stock_poll_at = now() + make_interval(secs => $3),
+           updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND integration_id = $1`,
+        [integrationId, checkpointAt, pollIntervalSeconds],
     );
 }
 

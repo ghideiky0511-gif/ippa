@@ -28,6 +28,7 @@ import { PAYMENT_LINK_EXPIRATION_DEFAULT_MINUTES } from "@/services/settings";
 import { sessionFreightFromRow, toOrder, toOrderBook, toOrderSession } from "./orderMapper";
 import { closeOrderBookWhenFinished } from "./orderBookLifecycle";
 import type { OrderBookRow } from "@/models/orderBooksModel";
+import { assertOrderItemsInStock } from "./stockGate";
 
 function digest(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -120,6 +121,9 @@ export async function confirmPayment(
   let sellerRecipient: Pick<AuthUser, "id" | "role"> | undefined;
   const order = await withTenantTransaction(tenant, {}, async (client) => {
     const context = await paymentContext(client, token, true);
+    // Gate obrigatório: reconfirma que o estoque ainda cobre o pedido no
+    // instante exato em que ele deixa de ser editável (ver stockGate).
+    await assertOrderItemsInStock(tenant, client, context.items);
     const freightPrice = Number(context.session.freight_price ?? 0);
     const total = context.cartTotal + freightPrice;
     // Sem motor de pagamentos de verdade, este link só confirma o pedido

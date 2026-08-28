@@ -1,6 +1,6 @@
 'use client';
-import { useEffect, useState } from 'react';
 import { useClientSession } from './ClientSessionProvider';
+import { useStoreSettings } from './StoreSettingsProvider';
 
 // Ferramenta "cliente finaliza sozinha (talão)" — storeSettings.json
 // `features.clientSelfCheckout`, editável em /ferramentas (mesmo padrão de
@@ -15,16 +15,8 @@ import { useClientSession } from './ClientSessionProvider';
 // bloqueia.
 export function useClientSelfCheckoutGate(): boolean {
   const clientSession = useClientSession();
-  const [enabled, setEnabled] = useState(true);
-
-  useEffect(() => {
-    fetch('/api/store-settings')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((settings) => {
-        if (settings) setEnabled(settings.features?.clientSelfCheckout !== false);
-      })
-      .catch(() => {});
-  }, []);
+  const storeSettings = useStoreSettings();
+  const enabled = storeSettings.features?.clientSelfCheckout !== false;
 
   return !!clientSession?.activeSession && !enabled;
 }
