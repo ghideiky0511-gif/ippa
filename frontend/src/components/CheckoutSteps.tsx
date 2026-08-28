@@ -5,7 +5,7 @@ import Link from '@/components/TenantLink';
 
 const STEPS = [
   { step: 1, label: 'Carrinho', href: '/carrinho' },
-  { step: 2, label: 'Frete', href: '/frete' },
+  { step: 2, label: 'Entrega', href: '/frete' },
   { step: 3, label: 'Pagamento', href: '/pagamento' },
 ];
 

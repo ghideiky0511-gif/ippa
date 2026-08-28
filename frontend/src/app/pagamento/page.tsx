@@ -51,7 +51,7 @@ export default function PagamentoPage() {
         <CheckoutSteps current="/pagamento" reachable={2} />
         <h1 className="mb-5 text-2xl font-extrabold tracking-[-0.03em]">Pagamento</h1>
         <div className={publicUi.empty}>
-          Escolha o frete primeiro. <Link href="/frete">Voltar para o frete</Link>
+          Escolha a entrega primeiro. <Link href="/frete">Voltar para a entrega</Link>
         </div>
       </main>
     );
@@ -65,10 +65,10 @@ export default function PagamentoPage() {
         <div className="max-w-[420px]">
           <p className="mb-4 text-sm text-brand-muted">
             {gate.reason === 'no-client'
-              ? 'Vincule um cadastro de cliente (nome, CPF/CNPJ, e-mail, CEP) no talão antes de continuar.'
+              ? 'Vincule um cadastro de cliente (nome, CPF/CNPJ e e-mail) no talão antes de continuar.'
               : gate.reason === 'no-login'
                 ? 'A cliente ainda não tem login — crie um pra ela no talão antes de continuar.'
-                : 'Complete o cadastro da cliente (CPF/CNPJ, e-mail, CEP) no talão antes de continuar.'}
+                : 'Complete o cadastro da cliente (CPF/CNPJ e e-mail) no talão antes de continuar.'}
           </p>
           <button className={publicUi.primaryButton} onClick={gate.openTalao}>Abrir talão</button>
         </div>
@@ -163,7 +163,7 @@ export default function PagamentoPage() {
           </div>
         )}
         <div className={publicUi.summaryLine}>
-          <span>Frete ({freight.label})</span>
+          <span>Entrega ({freight.label})</span>
           <span>{freight.price === 0 ? 'Grátis' : formatBRL(freight.price)}</span>
         </div>
         <div className={`${publicUi.summaryLine} border-t border-border/60 pt-1.5 text-sm font-bold text-brand-text`}>
@@ -183,7 +183,7 @@ export default function PagamentoPage() {
         </div>
       </div>
 
-      <Link href="/frete" className={publicUi.backLink}><ArrowLeft className="size-4" aria-hidden="true" />Voltar para o frete</Link>
+      <Link href="/frete" className={publicUi.backLink}><ArrowLeft className="size-4" aria-hidden="true" />Voltar para a entrega</Link>
     </main>
   );
 }

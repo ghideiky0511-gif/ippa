@@ -16,6 +16,7 @@ import {
     type TenantStatus,
 } from "@/models/platformModel";
 import type { PlatformTenant, PlatformTenantContract, PlatformTenantUser } from "./types";
+import { insertDefaultDeliveryConfigurationRows } from "@/models/deliveryModel";
 
 const PASSWORD_OPTIONS = { memoryCost: 19 * 1024, timeCost: 2, parallelism: 1 };
 const RESERVED_SLUGS = new Set(["admin", "api", "control", "favicon.ico"]);
@@ -86,6 +87,7 @@ export async function provisionTenant(input: {
 
     return withControlTransaction(async (client) => {
         const tenant = await insertTenantRow(client, slug, name);
+        await insertDefaultDeliveryConfigurationRows(client, tenant.id, tenant.name);
         await insertTenantStoreSettingsRow(client, tenant.id);
         const locationId = await insertDefaultInventoryLocationRow(client, tenant.id);
         await setDefaultInventoryLocationRow(client, tenant.id, locationId);

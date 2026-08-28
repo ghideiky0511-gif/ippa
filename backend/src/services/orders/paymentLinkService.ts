@@ -37,7 +37,10 @@ export async function createPaymentLink(
     if (!session.client_id) throw new ValidationError("CLIENT_REQUIRED");
     const registration = await findClientRow(client, session.client_id);
     if (!registration || !registration.name.trim() || !registration.cpf_cnpj?.trim() ||
-        !registration.email?.trim() || !registration.cep?.trim()) throw new ValidationError("INCOMPLETE_CLIENT");
+        !registration.email?.trim()) throw new ValidationError("INCOMPLETE_CLIENT");
+    if (session.delivery_fulfillment_mode === "address_delivery" && !registration.cep?.trim()) {
+        throw new ValidationError("DELIVERY_ADDRESS_REQUIRED");
+    }
     const user = await findUserRowByClientId(client, session.client_id);
     if (!user) throw new ValidationError("CLIENT_LOGIN_REQUIRED");
     const updated = await setOrderSessionPaymentTokenRow(client, sessionId, digest(token));

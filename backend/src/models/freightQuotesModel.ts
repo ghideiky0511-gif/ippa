@@ -1,16 +1,22 @@
 import type { PoolClient } from "pg";
-import type { FreightProviderKind } from "@/lib/types";
+import type { DeliveryFulfillmentMode, FreightProviderKind } from "@/lib/types";
 
 export interface FreightQuoteRow {
     id: string; order_session_id: string; provider_id: string | null; kind: FreightProviderKind;
     label: string; price: string; eta_label: string | null; selected: boolean;
+    delivery_type_id: string | null; delivery_offering_id: string | null; delivery_provider_id: string | null;
+    delivery_fulfillment_mode: DeliveryFulfillmentMode | null;
+    delivery_type_name: string | null; delivery_provider_name: string | null;
+    destination_cep: string | null;
 }
 
-const quoteFields = "id, order_session_id, provider_id, kind, label, price, eta_label, selected";
+const quoteFields = "id, order_session_id, provider_id, kind, label, price, eta_label, selected, delivery_type_id, delivery_offering_id, delivery_provider_id, delivery_fulfillment_mode, delivery_type_name, delivery_provider_name, destination_cep";
 
 export interface FreightQuoteWriteRow {
     providerId: string | null; kind: FreightProviderKind; label: string; price: number;
     etaLabel: string | null; destinationCep?: string;
+    deliveryTypeId: string; deliveryOfferingId: string; deliveryProviderId: string;
+    fulfillmentMode: DeliveryFulfillmentMode; deliveryTypeName: string; deliveryProviderName: string;
 }
 
 export async function insertFreightQuoteRows(
@@ -21,11 +27,17 @@ export async function insertFreightQuoteRows(
     const rows: FreightQuoteRow[] = [];
     for (const quote of quotes) {
         const result = await client.query<FreightQuoteRow>(
-            `INSERT INTO freight_quotes (tenant_id, order_session_id, provider_id, kind, label, price, eta_label, destination_cep)
-             VALUES (app_tenant_id(), $1, $2, $3, $4, $5, $6, $7)
+            `INSERT INTO freight_quotes (
+               tenant_id, order_session_id, provider_id, kind, label, price, eta_label, destination_cep,
+               delivery_type_id, delivery_offering_id, delivery_provider_id,
+               delivery_fulfillment_mode, delivery_type_name, delivery_provider_name
+             )
+             VALUES (app_tenant_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
              RETURNING ${quoteFields}`,
             [sessionId, quote.providerId, quote.kind, quote.label, quote.price, quote.etaLabel,
-             quote.destinationCep ?? null],
+             quote.destinationCep ?? null, quote.deliveryTypeId, quote.deliveryOfferingId,
+             quote.deliveryProviderId, quote.fulfillmentMode, quote.deliveryTypeName,
+             quote.deliveryProviderName],
         );
         rows.push(result.rows[0]);
     }

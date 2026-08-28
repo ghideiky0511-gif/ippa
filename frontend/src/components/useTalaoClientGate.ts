@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useTalao } from './TalaoProvider';
-import { isClientComplete } from '@/lib/clientComplete';
+import { isClientCheckoutIdentityComplete } from '@/lib/clientComplete';
 import type { Client } from '@/domain/clients/types';
 
 export interface TalaoClientGate {
@@ -50,7 +50,7 @@ export function useTalaoClientGate(): TalaoClientGate {
 
   if (!talao?.activeSession) return { blocked: false, reason: null, openTalao };
   if (!clientId) return { blocked: true, reason: 'no-client', openTalao };
-  if (client && !isClientComplete(client)) return { blocked: true, reason: 'incomplete', openTalao };
+  if (client && !isClientCheckoutIdentityComplete(client)) return { blocked: true, reason: 'incomplete', openTalao };
   if (client && !client.hasLogin) return { blocked: true, reason: 'no-login', openTalao };
   return { blocked: false, reason: null, openTalao };
 }

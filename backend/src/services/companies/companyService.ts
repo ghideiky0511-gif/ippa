@@ -11,6 +11,7 @@ import {
 import { recordAuditEvent, COMPANY_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
 import { ConflictError, ForbiddenError } from "@/services/shared/errors";
 import { toCompany } from "./companyMapper";
+import { syncOwnCompanyDeliveryProviderRow } from "@/models/deliveryModel";
 
 const AUDITED_COMPANY_FIELDS = [
     "razaoSocial", "nomeFantasia", "inscricaoEstadual", "isMatriz",
@@ -49,7 +50,7 @@ export async function createTenantCompany(
         if (await findCompanyRowByCnpj(client, value.cnpj)) {
             throw new ConflictError("CNPJ_TAKEN");
         }
-        const created = toCompany(await insertCompanyRow(client, {
+        const createdRow = await insertCompanyRow(client, {
             cnpj: value.cnpj,
             razaoSocial: value.razaoSocial,
             nomeFantasia: value.nomeFantasia,
@@ -63,7 +64,15 @@ export async function createTenantCompany(
             city: value.city,
             state: value.state,
             active: value.active,
-        }));
+        });
+        await syncOwnCompanyDeliveryProviderRow(client, {
+            id: createdRow.id,
+            nomeFantasia: createdRow.nome_fantasia,
+            razaoSocial: createdRow.razao_social,
+            active: createdRow.active,
+            isMatriz: createdRow.is_matriz,
+        });
+        const created = toCompany(createdRow);
         await recordAuditEvent(client, {
             action: COMPANY_AUDIT_ACTIONS.CREATED,
             entityId: created.id,
@@ -85,6 +94,13 @@ export async function updateTenantCompany(
     return withTenantTransaction(tenant, user, async (client) => {
         const row = await updateCompanyRow(client, id, value);
         if (!row) return null;
+        await syncOwnCompanyDeliveryProviderRow(client, {
+            id: row.id,
+            nomeFantasia: row.nome_fantasia,
+            razaoSocial: row.razao_social,
+            active: row.active,
+            isMatriz: row.is_matriz,
+        });
         const changedFields = AUDITED_COMPANY_FIELDS.filter((field) => Object.hasOwn(value, field));
         await recordAuditEvent(client, {
             action: COMPANY_AUDIT_ACTIONS.UPDATED,

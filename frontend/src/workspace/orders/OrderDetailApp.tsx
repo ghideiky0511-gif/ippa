@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { ArrowLeft, Ban, CheckCircle2, PackagePlus, Printer, RefreshCw, Truck, Wrench } from 'lucide-react';
-import type { Order, OrderFreightMethod, OrderSession } from '@/domain/orders/types';
+import { ArrowLeft, Ban, CheckCircle2, PackagePlus, Printer, RefreshCw, Wrench } from 'lucide-react';
+import type { Order, OrderSession } from '@/domain/orders/types';
 import type { ClientWithLogin } from '@/domain/clients/types';
 import type { ProviderOrderAttempt, ProviderOrderAttemptOutcome, ProviderOrderRow, ProviderOrderStatus } from '@/workspace/lib/erpIntegrationClient';
 import Link from '@/components/TenantLink';
@@ -16,10 +16,9 @@ import { requestOrderPushResend } from '@/workspace/lib/erpIntegrationClient';
 import { useWorkspaceAuth } from '@/workspace/components/WorkspaceAuthProvider';
 import { Sheet, SheetContent, SheetHeader, SheetTrigger } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogCloseButton, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { markOrderPaid, cancelOrder, updateOrderFreightMethod, updateOrderSession } from '@/lib/ordersClient';
+import { markOrderPaid, cancelOrder, updateOrderSession } from '@/lib/ordersClient';
 import { StatusChip, type StatusChipTone } from '@/components/StatusChip';
 import { ORDER_STATUS_LABELS, OrderStatusChip } from './orderStatus';
-import { ORDER_FREIGHT_METHOD_LABELS } from './freightMethod';
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -74,7 +73,7 @@ function StatusBadge({ status }: { status: ProviderOrderStatus }) {
   return <StatusChip label={PUSH_STATUS_LABELS[status]} tone={PUSH_STATUS_TONES[status]} />;
 }
 
-type ConfirmAction = 'mark-paid' | 'cancel' | 'change-freight';
+type ConfirmAction = 'mark-paid' | 'cancel';
 
 export default function OrderDetailApp({
   initialOrder,
@@ -98,7 +97,6 @@ export default function OrderDetailApp({
   const [fabOpen, setFabOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [paymentMethodInput, setPaymentMethodInput] = useState('');
-  const [freightMethodInput, setFreightMethodInput] = useState<OrderFreightMethod | ''>('');
   const [actionPending, setActionPending] = useState(false);
   const [upsellPending, setUpsellPending] = useState(false);
 
@@ -108,11 +106,6 @@ export default function OrderDetailApp({
   const canManageOrder = Boolean(workspaceUser) && workspaceUser?.role !== 'cliente';
   const canMarkPaid = order.status !== 'aberto' && order.status !== 'pago' && order.status !== 'cancelado';
   const canCancel = order.status !== 'pago' && order.status !== 'cancelado';
-  // Só antes do frete ser despachado -- depois de 'em_transporte' o tipo já
-  // aconteceu de verdade, trocar aqui não desfaz o que já saiu pra entrega.
-  const canChangeFreight = Boolean(order.freight)
-    && order.status !== 'cancelado'
-    && (order.freight?.status === 'aguardando' || order.freight?.status === 'etiqueta_emitida');
   // Upsell: reabre o atendimento que originou este pedido e leva pro
   // catálogo -- mesmo fluxo de sempre pra adicionar peça (websocket na
   // sessão ativa), só que numa sessão que já tinha fechado ao finalizar. O
@@ -158,14 +151,9 @@ export default function OrderDetailApp({
         setOrder(updated);
         toast.success('Pedido cancelado.');
         if (erpWarning) toast.error(`Cancelado localmente, mas houve um problema ao cancelar no ERP: ${erpWarning}`);
-      } else if (confirmAction === 'change-freight' && freightMethodInput) {
-        const updated = await updateOrderFreightMethod(order.id, freightMethodInput);
-        setOrder(updated);
-        toast.success('Tipo de frete alterado.');
       }
       setConfirmAction(null);
       setPaymentMethodInput('');
-      setFreightMethodInput('');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Não foi possível concluir a ação.');
     } finally {
@@ -202,7 +190,7 @@ export default function OrderDetailApp({
               <InfoField label="Pagamento" value={order.paymentMethod || undefined} />
               <InfoField
                 label="Frete"
-                value={order.freight ? `${order.freight.method ? ORDER_FREIGHT_METHOD_LABELS[order.freight.method] : order.freight.label} · ${formatCurrency(order.freight.price)}` : undefined}
+                value={order.freight ? `${order.freight.deliveryTypeName || order.freight.label} · ${formatCurrency(order.freight.price)}` : undefined}
               />
               <InfoField label="Peças" value={String(itemCount(order.items))} />
               <InfoField label="Total" value={formatCurrency(order.total)} />
@@ -345,15 +333,6 @@ export default function OrderDetailApp({
                 {upsellPending ? 'Abrindo...' : 'Adicionar peças'}
               </button>
             )}
-            {canManageOrder && canChangeFreight && (
-              <button
-                type="button"
-                className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background"
-                onClick={() => { setFabOpen(false); setFreightMethodInput(order.freight?.method ?? ''); setConfirmAction('change-freight'); }}
-              >
-                <Truck className="mr-2 size-3.5" aria-hidden="true" />Alterar frete
-              </button>
-            )}
             {canManageOrder && canMarkPaid && (
               <button
                 type="button"
@@ -383,20 +362,18 @@ export default function OrderDetailApp({
         </SheetContent>
       </Sheet>
 
-      <Dialog open={confirmAction !== null} onOpenChange={(open) => { if (!open) { setConfirmAction(null); setPaymentMethodInput(''); setFreightMethodInput(''); } }}>
+      <Dialog open={confirmAction !== null} onOpenChange={(open) => { if (!open) { setConfirmAction(null); setPaymentMethodInput(''); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
               {confirmAction === 'mark-paid' && 'Marcar pedido como pago?'}
               {confirmAction === 'cancel' && 'Cancelar pedido?'}
-              {confirmAction === 'change-freight' && 'Alterar tipo de frete?'}
             </DialogTitle>
             <DialogCloseButton />
           </DialogHeader>
           <DialogDescription>
             {confirmAction === 'mark-paid' && 'Registra este pedido como pago manualmente (dinheiro, Pix direto etc.) — não passa por nenhum gateway de pagamento real.'}
             {confirmAction === 'cancel' && 'Cancela o pedido e as sessões/talão abertos vinculados a ele. Se o pedido já foi enviado ao ERP, o cancelamento também será tentado lá.'}
-            {confirmAction === 'change-freight' && 'Troca o tipo de frete registrado neste pedido. Não altera o preço já cobrado nem reenvia o pedido ao ERP.'}
           </DialogDescription>
           {confirmAction === 'mark-paid' && (
             <div className={`${adminUi.field} mt-3`}>
@@ -410,26 +387,12 @@ export default function OrderDetailApp({
               </select>
             </div>
           )}
-          {confirmAction === 'change-freight' && (
-            <div className={`${adminUi.field} mt-3`}>
-              <label>Tipo de frete</label>
-              <select
-                value={freightMethodInput}
-                onChange={(event) => setFreightMethodInput(event.target.value as OrderFreightMethod)}
-              >
-                <option value="" disabled>Selecione...</option>
-                {(Object.entries(ORDER_FREIGHT_METHOD_LABELS) as [OrderFreightMethod, string][]).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </div>
-          )}
           <div className="mt-4 flex justify-end gap-2">
-            <button type="button" className={adminUi.button} onClick={() => { setConfirmAction(null); setPaymentMethodInput(''); setFreightMethodInput(''); }}>Voltar</button>
+            <button type="button" className={adminUi.button} onClick={() => { setConfirmAction(null); setPaymentMethodInput(''); }}>Voltar</button>
             <button
               type="button"
               className={confirmAction === 'cancel' ? adminUi.dangerButton : adminUi.primaryButton}
-              disabled={actionPending || (confirmAction === 'change-freight' && !freightMethodInput)}
+              disabled={actionPending}
               onClick={() => void runConfirmedAction()}
             >
               {actionPending ? 'Processando...' : 'Confirmar'}

@@ -1,6 +1,6 @@
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
-import type { AuthUser, FreightQuote, Order, OrderChannel, OrderFreightMethod, OrderSession } from "@/lib/types";
+import type { AuthUser, DeliveryQuote, Order, OrderChannel, OrderFreightMethod, OrderSession } from "@/lib/types";
 import { CreateCustomerOrderInputSchema } from "@/contracts/orders";
 import {
     cancelOpenOrderSessionRowsByOrder,
@@ -14,9 +14,9 @@ import {
     listTenantOrderRows,
     updateOrderRow,
 } from "@/models/ordersModel";
-import { findFreightProviderRow, listActiveFreightProviderRows } from "@/models/freightProvidersModel";
+import { findFreightProviderRow } from "@/models/freightProvidersModel";
 import { findOrderFreightRowByOrderId, insertOrderFreightRow, listOrderFreightRows, updateOrderFreightMethodRow } from "@/models/orderFreightsModel";
-import { computeFreightPrice } from "./freightPricing";
+import { findActiveDeliveryOfferingByTypeCode, findActiveDeliveryOfferingRow } from "@/models/deliveryModel";
 import { getOrCreateOpenOrder, syncOrderItems } from "./orderItemSync";
 import { findUserRowById } from "@/models/usersModel";
 import { findStoreSettingsRow } from "@/models/settingsModel";
@@ -30,18 +30,15 @@ import { closeOrderBookWhenFinished } from "./orderBookLifecycle";
 import type { OrderBookRow } from "@/models/orderBooksModel";
 import { ORDER_AUDIT_ACTIONS, recordAuditEvent, type AuditRequestContext } from "@/services/audit";
 import { assertOrderItemsInStock } from "./stockGate";
+import { findClientRow } from "@/models/clientsModel";
+import { deliveryQuoteFromConfiguration, listDeliveryOptions } from "./deliveryService";
 
 // Checkout direto (cliente sem talão/sessão ativa) não passa por
 // freight_quotes -- lista os providers ativos já convertidos pra
 // preço/label/prazo, pra cliente escolher um antes de mandar
 // freightProviderId em createCustomerOrder.
-export async function listActiveFreightProviders(tenant: Tenant, user: AuthUser): Promise<FreightQuote[]> {
-    return withTenantTransaction(tenant, user, async (client) => {
-        const providers = await listActiveFreightProviderRows(client);
-        return providers
-            .filter((provider) => provider.kind !== "carrier")
-            .map((provider) => ({ id: provider.id, providerId: provider.id, kind: provider.kind, ...computeFreightPrice(provider) }));
-    });
+export async function listActiveFreightProviders(tenant: Tenant, user: AuthUser): Promise<DeliveryQuote[]> {
+    return listDeliveryOptions(tenant, user);
 }
 
 function isAdministrator(user: AuthUser): boolean {
@@ -188,30 +185,59 @@ export async function createCustomerOrder(
         // Gate obrigatório: reconfirma que o estoque ainda cobre o pedido
         // no instante exato em que ele deixa de ser editável (ver stockGate).
         await assertOrderItemsInStock(tenant, client, orderItems);
-        // Checkout direto não passa por freight_quotes (não há sessão pra
-        // pendurar a cotação) -- a cliente escolhe um provider ativo e o
-        // preço/label/prazo vêm direto da config dele (mesma regra de
-        // orderSessionService.listFreightQuotes).
-        const freightProvider = await findFreightProviderRow(client, body.freightProviderId);
-        if (!freightProvider || !freightProvider.active) throw new ValidationError("FREIGHT_PROVIDER_NOT_FOUND");
-        const freightPrice = computeFreightPrice(freightProvider);
+        // Checkout direto escolhe uma offering. Durante um ciclo de rollout,
+        // freightProviderId pode carregar tanto o id novo da offering quanto
+        // um id legado dos três seeds conhecidos.
+        const requestedOfferingId = body.deliveryOfferingId ?? body.freightProviderId!;
+        let deliveryConfiguration = await findActiveDeliveryOfferingRow(client, requestedOfferingId);
+        if (!deliveryConfiguration && body.freightProviderId) {
+            const legacyProvider = await findFreightProviderRow(client, body.freightProviderId);
+            if (legacyProvider?.active) {
+                const typeCode = legacyProvider.code === "retirada" ? "pickup"
+                    : legacyProvider.code === "padrao" || legacyProvider.code === "expressa"
+                        ? "address_delivery"
+                        : null;
+                if (typeCode) deliveryConfiguration = await findActiveDeliveryOfferingByTypeCode(client, typeCode);
+            }
+        }
+        if (!deliveryConfiguration) throw new ValidationError("DELIVERY_OFFERING_NOT_FOUND");
+        const deliveryQuote = deliveryQuoteFromConfiguration(deliveryConfiguration);
+        // Snapshot do CEP de destino -- nulo pra retirada. O CEP digitado em
+        // /frete (body.destinationCep) tem prioridade sobre o do cadastro:
+        // a tela aceita cotar um endereço diferente do salvo, e o snapshot
+        // precisa acompanhar a escolha, não o cadastro (ver orderMapper.ts).
+        let destinationCep: string | null = null;
+        if (deliveryQuote.fulfillmentMode === "address_delivery") {
+            const registration = user.clientId ? await findClientRow(client, user.clientId) : null;
+            destinationCep = body.destinationCep ?? registration?.cep?.trim() ?? null;
+            if (!destinationCep) throw new ValidationError("DELIVERY_ADDRESS_REQUIRED");
+        }
         // Sem motor de pagamentos de verdade, este checkout só confirma o
         // pedido (fecha o carrinho pra separação) -- não paga mais (ver
         // migration 036). paymentMethod fica sem uso até existir cobrança real.
+        const subtotal = orderItems.reduce((sum, item) => sum + item.price * item.qty, 0);
+        const total = subtotal - (body.discount?.amount ?? 0) + deliveryQuote.price;
         const row = await updateOrderRow(client, orderId, {
             status: "novo",
-            total: body.total,
+            total,
             discount: body.discount,
         });
         if (!row) throw new NotFoundError("ORDER_NOT_FOUND");
         const freightRow = await insertOrderFreightRow(client, {
             orderId,
-            providerId: freightProvider.id,
+            providerId: null,
             quoteId: null,
-            kind: freightProvider.kind,
-            label: freightPrice.label,
-            price: freightPrice.price,
-            etaLabel: freightPrice.etaLabel,
+            kind: deliveryQuote.kind,
+            label: deliveryQuote.label,
+            price: deliveryQuote.price,
+            etaLabel: deliveryQuote.etaLabel,
+            deliveryTypeId: deliveryQuote.deliveryTypeId,
+            deliveryOfferingId: deliveryQuote.deliveryOfferingId,
+            deliveryProviderId: deliveryQuote.providerId,
+            fulfillmentMode: deliveryQuote.fulfillmentMode,
+            deliveryTypeName: deliveryQuote.deliveryTypeName,
+            deliveryProviderName: deliveryQuote.providerName,
+            destinationCep,
         });
         if (sellerId) {
             const seller = await findUserRowById(client, sellerId);

@@ -13,3 +13,9 @@ import type { Client } from './types';
 export function isClientComplete(client: Pick<Client, 'name' | 'cpfCnpj' | 'email' | 'cep'>): boolean {
   return Boolean(client.name?.trim() && client.cpfCnpj?.trim() && client.email?.trim() && client.cep?.trim());
 }
+
+// Retirada não depende de endereço. Essa é a parte cadastral obrigatória
+// antes de escolher o tipo; CEP é validado depois somente para entrega.
+export function isClientCheckoutIdentityComplete(client: Pick<Client, 'name' | 'cpfCnpj' | 'email'>): boolean {
+  return Boolean(client.name?.trim() && client.cpfCnpj?.trim() && client.email?.trim());
+}

@@ -1,8 +1,8 @@
 import { z } from "zod";
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
-import type { AuthUser, CartItem, FreightQuote, Order, OrderSession, OrderSessionParticipant } from "@/lib/types";
-import { CartItemSchema } from "@/contracts/shared";
+import type { AuthUser, CartItem, DeliveryQuote, Order, OrderSession, OrderSessionParticipant } from "@/lib/types";
+import { CartItemSchema, CepSchema } from "@/contracts/shared";
 import {
     CreateOrderSessionInputSchema,
     UpdateOrderSessionInputSchema,
@@ -26,14 +26,13 @@ import {
     closeOpenOrderSessionRowsByOrder,
     countOpenOrderSessionRowsBySeller,
 } from "@/models/ordersModel";
-import { listActiveFreightProviderRows } from "@/models/freightProvidersModel";
+import { findActiveDeliveryOfferingRow, listActiveDeliveryConfigurationRows } from "@/models/deliveryModel";
 import {
     findFreightQuoteRow,
     insertFreightQuoteRows,
     selectFreightQuoteRow,
 } from "@/models/freightQuotesModel";
 import { findOrderFreightRowByOrderId, insertOrderFreightRow, type OrderFreightRow } from "@/models/orderFreightsModel";
-import { computeFreightPrice } from "./freightPricing";
 import { getOrCreateOpenOrder, syncOrderItems } from "./orderItemSync";
 import {
     listOrderSessionParticipantRows,
@@ -41,7 +40,7 @@ import {
     upsertOrderSessionParticipantRow,
 } from "@/models/orderSessionParticipantsModel";
 import { findClientRow } from "@/models/clientsModel";
-import { findUserRowById, listOnlineAdministratorIds, listOnlineSellerIds } from "@/models/usersModel";
+import { findUserRowByClientId, findUserRowById, listOnlineAdministratorIds, listOnlineSellerIds } from "@/models/usersModel";
 import { findStoreSettingsRow } from "@/models/settingsModel";
 import { listUsersByIds } from "@/services/users";
 import { patchClientRow } from "@/services/clients/clientService";
@@ -56,6 +55,7 @@ import { closeOrderBookWhenFinished } from "./orderBookLifecycle";
 import { applyCartItemsDelta, diffCartItems, toFreightQuote, toOrder, toOrderBook, toOrderSession } from "./orderMapper";
 import { pickSeller } from "./sellerAssignmentService";
 import { assertOrderItemsInStock } from "./stockGate";
+import { deliveryQuoteFromConfiguration } from "./deliveryService";
 
 async function reconcileFinalizedCustomerSessions(client: Parameters<typeof findLatestOpenOrderSessionRowByClient>[0], clientId: string) {
     const sessions = await closeStaleOrderSessionRowsByClient(client, clientId);
@@ -584,7 +584,17 @@ export async function finalizeOrderSession(
         if (!canManageSession(user, session.seller_id)) throw new ForbiddenError();
         if (session.status === "fechado") throw new ValidationError("SESSION_ALREADY_FINALIZED");
         if (session.status === "cancelado") throw new ValidationError("SESSION_CANCELLED");
+        if (!session.freight_quote_id) throw new ValidationError("SHIPPING_REQUIRED");
         if (!session.client_id) throw new ValidationError("CLIENT_REQUIRED");
+        const registration = await findClientRow(client, session.client_id);
+        if (!registration || !registration.name.trim() || !registration.cpf_cnpj?.trim() ||
+            !registration.email?.trim()) throw new ValidationError("INCOMPLETE_CLIENT");
+        if (session.delivery_fulfillment_mode === "address_delivery" && !registration.cep?.trim()) {
+            throw new ValidationError("DELIVERY_ADDRESS_REQUIRED");
+        }
+        if (!await findUserRowByClientId(client, session.client_id)) {
+            throw new ValidationError("CLIENT_LOGIN_REQUIRED");
+        }
 
         // order_id só falta aqui se a sessão nunca teve como anexar um
         // pedido no momento em que foi criada (não deveria acontecer já
@@ -629,6 +639,13 @@ export async function finalizeOrderSession(
                 label: session.freight_label!,
                 price: freightPrice,
                 etaLabel: session.freight_eta_label,
+                deliveryTypeId: session.delivery_type_id,
+                deliveryOfferingId: session.delivery_offering_id,
+                deliveryProviderId: session.delivery_provider_id,
+                fulfillmentMode: session.delivery_fulfillment_mode,
+                deliveryTypeName: session.delivery_type_name,
+                deliveryProviderName: session.delivery_provider_name,
+                destinationCep: session.delivery_destination_cep,
             });
         }
         // Fecha TODA sessão irmã ainda aberta que aponte pro mesmo pedido
@@ -661,34 +678,53 @@ function canAccessSessionRow(user: AuthUser, session: { seller_id: string; clien
 // substitui o MOCK_SHIPPING_OPTIONS que o frontend usava antes. Cada
 // chamada insere linhas novas em freight_quotes (histórico de o que foi
 // mostrado), sem reaproveitar cotações antigas da mesma sessão.
-export async function listFreightQuotes(
+export async function listDeliveryQuotes(
     tenant: Tenant,
     user: AuthUser,
     sessionId: string,
     destinationCep?: string,
-): Promise<FreightQuote[]> {
+): Promise<DeliveryQuote[]> {
     return withTenantTransaction(tenant, user, async (client) => {
         const session = await findOrderSessionRow(client, sessionId);
         if (!session) throw new NotFoundError("SESSION_NOT_FOUND");
         if (!canAccessSessionRow(user, session)) throw new ForbiddenError();
-        const providers = await listActiveFreightProviderRows(client);
-        // kind = 'carrier' ainda não tem cotação automática (ver
-        // freightPricing.computeFreightPrice) -- nenhum provider ativo hoje
-        // tem esse kind, mas o filtro evita quebrar se um dia tiver.
-        const quotable = providers.filter((provider) => provider.kind !== "carrier");
+        let normalizedCep: string | undefined;
+        if (destinationCep) {
+            const parsedCep = CepSchema.safeParse(destinationCep);
+            if (!parsedCep.success) throw new ValidationError("INVALID_INPUT", "CEP inválido.");
+            normalizedCep = parsedCep.data;
+        }
+        const configurations = await listActiveDeliveryConfigurationRows(client);
+        const quotable = configurations.filter((entry) =>
+            entry.fulfillment_mode === "pickup" || Boolean(normalizedCep),
+        );
         const rows = await insertFreightQuoteRows(
             client,
             sessionId,
-            quotable.map((provider) => ({
-                providerId: provider.id,
-                kind: provider.kind,
-                destinationCep,
-                ...computeFreightPrice(provider),
-            })),
+            quotable.map((configuration) => {
+                const quote = deliveryQuoteFromConfiguration(configuration);
+                return {
+                providerId: null,
+                kind: quote.kind,
+                destinationCep: configuration.fulfillment_mode === "address_delivery" ? normalizedCep : undefined,
+                label: quote.label,
+                price: quote.price,
+                etaLabel: quote.etaLabel,
+                deliveryTypeId: quote.deliveryTypeId,
+                deliveryOfferingId: quote.deliveryOfferingId,
+                deliveryProviderId: quote.providerId,
+                fulfillmentMode: quote.fulfillmentMode,
+                deliveryTypeName: quote.deliveryTypeName,
+                deliveryProviderName: quote.providerName,
+                };
+            }),
         );
         return rows.map(toFreightQuote);
     });
 }
+
+// Alias temporário durante o rollout do frontend.
+export const listFreightQuotes = listDeliveryQuotes;
 
 // Marca a cotação escolhida (índice único parcial em freight_quotes garante
 // 1 selecionada por sessão) e copia o snapshot pras 6 colunas de frete de
@@ -709,6 +745,15 @@ export async function selectFreightQuote(
         }
         const quote = await findFreightQuoteRow(client, quoteId);
         if (!quote || quote.order_session_id !== sessionId) throw new NotFoundError("FREIGHT_QUOTE_NOT_FOUND");
+        if (!quote.delivery_offering_id || !quote.delivery_type_id || !quote.delivery_provider_id ||
+            !quote.delivery_fulfillment_mode || !quote.delivery_type_name || !quote.delivery_provider_name) {
+            throw new ValidationError("DELIVERY_OFFERING_NOT_FOUND");
+        }
+        const activeOffering = await findActiveDeliveryOfferingRow(client, quote.delivery_offering_id);
+        if (!activeOffering) throw new ValidationError("DELIVERY_OFFERING_NOT_FOUND");
+        if (quote.delivery_fulfillment_mode === "address_delivery" && !quote.destination_cep) {
+            throw new ValidationError("DELIVERY_ADDRESS_REQUIRED");
+        }
         await selectFreightQuoteRow(client, sessionId, quoteId);
         const row = await setOrderSessionFreightRow(client, sessionId, {
             quoteId: quote.id,
@@ -717,6 +762,13 @@ export async function selectFreightQuote(
             label: quote.label,
             price: Number(quote.price),
             etaLabel: quote.eta_label,
+            deliveryTypeId: quote.delivery_type_id,
+            deliveryOfferingId: quote.delivery_offering_id,
+            deliveryProviderId: quote.delivery_provider_id,
+            fulfillmentMode: quote.delivery_fulfillment_mode,
+            deliveryTypeName: quote.delivery_type_name,
+            deliveryProviderName: quote.delivery_provider_name,
+            destinationCep: quote.destination_cep,
         });
         if (!row) throw new NotFoundError("SESSION_NOT_FOUND");
         const items = (await listOrderSessionItemRowsBySession(client, sessionId)).map((item) => item.snapshot);

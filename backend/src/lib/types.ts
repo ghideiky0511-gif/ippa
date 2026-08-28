@@ -6,6 +6,8 @@
 export type { Availability, Variant, PackScope, PackItem, Pack, Product } from '@/contracts/products';
 export type {
   CartItem, FreightProviderKind, FreightQuote, SessionFreight, OrderFreight, OrderFreightMethod, OrderFreightStatus,
+  DeliveryFulfillmentMode, DeliveryProviderKind, DeliveryPricingMode,
+  DeliveryProvider, DeliveryOffering, DeliveryType, UpdateDeliveryTypeInput, DeliveryQuote,
 } from '@/contracts/shared';
 export type { Client } from '@/contracts/clients';
 export type {

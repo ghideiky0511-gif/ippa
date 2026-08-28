@@ -98,7 +98,7 @@ export const publicUi = {
   modalPanel: 'w-full max-w-[420px] rounded-brand bg-white p-[22px] shadow-[0_12px_40px_rgba(0,0,0,0.25)]',
   talaoCard: 'group relative flex w-full cursor-pointer items-center gap-3 rounded-brand border border-[#eee] bg-white p-3 text-left shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-[border-color,box-shadow,transform] hover:border-brand-primary hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] active:scale-[.98]',
   talaoCardClosed: 'opacity-70',
-  talaoActive: 'animate-[talao-active-swap_.45s_ease] border-brand-primary bg-brand-primary p-4 text-white shadow-[0_8px_24px_rgba(24,24,27,0.22)] hover:shadow-[0_10px_28px_rgba(24,24,27,0.28)]',
+  talaoActive: 'group relative flex w-full cursor-pointer items-center gap-3 rounded-brand border text-left transition-[border-color,box-shadow,transform] active:scale-[.98] animate-[talao-active-swap_.45s_ease] border-brand-primary bg-brand-primary p-4 text-white shadow-[0_8px_24px_rgba(24,24,27,0.22)] hover:shadow-[0_10px_28px_rgba(24,24,27,0.28)]',
   talaoLabel: 'mt-2.5 text-[11px] tracking-[.04em] text-brand-muted uppercase first:mt-0',
   talaoInfo: 'flex min-w-0 flex-1 flex-col',
   talaoName: 'overflow-hidden text-sm font-semibold text-ellipsis whitespace-nowrap',

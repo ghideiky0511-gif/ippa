@@ -294,8 +294,14 @@ export async function processReference(
     }
     const publicationActive = shouldPublishReference(reference, runtime.config);
 
-    let touchedVariantIds: string[] = [];
-    await withTenantTransaction(runtime.tenant, SYSTEM_ACTOR, async (client) => {
+    // Preço e desconto ficam numa transação própria, separada da
+    // reconciliação de variantes abaixo: essa segunda etapa pode falhar por
+    // ambiguidade de matching (CATALOG_VARIANT_MATCH_AMBIGUOUS) e, se tudo
+    // estivesse numa única transação, o rollback desfaria também a correção
+    // de preço/promoção que o ERP já confirmou -- deixando uma promoção
+    // velha (ex.: 100% de desconto de uma sincronização anterior) presa no
+    // produto até a causa da ambiguidade ser resolvida.
+    const productId = await withTenantTransaction(runtime.tenant, SYSTEM_ACTOR, async (client) => {
         await lockClassificationIntegrationRow(client, runtime.integration.id);
         const product = await upsertErpProductRow(client, {
             name: reference.name,
@@ -355,7 +361,12 @@ export async function processReference(
             metadata: runtime.run.mode === "full" ? { lastFullRunId: runtime.run.id } : {},
         });
 
-        const variants = await listProductVariantsForSyncRow(client, product.row.id);
+        return product.row.id;
+    });
+
+    let touchedVariantIds: string[] = [];
+    await withTenantTransaction(runtime.tenant, SYSTEM_ACTOR, async (client) => {
+        const variants = await listProductVariantsForSyncRow(client, productId);
         const variantReferences = await listExternalReferencesByEntityRow(
             client, runtime.integration.id, "product_variant",
         );
@@ -373,7 +384,7 @@ export async function processReference(
             if (existingId) usedVariantIds.add(existingId);
             const variantId = await processSku(client, {
                 runtime,
-                productId: product.row.id,
+                productId,
                 sku,
                 price: priceBySku.get(sku.externalId),
                 stock,
@@ -388,8 +399,8 @@ export async function processReference(
                 classifications: sku.classifications,
             });
         }
-        await deactivateMissingProductVariantsRow(client, product.row.id, seenVariantIds);
-        await setProductSyncActiveRow(client, product.row.id, publicationActive);
+        await deactivateMissingProductVariantsRow(client, productId, seenVariantIds);
+        await setProductSyncActiveRow(client, productId, publicationActive);
         touchedVariantIds = seenVariantIds;
     });
     // Depois do commit, não antes -- invalidar antes deixaria um leitor

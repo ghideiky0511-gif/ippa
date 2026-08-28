@@ -9,7 +9,7 @@ import { useCart } from './CartProvider';
 import { useTenant } from './TenantProvider';
 import { formatBRL } from '@/lib/format';
 import { clientSubtext, getDocumentType } from '@/lib/document';
-import { isClientComplete } from '@/lib/clientComplete';
+import { isClientCheckoutIdentityComplete } from '@/lib/clientComplete';
 import { z } from 'zod';
 import { ClientSchema, type Client } from '@/domain/clients/types';
 import type { OrderSession } from '@/domain/orders/types';
@@ -228,7 +228,7 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
   // /login por CPF da cliente (findClientRowByDocumentDigits não casa
   // cpf_cnpj nulo), deixando essa conta travada.
   const createLoginSection =
-    session.clientId && linkedClient && isClientComplete(linkedClient) && !linkedClient.hasLogin ? (
+    session.clientId && linkedClient && isClientCheckoutIdentityComplete(linkedClient) && !linkedClient.hasLogin ? (
       <CreateLoginSection client={linkedClient} onCreated={refetchLinkedClient} />
     ) : null;
 
@@ -576,7 +576,7 @@ export default function TalaoDrawer() {
                   estado aberto do cadastro que era da cliente anterior. */}
               <div
                 key={`${activeSession.id}-card`}
-                className={[publicUi.talaoCard, publicUi.talaoActive].join(' ')}
+                className={publicUi.talaoActive}
                 onClick={() => {
                   closeTalao();
                   openCart();

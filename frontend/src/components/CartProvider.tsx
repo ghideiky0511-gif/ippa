@@ -10,14 +10,14 @@ import {
   OrderSchema,
   type CartItem,
   type CreateCustomerOrderInput,
-  type FreightQuote,
+  type DeliveryQuote,
   type SessionFreight,
 } from '@/domain/orders/types';
 import { CatalogPageSchema, DiscountSchema, type Discount } from '@/domain/catalog/types';
 import type { Product } from '@/domain/products/types';
 import { z } from 'zod';
 import { adminJson } from '@/lib/http';
-import { selectFreightQuote } from '@/lib/shipping';
+import { selectDeliveryQuote } from '@/lib/shipping';
 
 type OrderSubmissionExtra = Omit<Partial<CreateCustomerOrderInput>, 'items' | 'total' | 'sessionId'>;
 
@@ -81,7 +81,10 @@ interface CartContextValue {
   clearCart: () => void;
   saveOrderToHistory: (items: CartItem[], total: number, extra?: OrderSubmissionExtra) => Promise<void>;
   freight: SessionFreight | null;
-  setFreight: (quote: FreightQuote | null) => void;
+  // destinationCep só se aplica ao checkout direto (sem sessão) -- entrega
+  // no endereço escolhida numa sessão já carrega o CEP cotado dentro do
+  // próprio quote (ver selectDeliveryQuote/DeliveryQuoteSchema).
+  setFreight: (quote: DeliveryQuote | null, destinationCep?: string) => void;
   // Sessão (talão ou online) que fetchFreightQuotes deve cotar -- null no
   // checkout direto, que usa fetchFreightProviders (sem sessão) em vez disso.
   freightSessionId: string | null;
@@ -278,18 +281,33 @@ export function CartProvider({ children }: { children: ReactNode }) {
     updateItems([]);
   }
 
-  function setFreight(quote: FreightQuote | null) {
+  function setFreight(quote: DeliveryQuote | null, destinationCep?: string) {
     if (activeSession) {
       // Sessão: a escolha vira uma linha em freight_quotes/order_sessions no
       // backend (ver selectFreightQuote) -- o novo estado chega de volta via
       // realtime (activeSession.freight), não precisa setar nada localmente
       // aqui. Sem endpoint de "limpar frete de sessão" (ver plano da fase 2).
-      if (quote) void selectFreightQuote(activeSession.id, quote.id);
+      if (quote) void selectDeliveryQuote(activeSession.id, quote.id);
       return;
     }
     if (authUserCtx.authUser?.role !== 'cliente') return;
     setPersonalFreight(quote
-      ? { quoteId: null, providerId: quote.providerId, kind: quote.kind, label: quote.label, price: quote.price, etaLabel: quote.etaLabel }
+      ? {
+          quoteId: null,
+          providerId: quote.providerId,
+          deliveryTypeId: quote.deliveryTypeId,
+          deliveryOfferingId: quote.deliveryOfferingId,
+          fulfillmentMode: quote.fulfillmentMode,
+          deliveryTypeName: quote.deliveryTypeName,
+          providerName: quote.providerName,
+          // Nulo pra retirada -- entrega no endereço carrega o CEP digitado
+          // em /frete, que vai junto no checkout (ver saveOrderToHistory).
+          destinationCep: quote.fulfillmentMode === 'address_delivery' ? destinationCep ?? null : null,
+          kind: quote.kind,
+          label: quote.label,
+          price: quote.price,
+          etaLabel: quote.etaLabel,
+        }
       : null);
   }
 
@@ -306,7 +324,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
         items,
         total,
         channel: 'whatsapp',
-        freightProviderId: personalFreight?.providerId ?? undefined,
+        deliveryOfferingId: personalFreight?.deliveryOfferingId ?? undefined,
+        destinationCep: personalFreight?.destinationCep ?? undefined,
         ...extra,
         sessionId,
       });

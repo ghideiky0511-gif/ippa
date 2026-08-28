@@ -149,6 +149,13 @@ export async function confirmPayment(
         label: context.session.freight_label!,
         price: freightPrice,
         etaLabel: context.session.freight_eta_label,
+        deliveryTypeId: context.session.delivery_type_id,
+        deliveryOfferingId: context.session.delivery_offering_id,
+        deliveryProviderId: context.session.delivery_provider_id,
+        fulfillmentMode: context.session.delivery_fulfillment_mode,
+        deliveryTypeName: context.session.delivery_type_name,
+        deliveryProviderName: context.session.delivery_provider_name,
+        destinationCep: context.session.delivery_destination_cep,
       });
     }
     const seller = await findUserRowById(client, context.session.seller_id);

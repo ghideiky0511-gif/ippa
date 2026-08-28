@@ -1,11 +1,15 @@
 import type { PoolClient } from "pg";
-import type { CartItem, FreightProviderKind, Order, OrderSession } from "@/lib/types";
+import type { CartItem, DeliveryFulfillmentMode, FreightProviderKind, Order, OrderSession } from "@/lib/types";
 
 export interface OrderSessionRow {
     id: string; order_book_id: string; client_name: string; client_id: string | null; seller_id: string;
     channel: OrderSession["channel"]; status: OrderSession["status"]; order_id: string | null;
     freight_quote_id: string | null; freight_provider_id: string | null; freight_kind: FreightProviderKind | null;
     freight_label: string | null; freight_price: string | null; freight_eta_label: string | null;
+    delivery_type_id: string | null; delivery_offering_id: string | null; delivery_provider_id: string | null;
+    delivery_fulfillment_mode: DeliveryFulfillmentMode | null;
+    delivery_type_name: string | null; delivery_provider_name: string | null;
+    delivery_destination_cep: string | null;
     payment_token_created_at: Date | null;
     notes: string | null; created_at: Date; updated_at: Date;
 }
@@ -17,7 +21,7 @@ export interface OrderRow {
 }
 export interface OrderItemRow { order_id: string; item_key: string; snapshot: CartItem }
 
-const sessionFields = "id, order_book_id, client_name, client_id, seller_id, channel, status, order_id, freight_quote_id, freight_provider_id, freight_kind, freight_label, freight_price, freight_eta_label, payment_token_created_at, notes, created_at, updated_at";
+const sessionFields = "id, order_book_id, client_name, client_id, seller_id, channel, status, order_id, freight_quote_id, freight_provider_id, freight_kind, freight_label, freight_price, freight_eta_label, delivery_type_id, delivery_offering_id, delivery_provider_id, delivery_fulfillment_mode, delivery_type_name, delivery_provider_name, delivery_destination_cep, payment_token_created_at, notes, created_at, updated_at";
 
 export async function listOrderSessionRowsBySeller(client: PoolClient, sellerId: string): Promise<OrderSessionRow[]> {
     const result = await client.query<OrderSessionRow>(
@@ -183,15 +187,23 @@ export async function updateOrderSessionRow(client: PoolClient, id: string, valu
 export async function setOrderSessionFreightRow(client: PoolClient, id: string, value: {
     quoteId: string | null; providerId: string | null; kind: FreightProviderKind;
     label: string; price: number; etaLabel: string | null;
+    deliveryTypeId: string; deliveryOfferingId: string; deliveryProviderId: string;
+    fulfillmentMode: DeliveryFulfillmentMode; deliveryTypeName: string; deliveryProviderName: string;
+    destinationCep: string | null;
 }): Promise<OrderSessionRow | null> {
     const result = await client.query<OrderSessionRow>(
         `UPDATE order_sessions SET
            freight_quote_id = $2, freight_provider_id = $3, freight_kind = $4,
            freight_label = $5, freight_price = $6, freight_eta_label = $7,
+           delivery_type_id = $8, delivery_offering_id = $9, delivery_provider_id = $10,
+           delivery_fulfillment_mode = $11, delivery_type_name = $12, delivery_provider_name = $13,
+           delivery_destination_cep = $14,
            updated_at = now()
          WHERE tenant_id = app_tenant_id() AND id = $1
          RETURNING ${sessionFields}`,
-        [id, value.quoteId, value.providerId, value.kind, value.label, value.price, value.etaLabel],
+        [id, value.quoteId, value.providerId, value.kind, value.label, value.price, value.etaLabel,
+         value.deliveryTypeId, value.deliveryOfferingId, value.deliveryProviderId,
+         value.fulfillmentMode, value.deliveryTypeName, value.deliveryProviderName, value.destinationCep],
     );
     return result.rows[0] ?? null;
 }
@@ -261,6 +273,9 @@ export async function closeStaleOrderSessionRowsByClient(client: PoolClient, cli
            session.seller_id, session.channel, session.status, session.order_id,
            session.freight_quote_id, session.freight_provider_id, session.freight_kind,
            session.freight_label, session.freight_price, session.freight_eta_label,
+           session.delivery_type_id, session.delivery_offering_id, session.delivery_provider_id,
+           session.delivery_fulfillment_mode, session.delivery_type_name, session.delivery_provider_name,
+           session.delivery_destination_cep,
            session.payment_token_created_at, session.notes, session.created_at, session.updated_at`,
         [clientId],
     );

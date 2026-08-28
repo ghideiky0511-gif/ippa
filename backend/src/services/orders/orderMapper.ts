@@ -8,7 +8,14 @@ import type { FreightQuoteRow } from "@/models/freightQuotesModel";
 export function toFreightQuote(row: FreightQuoteRow): FreightQuote {
     return {
         id: row.id,
-        providerId: row.provider_id,
+        quoteId: row.id,
+        deliveryTypeId: row.delivery_type_id!,
+        deliveryOfferingId: row.delivery_offering_id!,
+        providerId: row.delivery_provider_id!,
+        fulfillmentMode: row.delivery_fulfillment_mode!,
+        deliveryTypeName: row.delivery_type_name!,
+        providerName: row.delivery_provider_name!,
+        destinationCep: row.destination_cep,
         kind: row.kind,
         label: row.label,
         price: Number(row.price),
@@ -20,7 +27,13 @@ export function sessionFreightFromRow(row: OrderSessionRow): SessionFreight | un
     if (!row.freight_kind) return undefined;
     return {
         quoteId: row.freight_quote_id,
-        providerId: row.freight_provider_id,
+        providerId: row.delivery_provider_id,
+        deliveryTypeId: row.delivery_type_id,
+        deliveryOfferingId: row.delivery_offering_id,
+        fulfillmentMode: row.delivery_fulfillment_mode,
+        deliveryTypeName: row.delivery_type_name,
+        providerName: row.delivery_provider_name,
+        destinationCep: row.delivery_destination_cep,
         kind: row.freight_kind,
         label: row.freight_label!,
         price: Number(row.freight_price),
@@ -50,8 +63,14 @@ export function toOrderSession(row: OrderSessionRow, items: CartItem[]): OrderSe
 export function toOrderFreight(row: OrderFreightRow): OrderFreight {
     return {
         id: row.id,
-        providerId: row.provider_id,
+        providerId: row.delivery_provider_id,
         quoteId: row.quote_id,
+        deliveryTypeId: row.delivery_type_id,
+        deliveryOfferingId: row.delivery_offering_id,
+        fulfillmentMode: row.delivery_fulfillment_mode,
+        deliveryTypeName: row.delivery_type_name,
+        providerName: row.delivery_provider_name,
+        destinationCep: row.destination_cep,
         kind: row.kind,
         method: row.method,
         label: row.label,

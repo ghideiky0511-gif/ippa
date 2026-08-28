@@ -107,6 +107,74 @@ export type CartItem = z.infer<typeof CartItemSchema>;
 export const FreightProviderKindSchema = z.enum(['pickup', 'fixed', 'carrier']);
 export type FreightProviderKind = z.infer<typeof FreightProviderKindSchema>;
 
+export const DeliveryFulfillmentModeSchema = z.enum(['pickup', 'address_delivery']);
+export type DeliveryFulfillmentMode = z.infer<typeof DeliveryFulfillmentModeSchema>;
+
+export const DeliveryProviderKindSchema = z.enum(['internal', 'external']);
+export type DeliveryProviderKind = z.infer<typeof DeliveryProviderKindSchema>;
+
+export const DeliveryPricingModeSchema = z.enum(['fixed', 'external_quote']);
+export type DeliveryPricingMode = z.infer<typeof DeliveryPricingModeSchema>;
+
+export const DeliveryProviderSchema = z.object({
+  id: EntityIdSchema,
+  code: RequiredTextSchema,
+  kind: DeliveryProviderKindSchema,
+  name: RequiredTextSchema,
+  companyId: EntityIdSchema.nullable(),
+  active: z.boolean(),
+});
+export type DeliveryProvider = z.infer<typeof DeliveryProviderSchema>;
+
+export const DeliveryOfferingSchema = z.object({
+  id: EntityIdSchema,
+  deliveryTypeId: EntityIdSchema,
+  provider: DeliveryProviderSchema,
+  pricingMode: DeliveryPricingModeSchema,
+  fixedPrice: MoneySchema.nullable(),
+  etaLabel: z.string().nullable(),
+  active: z.boolean(),
+});
+export type DeliveryOffering = z.infer<typeof DeliveryOfferingSchema>;
+
+export const DeliveryTypeSchema = z.object({
+  id: EntityIdSchema,
+  code: z.enum(['pickup', 'address_delivery']),
+  fulfillmentMode: DeliveryFulfillmentModeSchema,
+  name: RequiredTextSchema,
+  active: z.boolean(),
+  sortOrder: z.number().int(),
+  offering: DeliveryOfferingSchema,
+});
+export type DeliveryType = z.infer<typeof DeliveryTypeSchema>;
+
+export const UpdateDeliveryTypeInputSchema = z.object({
+  name: RequiredTextSchema.optional(),
+  active: z.boolean().optional(),
+  sortOrder: z.number().int().min(0).max(10_000).optional(),
+  fixedPrice: MoneySchema.optional(),
+  etaLabel: z.union([z.string().trim().min(1), z.null()]).optional(),
+}).refine((value) => Object.keys(value).length > 0, 'Informe ao menos uma alteração.');
+export type UpdateDeliveryTypeInput = z.infer<typeof UpdateDeliveryTypeInputSchema>;
+
+export const DeliveryQuoteSchema = z.object({
+  id: EntityIdSchema,
+  quoteId: EntityIdSchema.nullable(),
+  deliveryTypeId: EntityIdSchema,
+  deliveryOfferingId: EntityIdSchema,
+  providerId: EntityIdSchema,
+  fulfillmentMode: DeliveryFulfillmentModeSchema,
+  deliveryTypeName: RequiredTextSchema,
+  providerName: RequiredTextSchema,
+  destinationCep: z.string().nullable(),
+  label: RequiredTextSchema,
+  price: MoneySchema,
+  etaLabel: z.string().nullable(),
+  // Alias temporário para consumidores do contrato anterior.
+  kind: FreightProviderKindSchema,
+});
+export type DeliveryQuote = z.infer<typeof DeliveryQuoteSchema>;
+
 export const OrderFreightStatusSchema = z.enum([
   'aguardando', 'etiqueta_emitida', 'em_transporte', 'entregue', 'devolvido', 'cancelado',
 ]);
@@ -123,14 +191,7 @@ export type OrderFreightMethod = z.infer<typeof OrderFreightMethodSchema>;
 
 // O que a tela de frete lista pra escolher (uma linha por `freight_providers`
 // ativo do tenant no momento em que a sessão pediu cotação).
-export const FreightQuoteSchema = z.object({
-  id: EntityIdSchema,
-  providerId: EntityIdSchema.nullable(),
-  kind: FreightProviderKindSchema,
-  label: RequiredTextSchema,
-  price: MoneySchema,
-  etaLabel: z.string().nullable(),
-});
+export const FreightQuoteSchema = DeliveryQuoteSchema;
 export type FreightQuote = z.infer<typeof FreightQuoteSchema>;
 
 // Snapshot do frete escolhido, guardado em `order_sessions` (6 colunas) e
@@ -138,6 +199,12 @@ export type FreightQuote = z.infer<typeof FreightQuoteSchema>;
 export const SessionFreightSchema = z.object({
   quoteId: EntityIdSchema.nullable(),
   providerId: EntityIdSchema.nullable(),
+  deliveryTypeId: EntityIdSchema.nullable(),
+  deliveryOfferingId: EntityIdSchema.nullable(),
+  fulfillmentMode: DeliveryFulfillmentModeSchema.nullable(),
+  deliveryTypeName: z.string().nullable(),
+  providerName: z.string().nullable(),
+  destinationCep: z.string().nullable(),
   kind: FreightProviderKindSchema,
   label: RequiredTextSchema,
   price: MoneySchema,
@@ -151,6 +218,12 @@ export const OrderFreightSchema = z.object({
   id: EntityIdSchema,
   providerId: EntityIdSchema.nullable(),
   quoteId: EntityIdSchema.nullable(),
+  deliveryTypeId: EntityIdSchema.nullable(),
+  deliveryOfferingId: EntityIdSchema.nullable(),
+  fulfillmentMode: DeliveryFulfillmentModeSchema.nullable(),
+  deliveryTypeName: z.string().nullable(),
+  providerName: z.string().nullable(),
+  destinationCep: z.string().nullable(),
   kind: FreightProviderKindSchema,
   method: OrderFreightMethodSchema.nullable(),
   label: RequiredTextSchema,

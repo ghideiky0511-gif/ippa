@@ -8,6 +8,7 @@ import {
   EntityIdSchema,
   IsoDateTimeSchema,
   MoneySchema,
+  OptionalCepSchema,
   OptionalTextSchema,
   OrderFreightSchema,
   RequiredTextSchema,
@@ -197,8 +198,15 @@ export const CreateCustomerOrderInputSchema = z.object({
   total: MoneySchema,
   channel: CheckoutChannelSchema.optional(),
   sessionId: EntityIdSchema.optional(),
-  freightProviderId: EntityIdSchema,
+  deliveryOfferingId: EntityIdSchema.optional(),
+  // Alias de rollout: o backend também interpreta este id como offering
+  // quando ele não pertence à tabela legada freight_providers.
+  freightProviderId: EntityIdSchema.optional(),
+  destinationCep: OptionalCepSchema,
   paymentMethod: OptionalTextSchema,
   discount: z.object({ label: RequiredTextSchema, amount: MoneySchema }).optional(),
+}).refine((value) => value.deliveryOfferingId || value.freightProviderId, {
+  message: 'Escolha o tipo de entrega.',
+  path: ['deliveryOfferingId'],
 });
 export type CreateCustomerOrderInput = z.infer<typeof CreateCustomerOrderInputSchema>;

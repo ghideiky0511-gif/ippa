@@ -25,7 +25,7 @@ export const ERROR_MESSAGES: Record<string, string> = {
         "Este link de confirmação é inválido ou expirou. Solicite um novo primeiro acesso.",
     CLIENT_REQUIRED: "Vincule um cadastro de cliente antes de gerar o link.",
     INCOMPLETE_CLIENT:
-        "Complete o cadastro da cliente (CPF/CNPJ, e-mail, CEP) antes de continuar.",
+        "Complete o cadastro da cliente (CPF/CNPJ e e-mail) antes de continuar.",
     EMPTY_ORDER: "Adicione peças ao pedido antes de gerar o link.",
     SHIPPING_REQUIRED: "Escolha o frete antes de gerar o link.",
     SELF_CHECKOUT_DISABLED:
@@ -80,6 +80,11 @@ export const ERROR_MESSAGES: Record<string, string> = {
     ORDER_ALREADY_CANCELLED: "Este pedido já foi cancelado.",
     ORDER_FREIGHT_NOT_FOUND: "Este pedido não tem frete registrado.",
     ORDER_FREIGHT_ALREADY_SHIPPED: "Este frete já foi despachado e não pode mais ser alterado.",
+    DELIVERY_TYPE_NOT_FOUND: "Tipo de entrega não encontrado.",
+    DELIVERY_OFFERING_NOT_FOUND: "Esta opção de entrega não está mais disponível.",
+    DELIVERY_LAST_ACTIVE_TYPE: "Mantenha pelo menos um tipo de entrega ativo.",
+    DELIVERY_ADDRESS_REQUIRED: "Informe o CEP para entrega no endereço.",
+    DELIVERY_EXTERNAL_QUOTE_NOT_AVAILABLE: "A cotação externa ainda não está disponível.",
 };
 
 export function cookieOptions() {
