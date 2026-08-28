@@ -5,7 +5,7 @@
 export const publicUi = {
   contents: 'contents',
   container: 'mx-auto max-w-[1200px] px-4 sm:px-5',
-  catalogMain: 'relative pb-14 sm:pb-16',
+  catalogMain: 'relative pt-4 pb-14 sm:pt-6 sm:pb-16',
   primaryButton: 'cursor-pointer rounded-md border-0 bg-brand-primary px-4 py-2.5 text-sm font-semibold text-white transition-[background,color,opacity,transform] hover:bg-brand-primary-dark active:scale-95 disabled:cursor-not-allowed disabled:bg-[#ccc]',
   subtleButton: 'cursor-pointer rounded-lg border border-[#ccc] bg-transparent px-3.5 py-2.5 text-sm text-brand-muted transition-[border-color,color,transform] hover:border-brand-primary hover:text-brand-primary active:scale-95',
   field: 'flex flex-col gap-1 [&>label]:text-sm [&>label]:font-medium [&>label]:text-brand-text [&>input]:w-full [&>input]:rounded-md [&>input]:border [&>input]:border-neutral-300 [&>input]:bg-white [&>input]:px-3 [&>input]:py-2.5 [&>input]:text-sm [&>input]:text-brand-text [&>input]:outline-none [&>input]:placeholder:text-neutral-400 [&>input]:focus:border-brand-primary [&>input]:focus:ring-2 [&>input]:focus:ring-brand-primary/15',
@@ -84,13 +84,14 @@ export const publicUi = {
   loginForm: 'mx-auto flex w-full max-w-[450px] flex-col gap-4 rounded-brand bg-brand-card p-6 shadow-[0_1px_4px_rgba(0,0,0,0.08)] lg:border lg:border-solid lg:border-neutral-300 lg:p-8',
   authSwitch: 'm-0 text-center text-[13px] text-brand-muted [&>a]:font-semibold [&>a]:text-brand-primary',
   productDetail: 'grid grid-cols-2 gap-8 py-6 max-md:grid-cols-1',
-  gallery: 'flex min-w-0 items-stretch gap-2',
-  // A tira de miniaturas divide a altura da imagem principal entre até 5
-  // fotos (flex-1 + min-h-0), então nunca "desce" além da imagem. Passando
-  // de 5 fotos, as setas ‹ › sobre a imagem rotacionam a galeria pra
-  // alcançar as demais (ver stepGallery em ProductDetailContent.tsx).
-  galleryThumbRail: 'flex shrink-0 flex-col gap-2',
-  galleryThumb: 'min-h-0 w-11 flex-1 shrink-0 cursor-pointer rounded-md object-cover ring-1 ring-[#eee] transition-[box-shadow] hover:ring-brand-primary max-h-32 sm:w-14',
+  // A tira de miniaturas é posicionada `absolute inset-y-0`, então sua
+  // altura é sempre a da imagem principal (único filho em fluxo do
+  // wrapper). As até 5 fotos dividem essa altura (flex-1 + min-h-0) e
+  // nunca "descem" além da imagem. Passando de 5, as setas ‹ › sobre a
+  // imagem rotacionam a galeria (ver stepGallery em ProductDetailContent).
+  gallery: 'relative flex min-w-0',
+  galleryThumbRail: 'absolute inset-y-0 left-0 z-10 flex w-[68px] flex-col gap-2 max-sm:w-12',
+  galleryThumb: 'min-h-0 w-full flex-1 cursor-pointer rounded-md object-cover ring-1 ring-[#eee] transition-[box-shadow] hover:ring-brand-primary',
   galleryMainWrap: 'relative grid min-w-0 flex-1 [&>*]:[grid-area:1/1]',
   galleryNavButton: 'absolute top-1/2 z-10 flex size-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border-0 bg-white/90 text-foreground shadow-[0_1px_4px_rgba(0,0,0,0.2)] hover:bg-white',
   galleryNavButtonPrev: 'left-1.5',

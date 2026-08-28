@@ -161,72 +161,75 @@ export default function ProductDetailContent({ product, presentation = 'page', o
     else changeQty(key, item.qty - 1);
   }
 
-  return (
-    <motion.div
-      layoutId={`product-detail-${product.id}`}
-      layout
-      transition={{ layout: shouldReduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 280, damping: 30, mass: 0.8 } }}
-      onLayoutAnimationComplete={onLayoutAnimationComplete}
-      className={[publicUi.productDetail, isPanel ? 'grid-cols-[minmax(0,16rem)_minmax(0,1fr)] gap-4 py-0 max-sm:grid-cols-[minmax(0,9.5rem)_minmax(0,1fr)]' : ''].join(' ')}
-    >
-      <div className={publicUi.gallery}>
-        {gallery.length > 1 && (
-          <div className={publicUi.galleryThumbRail}>
-            {/* No máx. 5 miniaturas ao lado da foto principal — o resto se
-               alcança pelas setas ‹ › (stepGallery rotaciona a ordem). */}
-            {galleryOrder.slice(1, 6).map((imageIndex, i) => (
-              <ProductImage
-                key={imageIndex}
-                src={gallery[imageIndex]}
-                alt=""
-                className={publicUi.galleryThumb}
-                onClick={() => swapToCenter(i + 1)}
-              />
-            ))}
-          </div>
-        )}
-        <div className={publicUi.galleryMainWrap}>
-          {/* Crossfade na troca de foto (clique na miniatura ou setas) —
-             as duas imagens ficam empilhadas na mesma célula de grid
-             (galleryMainWrap) enquanto a antiga some. */}
-          <AnimatePresence initial={false}>
-            <motion.div
-              key={displayImage}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: shouldReduceMotion ? 0 : 0.3, ease: 'easeInOut' }}
-            >
-              <ProductImage
-                className={[publicUi.detailImage, isPanel ? 'aspect-[4/5]' : ''].join(' ')}
-                src={displayImage}
-                alt={product.name}
-              />
-            </motion.div>
-          </AnimatePresence>
-          {gallery.length > 1 && (
-            <>
-              <button
-                type="button"
-                className={[publicUi.galleryNavButton, publicUi.galleryNavButtonPrev].join(' ')}
-                onClick={() => stepGallery(-1)}
-                aria-label="Foto anterior"
-              >
-                <ChevronLeft className="size-4" aria-hidden="true" />
-              </button>
-              <button
-                type="button"
-                className={[publicUi.galleryNavButton, publicUi.galleryNavButtonNext].join(' ')}
-                onClick={() => stepGallery(1)}
-                aria-label="Próxima foto"
-              >
-                <ChevronRight className="size-4" aria-hidden="true" />
-              </button>
-            </>
-          )}
-        </div>
-      </div>
+  const hasThumbs = gallery.length > 1;
 
+  const galleryBlock = (
+    <div className={publicUi.gallery}>
+      {hasThumbs && (
+        <div className={publicUi.galleryThumbRail}>
+          {/* No máx. 5 miniaturas ao lado da foto principal — o resto se
+             alcança pelas setas ‹ › (stepGallery rotaciona a ordem). A tira
+             é `absolute inset-y-0`, então acompanha exatamente a altura da
+             imagem, sem "descer" além dela. */}
+          {galleryOrder.slice(1, 6).map((imageIndex, i) => (
+            <ProductImage
+              key={imageIndex}
+              src={gallery[imageIndex]}
+              alt=""
+              className={publicUi.galleryThumb}
+              onClick={() => swapToCenter(i + 1)}
+            />
+          ))}
+        </div>
+      )}
+      <div className={[publicUi.galleryMainWrap, hasThumbs ? 'ml-[76px] max-sm:ml-14' : ''].join(' ')}>
+        {/* Crossfade na troca de foto (clique na miniatura ou setas) — as
+           duas imagens ficam empilhadas na mesma célula de grid enquanto a
+           antiga some. */}
+        <AnimatePresence initial={false}>
+          <motion.div
+            key={displayImage}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: shouldReduceMotion ? 0 : 0.3, ease: 'easeInOut' }}
+          >
+            <ProductImage
+              className={
+                isPanel
+                  ? 'aspect-[4/5] max-h-[68vh] w-full rounded-brand bg-[#eee] object-cover'
+                  : publicUi.detailImage
+              }
+              src={displayImage}
+              alt={product.name}
+            />
+          </motion.div>
+        </AnimatePresence>
+        {hasThumbs && (
+          <>
+            <button
+              type="button"
+              className={[publicUi.galleryNavButton, publicUi.galleryNavButtonPrev].join(' ')}
+              onClick={() => stepGallery(-1)}
+              aria-label="Foto anterior"
+            >
+              <ChevronLeft className="size-4" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className={[publicUi.galleryNavButton, publicUi.galleryNavButtonNext].join(' ')}
+              onClick={() => stepGallery(1)}
+              aria-label="Próxima foto"
+            >
+              <ChevronRight className="size-4" aria-hidden="true" />
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+
+  const infoBlock = (
       <div className={[publicUi.detailInfo, isPanel ? 'gap-2 text-sm' : ''].join(' ')}>
         <div className={isPanel ? 'text-xs text-brand-muted' : ''}>{productClassificationSummary(product)}</div>
         <h2 className={isPanel ? 'text-base leading-tight' : ''}>{product.name}</h2>
@@ -349,8 +352,10 @@ export default function ProductDetailContent({ product, presentation = 'page', o
           </div>
         )}
       </div>
+  );
 
-      <div className="contents">
+  const gradeBlock = (
+      <div className={isPanel ? 'flex min-w-0 flex-1 flex-col gap-4' : 'contents'}>
         {pendingBackorders.length > 0 && (
           <div className="contents">
             <p className="contents">
@@ -446,6 +451,37 @@ export default function ProductDetailContent({ product, presentation = 'page', o
           }}
         />
       </div>
+  );
+
+  return (
+    <motion.div
+      layoutId={`product-detail-${product.id}`}
+      layout
+      transition={{ layout: shouldReduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 280, damping: 30, mass: 0.8 } }}
+      onLayoutAnimationComplete={onLayoutAnimationComplete}
+      className={
+        isPanel
+          ? 'flex min-w-0 items-start gap-6 py-0 max-lg:flex-col'
+          : publicUi.productDetail
+      }
+    >
+      {isPanel ? (
+        <>
+          {/* Esquerda: fotos + dados da peça + cores. Direita: a grade,
+             que sobe pra ocupar o espaço que ficava em branco. */}
+          <div className="flex w-[42%] min-w-0 flex-col gap-4 max-lg:w-full">
+            {galleryBlock}
+            {infoBlock}
+          </div>
+          {gradeBlock}
+        </>
+      ) : (
+        <>
+          {galleryBlock}
+          {infoBlock}
+          {gradeBlock}
+        </>
+      )}
     </motion.div>
   );
 }

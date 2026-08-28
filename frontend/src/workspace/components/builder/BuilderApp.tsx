@@ -214,8 +214,12 @@ export default function BuilderApp({ initialSections, products }) {
                 id="builder-ai-prompt"
                 value={aiPrompt}
                 onChange={(e) => setAiPrompt(e.target.value)}
-                placeholder='Descreva a estrutura, ex.: "banner de vídeo 660x880 no início, com mais 3 cards abaixo"'
+                placeholder='Descreva a estrutura, ex.: "banner hero de largura total no início, com 3 cards abaixo"'
               />
+              <p className={adminUi.hint}>
+                A IA monta os 3 modos (desktop, tablet e celular), enquadrando cada
+                um. Peça “só no celular…”, “ajuste o tablet…” para mexer em um só.
+              </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <button type="submit" className={adminUi.primaryButton} disabled={aiState === 'generating' || !aiPrompt.trim()}>
