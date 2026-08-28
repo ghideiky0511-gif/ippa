@@ -667,13 +667,20 @@ export function mapOrderToTotvsModaOrderInDto(
     }
 
     const items: TotvsModaOrderItemInput[] = order.items.map((item) => {
-        const productSku = context.productReferenceIds[item.id];
-        if (!productSku) {
+        // productCode (não productSku): productSku é o código da REFERÊNCIA
+        // (compartilhado por todas as variantes de cor/tamanho de um produto
+        // no nosso catálogo -- ver products.reference_id), então mandar o
+        // mesmo valor em duas linhas de item do mesmo pedido (ex.: dois
+        // tamanhos da mesma peça) o TOTVS rejeita com RepeatedValue. productCode
+        // é o código da VARIANTE (erp_external_references, entity_type
+        // product_variant), único por item.
+        const productCode = context.productCodesByItemKey[item.key];
+        if (!productCode) {
             throw new TotvsModaOrderMappingError(
-                `Produto "${item.name}" (${item.id}) sem reference_id do TOTVS Moda sincronizado -- não é possível enviar este item.`,
+                `Produto "${item.name}" (${item.id}) sem productCode do TOTVS Moda sincronizado -- não é possível enviar este item.`,
             );
         }
-        return { productSku, quantity: item.qty, price: item.price };
+        return { productCode: Number(productCode), quantity: item.qty, price: item.price };
     });
 
     // Simplificação deliberada: um pagamento à vista pelo total do pedido

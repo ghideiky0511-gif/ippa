@@ -63,14 +63,17 @@ async function reconcileFinalizedCustomerSessions(client: Parameters<typeof find
     // verdade em vez de mapear com items:[] falso, que zerava o carrinho de
     // quem estivesse na room /pedidos dessa sessão (ver scheduleSessionBroadcast
     // abaixo).
-    const sessionsWithItems = await Promise.all(sessions.map(async (session) => ({
-        session,
-        items: (await listOrderSessionItemRowsBySession(client, session.id)).map((item) => item.snapshot),
-    })));
+    const sessionsWithItems = [];
+    for (const session of sessions) {
+        const items = (await listOrderSessionItemRowsBySession(client, session.id)).map((item) => item.snapshot);
+        sessionsWithItems.push({ session, items });
+    }
     const bookIds = new Set(sessions.map((session) => session.order_book_id));
-    const books = (await Promise.all(
-        [...bookIds].map((bookId) => closeOrderBookWhenFinished(client, bookId)),
-    )).filter((book): book is OrderBookRow => Boolean(book));
+    const books: OrderBookRow[] = [];
+    for (const bookId of bookIds) {
+        const book = await closeOrderBookWhenFinished(client, bookId);
+        if (book) books.push(book);
+    }
     return { sessions: sessionsWithItems, books };
 }
 
@@ -159,12 +162,10 @@ export async function leaveSessionParticipant(
 export async function orderSessions(tenant: Tenant, user: AuthUser): Promise<OrderSession[]> {
     if (user.role === "cliente") throw new ForbiddenError();
     return withTenantTransaction(tenant, user, async (client) => {
-        const [sessions, items] = await Promise.all([
-            user.role === "vendedora"
-                ? listOrderSessionRowsBySeller(client, user.id)
-                : listTenantOrderSessionRows(client),
-            listOrderSessionItemRows(client),
-        ]);
+        const sessions = user.role === "vendedora"
+            ? await listOrderSessionRowsBySeller(client, user.id)
+            : await listTenantOrderSessionRows(client);
+        const items = await listOrderSessionItemRows(client);
         return sessions.map((session) => toOrderSession(
             session,
             items.filter((item) => item.session_id === session.id).map((item) => item.snapshot),
@@ -199,10 +200,8 @@ export async function customerActiveSession(tenant: Tenant, user: AuthUser): Pro
         const reconciled = await reconcileFinalizedCustomerSessions(client, user.clientId!);
         const row = await findLatestOpenOrderSessionRowByClient(client, user.clientId!);
         if (!row) return { session: null, reconciled };
-        const [items, seller] = await Promise.all([
-            listOrderSessionItemRowsBySession(client, row.id),
-            findUserRowById(client, row.seller_id),
-        ]);
+        const items = await listOrderSessionItemRowsBySession(client, row.id);
+        const seller = await findUserRowById(client, row.seller_id);
         return {
             session: { ...toOrderSession(row, items.map((item) => item.snapshot)), sellerName: seller?.name },
             reconciled,
@@ -248,12 +247,10 @@ export async function ensureCustomerOrderSession(
 
         // A cliente volta para a última vendedora que a atendeu. Sem esse
         // vínculo, aplica a estratégia configurada entre vendedoras online.
-        const [sellerIds, administratorIds, openCounts, settings] = await Promise.all([
-            listOnlineSellerIds(client),
-            listOnlineAdministratorIds(client),
-            countOpenOrderSessionRowsBySeller(client),
-            findStoreSettingsRow(client),
-        ]);
+        const sellerIds = await listOnlineSellerIds(client);
+        const administratorIds = await listOnlineAdministratorIds(client);
+        const openCounts = await countOpenOrderSessionRowsBySeller(client);
+        const settings = await findStoreSettingsRow(client);
         // A carteira da cliente tem prioridade mesmo se a responsável estiver
         // offline: a atribuição registra quem atende o pedido, mas não impede
         // a cliente de montar e finalizar a compra sozinha. Para clientes sem
@@ -654,9 +651,10 @@ export async function finalizeOrderSession(
         const closedRows = await closeOpenOrderSessionRowsByOrder(client, orderId);
         changedSessions = closedRows.map((closedRow) => toOrderSession(closedRow, items));
         const bookIds = new Set(closedRows.map((closedRow) => closedRow.order_book_id));
-        changedBooks = (await Promise.all(
-            [...bookIds].map((bookId) => closeOrderBookWhenFinished(client, bookId)),
-        )).filter((book): book is OrderBookRow => Boolean(book));
+        for (const bookId of bookIds) {
+            const book = await closeOrderBookWhenFinished(client, bookId);
+            if (book) changedBooks.push(book);
+        }
         return toOrder(row, items, freightRow);
     });
     for (const changedSession of changedSessions) {

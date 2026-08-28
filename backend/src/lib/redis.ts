@@ -45,6 +45,7 @@ function getRedisClient(): Redis | undefined {
       retryStrategy: () => null,
     });
     client.on('error', (error) => logger.error('redis', 'Conexão Redis falhou.', errorMeta(error)));
+    client.on('ready', () => logger.info('redis', 'Conexão Redis estabelecida.'));
     client.on('end', () => { nextConnectAttemptAt = Date.now() + RECONNECT_COOLDOWN_MS; });
   }
   return client;

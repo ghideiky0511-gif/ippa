@@ -36,6 +36,26 @@ export async function findExternalIdByInternalId(
     return result.rows[0]?.external_id ?? null;
 }
 
+// Versão em lote de findExternalIdByInternalId -- usada pelo envio de pedido
+// ao ERP (orderPushService), que precisa do external_id por variante de
+// cada item do pedido sem uma query por item.
+export async function findExternalIdsByInternalIds(
+    client: PoolClient,
+    integrationId: string,
+    entityType: ErpEntityType,
+    internalIds: string[],
+): Promise<Record<string, string>> {
+    if (internalIds.length === 0) return {};
+    const result = await client.query<{ internal_id: string; external_id: string }>(
+        `SELECT internal_id, external_id FROM erp_external_references
+         WHERE tenant_id = app_tenant_id() AND integration_id = $1 AND entity_type = $2 AND internal_id = ANY($3::uuid[])`,
+        [integrationId, entityType, internalIds],
+    );
+    const map: Record<string, string> = {};
+    for (const row of result.rows) map[row.internal_id] = row.external_id;
+    return map;
+}
+
 export async function listExternalReferencesByEntityRow(
     client: PoolClient,
     integrationId: string,

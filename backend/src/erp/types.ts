@@ -110,12 +110,14 @@ export type ErpProviderCredentials = Record<string, unknown>;
 
 // Dado auxiliar de um pedido que só existe no banco (não em Order/CartItem),
 // resolvido pelo motor (services/erp/orderPushService) antes de chamar
-// sendOrder -- ver comentário em ErpProvider.sendOrder. productReferenceIds
-// é indexado pelo mesmo id que aparece em order.items[].id (o product_id do
-// CartItem), nunca pela chave do item no carrinho (item.key).
+// sendOrder -- ver comentário em ErpProvider.sendOrder. productCodesByItemKey
+// é indexado por item.key (a chave por variante do item no carrinho), não por
+// item.id (o product_id, compartilhado entre variantes de cor/tamanho do
+// mesmo produto) -- um product_id sozinho não identifica a variante que o
+// ERP precisa para o item do pedido.
 export interface ErpOrderPushContext {
     clientDocument?: string;
-    productReferenceIds: Record<string, string>;
+    productCodesByItemKey: Record<string, string>;
 }
 
 export interface ErpProvider {
@@ -192,8 +194,8 @@ export interface ErpProvider {
     // pedido do lado dele se a mesma chamada for repetida. `context` carrega
     // dado auxiliar que só quem tem acesso a banco consegue resolver (este
     // arquivo não conhece banco — ver comentário no topo): documento do
-    // cliente e reference_id por produto, hoje; um provider que não precisa
-    // de algo aqui simplesmente ignora o campo.
+    // cliente e productCode por item do pedido, hoje; um provider que não
+    // precisa de algo aqui simplesmente ignora o campo.
     sendOrder?(
         order: Order,
         context: ErpOrderPushContext,

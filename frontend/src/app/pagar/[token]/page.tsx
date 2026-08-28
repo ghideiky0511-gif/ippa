@@ -69,7 +69,7 @@ export default function PagarPage({ params }: { params: Promise<{ token: string 
 
   return (
     <div className={publicUi.loginPage}>
-      <div className="contents">
+      <section className={publicUi.loginForm}>
         <h1>{tenant.name}</h1>
 
         {loading && <p>Carregando…</p>}
@@ -104,7 +104,7 @@ export default function PagarPage({ params }: { params: Promise<{ token: string 
                 <span>{formatBRL(summary.cartSubtotal)}</span>
               </div>
               {summary.cartDiscountTotal > 0 && (
-                <div className="contents">
+                <div className={publicUi.summaryLine}>
                   <span>Desconto ({summary.cartDiscountLabel})</span>
                   <span>-{formatBRL(summary.cartDiscountTotal)}</span>
                 </div>
@@ -115,7 +115,7 @@ export default function PagarPage({ params }: { params: Promise<{ token: string 
                   <span>{summary.freight.price === 0 ? 'Grátis' : formatBRL(summary.freight.price)}</span>
                 </div>
               )}
-              <div className="contents">
+              <div className={publicUi.summaryLine}>
                 <span>Total</span>
                 <span>{formatBRL(summary.total)}</span>
               </div>
@@ -138,7 +138,7 @@ export default function PagarPage({ params }: { params: Promise<{ token: string 
             <div className={publicUi.hint}>Pagamento pelo site em breve — a loja entra em contato para combinar o pagamento.</div>
           </>
         )}
-      </div>
+      </section>
     </div>
   );
 }

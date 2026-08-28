@@ -1,5 +1,6 @@
 import type { Server, Namespace } from "socket.io";
 import { randomUUID } from "node:crypto";
+import { logger, errorMeta } from "@/lib/logger";
 import type { AuthUser } from "@/lib/types";
 import type { OrderSessionParticipant } from "@/lib/types";
 import type { Tenant } from "@/lib/db/tenant";
@@ -208,11 +209,11 @@ export function setupPedidosNamespace(io: Server): Namespace {
         );
 
         socket.on("sair_sessao", () => {
-            void leaveRoom();
+            leaveRoom().catch((error) => logger.error("pedidos-namespace", "Falha ao sair da sessão.", errorMeta(error)));
         });
 
         socket.on("disconnect", () => {
-            void leaveRoom();
+            leaveRoom().catch((error) => logger.error("pedidos-namespace", "Falha ao processar desconexão.", errorMeta(error)));
         });
     });
 

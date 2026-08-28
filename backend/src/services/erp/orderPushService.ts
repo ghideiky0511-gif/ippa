@@ -12,16 +12,18 @@ import type { PoolClient } from "pg";
 import type { Tenant, ActorContext } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser } from "@/lib/types";
+import type { CartItem } from "@/contracts/shared";
 import { logger, errorMeta } from "@/lib/logger";
 import { createErpProvider } from "@/erp/registry";
-import { isNonRetryableErpOrderError } from "@/erp/types";
+import { isNonRetryableErpOrderError, type ErpProvider } from "@/erp/types";
 import { createExternalApiCallReporter } from "@/services/erp/externalApiLogService";
 import { recordAuditEvent, PROVIDER_ORDER_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
 import { findActiveErpIntegrationRow, findErpIntegrationRowByProvider } from "@/models/erpIntegrationsModel";
 import { findOrderRowById, listOrderItemRowsByOrder } from "@/models/ordersModel";
 import { findOrderFreightRowByOrderId } from "@/models/orderFreightsModel";
 import { findClientRow } from "@/models/clientsModel";
-import { findProductReferenceIdsByIds } from "@/models/catalogModel";
+import { listProductVariantRowsByProductIds } from "@/models/catalogModel";
+import { findExternalIdsByInternalIds } from "@/models/erpExternalReferencesModel";
 import { toOrder } from "@/services/orders/orderMapper";
 import {
     claimPendingProviderOrders,
@@ -197,6 +199,81 @@ async function finishAndLogAttempt(
     });
 }
 
+// productCode do ERP por item do pedido -- indexado por item.key (chave por
+// variante do carrinho), nunca por item.id (product_id, compartilhado entre
+// variantes de cor/tamanho do mesmo produto: usar item.id faria dois
+// tamanhos da mesma peça resolverem para o mesmo código, e o TOTVS Moda
+// rejeita item duplicado num mesmo pedido -- ver mapOrderToTotvsModaOrderInDto).
+// Resolve variante por (product_id, color, size), igual a
+// assertOrderItemsInStock (services/orders/stockGate.ts), e então busca o
+// código do ERP dessa variante em erp_external_references (populado pelo
+// catalog sync, ver services/erp/catalogSyncService.processSku).
+async function resolveErpProductCodesByItemKey(
+    client: PoolClient,
+    integrationId: string,
+    items: CartItem[],
+): Promise<Record<string, string>> {
+    const relevantItems = items.filter((item) => item.color && item.size);
+    if (relevantItems.length === 0) return {};
+
+    const productIds = [...new Set(relevantItems.map((item) => item.id))];
+    const variants = await listProductVariantRowsByProductIds(client, productIds);
+    const variantByKey = new Map(variants.map((variant) => [`${variant.product_id}:${variant.color}:${variant.size}`, variant]));
+
+    const variantIdByItemKey = new Map<string, string>();
+    for (const item of relevantItems) {
+        const variant = variantByKey.get(`${item.id}:${item.color}:${item.size}`);
+        if (variant) variantIdByItemKey.set(item.key, variant.id);
+    }
+
+    const externalIdByVariantId = await findExternalIdsByInternalIds(
+        client, integrationId, "product_variant", [...new Set(variantIdByItemKey.values())],
+    );
+
+    const result: Record<string, string> = {};
+    for (const [itemKey, variantId] of variantIdByItemKey) {
+        const externalId = externalIdByVariantId[variantId];
+        if (externalId) result[itemKey] = externalId;
+    }
+    return result;
+}
+
+// Confere saldo ao vivo no ERP para cada productCode do pedido, em lote,
+// logo antes de efetivamente criar o pedido lá -- a última chance de não
+// mandar um item sem saldo, já que o gate de checkout (stockGate.ts) rodou
+// no momento da compra, que pode ter sido bem antes deste dispatch (retry
+// com backoff, resend manual). Simples e sem fallback de propósito: ao
+// contrário de stockGate.refreshStockLive, que degrada pro saldo em cache
+// se o ERP cair (para não travar a venda), aqui o pedido ainda não existe
+// no ERP -- se a checagem falhar (sem saldo ou ERP fora do ar), a tentativa
+// falha e cai no retry normal do motor, sem inventar uma resposta.
+async function assertProductCodesInStock(
+    provider: ErpProvider,
+    items: CartItem[],
+    productCodesByItemKey: Record<string, string>,
+): Promise<void> {
+    const entries = items
+        .map((item) => ({ item, productCode: productCodesByItemKey[item.key] }))
+        .filter((entry): entry is { item: CartItem; productCode: string } => Boolean(entry.productCode) && entry.item.qty > 0);
+    if (entries.length === 0) return;
+
+    const productCodes = [...new Set(entries.map((entry) => entry.productCode))];
+    const snapshots = await provider.fetchStock(productCodes);
+    const stockByCode = new Map<string, number>();
+    for (const snapshot of snapshots) {
+        stockByCode.set(snapshot.skuExternalId, (stockByCode.get(snapshot.skuExternalId) ?? 0) + snapshot.quantity);
+    }
+
+    const insufficient = entries.filter((entry) => entry.item.qty > (stockByCode.get(entry.productCode) ?? 0));
+    if (insufficient.length > 0) {
+        throw new Error(
+            `Estoque insuficiente no ERP para envio do pedido: ${insufficient
+                .map((entry) => `${entry.item.name} (productCode ${entry.productCode})`)
+                .join(", ")}.`,
+        );
+    }
+}
+
 async function attemptProviderOrderPush(
     client: PoolClient,
     tenant: Tenant,
@@ -247,12 +324,13 @@ async function attemptProviderOrderPush(
         const freightRow = await findOrderFreightRowByOrderId(client, row.order_id);
         const order = toOrder(orderRow, items, freightRow);
 
-        const [clientRow, productReferenceIds] = await Promise.all([
+        const [clientRow, productCodesByItemKey] = await Promise.all([
             orderRow.client_id ? findClientRow(client, orderRow.client_id) : Promise.resolve(null),
-            findProductReferenceIdsByIds(client, [...new Set(items.map((item) => item.id).filter(Boolean))]),
+            resolveErpProductCodesByItemKey(client, integration.id, items),
         ]);
-        const context = { clientDocument: clientRow?.cpf_cnpj ?? undefined, productReferenceIds };
+        const context = { clientDocument: clientRow?.cpf_cnpj ?? undefined, productCodesByItemKey };
 
+        await assertProductCodesInStock(provider, items, productCodesByItemKey);
         const result = await provider.sendOrder(order, context, { idempotencyKey: order.id });
         await finishAndLogAttempt(client, row, {
             status: "sent", externalId: result.externalId,
