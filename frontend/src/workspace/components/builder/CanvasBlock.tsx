@@ -3,7 +3,8 @@
 import { adminUi } from '@/workspace/lib/ui';
 import { useState, memo } from 'react';
 import { GripVertical, Trash2 } from 'lucide-react';
-import { getBlockDefinition, CANVAS_WIDTH, MIN_SIZE } from '@/workspace/lib/blockRegistry';
+import { getBlockDefinition, MIN_SIZE } from '@/workspace/lib/blockRegistry';
+import { HOME_CANVAS_WIDTH, resolveBreakpointLayout } from '@/lib/homeLayout';
 
 const MAX_HEIGHT = 2000;
 
@@ -27,13 +28,21 @@ function summarize(section, products) {
   return section.type;
 }
 
-function CanvasBlock({ section, products, selected, onSelect, onRemove, onMove, onResize }) {
+function CanvasBlock({ section, products, device = 'desktop', selected, onSelect, onRemove, onMove, onResize }) {
   const def = getBlockDefinition(section.type);
   const Preview = def?.Preview;
-  const baseX = section.x || 0;
-  const baseY = section.y || 0;
-  const baseWidth = section.width || 280;
-  const baseHeight = section.height || 300;
+  // Coordenadas do modo de visualização ativo — desktop lê o topo da
+  // section; tablet/celular leem o ajuste daquele modo (ou o desktop
+  // reescalado, se a loja ainda não mexeu). Ver homeLayout.ts.
+  const canvasWidth = HOME_CANVAS_WIDTH[device];
+  const base = resolveBreakpointLayout(section, device);
+  // Banner "largura total": no site ocupa a janela inteira — na prévia do
+  // canvas mostra ocupando toda a largura do canvas do modo ativo.
+  const fullBleed = section.type === 'banner' && section.fullBleed;
+  const baseX = fullBleed ? 0 : base.x;
+  const baseY = base.y;
+  const baseWidth = fullBleed ? canvasWidth : base.width;
+  const baseHeight = base.height;
 
   // Enquanto o gesto de arrastar/redimensionar está rolando, a posição só
   // vive aqui (estado local do próprio bloco) — só grava no estado da
@@ -61,7 +70,7 @@ function CanvasBlock({ section, products, selected, onSelect, onRemove, onMove, 
       // verdade, então não faz sentido soltar um bloco lá.
       const rawX = snap(baseX + (ev.clientX - startX));
       const rawY = snap(baseY + (ev.clientY - startY));
-      finalX = Math.min(CANVAS_WIDTH - baseWidth, Math.max(0, rawX));
+      finalX = Math.min(canvasWidth - baseWidth, Math.max(0, rawX));
       finalY = Math.max(0, rawY);
       setLive({ x: finalX, y: finalY });
     }
@@ -85,9 +94,8 @@ function CanvasBlock({ section, products, selected, onSelect, onRemove, onMove, 
 
     function onPointerMove(ev) {
       if (axis === 'w' || axis === 'both') {
-        // Não deixa esticar pra além da borda direita do canvas (onde
-        // começa a área da toolbox).
-        const maxWidth = CANVAS_WIDTH - baseX;
+        // Não deixa esticar pra além da borda direita do canvas do modo ativo.
+        const maxWidth = canvasWidth - baseX;
         finalWidth = Math.min(maxWidth, Math.max(MIN_SIZE, snap(baseWidth + (ev.clientX - startX))));
       }
       if (axis === 'h' || axis === 'both') {

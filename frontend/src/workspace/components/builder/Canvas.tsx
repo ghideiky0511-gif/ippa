@@ -4,6 +4,7 @@ import { adminUi } from '@/workspace/lib/ui';
 import { useDroppable } from '@dnd-kit/core';
 import CanvasBlock from './CanvasBlock';
 import { STARTER_TEMPLATE } from '@/workspace/lib/blockRegistry';
+import { HOME_CANVAS_WIDTH, canvasHeightFor } from '@/lib/homeLayout';
 
 const MIN_CANVAS_HEIGHT = 600;
 const BOTTOM_PADDING = 160;
@@ -11,6 +12,7 @@ const BOTTOM_PADDING = 160;
 export default function Canvas({
   sections,
   products,
+  device = 'desktop',
   selectedId,
   onSelect,
   onRemoveSection,
@@ -20,21 +22,22 @@ export default function Canvas({
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: 'canvas' });
 
+  const canvasWidth = HOME_CANVAS_WIDTH[device];
   const canvasHeight = sections.length
-    ? Math.max(MIN_CANVAS_HEIGHT, ...sections.map((s) => (s.y || 0) + (s.height || 300) + BOTTOM_PADDING))
+    ? canvasHeightFor(sections, device, MIN_CANVAS_HEIGHT, BOTTOM_PADDING)
     : MIN_CANVAS_HEIGHT;
 
   return (
     <main className={adminUi.canvasWrap}>
       <p className={`${adminUi.hint} mb-3`}>
         Arraste um bloco pra mover; pelas bordas, pra redimensionar. Nada se move sozinho quando você mexe
-        em outro bloco.
+        em outro bloco. Cada modo de visualização (desktop, tablet, celular) tem seu próprio layout.
       </p>
 
       <div
         ref={setNodeRef}
         className={[adminUi.canvas, isOver ? 'outline-2 outline-dashed outline-brand-primary outline-offset-[-2px]' : ''].join(' ')}
-        style={{ height: canvasHeight }}
+        style={{ width: canvasWidth, height: canvasHeight }}
       >
         {sections.length === 0 && (
           <div className={adminUi.emptyCanvas}>
@@ -55,6 +58,7 @@ export default function Canvas({
             key={section.id}
             section={section}
             products={products}
+            device={device}
             selected={selectedId === section.id}
             onSelect={onSelect}
             onRemove={onRemoveSection}

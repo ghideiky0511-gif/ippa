@@ -124,8 +124,24 @@ export type HomeSectionCta = z.infer<typeof HomeSectionCtaSchema>;
 // mesma largura de `.container`/`.home-sections`). O editor admin é um
 // ambiente de criação de layout: nada se move sozinho quando outro bloco
 // muda de tamanho, a posição de cada bloco só muda quando o adm arrasta
-// aquele bloco especificamente. Em telas de celular (<=640px) o site
-// ignora x/y/width e empilha os blocos em ordem de `y`, largura 100%.
+// aquele bloco especificamente.
+//
+// x/y/width/height no topo são o layout de DESKTOP (canvas de 1200px). O
+// editor tem 3 modos de visualização — desktop, tablet e celular — e cada
+// um tem sua própria largura de canvas de referência (1200 / 820 / 390).
+// `tablet`/`mobile` guardam só o que a loja ajustou naquele modo; o que
+// não foi tocado é derivado proporcionalmente do desktop (ver
+// resolveBreakpointLayout em web/src/lib/homeLayout.ts). O site escolhe o
+// layout pela largura da janela e posiciona tudo em % do canvas daquele
+// breakpoint, então encolhe junto ("vetorizado") sem estourar as laterais.
+export const BreakpointLayoutSchema = z.object({
+  x: z.number().optional(),
+  y: z.number().optional(),
+  width: z.number().optional(),
+  height: z.number().optional(),
+});
+export type BreakpointLayout = z.infer<typeof BreakpointLayoutSchema>;
+
 export const HomeSectionSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('banner'),
@@ -135,6 +151,13 @@ export const HomeSectionSchema = z.discriminatedUnion('type', [
     y: z.number().optional(),
     width: z.number().optional(),
     height: z.number().optional(),
+    tablet: BreakpointLayoutSchema.optional(),
+    mobile: BreakpointLayoutSchema.optional(),
+    // Banner "largura total": ignora x/width e ocupa toda a largura da
+    // janela, borda a borda (hero). `fullHeight` faz ocupar também a
+    // altura da tela (100svh) em vez da altura em px.
+    fullBleed: z.boolean().optional(),
+    fullHeight: z.boolean().optional(),
     cta: HomeSectionCtaSchema.optional(),
   }),
   z.object({
@@ -145,6 +168,8 @@ export const HomeSectionSchema = z.discriminatedUnion('type', [
     y: z.number().optional(),
     width: z.number().optional(),
     height: z.number().optional(),
+    tablet: BreakpointLayoutSchema.optional(),
+    mobile: BreakpointLayoutSchema.optional(),
     cta: HomeSectionCtaSchema.optional(),
   }),
 ]);

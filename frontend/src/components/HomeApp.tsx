@@ -1,11 +1,18 @@
 "use client";
 import { publicUi } from "@/lib/ui";
+import { cn } from "@/lib/cn";
 
 import type { CSSProperties } from "react";
 import HomeBanner from "./HomeBanner";
 import ProductCard from "./ProductCard";
 import TenantLink from "./TenantLink";
 import { useTenant } from "./TenantProvider";
+import {
+    canvasHeightFor,
+    HOME_CANVAS_WIDTH,
+    resolveBreakpointLayout,
+    type HomeDevice,
+} from "@/lib/homeLayout";
 import type { HomeSectionCta, ResolvedHomeSection } from "@/domain/catalog/types";
 
 // Hiperlink que a loja configura por bloco no editor da home
@@ -41,11 +48,9 @@ function HomeSectionCtaLink({ cta }: { cta?: HomeSectionCta }) {
     );
 }
 
-// Mesmos padrões de admin/src/lib/blockRegistry.js — usados só quando um
-// bloco antigo/manual não trouxer x/y/width/height.
-const DEFAULT_WIDTH = 280;
-const DEFAULT_HEIGHT = 320;
-const BOTTOM_PADDING = 60;
+const DEVICES: HomeDevice[] = ["desktop", "tablet", "mobile"];
+// Sufixo da CSS var por breakpoint (ver tailwind.css: .home-canvas / .home-item).
+const VAR_SUFFIX: Record<HomeDevice, string> = { desktop: "d", tablet: "t", mobile: "m" };
 
 export default function HomeApp({
     sections,
@@ -63,81 +68,71 @@ export default function HomeApp({
         );
     }
 
-    // Ordenado por `y`: é a ordem que o celular usa pra empilhar (ver media
-    // query em globals.css, que ignora x/y/width e vira um fluxo normal) —
-    // sem isso, a ordem visual no celular dependeria da ordem do JSON, não
-    // de onde o bloco realmente está no canvas.
+    // Ordenado por `y` de desktop: é a ordem "de cima pra baixo" que a
+    // loja montou. A ordem visual real em cada breakpoint vem da posição
+    // dos blocos, não do JSON.
     const ordered = [...sections].sort((a, b) => (a.y || 0) - (b.y || 0));
     const firstBannerId = ordered.find((s) => s.type === "banner")?.id;
-    const canvasHeight = Math.max(
-        400,
-        ...ordered.map(
-            (s) => (s.y || 0) + (s.height || DEFAULT_HEIGHT) + BOTTOM_PADDING,
-        ),
-    );
+
+    // Larguras/alturas de canvas de referência de cada breakpoint. O CSS
+    // escolhe qual par usar pela media query (ver tailwind.css).
+    const canvasVars: Record<string, string | number> = {};
+    for (const device of DEVICES) {
+        const suffix = VAR_SUFFIX[device];
+        canvasVars[`--dw-${suffix}`] = HOME_CANVAS_WIDTH[device];
+        canvasVars[`--ch-${suffix}`] = canvasHeightFor(ordered, device);
+    }
 
     return (
-        <>
-            <main
-                className={publicUi.homeSections}
-                style={
-                    { "--canvas-height": `${canvasHeight}px` } as CSSProperties
+        <main className="home-canvas" style={canvasVars as CSSProperties}>
+            {ordered.map((section) => {
+                // Coordenadas dos 3 breakpoints como CSS vars — o CSS decide
+                // qual conjunto aplica conforme a largura da janela.
+                const posStyle: Record<string, string | number> = {};
+                for (const device of DEVICES) {
+                    const suffix = VAR_SUFFIX[device];
+                    const layout = resolveBreakpointLayout(section, device);
+                    posStyle[`--x-${suffix}`] = layout.x;
+                    posStyle[`--y-${suffix}`] = layout.y;
+                    posStyle[`--w-${suffix}`] = layout.width;
+                    posStyle[`--h-${suffix}`] = layout.height;
                 }
-            >
-                {ordered.map((section) => {
-                    // CSS vars em vez de left/top/width direto no style: assim a media
-                    // query no globals.css (celular = sempre fluxo normal) consegue
-                    // vencer a cascata sem precisar de !important.
-                    const posStyle = {
-                        "--x": `${section.x || 0}px`,
-                        "--y": `${section.y || 0}px`,
-                        "--w": `${section.width || DEFAULT_WIDTH}px`,
-                        "--h": `${section.height || DEFAULT_HEIGHT}px`,
-                    } as CSSProperties;
 
-                    if (section.type === "banner") {
-                        return (
-                            <div
-                                key={section.id}
-                                className={publicUi.homeSectionItem}
-                                style={posStyle}
-                            >
-                                <div className="relative h-full w-full max-sm:h-auto">
-                                    <HomeBanner
-                                        banners={section.banners}
-                                        fallbackTitle={tenant.name}
-                                        headingLevel={
-                                            section.id === firstBannerId
-                                                ? "h1"
-                                                : "h2"
-                                        }
-                                        height={section.height}
-                                        width={section.width}
-                                    />
-                                    <HomeSectionCtaLink cta={section.cta} />
-                                </div>
+                const isFullBleed = section.type === "banner" && !!section.fullBleed;
+                const itemClassName = cn(
+                    "home-item",
+                    isFullBleed && "home-item--full-bleed",
+                    isFullBleed && section.fullHeight && "home-item--full-height",
+                );
+
+                if (section.type === "banner") {
+                    return (
+                        <div key={section.id} className={itemClassName} style={posStyle as CSSProperties}>
+                            <div className="relative h-full w-full">
+                                <HomeBanner
+                                    banners={section.banners}
+                                    fallbackTitle={tenant.name}
+                                    headingLevel={section.id === firstBannerId ? "h1" : "h2"}
+                                />
+                                <HomeSectionCtaLink cta={section.cta} />
                             </div>
-                        );
-                    }
+                        </div>
+                    );
+                }
 
-                    if (section.type === "product" && section.product) {
-                        return (
-                            <div
-                                key={section.id}
-                                className={publicUi.homeSectionItem}
-                                style={posStyle}
-                            >
-                                <div className="relative h-full w-full max-sm:h-auto">
-                                    <ProductCard product={section.product} />
-                                    <HomeSectionCtaLink cta={section.cta} />
-                                </div>
+                if (section.type === "product" && section.product) {
+                    return (
+                        <div key={section.id} className={itemClassName} style={posStyle as CSSProperties}>
+                            <div className="relative h-full w-full">
+                                <ProductCard product={section.product} />
+                                <HomeSectionCtaLink cta={section.cta} />
                             </div>
-                        );
-                    }
+                        </div>
+                    );
+                }
 
-                    return null;
-                })}
-            </main>
-        </>
+                return null;
+            })}
+        </main>
     );
 }

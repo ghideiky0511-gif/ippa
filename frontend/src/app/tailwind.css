@@ -88,3 +88,69 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Canvas responsivo da home montada no editor.
+   ------------------------------------------------------------------
+   HomeApp emite as coordenadas dos 3 breakpoints (desktop/tablet/celular)
+   como CSS vars por bloco (--x-d/--x-t/--x-m ...) e as larguras/alturas de
+   canvas de referência no container (--dw-d/--ch-d ...). As media queries
+   abaixo escolhem qual conjunto usar pela largura da janela; cada bloco é
+   posicionado em % do canvas daquele breakpoint, então a home inteira
+   encolhe proporcionalmente ("vetorizada") em vez de cortar as laterais em
+   tablet/celular. Larguras de referência: 1200 / 820 / 390 (ver
+   HOME_CANVAS_WIDTH em web/src/lib/homeLayout.ts). */
+.home-canvas {
+  position: relative;
+  width: 100%;
+  max-width: 1200px;
+  margin-inline: auto;
+  --dw: var(--dw-d);
+  --ch: var(--ch-d);
+  aspect-ratio: var(--dw) / var(--ch);
+}
+
+.home-item {
+  position: absolute;
+  --x: var(--x-d);
+  --y: var(--y-d);
+  --w: var(--w-d);
+  --h: var(--h-d);
+  left: calc(var(--x) / var(--dw) * 100%);
+  top: calc(var(--y) / var(--ch) * 100%);
+  width: calc(var(--w) / var(--dw) * 100%);
+  height: calc(var(--h) / var(--ch) * 100%);
+  overflow: hidden;
+}
+
+@media (max-width: 1023px) {
+  .home-canvas { --dw: var(--dw-t); --ch: var(--ch-t); }
+  .home-item {
+    --x: var(--x-t);
+    --y: var(--y-t);
+    --w: var(--w-t);
+    --h: var(--h-t);
+  }
+}
+
+@media (max-width: 639px) {
+  .home-canvas { --dw: var(--dw-m); --ch: var(--ch-m); }
+  .home-item {
+    --x: var(--x-m);
+    --y: var(--y-m);
+    --w: var(--w-m);
+    --h: var(--h-m);
+  }
+}
+
+/* Banner "largura total": borda a borda, independente do canvas centralizado.
+   left:50% + translateX(-50%) centra um bloco de 100vw seja qual for o
+   deslocamento do container. `--full-height` transforma em hero de tela cheia. */
+.home-item--full-bleed {
+  left: 50%;
+  width: 100vw;
+  max-width: 100vw;
+  transform: translateX(-50%);
+}
+.home-item--full-bleed.home-item--full-height {
+  height: 100svh;
+}

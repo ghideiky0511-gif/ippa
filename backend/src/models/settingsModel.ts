@@ -1,14 +1,20 @@
 import type { PoolClient } from "pg";
-import type { AssignmentStrategy, BannerMediaType, DiscountType, HomeSectionCta, HomeSectionType, SimilarProductsSettings, StoreFeatures } from "@/lib/types";
+import type { AssignmentStrategy, BannerMediaType, BreakpointLayout, DiscountType, HomeSectionCta, HomeSectionType, SimilarProductsSettings, StoreFeatures } from "@/lib/types";
 
 // Blob `layout` (jsonb) da linha `home_sections`: posição/tamanho livres do
 // bloco no canvas + o hiperlink opcional (`cta`) que a loja configura. Tudo
 // que mora aqui é devolvido no topo da HomeSection (ver homeSectionService).
+// x/y/width/height = layout de desktop; `tablet`/`mobile` = ajustes por
+// breakpoint; `fullBleed`/`fullHeight` = banner de largura/altura total.
 export interface HomeSectionLayout {
     x?: number;
     y?: number;
     width?: number;
     height?: number;
+    tablet?: BreakpointLayout;
+    mobile?: BreakpointLayout;
+    fullBleed?: boolean;
+    fullHeight?: boolean;
     cta?: HomeSectionCta;
 }
 

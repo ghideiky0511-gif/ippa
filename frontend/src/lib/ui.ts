@@ -84,10 +84,14 @@ export const publicUi = {
   loginForm: 'mx-auto flex w-full max-w-[450px] flex-col gap-4 rounded-brand bg-brand-card p-6 shadow-[0_1px_4px_rgba(0,0,0,0.08)] lg:border lg:border-solid lg:border-neutral-300 lg:p-8',
   authSwitch: 'm-0 text-center text-[13px] text-brand-muted [&>a]:font-semibold [&>a]:text-brand-primary',
   productDetail: 'grid grid-cols-2 gap-8 py-6 max-md:grid-cols-1',
-  gallery: 'flex min-w-0 gap-2',
-  galleryThumbRail: 'flex shrink-0 flex-col gap-2 overflow-y-auto',
-  galleryThumb: 'aspect-[4/5] w-11 shrink-0 cursor-pointer rounded-md ring-1 ring-[#eee] transition-[box-shadow] hover:ring-brand-primary sm:w-14',
-  galleryMainWrap: 'relative min-w-0 flex-1',
+  gallery: 'flex min-w-0 items-stretch gap-2',
+  // A tira de miniaturas divide a altura da imagem principal entre até 5
+  // fotos (flex-1 + min-h-0), então nunca "desce" além da imagem. Passando
+  // de 5 fotos, as setas ‹ › sobre a imagem rotacionam a galeria pra
+  // alcançar as demais (ver stepGallery em ProductDetailContent.tsx).
+  galleryThumbRail: 'flex shrink-0 flex-col gap-2',
+  galleryThumb: 'min-h-0 w-11 flex-1 shrink-0 cursor-pointer rounded-md object-cover ring-1 ring-[#eee] transition-[box-shadow] hover:ring-brand-primary max-h-32 sm:w-14',
+  galleryMainWrap: 'relative grid min-w-0 flex-1 [&>*]:[grid-area:1/1]',
   galleryNavButton: 'absolute top-1/2 z-10 flex size-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border-0 bg-white/90 text-foreground shadow-[0_1px_4px_rgba(0,0,0,0.2)] hover:bg-white',
   galleryNavButtonPrev: 'left-1.5',
   galleryNavButtonNext: 'right-1.5',
@@ -186,8 +190,6 @@ export const publicUi = {
   colorSelectOption: 'flex w-full cursor-pointer items-center gap-2 rounded-md border-0 bg-transparent px-2 py-1.5 text-left text-xs text-brand-text hover:bg-[#f5f5f5]',
   swatch: 'inline-block size-3 shrink-0 rounded-full border border-black/15',
   homeFallback: 'static h-auto overflow-hidden bg-linear-to-br from-brand-primary to-brand-primary-dark px-4 py-9 text-center text-white [&>div]:static [&>div]:flex [&>div]:flex-col [&>div]:items-center [&>div]:justify-center [&>div>h1]:mb-1.5 [&>div>h1]:text-[clamp(22px,4vw,36px)]',
-  homeSections: 'relative mx-auto h-[var(--canvas-height,auto)] max-w-[1200px] max-sm:flex max-sm:h-auto max-sm:flex-col max-sm:gap-4 max-sm:px-4',
-  homeSectionItem: 'absolute left-[var(--x,0px)] top-[var(--y,0px)] h-[var(--h,auto)] w-[var(--w,100%)] overflow-hidden max-sm:static max-sm:h-auto max-sm:w-full max-sm:overflow-visible',
   catalogFooter: 'mt-10 border-t border-border bg-surface text-foreground',
   catalogFooterGrid: 'grid gap-8 py-10 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1.2fr] lg:gap-12 lg:py-12',
   catalogFooterBrand: 'max-w-sm [&>h2]:mt-1 [&>h2]:text-xl [&>h2]:font-extrabold [&>h2]:tracking-[-0.03em] [&>h2]:text-brand-primary [&>p:last-child]:mt-3 [&>p:last-child]:text-sm [&>p:last-child]:leading-6 [&>p:last-child]:text-muted-foreground',

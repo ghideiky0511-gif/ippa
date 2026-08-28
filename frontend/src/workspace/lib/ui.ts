@@ -23,8 +23,15 @@ export const adminUi = {
   builderAiForm: 'mx-auto flex max-w-6xl flex-col gap-3 lg:flex-row lg:items-end',
   builderHistory: 'mx-auto mt-3 max-w-6xl rounded-control border border-border bg-brand-background/50 p-3',
   canvasWrap: 'min-w-0 flex-1 overflow-auto px-4 pt-5 pb-8 sm:px-6',
-  canvas: 'relative min-h-[680px] min-w-[1200px] rounded-brand border border-border bg-[#f4f4f5] p-5 shadow-card [background-image:linear-gradient(to_right,rgba(24,24,27,.07)_1px,transparent_1px),linear-gradient(to_bottom,rgba(24,24,27,.07)_1px,transparent_1px)] [background-size:20px_20px]',
-  toolbox: 'w-[320px] shrink-0 overflow-x-hidden overflow-y-auto border-l border-border bg-surface p-5 [overflow-wrap:anywhere]',
+  // Largura definida por style (varia com o modo de visualização —
+  // desktop/tablet/celular); `mx-auto` centraliza o "aparelho" na área.
+  canvas: 'relative mx-auto min-h-[680px] rounded-brand border border-border bg-[#f4f4f5] p-5 shadow-card [background-image:linear-gradient(to_right,rgba(24,24,27,.07)_1px,transparent_1px),linear-gradient(to_bottom,rgba(24,24,27,.07)_1px,transparent_1px)] [background-size:20px_20px]',
+  // `lg:sticky` + `self-start` deixam o painel acompanhar o scroll da
+  // página em vez de ficar preso no topo — editando um bloco lá embaixo,
+  // o editor continua visível. `max-h`/`overflow-y-auto` rolam só o painel
+  // quando o conteúdo passa da altura da tela. No mobile (Sheet) as classes
+  // `lg:` ficam inertes.
+  toolbox: 'w-[320px] shrink-0 overflow-x-hidden overflow-y-auto border-l border-border bg-surface p-5 [overflow-wrap:anywhere] lg:sticky lg:top-0 lg:self-start lg:max-h-[100dvh]',
   toolboxList: 'flex flex-col gap-2.5',
   toolItem: 'flex cursor-grab items-center gap-3 rounded-control border border-border bg-surface p-3 text-left text-sm font-semibold shadow-card transition-[border-color,box-shadow,transform] hover:border-brand-primary/30 hover:shadow-md active:cursor-grabbing active:scale-[.98]',
   emptyCanvas: 'flex min-h-[300px] flex-col items-center justify-center rounded-brand border-2 border-dashed border-[#d4d4d8] p-6 text-center text-brand-muted',

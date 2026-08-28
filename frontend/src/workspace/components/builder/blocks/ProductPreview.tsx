@@ -11,7 +11,7 @@ export default function ProductPreview({ section, products }) {
   if (!product) {
     return (
       <div className={`relative ${adminUi.previewBlock}`}>
-        <p>Nenhum produto selecionado ainda — cole o ID no painel ao lado.</p>
+        <p>Nenhum produto selecionado ainda — pesquise pelo nome no painel ao lado.</p>
         <BlockCtaBadge cta={section.cta} />
       </div>
     );

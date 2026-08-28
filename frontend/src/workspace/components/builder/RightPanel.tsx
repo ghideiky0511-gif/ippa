@@ -3,36 +3,35 @@
 import { adminUi } from '@/workspace/lib/ui';
 import { cn } from '@/lib/cn';
 import Toolbox from './Toolbox';
-import { getBlockDefinition, CANVAS_WIDTH, MIN_SIZE } from '@/workspace/lib/blockRegistry';
+import { getBlockDefinition, MIN_SIZE } from '@/workspace/lib/blockRegistry';
+import { HOME_CANVAS_WIDTH, HOME_DEVICES, resolveBreakpointLayout, withDeviceLayout } from '@/lib/homeLayout';
 
 // Campos numéricos de posição/tamanho — sempre visíveis aqui no painel,
 // então mesmo que o bloco fique maior que a área visível do canvas (ou as
 // alças de arrastar fiquem fora da tela), ainda dá pra redimensionar e
 // mover digitando o valor, sem depender de alcançar a borda do bloco.
-function PositionFields({ section, onUpdate }) {
-  const x = section.x || 0;
-  const y = section.y || 0;
-  const width = section.width || 280;
-  const height = section.height || 300;
+// Operam sobre o layout do modo de visualização ativo (desktop / tablet /
+// celular) — ver withDeviceLayout em homeLayout.ts.
+function PositionFields({ section, device, onUpdate }) {
+  const canvasWidth = HOME_CANVAS_WIDTH[device];
+  const { x, y, width, height } = resolveBreakpointLayout(section, device);
 
   function setX(value) {
-    const w = section.width || width;
-    const next = Math.min(CANVAS_WIDTH - w, Math.max(0, value));
-    onUpdate((s) => ({ ...s, x: next }));
+    const next = Math.min(canvasWidth - width, Math.max(0, value));
+    onUpdate((s) => withDeviceLayout(s, device, { x: next }));
   }
 
   function setY(value) {
-    onUpdate((s) => ({ ...s, y: Math.max(0, value) }));
+    onUpdate((s) => withDeviceLayout(s, device, { y: Math.max(0, value) }));
   }
 
   function setWidth(value) {
-    const curX = section.x || x;
-    const next = Math.min(CANVAS_WIDTH - curX, Math.max(MIN_SIZE, value));
-    onUpdate((s) => ({ ...s, width: next }));
+    const next = Math.min(canvasWidth - x, Math.max(MIN_SIZE, value));
+    onUpdate((s) => withDeviceLayout(s, device, { width: next }));
   }
 
   function setHeight(value) {
-    onUpdate((s) => ({ ...s, height: Math.max(MIN_SIZE, value) }));
+    onUpdate((s) => withDeviceLayout(s, device, { height: Math.max(MIN_SIZE, value) }));
   }
 
   return (
@@ -112,20 +111,24 @@ function CtaFields({ section, onUpdate }) {
   );
 }
 
-export default function RightPanel({ selectedSection, products, onUpdate, onDeselect, onRemove, className = '' }) {
+export default function RightPanel({ selectedSection, products, device = 'desktop', onUpdate, onDeselect, onRemove, className = '' }) {
   if (!selectedSection) {
     return <Toolbox />;
   }
 
   const def = getBlockDefinition(selectedSection.type);
   const Editor = def?.Editor;
+  const deviceLabel = HOME_DEVICES.find((d) => d.id === device)?.short || 'Desktop';
+  const isFullBleed = selectedSection.type === 'banner' && selectedSection.fullBleed;
 
   return (
     <aside className={cn(adminUi.toolbox, className)}>
       <div className={adminUi.panelHeader}>
         <div className="min-w-0">
           <h2 className="text-base font-extrabold text-foreground">Editando bloco</h2>
-          <p className="mt-1 text-xs text-muted-foreground">Ajuste o conteúdo, posição e tamanho.</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Posição e tamanho no modo <span className="font-semibold text-foreground">{deviceLabel}</span>.
+          </p>
         </div>
         <button
           type="button"
@@ -137,7 +140,12 @@ export default function RightPanel({ selectedSection, products, onUpdate, onDese
         </button>
       </div>
 
-      <PositionFields section={selectedSection} onUpdate={onUpdate} />
+      <PositionFields section={selectedSection} device={device} onUpdate={onUpdate} />
+      {isFullBleed && (
+        <p className={`${adminUi.hint} -mt-2 mb-4`}>
+          Banner em largura total: no site ele ignora X e Largura e ocupa a tela toda.
+        </p>
+      )}
 
       {Editor && <Editor section={selectedSection} onUpdate={onUpdate} products={products} />}
 

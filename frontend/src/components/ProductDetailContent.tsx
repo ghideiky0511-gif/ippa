@@ -2,7 +2,7 @@
 import { publicUi } from '@/lib/ui';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { motion, useReducedMotion } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Check, ChevronLeft, ChevronRight, TrendingUp } from 'lucide-react';
 import Link from '@/components/TenantLink';
 import { COLOR_MAP, CONFIG } from '@/lib/config';
@@ -172,7 +172,9 @@ export default function ProductDetailContent({ product, presentation = 'page', o
       <div className={publicUi.gallery}>
         {gallery.length > 1 && (
           <div className={publicUi.galleryThumbRail}>
-            {galleryOrder.slice(1).map((imageIndex, i) => (
+            {/* No máx. 5 miniaturas ao lado da foto principal — o resto se
+               alcança pelas setas ‹ › (stepGallery rotaciona a ordem). */}
+            {galleryOrder.slice(1, 6).map((imageIndex, i) => (
               <ProductImage
                 key={imageIndex}
                 src={gallery[imageIndex]}
@@ -184,11 +186,24 @@ export default function ProductDetailContent({ product, presentation = 'page', o
           </div>
         )}
         <div className={publicUi.galleryMainWrap}>
-          <ProductImage
-            className={[publicUi.detailImage, isPanel ? 'aspect-[4/5]' : ''].join(' ')}
-            src={displayImage}
-            alt={product.name}
-          />
+          {/* Crossfade na troca de foto (clique na miniatura ou setas) —
+             as duas imagens ficam empilhadas na mesma célula de grid
+             (galleryMainWrap) enquanto a antiga some. */}
+          <AnimatePresence initial={false}>
+            <motion.div
+              key={displayImage}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: shouldReduceMotion ? 0 : 0.3, ease: 'easeInOut' }}
+            >
+              <ProductImage
+                className={[publicUi.detailImage, isPanel ? 'aspect-[4/5]' : ''].join(' ')}
+                src={displayImage}
+                alt={product.name}
+              />
+            </motion.div>
+          </AnimatePresence>
           {gallery.length > 1 && (
             <>
               <button
@@ -260,34 +275,35 @@ export default function ProductDetailContent({ product, presentation = 'page', o
           </p>
         )}
 
-        <div className="contents">
-          <div className="contents">Cor {selectedColor ? `— ${selectedColor}` : ''}</div>
-          <div className="contents">
-            <button
-              type="button"
-              className={'pill-filter' + (selectedColor === null ? ' active' : '')}
-              onClick={() => pickColor(null)}
-            >
-              todas as cores
-            </button>
-            <div className="contents">
-              {matrix.colors.map((c) => (
+        {/* Só os círculos com a cor de referência — clicar troca a galeria
+           pra cor escolhida (resolveGallery por cor). Sem rótulo "Cor — X"
+           nem botão "todas as cores": a grade de variantes abaixo já lista
+           todas as cores. */}
+        {matrix.colors.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2.5" role="group" aria-label="Cor">
+            {matrix.colors.map((c) => {
+              const isSelected = selectedColor === c;
+              const available = matrix.availableColors.includes(c);
+              return (
                 <button
                   key={c}
                   type="button"
-                  className={
-                    'color-dot-btn' +
-                    (selectedColor === c ? ' selected' : '') +
-                    (matrix.availableColors.includes(c) ? '' : ' unavailable')
-                  }
-                  style={{ background: COLOR_MAP[c] || '#ccc' }}
                   title={c}
+                  aria-label={c}
+                  aria-pressed={isSelected}
                   onClick={() => pickColor(c)}
+                  className={[
+                    'relative shrink-0 cursor-pointer rounded-full border border-black/15 transition-transform hover:scale-110',
+                    isPanel ? 'size-6' : 'size-7',
+                    isSelected ? 'ring-2 ring-brand-primary ring-offset-2 ring-offset-surface' : '',
+                    available ? '' : 'opacity-35',
+                  ].join(' ')}
+                  style={{ background: COLOR_MAP[c] || '#ccc' }}
                 />
-              ))}
-            </div>
+              );
+            })}
           </div>
-        </div>
+        )}
 
         {product.packs && product.packs.length > 0 && (
           <div className="contents">

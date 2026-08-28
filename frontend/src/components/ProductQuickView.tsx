@@ -123,7 +123,7 @@ function OpenProductQuickView({
         side="right"
         mobileSide="bottom"
         overlayClassName={isTransitioningToPage ? 'pointer-events-none bg-black/0 transition-colors duration-200' : 'transition-colors duration-200'}
-        className={`w-full md:w-[70vw] ${isTransitioningToPage ? 'pointer-events-none border-transparent bg-transparent shadow-none transition-[transform,background-color,border-color,box-shadow] duration-150' : ''}`}
+        className={`w-full md:w-[85vw] ${isTransitioningToPage ? 'pointer-events-none border-transparent bg-transparent shadow-none transition-[transform,background-color,border-color,box-shadow] duration-150' : ''}`}
         dragOffsetY={sheetOffsetY || undefined}
       >
         <motion.div layoutRoot className="flex h-full min-h-0 flex-col">

@@ -28,6 +28,33 @@ export default function BannerBlockEditor({ section, onUpdate }) {
 
   return (
     <>
+      <div className={adminUi.itemCard}>
+        <label className="flex cursor-pointer items-start gap-2 text-sm font-semibold text-foreground">
+          <input
+            type="checkbox"
+            className="mt-0.5 size-4 shrink-0"
+            checked={!!section.fullBleed}
+            onChange={(e) => onUpdate((s) => ({ ...s, fullBleed: e.target.checked }))}
+          />
+          <span className="min-w-0">Largura total (borda a borda)</span>
+        </label>
+        <label className={`flex items-start gap-2 text-sm font-semibold ${section.fullBleed ? 'cursor-pointer text-foreground' : 'text-brand-muted'}`}>
+          <input
+            type="checkbox"
+            className="mt-0.5 size-4 shrink-0"
+            checked={!!section.fullHeight}
+            disabled={!section.fullBleed}
+            onChange={(e) => onUpdate((s) => ({ ...s, fullHeight: e.target.checked }))}
+          />
+          <span className="min-w-0">Altura da tela cheia (hero)</span>
+        </label>
+        <p className={adminUi.hint}>
+          Largura total faz o banner ocupar toda a largura da janela em qualquer
+          dispositivo. Com “altura da tela cheia”, ele vira um hero de 100% da
+          altura visível.
+        </p>
+      </div>
+
       {banners.map((b) => (
         <div key={b.id} className={adminUi.itemCard}>
           <div className={adminUi.field}>

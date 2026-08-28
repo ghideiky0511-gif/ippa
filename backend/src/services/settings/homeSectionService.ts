@@ -53,6 +53,15 @@ export async function replaceHomeSections(tenant: Tenant, actor: AuthUser, value
             for (const key of ["x", "y", "width", "height"] as const) {
                 if (typeof section[key] === "number") layout[key] = section[key];
             }
+            // Ajustes por breakpoint (o que a loja mexeu nos modos tablet /
+            // celular) e o modo largura-total do banner viajam no mesmo blob
+            // de layout — somem juntos se forem limpos e a loja salvar de novo.
+            if (section.tablet) layout.tablet = section.tablet;
+            if (section.mobile) layout.mobile = section.mobile;
+            if (section.type === "banner") {
+                if (section.fullBleed) layout.fullBleed = true;
+                if (section.fullHeight) layout.fullHeight = true;
+            }
             // `cta` viaja no mesmo blob de layout — some junto se a loja
             // desmarcar o hiperlink e salvar de novo.
             if (section.cta) layout.cta = section.cta;

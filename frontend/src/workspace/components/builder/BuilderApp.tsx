@@ -3,6 +3,8 @@
 import { adminUi } from '@/workspace/lib/ui';
 import { useState, useCallback } from 'react';
 import { Save } from 'lucide-react';
+import { cn } from '@/lib/cn';
+import { HOME_DEVICES, withDeviceLayout, type HomeDevice } from '@/lib/homeLayout';
 import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import Canvas from './Canvas';
 import RightPanel from './RightPanel';
@@ -29,6 +31,10 @@ export default function BuilderApp({ initialSections, products }) {
   const [historyError, setHistoryError] = useState('');
   const [pendingConfirmation, setPendingConfirmation] = useState(null);
   const [mobileEditorOpen, setMobileEditorOpen] = useState(false);
+  // Modo de visualização sendo editado. Cada bloco guarda um layout por
+  // modo (desktop no topo da section; tablet/celular em section.tablet /
+  // section.mobile) — ver homeLayout.ts.
+  const [device, setDevice] = useState<HomeDevice>('desktop');
 
   // Só usado pra soltar uma ferramenta nova da toolbox no canvas — mover ou
   // redimensionar um bloco já existente é um drag próprio (pointer events
@@ -46,15 +52,18 @@ export default function BuilderApp({ initialSections, products }) {
     setDirty(true);
   }, []);
 
+  // `device` nas deps: a identidade só muda ao trocar de modo (raro), nunca
+  // durante um arraste — então o React.memo de CanvasBlock continua
+  // segurando os blocos parados enquanto um é movido.
   const moveSection = useCallback((id, x, y) => {
-    setSections((prev) => prev.map((s) => (s.id === id ? { ...s, x, y } : s)));
+    setSections((prev) => prev.map((s) => (s.id === id ? withDeviceLayout(s, device, { x, y }) : s)));
     setDirty(true);
-  }, []);
+  }, [device]);
 
   const resizeSection = useCallback((id, width, height) => {
-    setSections((prev) => prev.map((s) => (s.id === id ? { ...s, width, height } : s)));
+    setSections((prev) => prev.map((s) => (s.id === id ? withDeviceLayout(s, device, { width, height }) : s)));
     setDirty(true);
-  }, []);
+  }, [device]);
 
   const removeSection = useCallback((id) => {
     setSections((prev) => prev.filter((s) => s.id !== id));
@@ -245,10 +254,38 @@ export default function BuilderApp({ initialSections, products }) {
           )}
         </section>
 
+        <div className="hidden border-b border-border bg-surface px-4 py-2.5 sm:px-6 lg:block">
+          <div className="mx-auto flex max-w-6xl items-center gap-2">
+            <span className="text-xs font-semibold text-muted-foreground">Editando:</span>
+            {HOME_DEVICES.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => setDevice(d.id)}
+                aria-pressed={device === d.id}
+                title={`${d.label} — canvas de ${d.canvasWidth}px`}
+                className={cn(
+                  'cursor-pointer rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors',
+                  device === d.id
+                    ? 'border-brand-primary bg-brand-primary text-white'
+                    : 'border-[#ddd] bg-white text-brand-text hover:border-brand-primary hover:text-brand-primary',
+                )}
+              >
+                {d.short}
+                <span className="ml-1.5 font-normal opacity-70">{d.canvasWidth}px</span>
+              </button>
+            ))}
+            <span className="ml-auto text-xs text-muted-foreground">
+              Tablet e celular partem do desktop reduzido; o que você mover aqui fica fixo nesse modo.
+            </span>
+          </div>
+        </div>
+
         <div className={adminUi.builderLayout}>
           <Canvas
             sections={sections}
             products={products}
+            device={device}
             selectedId={selectedId}
             onSelect={setSelectedId}
             onRemoveSection={removeSection}
@@ -260,6 +297,7 @@ export default function BuilderApp({ initialSections, products }) {
           <RightPanel
             selectedSection={selectedSection}
             products={products}
+            device={device}
             onUpdate={(updater) => updateSection(selectedId, updater)}
             onDeselect={() => setSelectedId(null)}
             onRemove={() => removeSection(selectedId)}
@@ -283,6 +321,7 @@ export default function BuilderApp({ initialSections, products }) {
               className="w-full border-l-0"
               selectedSection={selectedSection}
               products={products}
+              device={device}
               onUpdate={(updater) => updateSection(selectedId, updater)}
               onDeselect={() => { setMobileEditorOpen(false); setSelectedId(null); }}
               onRemove={() => removeSection(selectedId)}
