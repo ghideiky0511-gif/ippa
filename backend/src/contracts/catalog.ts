@@ -102,6 +102,21 @@ export const BannerSchema = z.object({
 });
 export type Banner = z.infer<typeof BannerSchema>;
 
+// Hiperlink opcional que a loja pode exibir no canto inferior direito de
+// qualquer bloco da home (banner ou produto). A loja liga/desliga em
+// `enabled`, escreve a chamada em `label` (ex.: "acessar catálogo",
+// "ver mais") e define o destino em `href` — caminho interno começando
+// com `/` (ex.: `/catalogo`, resolvido com o slug do tenant) ou URL
+// completa `https://…` (abre em nova aba). Guardado junto do layout do
+// bloco (ver homeSectionService.ts), então não some quando o bloco é
+// movido/redimensionado.
+export const HomeSectionCtaSchema = z.object({
+  enabled: z.boolean(),
+  label: z.string(),
+  href: z.string(),
+});
+export type HomeSectionCta = z.infer<typeof HomeSectionCtaSchema>;
+
 // Posição/tamanho livres (px, canvas de referência de 1200px de largura —
 // mesma largura de `.container`/`.home-sections`). O editor admin é um
 // ambiente de criação de layout: nada se move sozinho quando outro bloco
@@ -117,6 +132,7 @@ export const HomeSectionSchema = z.discriminatedUnion('type', [
     y: z.number().optional(),
     width: z.number().optional(),
     height: z.number().optional(),
+    cta: HomeSectionCtaSchema.optional(),
   }),
   z.object({
     type: z.literal('product'),
@@ -126,6 +142,7 @@ export const HomeSectionSchema = z.discriminatedUnion('type', [
     y: z.number().optional(),
     width: z.number().optional(),
     height: z.number().optional(),
+    cta: HomeSectionCtaSchema.optional(),
   }),
 ]);
 export type HomeSection = z.infer<typeof HomeSectionSchema>;

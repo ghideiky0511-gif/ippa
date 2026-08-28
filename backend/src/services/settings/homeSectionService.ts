@@ -5,7 +5,7 @@ import type { AuthUser, HomeSection } from "@/lib/types";
 import { HomeSectionSchema } from "@/contracts/catalog";
 import {
     deleteHomeSectionRows, insertHomeBannerRow, insertHomeSectionRow,
-    listHomeBannerRows, listHomeSectionRows,
+    listHomeBannerRows, listHomeSectionRows, type HomeSectionLayout,
 } from "@/models/settingsModel";
 import { ValidationError } from "@/services/shared/errors";
 import { requireSettingsAdministrator } from "./settingsAuthorization";
@@ -49,9 +49,13 @@ export async function replaceHomeSections(tenant: Tenant, actor: AuthUser, value
     await withTenantTransaction(tenant, actor, async (client) => {
         await deleteHomeSectionRows(client);
         for (const [position, section] of sections.entries()) {
-            const layout = Object.fromEntries(["x", "y", "width", "height"]
-                .filter((key) => typeof section[key as keyof HomeSection] === "number")
-                .map((key) => [key, section[key as keyof HomeSection]])) as Record<string, number>;
+            const layout: HomeSectionLayout = {};
+            for (const key of ["x", "y", "width", "height"] as const) {
+                if (typeof section[key] === "number") layout[key] = section[key];
+            }
+            // `cta` viaja no mesmo blob de layout — some junto se a loja
+            // desmarcar o hiperlink e salvar de novo.
+            if (section.cta) layout.cta = section.cta;
             await insertHomeSectionRow(client, {
                 id: section.id, type: section.type,
                 productId: section.type === "product" ? section.productId : undefined,

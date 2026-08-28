@@ -1,13 +1,16 @@
 // @ts-nocheck
 'use client';
+import BlockCtaBadge from './BlockCtaBadge';
+
 export default function BannerPreview({ section }) {
   const banners = section.banners || [];
   const first = banners[0];
 
   if (!first || !first.mediaUrl) {
     return (
-      <div className="flex size-full min-h-[120px] items-center justify-center bg-brand-background p-4 text-center text-sm text-muted-foreground">
+      <div className="relative flex size-full min-h-[120px] items-center justify-center bg-brand-background p-4 text-center text-sm text-muted-foreground">
         <p>Sem mídia ainda — adicione uma imagem ou vídeo no painel ao lado.</p>
+        <BlockCtaBadge cta={section.cta} />
       </div>
     );
   }
@@ -31,6 +34,7 @@ export default function BannerPreview({ section }) {
       {banners.length > 1 && (
         <span className="absolute top-3 right-3 rounded-full bg-black/65 px-2 py-1 text-xs font-semibold text-white">+{banners.length - 1} no carrossel</span>
       )}
+      <BlockCtaBadge cta={section.cta} />
     </article>
   );
 }

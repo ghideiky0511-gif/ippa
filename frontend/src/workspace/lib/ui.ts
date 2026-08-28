@@ -12,16 +12,19 @@ export const adminUi = {
   primaryButton: 'cursor-pointer rounded-md border-0 bg-brand-primary px-3 py-2 text-[13px] font-semibold text-white transition-[background,transform] hover:bg-brand-primary-dark active:scale-95 disabled:cursor-not-allowed disabled:opacity-60',
   dangerButton: 'cursor-pointer rounded-md border border-[#dba0a0] bg-white px-3 py-2 text-[13px] font-semibold text-[#b00020] transition-[background,transform] hover:bg-[#fff1f1] active:scale-95',
   iconButton: 'flex size-8 cursor-pointer items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-brand-muted transition-[background,color,border-color,transform] hover:border-brand-primary/20 hover:bg-brand-primary/8 hover:text-brand-primary active:scale-95 disabled:cursor-not-allowed disabled:opacity-50',
-  field: 'flex flex-col gap-1 [&>label]:text-xs [&>label]:text-brand-muted [&>input]:rounded-lg [&>input]:border [&>input]:border-[#ddd] [&>input]:bg-white [&>input]:px-3 [&>input]:py-2.5 [&>input]:text-sm [&>select]:rounded-lg [&>select]:border [&>select]:border-[#ddd] [&>select]:bg-white [&>select]:px-3 [&>select]:py-2.5 [&>select]:text-sm',
-  fieldRow: 'flex gap-3 max-sm:flex-col [&>.field]:min-w-0 [&>.field]:flex-1',
-  hint: 'text-[13px] text-brand-muted',
+  // O `field` literal na string ativa os seletores `[&>.field]` de `fieldRow`
+  // (colunas de largura igual). `min-w-0` + inputs `w-full` impedem que um
+  // campo estoure a caixa do painel (300–320px) em vez de encolher.
+  field: 'field flex min-w-0 flex-col gap-1 [&>label]:text-xs [&>label]:text-brand-muted [&>input]:w-full [&>input]:min-w-0 [&>input]:rounded-lg [&>input]:border [&>input]:border-[#ddd] [&>input]:bg-white [&>input]:px-3 [&>input]:py-2.5 [&>input]:text-sm [&>select]:w-full [&>select]:min-w-0 [&>select]:rounded-lg [&>select]:border [&>select]:border-[#ddd] [&>select]:bg-white [&>select]:px-3 [&>select]:py-2.5 [&>select]:text-sm',
+  fieldRow: 'flex gap-3 max-sm:flex-col [&>*]:min-w-0 [&>.field]:flex-1',
+  hint: 'text-[13px] leading-snug text-brand-muted break-words [&>code]:rounded [&>code]:bg-brand-background [&>code]:px-1 [&>code]:py-0.5 [&>code]:text-[12px]',
   builderLayout: 'hidden min-h-[calc(100dvh-5.75rem)] lg:flex',
   builderAiPanel: 'border-b border-border bg-surface px-4 py-4 sm:px-6',
   builderAiForm: 'mx-auto flex max-w-6xl flex-col gap-3 lg:flex-row lg:items-end',
   builderHistory: 'mx-auto mt-3 max-w-6xl rounded-control border border-border bg-brand-background/50 p-3',
   canvasWrap: 'min-w-0 flex-1 overflow-auto px-4 pt-5 pb-8 sm:px-6',
   canvas: 'relative min-h-[680px] min-w-[1200px] rounded-brand border border-border bg-[#f4f4f5] p-5 shadow-card [background-image:linear-gradient(to_right,rgba(24,24,27,.07)_1px,transparent_1px),linear-gradient(to_bottom,rgba(24,24,27,.07)_1px,transparent_1px)] [background-size:20px_20px]',
-  toolbox: 'w-[300px] shrink-0 overflow-y-auto border-l border-border bg-surface p-5',
+  toolbox: 'w-[320px] shrink-0 overflow-x-hidden overflow-y-auto border-l border-border bg-surface p-5 [overflow-wrap:anywhere]',
   toolboxList: 'flex flex-col gap-2.5',
   toolItem: 'flex cursor-grab items-center gap-3 rounded-control border border-border bg-surface p-3 text-left text-sm font-semibold shadow-card transition-[border-color,box-shadow,transform] hover:border-brand-primary/30 hover:shadow-md active:cursor-grabbing active:scale-[.98]',
   emptyCanvas: 'flex min-h-[300px] flex-col items-center justify-center rounded-brand border-2 border-dashed border-[#d4d4d8] p-6 text-center text-brand-muted',

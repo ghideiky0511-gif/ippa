@@ -61,6 +61,57 @@ function PositionFields({ section, onUpdate }) {
   );
 }
 
+// Hiperlink opcional exibido no canto inferior direito do bloco, tanto na
+// prévia do canvas quanto no catálogo público (ver BlockCtaBadge.tsx e
+// HomeApp.tsx). A loja decide se aparece (checkbox), o texto e o destino.
+// `label`/`href` ficam guardados mesmo com o checkbox desmarcado, então
+// religar o hiperlink recupera o que já tinha sido digitado.
+const EMPTY_CTA = { enabled: false, label: '', href: '' };
+
+function CtaFields({ section, onUpdate }) {
+  const cta = section.cta || EMPTY_CTA;
+
+  function patch(changes) {
+    onUpdate((s) => ({ ...s, cta: { ...EMPTY_CTA, ...(s.cta || {}), ...changes } }));
+  }
+
+  return (
+    <div className={adminUi.itemCard}>
+      <label className="flex cursor-pointer items-start gap-2 text-sm font-semibold text-foreground">
+        <input
+          type="checkbox"
+          className="mt-0.5 size-4 shrink-0"
+          checked={!!cta.enabled}
+          onChange={(e) => patch({ enabled: e.target.checked })}
+        />
+        <span className="min-w-0">Mostrar hiperlink no canto do bloco</span>
+      </label>
+      <div className={adminUi.field}>
+        <label>Texto do hiperlink</label>
+        <input
+          value={cta.label || ''}
+          onChange={(e) => patch({ label: e.target.value })}
+          placeholder="acessar catálogo"
+          disabled={!cta.enabled}
+        />
+      </div>
+      <div className={adminUi.field}>
+        <label>Link (para onde direciona)</label>
+        <input
+          value={cta.href || ''}
+          onChange={(e) => patch({ href: e.target.value })}
+          placeholder="/catalogo"
+          disabled={!cta.enabled}
+        />
+      </div>
+      <p className={adminUi.hint}>
+        Use <code>/catalogo</code> ou <code>/produto/ID</code> para uma página da
+        própria loja. Um endereço <code>https://…</code> abre em nova aba.
+      </p>
+    </div>
+  );
+}
+
 export default function RightPanel({ selectedSection, products, onUpdate, onDeselect, onRemove, className = '' }) {
   if (!selectedSection) {
     return <Toolbox />;
@@ -72,16 +123,29 @@ export default function RightPanel({ selectedSection, products, onUpdate, onDese
   return (
     <aside className={cn(adminUi.toolbox, className)}>
       <div className={adminUi.panelHeader}>
-        <div>
+        <div className="min-w-0">
           <h2 className="text-base font-extrabold text-foreground">Editando bloco</h2>
           <p className="mt-1 text-xs text-muted-foreground">Ajuste o conteúdo, posição e tamanho.</p>
         </div>
-        <button type="button" className={adminUi.iconButton} onClick={onDeselect} aria-label="Fechar editor">Fechar</button>
+        <button
+          type="button"
+          className="shrink-0 cursor-pointer rounded-md border border-transparent bg-transparent px-2 py-1 text-xs font-semibold text-brand-muted transition-colors hover:border-brand-primary/20 hover:bg-brand-primary/8 hover:text-brand-primary"
+          onClick={onDeselect}
+          aria-label="Fechar editor"
+        >
+          Fechar
+        </button>
       </div>
 
       <PositionFields section={selectedSection} onUpdate={onUpdate} />
 
       {Editor && <Editor section={selectedSection} onUpdate={onUpdate} products={products} />}
+
+      <div className="mt-4">
+        <h3 className="mb-2 text-sm font-extrabold text-foreground">Hiperlink do bloco</h3>
+        <CtaFields section={selectedSection} onUpdate={onUpdate} />
+      </div>
+
       <button type="button" className={`${adminUi.dangerButton} mt-4 w-full`} onClick={onRemove}>
         Excluir bloco
       </button>

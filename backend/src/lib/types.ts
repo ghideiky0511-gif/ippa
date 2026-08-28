@@ -18,7 +18,7 @@ export type {
 } from '@/contracts/auth';
 export type {
   ClassificationEntry, DiscountType, HomeSectionType, BannerMediaType, AssignmentStrategy,
-  DiscountTier, Discount, Highlight, Audience, Banner, HomeSection, ResolvedHomeSection,
+  DiscountTier, Discount, Highlight, Audience, Banner, HomeSection, HomeSectionCta, ResolvedHomeSection,
   CategoryTreeEntry, SimilarProductsRuleConfig, SimilarProductsSettings,
   ProductOverride, ProductOverrides, StoreFeatures, StoreSettings, HomeAiHistoryItem,
 } from '@/contracts/catalog';

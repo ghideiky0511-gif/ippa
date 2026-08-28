@@ -1,13 +1,18 @@
 import { z } from 'zod';
 import { HomeAiHistoryItemSchema, HomeSectionSchema, type HomeAiHistoryItem, type HomeSection } from '@/domain/catalog/types';
 import { adminJson } from './http';
+import { revalidateCatalogCache } from './cacheRevalidation';
 
-export function saveHomeSections(sections: HomeSection[]): Promise<HomeSection[]> {
-  return adminJson('/api/home-sections', z.array(HomeSectionSchema), {
+export async function saveHomeSections(sections: HomeSection[]): Promise<HomeSection[]> {
+  const saved = await adminJson('/api/home-sections', z.array(HomeSectionSchema), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(sections),
   }, 'Não foi possível salvar — confira os dados e tente de novo.');
+  // Sem isso, a home pública (`/`, cacheada com `revalidate: 20`) levaria
+  // até 20s pra refletir o layout salvo no Editor da home.
+  await revalidateCatalogCache();
+  return saved;
 }
 
 const GenerateHomeSectionsResultSchema = z.object({ sections: z.array(HomeSectionSchema) });

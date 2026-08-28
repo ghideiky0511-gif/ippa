@@ -1,5 +1,16 @@
 import type { PoolClient } from "pg";
-import type { AssignmentStrategy, BannerMediaType, DiscountType, HomeSectionType, SimilarProductsSettings, StoreFeatures } from "@/lib/types";
+import type { AssignmentStrategy, BannerMediaType, DiscountType, HomeSectionCta, HomeSectionType, SimilarProductsSettings, StoreFeatures } from "@/lib/types";
+
+// Blob `layout` (jsonb) da linha `home_sections`: posição/tamanho livres do
+// bloco no canvas + o hiperlink opcional (`cta`) que a loja configura. Tudo
+// que mora aqui é devolvido no topo da HomeSection (ver homeSectionService).
+export interface HomeSectionLayout {
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+    cta?: HomeSectionCta;
+}
 
 export interface StoreSettingsRow {
     default_markup: string | null;
@@ -13,7 +24,7 @@ export interface DiscountTierRow { discount_id: string; min_qty: number; percent
 export interface DiscountProductRow { discount_id: string; product_id: string }
 export interface HighlightRow { id: string; label: string; show_in_catalog: boolean }
 export interface HighlightProductRow { highlight_id: string; product_id: string }
-export interface HomeSectionRow { id: string; type: HomeSectionType; product_id: string | null; layout: Record<string, number> }
+export interface HomeSectionRow { id: string; type: HomeSectionType; product_id: string | null; layout: HomeSectionLayout }
 export interface HomeBannerRow {
     home_section_id: string; id: string; type: BannerMediaType; media_url: string;
     title: string | null; subtitle: string | null;
@@ -205,7 +216,7 @@ export async function deleteHomeSectionRows(client: PoolClient): Promise<void> {
 }
 
 export async function insertHomeSectionRow(client: PoolClient, value: {
-    id: string; type: HomeSectionType; productId?: string; layout: Record<string, number>; position: number;
+    id: string; type: HomeSectionType; productId?: string; layout: HomeSectionLayout; position: number;
 }): Promise<void> {
     await client.query(
         `INSERT INTO home_sections (id, tenant_id, type, product_id, layout, position)
