@@ -113,7 +113,13 @@ export interface TotvsModaPriceSelection {
 
 function detailOfTotvsModaPrice(item: TotvsModaPriceItem): TotvsModaPriceSelection | undefined {
     const price = validPrice(item.price);
-    const promotionalPrice = validPrice(item.promotionalPrice);
+    // O ERP usa 0 para dizer "sem promoção cadastrada", não um preço
+    // promocional de fato -- tratar 0 como válido gerava desconto de 100%
+    // com "Promoção R$ 0,00" na vitrine.
+    const rawPromotionalPrice = validPrice(item.promotionalPrice);
+    const promotionalPrice = rawPromotionalPrice !== undefined && rawPromotionalPrice > 0
+        ? rawPromotionalPrice
+        : undefined;
     if (price === undefined) {
         // Sem preço normal cadastrado: usa a promoção como valor único
         // (mesmo fallback que o comportamento antigo tinha), já que não há
