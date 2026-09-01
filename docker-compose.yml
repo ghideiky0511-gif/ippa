@@ -45,6 +45,8 @@ services:
     environment:
       ADMIN_ORIGIN: ${APP_URL:-http://localhost:3010}
       REALTIME_ALLOWED_ORIGINS: ${APP_URL:-http://localhost:3010}
+      APP_COMERCIAL_NAME: ${APP_COMERCIAL_NAME:-}
+      APP_COMERCIAL_NAME_INTEGRATION: ${APP_COMERCIAL_NAME_INTEGRATION:-}
       DEV_LAN_ACCESS: ${DEV_LAN_ACCESS:-true}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       EMAIL_FROM: ${EMAIL_FROM:-}

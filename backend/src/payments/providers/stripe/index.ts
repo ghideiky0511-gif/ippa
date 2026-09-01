@@ -131,6 +131,41 @@ export function mapStripePaymentIntentEvent(event: Stripe.Event): WebhookEvent |
     };
 }
 
+// Extrai os dados de EXIBIÇÃO de uma cobrança de cartão a partir do
+// PaymentIntent bruto salvo em payment_charges.raw_create_response --
+// usado só pela camada de apresentação (paymentChargeService.ts::
+// toOrderPaymentCharge), nunca para decidir status (isso já rodou em
+// mapPaymentIntentStatus no momento da cobrança). network_transaction_id é
+// o identificador único da transação do lado da bandeira -- o equivalente
+// mais próximo que a Stripe expõe do NSU de um comprovante brasileiro;
+// authorization_code é o fallback quando a bandeira não devolveu o
+// primeiro. installments só vem preenchido se o parcelamento tiver sido
+// negociado com a Stripe (não é o caso hoje -- checkout cobra sempre à
+// vista), por isso o default é 1.
+export function extractStripeCardTransactionDetails(
+    raw: Record<string, unknown>,
+): { nsu?: string; installments: number } {
+    const intent = raw as Partial<Stripe.PaymentIntent>;
+    const charge = typeof intent.latest_charge === "object" ? intent.latest_charge : undefined;
+    const card = charge?.payment_method_details?.card;
+    const nsu = card?.network_transaction_id || card?.authorization_code || undefined;
+    const installments = card?.installments?.plan?.count ?? 1;
+    return { nsu, installments };
+}
+
+// Mesma fonte (PaymentIntent bruto), mas para o motivo de falha exibível.
+// `raw.error` cobre o caminho de erro inesperado do provider (ver catch em
+// paymentChargeService.ts::createOrderCharge, que grava { error: message }
+// em vez do intent inteiro); os demais campos cobrem uma recusa de cartão
+// de verdade, onde o intent completo foi persistido.
+export function extractStripeFailureMessage(raw: Record<string, unknown>): string | undefined {
+    const wrapped = (raw as { error?: unknown }).error;
+    if (typeof wrapped === "string") return wrapped;
+    const intent = raw as Partial<Stripe.PaymentIntent>;
+    const charge = typeof intent.latest_charge === "object" ? intent.latest_charge : undefined;
+    return charge?.failure_message ?? intent.last_payment_error?.message ?? undefined;
+}
+
 // Lógica pura de mapeamento Accounts v2 -> nosso status de onboarding,
 // extraída pra ser testável sem banco (ver stripeWebhookService.ts, que só
 // orquestra: busca o estado atual pela API v2, chama isto e grava o resultado).
@@ -224,6 +259,22 @@ export function createStripePaymentProvider(
                 status: mapPaymentIntentStatus(intent.status),
                 raw: intent as unknown as Record<string, unknown>,
             };
+        },
+
+        async cancelCharge(externalId: string): Promise<void> {
+            const client = getStripeClient();
+            if (!client) throw new Error("Stripe não configurado (STRIPE_SECRET_KEY ausente).");
+            // A Stripe só aceita cancelar um PaymentIntent que ainda não foi
+            // capturado (requires_payment_method/requires_action/
+            // requires_confirmation/requires_capture) -- um já 'succeeded' ou
+            // 'processing' rejeita com StripeInvalidRequestError, e é isso
+            // mesmo que queremos: nesse caso o dinheiro já está em trânsito
+            // ou capturado, então "cancelar" seria mentira. Quem chama
+            // (paymentChargeService.ts::resolveOrCancelLiveCharge) trata o
+            // lançamento como "não dá pra abrir uma nova tentativa agora".
+            await report(reporter, "stripe.paymentIntents.cancel", "POST", "/v1/payment_intents/cancel", () =>
+                client.paymentIntents.cancel(externalId, {}, { stripeAccount: stripeAccountId }),
+            );
         },
 
         parseWebhook(rawBody: string, headers: Record<string, string>, webhookSecret?: string): WebhookEvent | null {

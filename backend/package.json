@@ -16,6 +16,8 @@
     "test:stripe-charge": "tsx scripts/testar-stripe-charge.ts",
     "test:confirmar-separacao": "tsx scripts/testar-confirmar-separacao.ts",
     "test:link-pagamento": "tsx scripts/testar-link-pagamento.ts",
+    "test:payment-details": "tsx scripts/testar-payment-details.ts",
+    "test:reparar-cobrancas-orfas": "tsx scripts/testar-reparar-cobrancas-orfas.ts",
     "test:ai": "tsx --test src/services/ai/*.test.ts",
     "test:orders": "tsx --test src/services/orders/*.test.ts",
     "test:catalog": "tsx --test src/services/catalog/catalogService.test.ts",

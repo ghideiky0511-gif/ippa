@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createStripePaymentProvider, mapStripeAccountOnboardingStatus } from "./index";
+import {
+    createStripePaymentProvider,
+    extractStripeCardTransactionDetails,
+    extractStripeFailureMessage,
+    mapStripeAccountOnboardingStatus,
+} from "./index";
 
 // STRIPE_SECRET_KEY precisa existir ANTES do primeiro getStripeClient() --
 // o singleton em client.ts é lazy (só lê a env var quando chamado), então
@@ -178,4 +183,54 @@ test("mapStripeAccountOnboardingStatus: restricted quando cartão exige ação",
         }),
         "restricted",
     );
+});
+
+test("extractStripeCardTransactionDetails: lê network_transaction_id, authorization_code e installments do PaymentIntent bruto", () => {
+    assert.deepEqual(
+        extractStripeCardTransactionDetails({
+            latest_charge: {
+                payment_method_details: {
+                    card: {
+                        network_transaction_id: "116728512090991",
+                        authorization_code: "221539",
+                        installments: { plan: { count: 3 } },
+                    },
+                },
+            },
+        }),
+        { nsu: "116728512090991", installments: 3 },
+    );
+});
+
+test("extractStripeCardTransactionDetails: cai pra authorization_code quando network_transaction_id está ausente", () => {
+    assert.deepEqual(
+        extractStripeCardTransactionDetails({
+            latest_charge: { payment_method_details: { card: { authorization_code: "221539" } } },
+        }),
+        { nsu: "221539", installments: 1 },
+    );
+});
+
+test("extractStripeCardTransactionDetails: sem latest_charge expandido devolve installments=1 e sem nsu", () => {
+    assert.deepEqual(extractStripeCardTransactionDetails({ latest_charge: "ch_123" }), { nsu: undefined, installments: 1 });
+    assert.deepEqual(extractStripeCardTransactionDetails({}), { nsu: undefined, installments: 1 });
+});
+
+test("extractStripeFailureMessage: prioriza raw.error (caminho de erro inesperado do provider)", () => {
+    assert.equal(
+        extractStripeFailureMessage({ error: "No such PaymentMethod", latest_charge: { failure_message: "outro motivo" } }),
+        "No such PaymentMethod",
+    );
+});
+
+test("extractStripeFailureMessage: cai pro failure_message do charge, depois pro last_payment_error", () => {
+    assert.equal(
+        extractStripeFailureMessage({ latest_charge: { failure_message: "Cartão recusado" } }),
+        "Cartão recusado",
+    );
+    assert.equal(
+        extractStripeFailureMessage({ last_payment_error: { message: "Fundos insuficientes" } }),
+        "Fundos insuficientes",
+    );
+    assert.equal(extractStripeFailureMessage({}), undefined);
 });

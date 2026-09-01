@@ -3,13 +3,17 @@ import type { PoolClient } from "pg";
 import type { ActorContext, Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import { createPaymentProvider } from "@/payments/registry";
-import type { CardChargeResult, WebhookEvent } from "@/payments/types";
+import type { CardChargeResult, PaymentProvider, WebhookEvent } from "@/payments/types";
+import { extractStripeCardTransactionDetails, extractStripeFailureMessage } from "@/payments/providers/stripe";
 import { findActivePaymentIntegrationRow } from "@/models/paymentIntegrationsModel";
 import {
     applyPaymentChargeStatusByExternalId,
     applyPaymentChargeStatusById,
     insertPendingPaymentChargeRow,
+    listLivePaymentChargeRowsByOrder,
+    listOrphanLivePaymentChargeRows,
     markPaymentChargeCreatedRow,
+    type PaymentChargeRow,
 } from "@/models/paymentChargesModel";
 import {
     findOrderRowById,
@@ -20,6 +24,7 @@ import {
 import { createExternalApiCallReporter } from "@/services/erp/externalApiLogService";
 import { NotFoundError, ValidationError } from "@/services/shared/errors";
 import { errorMeta, logger } from "@/lib/logger";
+import type { OrderPaymentCharge, PaymentChargeMethod, PaymentChargeStatus } from "@/contracts/payments";
 
 // Primeiro consumidor real de PaymentProvider (registry.ts) -- até aqui só
 // o mock exercitava o contrato. createOrderCharge é o motor reutilizável de
@@ -56,21 +61,13 @@ export async function createOrderCharge(
         const items = await listOrderItemSeparationRowsByOrder(client, orderId);
         assertOrderChargeable(items);
 
-        // Grava a cobrança ANTES de chamar a Stripe (id gerado aqui) -- se o
-        // webhook chegar antes desta função terminar, ele já encontra a
-        // linha via metadata.charge_id (ver applyPaymentChargeWebhookEvent).
-        const chargeRow = await insertPendingPaymentChargeRow(client, {
-            id: randomUUID(),
-            integrationId: integrationRow.id,
-            provider: "stripe",
-            orderId,
-            method: "cartao",
-            amount: Number(order.total),
-        });
+        const liveCharges = await listLivePaymentChargeRowsByOrder(client, orderId);
+
         return {
-            chargeId: chargeRow.id,
+            integrationId: integrationRow.id,
             stripeAccountId: integrationRow.stripe_account_id,
             amount: Number(order.total),
+            liveCharges,
         };
     });
 
@@ -80,6 +77,32 @@ export async function createOrderCharge(
         createExternalApiCallReporter(tenant, actor, "stripe"),
     );
 
+    // Regra "uma cobrança viva por pedido": antes de abrir uma tentativa
+    // nova, toda tentativa anterior ainda em aberto (pending/processing/
+    // authorized) precisa ter sido processada (consulta ao provider resolve
+    // pra um estado terminal) ou cancelada -- nunca duas tentativas vivas ao
+    // mesmo tempo. Lança ValidationError se alguma não puder ser resolvida
+    // nem cancelada, bloqueando a nova tentativa (mais seguro que permitir
+    // duas cobranças correndo pro mesmo pedido).
+    for (const liveCharge of prepared.liveCharges) {
+        await resolveOrCancelLiveCharge(tenant, actor, provider, liveCharge);
+    }
+
+    const chargeId = await withTenantTransaction(tenant, actor, async (client) => {
+        // Grava a cobrança ANTES de chamar a Stripe (id gerado aqui) -- se o
+        // webhook chegar antes desta função terminar, ele já encontra a
+        // linha via metadata.charge_id (ver applyPaymentChargeWebhookEvent).
+        const chargeRow = await insertPendingPaymentChargeRow(client, {
+            id: randomUUID(),
+            integrationId: prepared.integrationId,
+            provider: "stripe",
+            orderId,
+            method: "cartao",
+            amount: prepared.amount,
+        });
+        return chargeRow.id;
+    });
+
     let result: CardChargeResult;
     try {
         const charge = await provider.createCharge({
@@ -88,7 +111,7 @@ export async function createOrderCharge(
             orderId,
             customer: input.customer,
             cardToken: input.cardToken,
-            internalChargeId: prepared.chargeId,
+            internalChargeId: chargeId,
         });
         // createCharge só devolve method "cartao" pro provider stripe --
         // ver providers/stripe/index.ts (pix/boleto lançam em vez de
@@ -98,7 +121,7 @@ export async function createOrderCharge(
         logger.error("payment-charge", "Falha ao criar PaymentIntent na Stripe", {
             tenantId: tenant.id,
             orderId,
-            chargeId: prepared.chargeId,
+            chargeId,
             ...errorMeta(exc),
         });
         // Nunca deixa o pedido em limbo mesmo numa falha de rede/API antes de
@@ -106,7 +129,7 @@ export async function createOrderCharge(
         // normal do provider recebe logo abaixo.
         await withTenantTransaction(tenant, actor, async (client) => {
             await markPaymentChargeCreatedRow(client, {
-                id: prepared.chargeId,
+                id: chargeId,
                 externalId: null,
                 status: "failed",
                 rawCreateResponse: { error: exc instanceof Error ? exc.message : String(exc) },
@@ -135,7 +158,7 @@ export async function createOrderCharge(
 
     await withTenantTransaction(tenant, actor, async (client) => {
         await markPaymentChargeCreatedRow(client, {
-            id: prepared.chargeId,
+            id: chargeId,
             externalId: result.externalId || null,
             status: result.status === "authorized" ? "authorized" : "failed",
             cardLastDigits: result.lastDigits,
@@ -154,6 +177,72 @@ export async function createOrderCharge(
     });
 
     return result;
+}
+
+// Resolve (consulta o estado real no provider) ou cancela uma tentativa de
+// cobrança que ainda está em aberto para o pedido -- chamada uma vez por
+// linha "viva" encontrada, ANTES de createOrderCharge abrir uma tentativa
+// nova (ver comentário acima). Nunca chama a API dentro de uma transação de
+// tenant (mesmo padrão do resto do arquivo: transação só ao redor do
+// trabalho de banco, chamada de rede sempre fora).
+async function resolveOrCancelLiveCharge(
+    tenant: Tenant,
+    actor: ActorContext,
+    provider: PaymentProvider,
+    row: PaymentChargeRow,
+): Promise<void> {
+    if (!row.external_id) {
+        // Nunca chegou a chamar o provider (ex. processo caiu entre
+        // insertPendingPaymentChargeRow e a chamada de criação) -- não há
+        // nada pra reconciliar nem cancelar do lado de lá.
+        await withTenantTransaction(tenant, actor, (client) =>
+            applyPaymentChargeStatusById(client, row.id, {
+                status: "cancelled",
+                rawLastWebhook: { cancelled_reason: "superseded_before_provider_call" },
+            }),
+        );
+        return;
+    }
+
+    const event = await provider.fetchChargeStatus(row.external_id);
+    const resolved = await withTenantTransaction(tenant, actor, (client) =>
+        applyPaymentChargeWebhookEvent(client, row.provider, event),
+    );
+    // resolved === null: a linha já estava num estado terminal (corrida com
+    // um webhook/reconciliação concorrente) -- nada a fazer.
+    if (!resolved) return;
+    // fetchChargeStatus só devolve pending/processing/paid/failed/cancelled
+    // (nunca "authorized" -- ver mapPaymentIntentStatus); paid/failed/
+    // cancelled/expired já são terminais, então só pending/processing ainda
+    // contam como "viva" depois da reconciliação.
+    if (event.status !== "pending" && event.status !== "processing") return;
+
+    if (!provider.cancelCharge) {
+        throw new ValidationError(
+            "ORDER_HAS_PENDING_CHARGE",
+            "Já existe uma tentativa de cobrança em andamento para este pedido e este gateway não permite cancelá-la automaticamente. Aguarde a confirmação antes de tentar novamente.",
+        );
+    }
+    try {
+        await provider.cancelCharge(row.external_id);
+    } catch (exc) {
+        logger.error("payment-charge", "Falha ao cancelar tentativa de cobrança anterior", {
+            tenantId: tenant.id,
+            orderId: row.order_id,
+            chargeId: row.id,
+            ...errorMeta(exc),
+        });
+        throw new ValidationError(
+            "ORDER_HAS_PENDING_CHARGE",
+            "Não foi possível cancelar a tentativa de cobrança anterior deste pedido. Aguarde alguns instantes e tente novamente.",
+        );
+    }
+    await withTenantTransaction(tenant, actor, (client) =>
+        applyPaymentChargeStatusById(client, row.id, {
+            status: "cancelled",
+            rawLastWebhook: { cancelled_reason: "superseded_by_new_attempt" },
+        }),
+    );
 }
 
 // Regra de negócio "sem separação, sem cobrança" (ver comentário de
@@ -176,6 +265,48 @@ export function assertOrderChargeable(items: OrderItemSeparationRow[]): void {
     }
 }
 
+// Um provider novo só precisa de uma entrada nesses dois mapas -- é o que
+// mantém toOrderPaymentCharge abaixo sem nenhum `if (provider === "stripe")`
+// espalhado (pedido explícito: a UI não pode ficar travada ao Stripe).
+const CARD_DETAIL_EXTRACTORS: Record<string, (raw: Record<string, unknown>) => { nsu?: string; installments: number }> = {
+    stripe: extractStripeCardTransactionDetails,
+};
+
+const FAILURE_MESSAGE_EXTRACTORS: Record<string, (raw: Record<string, unknown>) => string | undefined> = {
+    stripe: extractStripeFailureMessage,
+};
+
+// Mapeia uma linha de payment_charges pro formato de EXIBIÇÃO
+// provider-agnóstico (ver contracts/payments.ts) -- é o que
+// OrderPaymentDetails.tsx (mesmo componente no workspace e na tela da
+// cliente) consome. card_last_digits/card_brand já são colunas próprias
+// (gravadas por markPaymentChargeCreatedRow); NSU/parcelas exigem
+// interpretar o JSON bruto do provider, daí o dispatch acima. Extraída
+// pra ser testável sem banco, mesmo padrão de mapChargeStatusToOrderPaymentUpdate.
+export function toOrderPaymentCharge(row: PaymentChargeRow): OrderPaymentCharge {
+    const isFailed = row.status === "failed" || row.status === "expired" || row.status === "cancelled";
+    const extractFailure = FAILURE_MESSAGE_EXTRACTORS[row.provider];
+    return {
+        id: row.id,
+        provider: row.provider,
+        method: row.method as PaymentChargeMethod,
+        status: row.status as PaymentChargeStatus,
+        amount: Number(row.amount),
+        createdAt: row.created_at.toISOString(),
+        paidAt: row.paid_at ? row.paid_at.toISOString() : null,
+        failureReason: isFailed
+            ? extractFailure?.(row.raw_create_response) ?? extractFailure?.(row.raw_last_webhook)
+            : undefined,
+        card: row.method === "cartao"
+            ? {
+                lastDigits: row.card_last_digits ?? undefined,
+                brand: row.card_brand ?? undefined,
+                ...(CARD_DETAIL_EXTRACTORS[row.provider]?.(row.raw_create_response) ?? { installments: 1 }),
+            }
+            : undefined,
+    };
+}
+
 export function extractInternalChargeId(raw: Record<string, unknown>): string | undefined {
     const metadata = raw.metadata as Record<string, unknown> | undefined;
     const value = metadata?.charge_id;
@@ -183,13 +314,16 @@ export function extractInternalChargeId(raw: Record<string, unknown>): string | 
 }
 
 // Lógica pura de tradução status de payment_charges -> transição de
-// orders.payment_status, extraída pra ser testável sem banco. null = status
-// que não move a trilha financeira do pedido (ex. "pending" antes de
-// qualquer autorização).
+// orders.payment_status (+ orders.status quando o pagamento é quem deve
+// empurrar o pedido adiante), extraída pra ser testável sem banco. null =
+// status que não move a trilha financeira do pedido (ex. "pending" antes de
+// qualquer autorização). "paid" avança orders.status até 'pago' -- é a
+// mesma transição que "Marcar como pago" faz manualmente, só que disparada
+// pela confirmação real do gateway (ver updateOrderPaymentStatusRow).
 export function mapChargeStatusToOrderPaymentUpdate(
     status: string,
-): { paymentStatus: "paid" | "payment_failed" | "awaiting_confirmation"; advanceToNovo?: boolean } | null {
-    if (status === "paid") return { paymentStatus: "paid", advanceToNovo: true };
+): { paymentStatus: "paid" | "payment_failed" | "awaiting_confirmation"; advanceStatusTo?: "novo" | "pago" } | null {
+    if (status === "paid") return { paymentStatus: "paid", advanceStatusTo: "pago" };
     if (status === "failed" || status === "cancelled" || status === "expired") {
         return { paymentStatus: "payment_failed" };
     }
@@ -229,5 +363,42 @@ export async function applyPaymentChargeWebhookEvent(
 
     const orderUpdate = mapChargeStatusToOrderPaymentUpdate(charge.status);
     if (orderUpdate) await updateOrderPaymentStatusRow(client, charge.order_id, orderUpdate);
+    // Regra "uma cobrança viva por pedido" (ver createOrderCharge acima):
+    // createOrderCharge só checa tentativas anteriores ANTES de abrir uma
+    // nova. Sem isto aqui, uma tentativa anterior que nunca chega a um
+    // estado terminal (ex. falha de rede impediu markPaymentChargeCreatedRow
+    // de gravar 'failed', ou o pedido nunca sofre uma nova tentativa depois
+    // de pago) fica "viva" pra sempre mesmo com o pedido já pago -- é
+    // exatamente o que este bloco fecha, cancelando qualquer irmã ainda
+    // viva no exato momento em que UMA tentativa confirma 'paid'.
+    if (charge.status === "paid") await cancelSiblingLiveOrderCharges(client, charge.order_id, charge.id);
     return { chargeId: charge.id, orderId: charge.order_id };
+}
+
+async function cancelSiblingLiveOrderCharges(client: PoolClient, orderId: string, keepChargeId: string): Promise<void> {
+    const liveCharges = await listLivePaymentChargeRowsByOrder(client, orderId);
+    for (const sibling of liveCharges) {
+        if (sibling.id === keepChargeId) continue;
+        await applyPaymentChargeStatusById(client, sibling.id, {
+            status: "cancelled",
+            rawLastWebhook: { cancelled_reason: "order_already_paid" },
+        });
+    }
+}
+
+// Reparo pontual para pedidos que já ficaram 'paid' ANTES da cancelSiblingLiveOrderCharges
+// acima existir -- cobranças concorrentes/anteriores que nunca foram
+// canceladas continuam "vivas" na tabela mesmo com o pedido já pago hoje.
+// Não é chamada por nenhum fluxo de requisição; uso é manual (ver
+// scripts/testar-reparar-cobrancas-orfas.ts). Devolve quantas linhas foram
+// canceladas.
+export async function cancelOrphanLiveChargesForPaidOrders(client: PoolClient): Promise<number> {
+    const orphanRows = await listOrphanLivePaymentChargeRows(client);
+    for (const row of orphanRows) {
+        await applyPaymentChargeStatusById(client, row.id, {
+            status: "cancelled",
+            rawLastWebhook: { cancelled_reason: "order_already_paid_backfill" },
+        });
+    }
+    return orphanRows.length;
 }

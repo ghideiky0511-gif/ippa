@@ -18,7 +18,22 @@ import { Sheet, SheetContent, SheetHeader, SheetTrigger } from '@/components/ui/
 import { Dialog, DialogContent, DialogCloseButton, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { markOrderPaid, cancelOrder, confirmOrderSeparation, updateOrderSession } from '@/lib/ordersClient';
 import { StatusChip, type StatusChipTone } from '@/components/StatusChip';
+import PaymentMethodIndicator from '@/components/payments/PaymentMethodIndicator';
 import { ORDER_STATUS_LABELS, OrderStatusChip } from './orderStatus';
+
+const PAYMENT_STATUS_LABELS: Record<NonNullable<Order['paymentStatus']>, string> = {
+  unpaid: 'Não cobrado',
+  awaiting_confirmation: 'Aguardando confirmação',
+  paid: 'Pago',
+  payment_failed: 'Falhou',
+};
+
+const PAYMENT_STATUS_TONES: Record<NonNullable<Order['paymentStatus']>, StatusChipTone> = {
+  unpaid: 'neutral',
+  awaiting_confirmation: 'neutral',
+  paid: 'brand',
+  payment_failed: 'danger',
+};
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -196,7 +211,19 @@ export default function OrderDetailApp({
                 <div className="mt-0.5"><OrderStatusChip status={order.status} /></div>
               </div>
               <InfoField label="Canal" value={order.channel} />
-              <InfoField label="Pagamento" value={order.paymentMethod || undefined} />
+              <div>
+                <p className="text-xs text-muted-foreground">Pagamento</p>
+                <div className="mt-0.5 flex items-center gap-2">
+                  <StatusChip
+                    label={PAYMENT_STATUS_LABELS[order.paymentStatus ?? 'unpaid']}
+                    tone={PAYMENT_STATUS_TONES[order.paymentStatus ?? 'unpaid']}
+                  />
+                  <PaymentMethodIndicator orderId={order.id} />
+                  <Link href={`/workspace/pedidos/${order.id}/pagamento`} className="text-xs font-semibold text-brand-primary underline">
+                    Ver detalhes
+                  </Link>
+                </div>
+              </div>
               <InfoField
                 label="Frete"
                 value={order.freight ? `${order.freight.deliveryTypeName || order.freight.label} · ${formatCurrency(order.freight.price)}` : undefined}

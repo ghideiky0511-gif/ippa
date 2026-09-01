@@ -456,22 +456,48 @@ export async function updateOrderRow(client: PoolClient, id: string, value: {
 // separação física de `status` (ver comentário de OrderStatusSchema em
 // contracts/orders.ts) -- usada por paymentChargeService.ts, tanto na
 // confirmação síncrona de createOrderCharge quanto na aplicação de webhook/
-// reconciliação. advanceToNovo só mexe em `status` quando o pedido ainda
-// está 'aberto' (nunca regride um status mais avançado, ex. já 'separado').
+// reconciliação. advanceStatusTo nunca regride um status mais avançado (ex.
+// nunca sobrescreve 'cancelado', nunca desfaz 'pago'): 'novo' só pega a
+// partir de 'aberto' (fechamento de carrinho); 'pago' pega a partir de
+// qualquer status que não seja já 'pago'/'cancelado' -- é a mesma transição
+// que "Marcar como pago" faz manualmente (ver markOrderPaid em
+// orderService.ts), só que disparada por uma confirmação real do gateway em
+// vez de uma ação da vendedora.
 export async function updateOrderPaymentStatusRow(client: PoolClient, id: string, value: {
-    paymentStatus: NonNullable<Order["paymentStatus"]>; advanceToNovo?: boolean;
+    paymentStatus: NonNullable<Order["paymentStatus"]>; advanceStatusTo?: "novo" | "pago";
 }): Promise<OrderRow | null> {
     const result = await client.query<OrderRow>(
         `UPDATE orders SET
            payment_status = $2,
            paid_at = CASE WHEN $2 = 'paid' THEN now() ELSE paid_at END,
-           status = CASE WHEN $3 AND status = 'aberto' THEN 'novo' ELSE status END,
+           status = CASE
+             WHEN $3 = 'pago' AND status NOT IN ('pago', 'cancelado') THEN 'pago'
+             WHEN $3 = 'novo' AND status = 'aberto' THEN 'novo'
+             ELSE status
+           END,
            updated_at = now()
          WHERE tenant_id = app_tenant_id() AND id = $1 AND payment_status != 'paid'
          RETURNING ${orderFields}`,
-        [id, value.paymentStatus, Boolean(value.advanceToNovo)],
+        [id, value.paymentStatus, value.advanceStatusTo ?? null],
     );
     return result.rows[0] ?? null;
+}
+
+// Reparo pontual: pedidos que já ficaram payment_status='paid' ANTES de
+// updateOrderPaymentStatusRow acima passar a avançar `status` até 'pago'
+// ficam presos num status anterior (ex. 'separado') pra sempre -- a
+// cláusula `payment_status != 'paid'` daquela função existe justamente pra
+// nunca reprocessar uma confirmação já aplicada, então ela nunca vai
+// alcançar essas linhas de novo sozinha. Uso manual (ver
+// scripts/testar-reparar-cobrancas-orfas.ts), não é chamada por nenhum
+// fluxo de requisição.
+export async function advanceAlreadyPaidOrderStatusRows(client: PoolClient): Promise<OrderRow[]> {
+    const result = await client.query<OrderRow>(
+        `UPDATE orders SET status = 'pago', updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND payment_status = 'paid' AND status NOT IN ('pago', 'cancelado')
+         RETURNING ${orderFields}`,
+    );
+    return result.rows;
 }
 
 // Upsert por (tenant_id, order_id, item_key) -- a mesma linha muda de

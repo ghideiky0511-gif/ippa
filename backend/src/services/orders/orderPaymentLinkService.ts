@@ -15,9 +15,11 @@ import { findClientRow } from "@/models/clientsModel";
 import { findPaymentIntegrationRowByProvider } from "@/models/paymentIntegrationsModel";
 import { findStoreSettingsRow } from "@/models/settingsModel";
 import { PAYMENT_LINK_EXPIRATION_DEFAULT_MINUTES } from "@/services/settings";
-import { createOrderCharge } from "@/services/payments/paymentChargeService";
+import { createOrderCharge, toOrderPaymentCharge } from "@/services/payments/paymentChargeService";
 import { getStripePublishableKey } from "@/payments/providers/stripe/client";
 import type { CardChargeResult } from "@/payments/types";
+import { listPaymentChargeRowsByOrder } from "@/models/paymentChargesModel";
+import type { OrderPaymentCharge } from "@/contracts/payments";
 import { ForbiddenError, GoneError, NotFoundError, ValidationError } from "@/services/shared/errors";
 import { toOrderFreight } from "./orderMapper";
 
@@ -73,6 +75,7 @@ export async function createOrderPaymentLink(
 
 export interface OrderPaymentSummary {
     orderId: string;
+    orderNumber: number;
     clientName: string;
     items: CartItem[];
     total: number;
@@ -104,6 +107,7 @@ export async function findOrderPaymentSummary(tenant: Tenant, token: string): Pr
         const integrationRow = await findPaymentIntegrationRowByProvider(client, "stripe");
         return {
             orderId: order.id,
+            orderNumber: order.order_number,
             clientName: order.client_name ?? "",
             items,
             total: Number(order.total),
@@ -144,5 +148,25 @@ export async function chargeOrderPayment(tenant: Tenant, token: string, cardToke
     return createOrderCharge(tenant, {}, prepared.orderId, {
         cardToken,
         customer: prepared.customer,
+    });
+}
+
+// Histórico de cobrança de um pedido -- mesma checagem de dono de
+// createOrderPaymentLink acima (canRequestPaymentLink), reusada aqui porque
+// esta é a MESMA regra "só a própria cliente do pedido, ou alguém da loja"
+// que se aplica a ver os dados da cobrança, não só a gerar o link. É o que
+// permite uma rota HTTP só (orders/[id]/payment) atender tanto o workspace
+// quanto a tela /pedidos/[orderNumber] da cliente.
+export async function listOrderPaymentCharges(
+    tenant: Tenant,
+    actor: AuthUser,
+    orderId: string,
+): Promise<OrderPaymentCharge[]> {
+    return withTenantTransaction(tenant, actor, async (client) => {
+        const order = await findOrderRowById(client, orderId);
+        if (!order) throw new NotFoundError("ORDER_NOT_FOUND");
+        if (!canRequestPaymentLink(actor, order.client_id)) throw new ForbiddenError();
+        const rows = await listPaymentChargeRowsByOrder(client, orderId);
+        return rows.map(toOrderPaymentCharge);
     });
 }

@@ -82,6 +82,61 @@ export async function markPaymentChargeCreatedRow(
     return result.rows[0] ?? null;
 }
 
+// Histórico de tentativas de cobrança de um pedido (pode haver mais de uma
+// -- ver comentário da tabela na migration 044). Usado só pela camada de
+// apresentação (orderPaymentDetailsService.ts), nunca por lógica de estado.
+export async function listPaymentChargeRowsByOrder(client: PoolClient, orderId: string): Promise<PaymentChargeRow[]> {
+    const result = await client.query<PaymentChargeRow>(
+        `SELECT ${chargeFields} FROM payment_charges
+         WHERE tenant_id = app_tenant_id() AND order_id = $1
+         ORDER BY created_at DESC`,
+        [orderId],
+    );
+    return result.rows;
+}
+
+// Tentativas ainda "vivas" de um pedido -- usado por
+// paymentChargeService.ts::createOrderCharge para resolver ou cancelar
+// qualquer tentativa anterior antes de abrir uma nova (regra "uma cobrança
+// viva por pedido"). 'authorized' entra aqui porque, apesar de já ter sido
+// confirmada do lado do provider no momento da criação, só vira 'paid' de
+// verdade quando o webhook assíncrono chega -- até lá é uma tentativa em
+// aberto como qualquer outra.
+export async function listLivePaymentChargeRowsByOrder(client: PoolClient, orderId: string): Promise<PaymentChargeRow[]> {
+    const result = await client.query<PaymentChargeRow>(
+        `SELECT ${chargeFields} FROM payment_charges
+         WHERE tenant_id = app_tenant_id() AND order_id = $1
+           AND status IN ('pending', 'processing', 'authorized')
+         ORDER BY created_at ASC`,
+        [orderId],
+    );
+    return result.rows;
+}
+
+// Cobranças "vivas" que sobraram de pedidos que JÁ têm payment_status =
+// 'paid' -- só existem por causa de dados anteriores a
+// applyPaymentChargeWebhookEvent cancelar as irmãs vivas no momento em que
+// uma cobrança confirma 'paid' (ver paymentChargeService.ts). Varre o
+// tenant inteiro (não um pedido específico) porque é usada por um script de
+// reparo pontual, não por um fluxo de requisição -- ver
+// scripts/testar-reparar-cobrancas-orfas.ts.
+const chargeFieldsPrefixed = chargeFields
+    .split(", ")
+    .map((field) => `pc.${field}`)
+    .join(", ");
+
+export async function listOrphanLivePaymentChargeRows(client: PoolClient): Promise<PaymentChargeRow[]> {
+    const result = await client.query<PaymentChargeRow>(
+        `SELECT ${chargeFieldsPrefixed} FROM payment_charges pc
+         JOIN orders o ON o.id = pc.order_id AND o.tenant_id = pc.tenant_id
+         WHERE pc.tenant_id = app_tenant_id()
+           AND pc.status IN ('pending', 'processing', 'authorized')
+           AND o.payment_status = 'paid'
+         ORDER BY pc.created_at ASC`,
+    );
+    return result.rows;
+}
+
 interface ApplyStatusUpdate {
     status: string;
     externalStatus?: string;

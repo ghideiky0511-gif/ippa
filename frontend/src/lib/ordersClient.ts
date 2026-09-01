@@ -19,6 +19,7 @@ import {
   type UpdateOrderSessionInput,
 } from '@/domain/orders/types';
 import { parseOrdersForHub, type OrdersHubResult } from '@/domain/orders/parseOrders';
+import { OrderPaymentChargeSchema, type OrderPaymentCharge } from '@/domain/payments/types';
 import { adminJson } from './http';
 
 export function fetchOrders(params?: { clientId?: string }): Promise<Order[]> {
@@ -131,6 +132,15 @@ export function requestOrderPaymentLink(orderId: string): Promise<{ token: strin
   return adminJson(`/api/orders/${orderId}/payment-link`, z.object({ token: z.string() }), {
     method: 'POST',
   }, 'Não foi possível gerar o link de pagamento.');
+}
+
+// Histórico de cobrança do pedido (redigido: sem PAN, só os dados de
+// exibição já mascarados/normalizados pelo backend -- ver
+// orderPaymentDetailsService.ts::toOrderPaymentCharge). Mesma checagem de
+// dono do link acima, então esta mesma rota atende o workspace e a tela da
+// cliente (ver OrderPaymentDetails.tsx, componente reusado nos dois).
+export function fetchOrderPaymentCharges(orderId: string): Promise<OrderPaymentCharge[]> {
+  return adminJson(`/api/orders/${orderId}/payment`, OrderPaymentChargeSchema.array(), {}, 'Não foi possível carregar os dados de pagamento.');
 }
 
 // Confirmação manual da separação física dos itens -- sem integração de

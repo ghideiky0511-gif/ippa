@@ -99,6 +99,13 @@ export interface PaymentProvider {
     // implementam -- ausência é "sem teste disponível", nunca falha (mesmo
     // raciocínio de ErpProvider.testConnection).
     testConnection?(): Promise<{ ok: boolean; message?: string }>;
+    // Opcional: usado por paymentChargeService.ts para encerrar uma
+    // tentativa anterior ainda em aberto antes de permitir uma nova (regra
+    // "uma cobrança viva por pedido"). Ausência = provider não suporta
+    // cancelamento explícito; quem chama trata isso como impedimento para a
+    // nova tentativa, não como sucesso silencioso. Deve lançar se o provider
+    // rejeitar o cancelamento (ex. cobrança já capturada do lado dele).
+    cancelCharge?(externalId: string): Promise<void>;
 }
 
 // reporter é opcional e não carrega tenant/banco (ver lib/externalApiCall.ts)

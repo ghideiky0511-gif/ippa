@@ -7,6 +7,7 @@ import { CardElement, Elements, useElements, useStripe } from '@stripe/react-str
 import { formatBRL } from '@/lib/format';
 import { useTenant } from '@/components/TenantProvider';
 import ProductImage from '@/components/ProductImage';
+import TenantLink from '@/components/TenantLink';
 import type { CartItem } from '@/domain/orders/types';
 
 const PAYMENT_METHODS = [
@@ -42,6 +43,7 @@ interface CheckoutSummary {
 interface ChargeSummary {
   kind: 'charge';
   orderId: string;
+  orderNumber: number;
   clientName: string;
   items: CartItem[];
   total: number;
@@ -228,9 +230,16 @@ export default function PagarPage({ params }: { params: Promise<{ token: string 
         {!loading && error && !done && <p className={publicUi.error}>{error}</p>}
 
         {!loading && (done || alreadyPaid) && (
-          <p className="contents">
-            {summary?.kind === 'charge' ? 'Pagamento confirmado! Obrigado.' : 'Pedido confirmado! A loja vai entrar em contato para combinar o pagamento.'}
-          </p>
+          <>
+            <p className="contents">
+              {summary?.kind === 'charge' ? 'Pagamento confirmado! Obrigado.' : 'Pedido confirmado! A loja vai entrar em contato para combinar o pagamento.'}
+            </p>
+            {summary?.kind === 'charge' && (
+              <TenantLink href={`/pedidos/${summary.orderNumber}`} className={publicUi.primaryButton}>
+                Ver pedido
+              </TenantLink>
+            )}
+          </>
         )}
 
         {!loading && summary && !done && !alreadyPaid && (
