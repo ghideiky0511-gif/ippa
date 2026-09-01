@@ -35,7 +35,7 @@ const ERP_SYNCABLE_FIELDS = [
 ] as const satisfies readonly (keyof Client)[];
 
 const AUDITED_CLIENT_FIELDS = [
-    "name", "cpfCnpj", "email", "cep", "street", "number", "complement",
+    "name", "cpfCnpj", "email", "whatsappPhone", "cep", "street", "number", "complement",
     "neighborhood", "city", "state", "companyResponsible", "storeName",
 ] as const;
 
@@ -124,6 +124,7 @@ export async function patchClientRow(
         name: changes.name ?? current.name,
         cpfCnpj: Object.hasOwn(changes, "cpfCnpj") ? changes.cpfCnpj : current.cpf_cnpj ?? undefined,
         email: Object.hasOwn(changes, "email") ? changes.email : current.email ?? undefined,
+        whatsappPhone: Object.hasOwn(changes, "whatsappPhone") ? changes.whatsappPhone : current.whatsapp_phone ?? undefined,
         cep: Object.hasOwn(changes, "cep") ? changes.cep : current.cep ?? undefined,
         street: Object.hasOwn(changes, "street") ? changes.street : current.street ?? undefined,
         number: Object.hasOwn(changes, "number") ? changes.number : current.number ?? undefined,

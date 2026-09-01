@@ -22,6 +22,12 @@ export interface CreateChargeInput {
     // a ippa nunca vê o PAN, só recebe o token para autorizar a cobrança.
     cardToken?: string;
     installments?: number;
+    // Id da linha payment_charges já commitada por paymentChargeService
+    // ANTES desta chamada -- providers que precisam de uma chave estável
+    // pro webhook encontrar a cobrança mesmo que ele chegue antes desta
+    // chamada retornar (ex. metadata do PaymentIntent na Stripe) usam este
+    // valor; providers sem essa corrida (mock) simplesmente ignoram.
+    internalChargeId?: string;
 }
 
 export interface PixChargeResult {

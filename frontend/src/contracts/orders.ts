@@ -141,6 +141,13 @@ export const OrderSchema = z.object({
   channel: OrderChannelSchema,
   freight: OrderFreightSchema.optional(),
   paymentMethod: z.string().optional(),
+  // Trilha financeira separada de `status` acima (migration 044): `status`
+  // segue seu próprio ciclo de separação física, paymentStatus só avança
+  // quando um provider real confirma (ver paymentChargeService.ts) --
+  // 'unpaid' cobre tanto "sem cobrança ainda" quanto pedidos antigos/de
+  // fluxos que não processam pagamento de verdade (link manual, talão).
+  paymentStatus: z.enum(['unpaid', 'awaiting_confirmation', 'paid', 'payment_failed']).optional(),
+  paidAt: IsoDateTimeSchema.nullable().optional(),
   discount: z.object({ label: RequiredTextSchema, amount: MoneySchema }).optional(), // snapshot do desconto aplicado no momento da compra, pra "Meus pedidos" mostrar mesmo se a regra mudar depois
   // Presentes só nos pedidos gravados no servidor, não nos antigos/locais
   // salvos só no localStorage do navegador (ver readOrders em

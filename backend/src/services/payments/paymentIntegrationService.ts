@@ -41,8 +41,14 @@ export interface TenantPaymentIntegrationOption {
     description: string;
     logoPath?: string;
     credentialFields: PaymentProviderCredentialField[];
+    onboardingType?: "credentials" | "redirect";
     configured: boolean;
     active: boolean;
+    // Estado público para o próprio administrador do tenant. Não expõe
+    // segredo algum: o acct_xxx é o identificador da connected account, não
+    // uma chave de API (a secret key permanece exclusivamente na plataforma).
+    stripeAccountId?: string | null;
+    stripeOnboardingStatus?: "pending" | "complete" | "restricted" | null;
     updatedAt: string | null;
 }
 
@@ -68,8 +74,14 @@ function toOption(
         description: entry.description,
         logoPath: entry.logoPath,
         credentialFields: entry.credentialFields,
+        onboardingType: entry.onboardingType,
         configured: Boolean(row),
         active: row?.active ?? false,
+        stripeAccountId: entry.code === "stripe" ? row?.stripe_account_id ?? null : undefined,
+        stripeOnboardingStatus:
+            entry.code === "stripe"
+                ? (row?.stripe_onboarding_status as TenantPaymentIntegrationOption["stripeOnboardingStatus"])
+                : undefined,
         updatedAt: row ? row.updated_at.toISOString() : null,
     };
 }
@@ -146,6 +158,12 @@ export async function saveTenantPaymentIntegrationCredentials(
 ): Promise<TenantPaymentIntegrationOption> {
     requireSettingsAdministrator(user);
     const entry = findVisibleCatalogEntry(provider);
+    if (entry.onboardingType === "redirect") {
+        throw new ValidationError(
+            "PAYMENT_INTEGRATION_ONBOARDING_REQUIRED",
+            "Conclua o onboarding hospedado da Stripe para conectar esta conta.",
+        );
+    }
     const credentials = parseCredentials(entry, rawCredentials ?? {});
     return withTenantTransaction(tenant, user, async (client) => {
         const row = await upsertPaymentIntegrationCredentialsRow(client, {
@@ -172,6 +190,12 @@ export async function activateTenantPaymentIntegration(
 ): Promise<TenantPaymentIntegrationOption> {
     requireSettingsAdministrator(user);
     const entry = findVisibleCatalogEntry(provider);
+    if (entry.onboardingType === "redirect") {
+        throw new ValidationError(
+            "PAYMENT_INTEGRATION_ONBOARDING_REQUIRED",
+            "A Stripe é ativada automaticamente quando o onboarding for concluído.",
+        );
+    }
     return withTenantTransaction(tenant, user, async (client) => {
         const row = await activatePaymentIntegrationRow(client, provider);
         if (!row)
@@ -228,13 +252,26 @@ export async function testTenantPaymentIntegrationConnection(
 
     let credentials: Record<string, unknown>;
     if (rawCredentials) {
+        if (entry.onboardingType === "redirect") {
+            throw new ValidationError(
+                "PAYMENT_INTEGRATION_ONBOARDING_REQUIRED",
+                "Conclua o onboarding hospedado da Stripe antes de testar a conexão.",
+            );
+        }
         credentials = parseCredentials(entry, rawCredentials);
     } else {
         const stored = await withTenantTransaction(tenant, user, (client) =>
             findPaymentIntegrationRowByProvider(client, provider),
         );
         if (!stored) throw new NotFoundError("PAYMENT_INTEGRATION_NOT_CONFIGURED");
-        credentials = stored.credentials;
+        if (entry.onboardingType === "redirect") {
+            if (!stored.stripe_account_id) {
+                return { ok: false, message: "Conecte uma conta Stripe antes de testar a conexão." };
+            }
+            credentials = { stripeAccountId: stored.stripe_account_id };
+        } else {
+            credentials = stored.credentials;
+        }
     }
 
     try {

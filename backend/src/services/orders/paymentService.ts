@@ -18,9 +18,11 @@ import {
   listDiscountRows,
   listDiscountTierRows,
 } from "@/models/settingsModel";
+import { findClientRow } from "@/models/clientsModel";
 import { findUserRowByClientId, findUserRowById } from "@/models/usersModel";
 import { notifyOrder, notifyOrderBook, notifySession } from "@/services/realtime/updateBroadcast";
 import { notifyNewOrderForSeller, notifyOrderConfirmed } from "@/services/notifications";
+import { sendOrderConfirmedWhatsApp, toWhatsAppOrderRecipient, type WhatsAppOrderRecipient } from "@/services/whatsapp";
 import { enqueueOrderPush } from "@/services/erp/orderPushService";
 import { GoneError, NotFoundError } from "@/services/shared/errors";
 import { getCartDiscount } from "@/services/settings";
@@ -119,6 +121,7 @@ export async function confirmPayment(
   let changedBooks: OrderBookRow[] = [];
   let recipient: Pick<AuthUser, "id" | "role" | "email" | "name"> | undefined;
   let sellerRecipient: Pick<AuthUser, "id" | "role"> | undefined;
+  let whatsappRecipient: WhatsAppOrderRecipient | null = null;
   const order = await withTenantTransaction(tenant, {}, async (client) => {
     const context = await paymentContext(client, token, true);
     // Gate obrigatório: reconfirma que o estoque ainda cobre o pedido no
@@ -173,6 +176,7 @@ export async function confirmPayment(
     if (context.session.client_id) {
       const user = await findUserRowByClientId(client, context.session.client_id);
       if (user) recipient = { id: user.id, role: user.role, email: user.email, name: user.name };
+      whatsappRecipient = toWhatsAppOrderRecipient(await findClientRow(client, context.session.client_id));
     }
     return toOrder(row, context.items, freightRow);
   });
@@ -180,6 +184,7 @@ export async function confirmPayment(
   for (const book of changedBooks) notifyOrderBook(tenant.id, toOrderBook(book));
   notifyOrder(tenant.id, order);
   if (recipient) notifyOrderConfirmed(tenant, recipient, order);
+  sendOrderConfirmedWhatsApp(tenant, whatsappRecipient, order);
   if (sellerRecipient) notifyNewOrderForSeller(tenant, sellerRecipient, order);
   await enqueueOrderPush(tenant, {}, order.id);
   return { ok: true, order };

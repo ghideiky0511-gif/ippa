@@ -22,6 +22,7 @@ import { findUserRowById } from "@/models/usersModel";
 import { findStoreSettingsRow } from "@/models/settingsModel";
 import { notifyOrder, notifyOrderBook, notifySession } from "@/services/realtime/updateBroadcast";
 import { notifyNewOrderForSeller, notifyOrderConfirmed } from "@/services/notifications";
+import { sendOrderConfirmedWhatsApp, toWhatsAppOrderRecipient, type WhatsAppOrderRecipient } from "@/services/whatsapp";
 import { cancelProviderOrderForOrder, enqueueOrderPush, requestProviderOrderResend } from "@/services/erp/orderPushService";
 import type { ProviderOrderRow } from "@/models/providerOrdersModel";
 import { logger, errorMeta } from "@/lib/logger";
@@ -131,6 +132,7 @@ export async function createCustomerOrder(
     let changedSessions: OrderSession[] = [];
     let changedBooks: OrderBookRow[] = [];
     let sellerRecipient: Pick<AuthUser, "id" | "role"> | undefined;
+    let whatsappRecipient: WhatsAppOrderRecipient | null = null;
     const order = await withTenantTransaction(tenant, user, async (client) => {
         let sellerId: string | undefined;
         // Checkout iniciado numa sessão de vendedora já tem order_id (foi
@@ -201,13 +203,14 @@ export async function createCustomerOrder(
         }
         if (!deliveryConfiguration) throw new ValidationError("DELIVERY_OFFERING_NOT_FOUND");
         const deliveryQuote = deliveryQuoteFromConfiguration(deliveryConfiguration);
+        const registration = await findClientRow(client, user.clientId!);
+        whatsappRecipient = toWhatsAppOrderRecipient(registration);
         // Snapshot do CEP de destino -- nulo pra retirada. O CEP digitado em
         // /frete (body.destinationCep) tem prioridade sobre o do cadastro:
         // a tela aceita cotar um endereço diferente do salvo, e o snapshot
         // precisa acompanhar a escolha, não o cadastro (ver orderMapper.ts).
         let destinationCep: string | null = null;
         if (deliveryQuote.fulfillmentMode === "address_delivery") {
-            const registration = user.clientId ? await findClientRow(client, user.clientId) : null;
             destinationCep = body.destinationCep ?? registration?.cep?.trim() ?? null;
             if (!destinationCep) throw new ValidationError("DELIVERY_ADDRESS_REQUIRED");
         }
@@ -259,6 +262,7 @@ export async function createCustomerOrder(
     for (const book of changedBooks) notifyOrderBook(tenant.id, toOrderBook(book));
     notifyOrder(tenant.id, order);
     notifyOrderConfirmed(tenant, user, order);
+    sendOrderConfirmedWhatsApp(tenant, whatsappRecipient, order);
     if (sellerRecipient) notifyNewOrderForSeller(tenant, sellerRecipient, order);
     await enqueueOrderPush(tenant, user, order.id);
     return order;

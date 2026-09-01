@@ -14,8 +14,11 @@ export interface PaymentIntegrationOption {
   description: string;
   logoPath?: string;
   credentialFields: PaymentProviderCredentialField[];
+  onboardingType?: 'credentials' | 'redirect';
   configured: boolean;
   active: boolean;
+  stripeAccountId?: string | null;
+  stripeOnboardingStatus?: 'pending' | 'complete' | 'restricted' | null;
   updatedAt: string | null;
 }
 
@@ -82,4 +85,50 @@ export function activatePaymentIntegration(provider: string): Promise<PaymentInt
 
 export function deactivatePaymentIntegration(): Promise<{ deactivated: boolean }> {
   return adminJson('/api/payment-integration/deactivate', unknown, { method: 'POST' }, 'Não foi possível desativar o provedor.') as Promise<{ deactivated: boolean }>;
+}
+
+export interface StripeOnboardingStatusResult {
+  stripeAccountId: string;
+  status: 'pending' | 'complete' | 'restricted';
+  active: boolean;
+  requirements: {
+    disabledReason: string | null;
+    currentlyDue: string[];
+    pastDue: string[];
+  };
+}
+
+// Stripe Connect é diferente dos providers por credenciais: a conta do
+// tenant é criada pela plataforma e o cadastro/KYC acontece em uma página
+// hospedada pela Stripe. A URL devolvida é de uso único e deve receber
+// navegação completa do browser, não um popup.
+export function createStripeOnboardingLink(returnUrl: string): Promise<{ url: string }> {
+  return adminJson(
+    '/api/payment-integration/stripe/onboarding-link',
+    unknown,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ returnUrl }),
+    },
+    'Não foi possível iniciar o cadastro da Stripe.'
+  ) as Promise<{ url: string }>;
+}
+
+export function refreshStripeOnboardingStatus(): Promise<StripeOnboardingStatusResult> {
+  return adminJson(
+    '/api/payment-integration/stripe/status',
+    unknown,
+    { method: 'POST' },
+    'Não foi possível consultar o status da conta Stripe.'
+  ) as Promise<StripeOnboardingStatusResult>;
+}
+
+export function disconnectStripeAccount(): Promise<{ disconnected: boolean }> {
+  return adminJson(
+    '/api/payment-integration/stripe/disconnect',
+    unknown,
+    { method: 'POST' },
+    'Não foi possível desvincular a conta Stripe.'
+  ) as Promise<{ disconnected: boolean }>;
 }

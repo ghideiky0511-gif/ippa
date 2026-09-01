@@ -287,38 +287,46 @@ export default function IntegracoesApp({ initialOptions, initialPaymentOptions }
                 )}
 
                 <div className={`${adminUi.fieldRow} flex-wrap`}>
-                  <button type="button" className={adminUi.button} onClick={() => setEditingPaymentProvider(option.provider)}>
-                    {option.configured ? 'Editar credenciais' : 'Configurar'}
-                  </button>
-                  {option.configured && (
-                    <button
-                      type="button"
-                      className={adminUi.button}
-                      disabled={state.status === 'testing'}
-                      onClick={() => handlePaymentTest(option.provider)}
-                    >
-                      {state.status === 'testing' ? 'Testando…' : 'Testar conexão'}
-                    </button>
-                  )}
-                  {option.configured && !option.active && (
-                    <button
-                      type="button"
-                      className={adminUi.primaryButton}
-                      disabled={state.status !== 'ok' || isPending}
-                      onClick={() => handlePaymentActivate(option.provider)}
-                    >
-                      Ativar
-                    </button>
-                  )}
-                  {option.active && (
-                    <button
-                      type="button"
-                      className={adminUi.dangerButton}
-                      disabled={isPending}
-                      onClick={() => setPaymentProviderToDeactivate(option)}
-                    >
-                      Desativar
-                    </button>
+                  {option.onboardingType === 'redirect' ? (
+                    <Link href={`/workspace/integracoes/${option.provider}`} className={adminUi.primaryButton}>
+                      Configurar {option.label}
+                    </Link>
+                  ) : (
+                    <>
+                      <button type="button" className={adminUi.button} onClick={() => setEditingPaymentProvider(option.provider)}>
+                        {option.configured ? 'Editar credenciais' : 'Configurar'}
+                      </button>
+                      {option.configured && (
+                        <button
+                          type="button"
+                          className={adminUi.button}
+                          disabled={state.status === 'testing'}
+                          onClick={() => handlePaymentTest(option.provider)}
+                        >
+                          {state.status === 'testing' ? 'Testando…' : 'Testar conexão'}
+                        </button>
+                      )}
+                      {option.configured && !option.active && (
+                        <button
+                          type="button"
+                          className={adminUi.primaryButton}
+                          disabled={state.status !== 'ok' || isPending}
+                          onClick={() => handlePaymentActivate(option.provider)}
+                        >
+                          Ativar
+                        </button>
+                      )}
+                      {option.active && (
+                        <button
+                          type="button"
+                          className={adminUi.dangerButton}
+                          disabled={isPending}
+                          onClick={() => setPaymentProviderToDeactivate(option)}
+                        >
+                          Desativar
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

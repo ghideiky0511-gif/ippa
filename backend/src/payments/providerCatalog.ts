@@ -1,7 +1,7 @@
 // Metadado de exibição/formulário dos providers de pagamento -- não tem
 // tabela no banco (mesmo padrão de erp/providerCatalog.ts). "mock" fica com
 // hidden: true porque é fixture de dev/QA, nunca uma opção real pro tenant
-// escolher. Providers reais (iugu, depois Mercado Pago/Cielo/Rede) entram
+// escolher. Providers reais (stripe, depois Mercado Pago/Cielo/Rede) entram
 // aqui um de cada vez -- ver backend/src/payments/registry.ts para a fábrica
 // correspondente de cada `code`.
 
@@ -21,6 +21,13 @@ export interface PaymentProviderCatalogEntry {
     logoPath?: string;
     credentialFields: PaymentProviderCredentialField[];
     hidden?: boolean;
+    // Omitido (ou "credentials") = formulário de credenciais de sempre (PUT
+    // /payment-integration com os credentialFields acima). "redirect" =
+    // provider tipo Stripe Connect, sem formulário -- o front mostra um
+    // botão que chama um endpoint específico do provider (ex.
+    // /payment-integration/stripe/onboarding-link) e redireciona pro fluxo
+    // hospedado; ativação não é um clique manual, vem de webhook.
+    onboardingType?: "credentials" | "redirect";
 }
 
 export const PAYMENT_PROVIDER_CATALOG: PaymentProviderCatalogEntry[] = [
@@ -30,6 +37,14 @@ export const PAYMENT_PROVIDER_CATALOG: PaymentProviderCatalogEntry[] = [
         description: "Fixtures fixas para testes internos -- não é um gateway real.",
         credentialFields: [],
         hidden: true,
+    },
+    {
+        code: "stripe",
+        label: "Stripe",
+        description:
+            "Pagamento com cartão via Stripe Connect -- sem formulário, ativado por um cadastro guiado hospedado pela Stripe.",
+        credentialFields: [],
+        onboardingType: "redirect",
     },
 ];
 

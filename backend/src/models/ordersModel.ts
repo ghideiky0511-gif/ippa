@@ -18,6 +18,7 @@ export interface OrderRow {
     id: string; order_number: number; created_at: Date; updated_at: Date; client_id: string | null; seller_id: string | null;
     client_name: string | null; channel: string; status: Order["status"]; total: string;
     payment_method: string | null; discount: Order["discount"];
+    payment_status: NonNullable<Order["paymentStatus"]>; paid_at: Date | null;
 }
 export interface OrderItemRow { order_id: string; item_key: string; snapshot: CartItem }
 
@@ -336,7 +337,7 @@ export interface OrderWriteRow {
     createdAt?: string;
 }
 
-const orderFields = "id, order_number, created_at, updated_at, client_id, seller_id, client_name, channel, status, total, payment_method, discount";
+const orderFields = "id, order_number, created_at, updated_at, client_id, seller_id, client_name, channel, status, total, payment_method, discount, payment_status, paid_at";
 
 export async function insertOrderRow(client: PoolClient, value: OrderWriteRow): Promise<OrderRow> {
     const result = await client.query<OrderRow>(
@@ -407,6 +408,28 @@ export async function updateOrderRow(client: PoolClient, id: string, value: {
          RETURNING ${orderFields}`,
         [id, value.status, value.total ?? null, value.paymentMethod ?? null,
          value.discount ? JSON.stringify(value.discount) : null],
+    );
+    return result.rows[0] ?? null;
+}
+
+// Trilha financeira (payment_status/paid_at), separada do ciclo de
+// separação física de `status` (ver comentário de OrderStatusSchema em
+// contracts/orders.ts) -- usada por paymentChargeService.ts, tanto na
+// confirmação síncrona de createOrderCharge quanto na aplicação de webhook/
+// reconciliação. advanceToNovo só mexe em `status` quando o pedido ainda
+// está 'aberto' (nunca regride um status mais avançado, ex. já 'separado').
+export async function updateOrderPaymentStatusRow(client: PoolClient, id: string, value: {
+    paymentStatus: NonNullable<Order["paymentStatus"]>; advanceToNovo?: boolean;
+}): Promise<OrderRow | null> {
+    const result = await client.query<OrderRow>(
+        `UPDATE orders SET
+           payment_status = $2,
+           paid_at = CASE WHEN $2 = 'paid' THEN now() ELSE paid_at END,
+           status = CASE WHEN $3 AND status = 'aberto' THEN 'novo' ELSE status END,
+           updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND id = $1 AND payment_status != 'paid'
+         RETURNING ${orderFields}`,
+        [id, value.paymentStatus, Boolean(value.advanceToNovo)],
     );
     return result.rows[0] ?? null;
 }

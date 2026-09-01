@@ -6,6 +6,7 @@ import { findClientRow } from "@/models/clientsModel";
 import { findOrderSessionRow, listOrderSessionItemRowsBySession, setOrderSessionPaymentTokenRow } from "@/models/ordersModel";
 import { findUserRowByClientId } from "@/models/usersModel";
 import { notifyPaymentLink } from "@/services/notifications";
+import { sendPaymentLinkWhatsApp, toWhatsAppOrderRecipient } from "@/services/whatsapp";
 import { notifySession } from "@/services/realtime/updateBroadcast";
 import { scheduleSessionBroadcast } from "@/services/realtime/sessionBroadcast";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
@@ -25,6 +26,7 @@ export async function createPaymentLink(
   if (actor.role === "cliente") throw new ForbiddenError();
   const token = randomBytes(24).toString("hex");
   let changedSession: OrderSession | undefined;
+  let whatsappRecipient: ReturnType<typeof toWhatsAppOrderRecipient> = null;
   const recipient = await withTenantTransaction(tenant, actor, async (client) => {
     const session = await findOrderSessionRow(client, sessionId);
     if (!session) throw new NotFoundError("SESSION_NOT_FOUND");
@@ -46,12 +48,15 @@ export async function createPaymentLink(
     const updated = await setOrderSessionPaymentTokenRow(client, sessionId, digest(token));
     if (!updated) throw new NotFoundError("SESSION_NOT_FOUND");
     changedSession = toOrderSession(updated, items);
+    whatsappRecipient = toWhatsAppOrderRecipient(registration);
     return { id: user.id, role: user.role, email: user.email, name: user.name };
   });
   if (changedSession) {
     notifySession(tenant.id, changedSession);
     scheduleSessionBroadcast(changedSession);
   }
-  notifyPaymentLink(tenant, recipient, `${publicOrigin}/${tenant.slug}/pagar/${token}`);
+  const paymentUrl = `${publicOrigin}/${tenant.slug}/pagar/${token}`;
+  notifyPaymentLink(tenant, recipient, paymentUrl);
+  sendPaymentLinkWhatsApp(tenant, whatsappRecipient, paymentUrl);
   return { token };
 }

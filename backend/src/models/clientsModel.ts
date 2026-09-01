@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 
 export interface ClientRow {
     id: string; name: string; cpf_cnpj: string | null; email: string | null;
+    whatsapp_phone: string | null;
     cep: string | null; street: string | null; number: string | null;
     complement: string | null; neighborhood: string | null; city: string | null;
     state: string | null; company_responsible: string | null; store_name: string | null;
@@ -9,13 +10,13 @@ export interface ClientRow {
 }
 
 export interface ClientWriteRow {
-    name: string; cpfCnpj?: string; email?: string; cep?: string; street?: string;
+    name: string; cpfCnpj?: string; email?: string; whatsappPhone?: string; cep?: string; street?: string;
     number?: string; complement?: string; neighborhood?: string; city?: string;
     state?: string; companyResponsible?: string; storeName?: string; lastSellerId?: string;
 }
 
 const clientFields =
-    "id, name, cpf_cnpj, email, cep, street, number, complement, neighborhood, city, state, company_responsible, store_name, last_seller_id, created_at, updated_at";
+    "id, name, cpf_cnpj, email, whatsapp_phone, cep, street, number, complement, neighborhood, city, state, company_responsible, store_name, last_seller_id, created_at, updated_at";
 
 export interface ClientSearchPage {
     rows: ClientRow[];
@@ -76,10 +77,10 @@ export async function findClientRowByDocumentDigits(client: PoolClient, document
 
 export async function insertClientRow(client: PoolClient, value: ClientWriteRow): Promise<ClientRow> {
     const result = await client.query<ClientRow>(
-        `INSERT INTO clients (tenant_id, name, cpf_cnpj, email, cep, street, number, complement, neighborhood, city, state, company_responsible, store_name, last_seller_id)
-         VALUES (app_tenant_id(), $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        `INSERT INTO clients (tenant_id, name, cpf_cnpj, email, whatsapp_phone, cep, street, number, complement, neighborhood, city, state, company_responsible, store_name, last_seller_id)
+         VALUES (app_tenant_id(), $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
          RETURNING ${clientFields}`,
-        [value.name, value.cpfCnpj ?? null, value.email ?? null, value.cep ?? null,
+        [value.name, value.cpfCnpj ?? null, value.email ?? null, value.whatsappPhone ?? null, value.cep ?? null,
          value.street ?? null, value.number ?? null, value.complement ?? null,
          value.neighborhood ?? null, value.city ?? null, value.state ?? null,
          value.companyResponsible ?? null, value.storeName ?? null, value.lastSellerId ?? null],
@@ -89,11 +90,11 @@ export async function insertClientRow(client: PoolClient, value: ClientWriteRow)
 
 export async function updateClientRow(client: PoolClient, id: string, value: Partial<ClientWriteRow>): Promise<ClientRow | null> {
     const result = await client.query<ClientRow>(
-        `UPDATE clients SET name = COALESCE($2, name), cpf_cnpj = $3, email = $4, cep = $5, street = $6, number = $7, complement = $8,
-           neighborhood = $9, city = $10, state = $11, company_responsible = $12, store_name = $13,
-           last_seller_id = COALESCE($14, last_seller_id), updated_at = now()
+        `UPDATE clients SET name = COALESCE($2, name), cpf_cnpj = $3, email = $4, whatsapp_phone = $5, cep = $6, street = $7, number = $8, complement = $9,
+           neighborhood = $10, city = $11, state = $12, company_responsible = $13, store_name = $14,
+           last_seller_id = COALESCE($15, last_seller_id), updated_at = now()
          WHERE tenant_id = app_tenant_id() AND id = $1 RETURNING ${clientFields}`,
-        [id, value.name ?? null, value.cpfCnpj ?? null, value.email ?? null,
+        [id, value.name ?? null, value.cpfCnpj ?? null, value.email ?? null, value.whatsappPhone ?? null,
          value.cep ?? null, value.street ?? null, value.number ?? null,
          value.complement ?? null, value.neighborhood ?? null, value.city ?? null,
          value.state ?? null, value.companyResponsible ?? null, value.storeName ?? null,

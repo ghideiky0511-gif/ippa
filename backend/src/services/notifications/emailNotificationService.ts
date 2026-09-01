@@ -11,7 +11,7 @@ import {
 } from "@/lib/email";
 import { errorMeta, logger } from "@/lib/logger";
 
-function orderDetailsLink(tenant: Tenant, orderNumber: number): string {
+export function orderDetailsLink(tenant: Tenant, orderNumber: number): string {
     const origin = (process.env.APP_URL || process.env.ADMIN_ORIGIN || "http://localhost:3010").replace(/\/+$/, "");
     return `${origin}/${encodeURIComponent(tenant.slug)}/pedidos/${encodeURIComponent(String(orderNumber))}`;
 }

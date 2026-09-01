@@ -9,12 +9,13 @@ import { ORDER_SESSION_AUDIT_ACTIONS, type OrderSessionAuditAction } from './ord
 import { PAYMENT_INTEGRATION_AUDIT_ACTIONS, type PaymentIntegrationAuditAction } from './paymentIntegrationAuditActions';
 import { PROVIDER_ORDER_AUDIT_ACTIONS, type ProviderOrderAuditAction } from './providerOrderAuditActions';
 import { USER_AUDIT_ACTIONS, type UserAuditAction } from './userAuditActions';
+import { WHATSAPP_INTEGRATION_AUDIT_ACTIONS, type WhatsAppIntegrationAuditAction } from './whatsappIntegrationAuditActions';
 
-export { AUTHENTICATION_AUDIT_ACTIONS, CLIENT_AUDIT_ACTIONS, COMMERCIAL_GROUP_AUDIT_ACTIONS, COMPANY_AUDIT_ACTIONS, DELIVERY_TYPE_AUDIT_ACTIONS, ERP_INTEGRATION_AUDIT_ACTIONS, ORDER_AUDIT_ACTIONS, ORDER_SESSION_AUDIT_ACTIONS, PAYMENT_INTEGRATION_AUDIT_ACTIONS, PROVIDER_ORDER_AUDIT_ACTIONS, USER_AUDIT_ACTIONS };
+export { AUTHENTICATION_AUDIT_ACTIONS, CLIENT_AUDIT_ACTIONS, COMMERCIAL_GROUP_AUDIT_ACTIONS, COMPANY_AUDIT_ACTIONS, DELIVERY_TYPE_AUDIT_ACTIONS, ERP_INTEGRATION_AUDIT_ACTIONS, ORDER_AUDIT_ACTIONS, ORDER_SESSION_AUDIT_ACTIONS, PAYMENT_INTEGRATION_AUDIT_ACTIONS, PROVIDER_ORDER_AUDIT_ACTIONS, USER_AUDIT_ACTIONS, WHATSAPP_INTEGRATION_AUDIT_ACTIONS };
 
-export type AuditAction = ClientAuditAction | CommercialGroupAuditAction | CompanyAuditAction | DeliveryTypeAuditAction | ErpIntegrationAuditAction | OrderAuditAction | OrderSessionAuditAction | PaymentIntegrationAuditAction | ProviderOrderAuditAction | AuthenticationAuditAction | UserAuditAction;
+export type AuditAction = ClientAuditAction | CommercialGroupAuditAction | CompanyAuditAction | DeliveryTypeAuditAction | ErpIntegrationAuditAction | OrderAuditAction | OrderSessionAuditAction | PaymentIntegrationAuditAction | ProviderOrderAuditAction | AuthenticationAuditAction | UserAuditAction | WhatsAppIntegrationAuditAction;
 
-export type AuditEntityType = 'client' | 'commercial_group' | 'company' | 'delivery_type' | 'erp_integration' | 'order' | 'order_session' | 'payment_integration' | 'provider_order' | 'user';
+export type AuditEntityType = 'client' | 'commercial_group' | 'company' | 'delivery_type' | 'erp_integration' | 'order' | 'order_session' | 'payment_integration' | 'provider_order' | 'user' | 'whatsapp_integration';
 
 // Este mapa Ã© o contrato que impede, por exemplo, registrar
 // `client.created` para a entidade `order_session`.
@@ -49,6 +50,10 @@ export const AUDIT_ENTITY_BY_ACTION = {
   [AUTHENTICATION_AUDIT_ACTIONS.LOGGED_OUT]: 'user',
   [USER_AUDIT_ACTIONS.CREATED]: 'user',
   [USER_AUDIT_ACTIONS.UPDATED]: 'user',
+  [WHATSAPP_INTEGRATION_AUDIT_ACTIONS.CONNECTED]: 'whatsapp_integration',
+  [WHATSAPP_INTEGRATION_AUDIT_ACTIONS.ACTIVATED]: 'whatsapp_integration',
+  [WHATSAPP_INTEGRATION_AUDIT_ACTIONS.DEACTIVATED]: 'whatsapp_integration',
+  [WHATSAPP_INTEGRATION_AUDIT_ACTIONS.DISCONNECTED]: 'whatsapp_integration',
 } as const satisfies Record<AuditAction, AuditEntityType>;
 
 export type EntityForAuditAction<A extends AuditAction> = (typeof AUDIT_ENTITY_BY_ACTION)[A];

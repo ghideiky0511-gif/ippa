@@ -9,6 +9,7 @@ import {
     OptionalCpfCnpjSchema,
     OptionalEmailSchema,
     OptionalTextSchema,
+    OptionalWhatsAppPhoneSchema,
     RequiredTextSchema,
 } from "./shared";
 
@@ -29,6 +30,9 @@ export const ClientProfileSchema = z.object({
     name: RequiredTextSchema,
     cpfCnpj: z.string().optional(),
     email: OptionalEmailSchema,
+    // WhatsApp para notificação de pedido (ver services/whatsapp) — opcional
+    // como o resto do cadastro, nunca bloqueia o fluxo de quem preenche.
+    whatsappPhone: z.string().optional(),
     cep: z.string().optional(),
     // Endereço completo — opcional aqui (cadastro parcial da vendedora no
     // talão pode não ter isso), mas obrigatório no autocadastro da cliente
@@ -54,6 +58,7 @@ export const ClientProfileInputSchema = z.object({
     name: RequiredTextSchema,
     cpfCnpj: OptionalCpfCnpjSchema,
     email: OptionalEmailSchema,
+    whatsappPhone: OptionalWhatsAppPhoneSchema,
     cep: OptionalCepSchema,
     street: OptionalTextSchema,
     number: OptionalTextSchema,
