@@ -9,8 +9,11 @@ import Stripe from "stripe";
 //
 // A chave secreta é única, da PLATAFORMA (não por tenant) -- quem varia por
 // tenant é o stripeAccount passado como request option em cada chamada (ver
-// providers/stripe/index.ts). O webhook de eventos Connect usa um secret de
-// assinatura próprio, também único da plataforma (getConnectWebhookSecret).
+// providers/stripe/index.ts). O webhook de eventos Connect usa DOIS secrets
+// de assinatura, cada um do seu próprio Event Destination na Stripe: o
+// endpoint clássico (snapshot events, ex. payment_intent.*) e o destino v2
+// (thin events, ex. v2.core.account.*) exigem `whsec_` distintos -- não há
+// como configurar um único destino cobrindo os dois formatos no Dashboard.
 
 let client: Stripe | null | undefined;
 
@@ -36,8 +39,16 @@ export function getStripePublishableKey(): string | undefined {
     return key || undefined;
 }
 
-export function getConnectWebhookSecret(): string | undefined {
+// Secret do webhook endpoint clássico (snapshot events v1, ex.
+// payment_intent.succeeded/payment_failed).
+export function getConnectWebhookSecretV1(): string | undefined {
     const secret = String(process.env.STRIPE_CONNECT_WEBHOOK_SECRET ?? "").trim();
+    return secret || undefined;
+}
+
+// Secret do Event Destination v2 (thin events, ex. v2.core.account.*).
+export function getConnectWebhookSecretV2(): string | undefined {
+    const secret = String(process.env.STRIPE_CONNECT_WEBHOOK_SECRET_V2 ?? "").trim();
     return secret || undefined;
 }
 

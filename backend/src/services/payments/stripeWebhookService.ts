@@ -2,7 +2,11 @@ import type { PoolClient } from "pg";
 import type Stripe from "stripe";
 import { withControlTransaction } from "@/lib/db/control";
 import { findActiveTenantById, withTenantTransaction } from "@/lib/db/tenant";
-import { getConnectWebhookSecret, getStripeClient } from "@/payments/providers/stripe/client";
+import {
+    getConnectWebhookSecretV1,
+    getConnectWebhookSecretV2,
+    getStripeClient,
+} from "@/payments/providers/stripe/client";
 import { mapStripeAccountOnboardingStatus, mapStripePaymentIntentEvent } from "@/payments/providers/stripe";
 import {
     activatePaymentIntegrationRow,
@@ -134,9 +138,9 @@ async function processV2AccountWebhook(
     client: Stripe,
     rawBody: string,
     signature: string,
-    webhookSecret: string,
+    webhookSecretV2: string,
 ): Promise<void> {
-    const notification = client.parseEventNotification(rawBody, signature, webhookSecret);
+    const notification = client.parseEventNotification(rawBody, signature, webhookSecretV2);
     if (!V2_ACCOUNT_EVENT_TYPES.has(notification.type)) return;
 
     const accountId = (notification as { related_object?: { id?: string } | null }).related_object?.id;
@@ -167,9 +171,9 @@ async function processPaymentWebhook(
     client: Stripe,
     rawBody: string,
     signature: string,
-    webhookSecret: string,
+    webhookSecretV1: string,
 ): Promise<void> {
-    const event = client.webhooks.constructEvent(rawBody, signature, webhookSecret);
+    const event = client.webhooks.constructEvent(rawBody, signature, webhookSecretV1);
     if (!PAYMENT_EVENT_TYPES.has(event.type)) return;
     const accountId = (event as { account?: string }).account;
     if (!accountId) {
@@ -198,8 +202,7 @@ export async function processStripeWebhook(
     signature: string | null,
 ): Promise<{ status: number; body: { received: boolean } }> {
     const client = getStripeClient();
-    const webhookSecret = getConnectWebhookSecret();
-    if (!client || !webhookSecret) {
+    if (!client) {
         throw new ValidationError("STRIPE_NOT_CONFIGURED", "Stripe não configurado.");
     }
     if (!signature) throw new ValidationError("INVALID_WEBHOOK_SIGNATURE", "Assinatura ausente.");
@@ -207,10 +210,24 @@ export async function processStripeWebhook(
     let payload: { object?: string };
     try {
         payload = JSON.parse(rawBody) as { object?: string };
-        // Verifica a assinatura antes de tentar qualquer processamento ou
-        // consulta. O parse é repetido na função de processamento para obter
-        // o objeto tipado correspondente (thin v2 ou snapshot de pagamento).
-        if (payload.object === "v2.core.event") {
+    } catch (exc) {
+        logger.warn("stripe-webhook", "Webhook Stripe inválido ou não processável", errorMeta(exc));
+        throw new ValidationError("INVALID_WEBHOOK_SIGNATURE", "Assinatura ou payload de webhook inválido.");
+    }
+
+    // O campo `object` do payload não-verificado só decide qual secret usar
+    // na verificação de assinatura abaixo -- cada tipo de evento (thin v2 x
+    // snapshot v1) vem de um Event Destination distinto na Stripe, com seu
+    // próprio whsec_ (ver client.ts). Nenhum dado do payload é processado
+    // antes da assinatura ser validada.
+    const isV2Event = payload.object === "v2.core.event";
+    const webhookSecret = isV2Event ? getConnectWebhookSecretV2() : getConnectWebhookSecretV1();
+    if (!webhookSecret) {
+        throw new ValidationError("STRIPE_NOT_CONFIGURED", "Stripe não configurado.");
+    }
+
+    try {
+        if (isV2Event) {
             client.parseEventNotification(rawBody, signature, webhookSecret);
         } else {
             client.webhooks.constructEvent(rawBody, signature, webhookSecret);
@@ -221,7 +238,7 @@ export async function processStripeWebhook(
     }
 
     try {
-        if (payload.object === "v2.core.event") {
+        if (isV2Event) {
             await processV2AccountWebhook(client, rawBody, signature, webhookSecret);
         } else {
             await processPaymentWebhook(client, rawBody, signature, webhookSecret);
