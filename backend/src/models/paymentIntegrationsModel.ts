@@ -16,6 +16,7 @@ export interface PaymentIntegrationRow {
     // existir aqui sem ser usado por todo provider.
     stripe_account_id: string | null;
     stripe_onboarding_status: string | null;
+    stripe_api_version: "v2" | null;
     created_at: Date;
     updated_at: Date;
 }
@@ -29,6 +30,7 @@ interface PaymentIntegrationRawRow {
     webhook_secret: string | null;
     stripe_account_id: string | null;
     stripe_onboarding_status: string | null;
+    stripe_api_version: "v2" | null;
     created_at: Date;
     updated_at: Date;
 }
@@ -40,7 +42,7 @@ export interface PaymentIntegrationWriteRow {
 }
 
 const integrationFields =
-    "id, provider, credentials_encrypted, credentials_meta, active, webhook_secret, stripe_account_id, stripe_onboarding_status, created_at, updated_at";
+    "id, provider, credentials_encrypted, credentials_meta, active, webhook_secret, stripe_account_id, stripe_onboarding_status, stripe_api_version, created_at, updated_at";
 
 // Decifra na borda do model (nunca antes) -- quem chama já recebe
 // `credentials` em claro, mas a linha nunca fica em claro fora deste
@@ -55,6 +57,7 @@ function toRow(raw: PaymentIntegrationRawRow): PaymentIntegrationRow {
         webhook_secret: raw.webhook_secret,
         stripe_account_id: raw.stripe_account_id,
         stripe_onboarding_status: raw.stripe_onboarding_status,
+        stripe_api_version: raw.stripe_api_version,
         created_at: raw.created_at,
         updated_at: raw.updated_at,
     };
@@ -161,6 +164,7 @@ export async function disconnectStripeAccountRow(client: PoolClient): Promise<Pa
          SET active = false,
              stripe_account_id = NULL,
              stripe_onboarding_status = NULL,
+             stripe_api_version = NULL,
              updated_at = now()
          WHERE tenant_id = app_tenant_id()
            AND provider = 'stripe'
@@ -176,16 +180,17 @@ export async function disconnectStripeAccountRow(client: PoolClient): Promise<Pa
 // um webhook fora de ordem não pode trocar de conta por baixo do tenant).
 export async function upsertStripeAccountRow(
     client: PoolClient,
-    value: { stripeAccountId: string; onboardingStatus: string },
+    value: { stripeAccountId: string; onboardingStatus: string; apiVersion: "v2" },
 ): Promise<PaymentIntegrationRow | null> {
     const result = await client.query<PaymentIntegrationRawRow>(
         `UPDATE tenant_payment_integrations
          SET stripe_account_id = COALESCE(stripe_account_id, $1),
              stripe_onboarding_status = $2,
+             stripe_api_version = CASE WHEN stripe_account_id IS NULL THEN $3 ELSE stripe_api_version END,
              updated_at = now()
          WHERE tenant_id = app_tenant_id() AND provider = 'stripe'
          RETURNING ${integrationFields}`,
-        [value.stripeAccountId, value.onboardingStatus],
+        [value.stripeAccountId, value.onboardingStatus, value.apiVersion],
     );
     return result.rows[0] ? toRow(result.rows[0]) : null;
 }

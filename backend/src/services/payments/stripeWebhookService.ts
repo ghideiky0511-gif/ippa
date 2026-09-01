@@ -1,8 +1,7 @@
 import type { PoolClient } from "pg";
 import type Stripe from "stripe";
 import { withControlTransaction } from "@/lib/db/control";
-import { findActiveTenantById } from "@/lib/db/tenant";
-import { withTenantTransaction } from "@/lib/db/tenant";
+import { findActiveTenantById, withTenantTransaction } from "@/lib/db/tenant";
 import { getConnectWebhookSecret, getStripeClient } from "@/payments/providers/stripe/client";
 import { mapStripeAccountOnboardingStatus, mapStripePaymentIntentEvent } from "@/payments/providers/stripe";
 import {
@@ -18,57 +17,180 @@ import { applyPaymentChargeWebhookEvent } from "./paymentChargeService";
 import { ValidationError } from "@/services/shared/errors";
 import { errorMeta, logger } from "@/lib/logger";
 
-// Único endpoint Connect (recebe eventos de TODAS as connected accounts,
-// `event.account` identifica qual) -- diferente de todo outro webhook deste
-// registry, chega SEM tenant na URL nem no header, só no payload já
-// verificado. Por isso o roteamento (achar tenant_id a partir de
-// event.account) roda via withControlTransaction (bypassa RLS, mesmo
-// padrão de catalogSyncService::dispatchCatalogSync) ANTES de abrir
-// qualquer transação de tenant -- ver contexto no plano.
-
 const SYSTEM_ACTOR = { role: "system" };
-
-// Só a conta ASSINATURA -- account.updated conta se é onboarding completo,
-// payment_intent.* alimenta payment_charges/orders via paymentChargeService.
-const HANDLED_EVENT_TYPES = new Set([
-    "account.updated",
+const V2_ACCOUNT_EVENT_TYPES = new Set([
+    "v2.core.account.closed",
+    "v2.core.account[configuration.merchant].capability_status_updated",
+    "v2.core.account[configuration.merchant].updated",
+    "v2.core.account[requirements].updated",
+]);
+const PAYMENT_EVENT_TYPES = new Set([
     "payment_intent.succeeded",
     "payment_intent.payment_failed",
 ]);
+const V2_ACCOUNT_INCLUDES = ["configuration.merchant", "requirements"] as const;
 
-async function resolveTenantByStripeAccount(
-    accountId: string,
-): Promise<{ tenantId: string } | null> {
+type StripeWebhookWork = {
+    id: string;
+    type: string;
+    accountId: string;
+    payload: Record<string, unknown>;
+    apply: (client: PoolClient) => Promise<void>;
+};
+
+async function resolveTenantByStripeAccount(accountId: string): Promise<{ tenantId: string } | null> {
     return withControlTransaction(async (client) => {
         const result = await client.query<{ tenant_id: string }>(
-            `SELECT tenant_id FROM tenant_payment_integrations WHERE provider = 'stripe' AND stripe_account_id = $1 LIMIT 1`,
+            `SELECT tenant_id FROM tenant_payment_integrations
+             WHERE provider = 'stripe' AND stripe_account_id = $1 AND stripe_api_version = 'v2'
+             LIMIT 1`,
             [accountId],
         );
         return result.rows[0] ? { tenantId: result.rows[0].tenant_id } : null;
     });
 }
 
-// Caso "evento não identificável" (comentário original da migration 044,
-// só de fato alcançável agora que existe um caminho de tenant_id NULL que
-// não passa pela RLS de ippa_app).
-async function logUnresolvedEvent(event: Stripe.Event, processingError: string): Promise<void> {
+async function logUnresolvedEvent(
+    event: Pick<StripeWebhookWork, "id" | "type" | "payload">,
+    processingError: string,
+): Promise<void> {
     await withControlTransaction((client) =>
         client.query(
             `INSERT INTO payment_webhook_events (tenant_id, provider, external_event_id, event_type, signature_valid, payload, processing_error)
              VALUES (NULL, 'stripe', $1, $2, true, $3::jsonb, $4)`,
-            [event.id, event.type, JSON.stringify(event), processingError],
+            [event.id, event.type, JSON.stringify(event.payload), processingError],
         ),
     );
 }
 
-async function applyAccountUpdated(client: PoolClient, account: Stripe.Account): Promise<void> {
+async function applyV2AccountState(client: PoolClient, account: Stripe.V2.Core.Account): Promise<void> {
     const status = mapStripeAccountOnboardingStatus(account);
-    const row = await upsertStripeAccountRow(client, { stripeAccountId: account.id, onboardingStatus: status });
+    const row = await upsertStripeAccountRow(client, {
+        stripeAccountId: account.id,
+        onboardingStatus: status,
+        apiVersion: "v2",
+    });
     if (status === "complete" && row && !row.active) {
         await activatePaymentIntegrationRow(client, "stripe");
     } else if (status !== "complete" && row?.active) {
         await deactivatePaymentIntegrationProviderRow(client, "stripe");
     }
+}
+
+async function processResolvedWebhook(work: StripeWebhookWork): Promise<void> {
+    const resolved = await resolveTenantByStripeAccount(work.accountId);
+    if (!resolved) {
+        await logUnresolvedEvent(work, "unknown_stripe_account");
+        return;
+    }
+
+    const tenant = await findActiveTenantById(resolved.tenantId);
+    if (!tenant) {
+        await logUnresolvedEvent(work, "tenant_inactive_or_not_found");
+        return;
+    }
+
+    let processingError: string | undefined;
+    try {
+        await withTenantTransaction(tenant, SYSTEM_ACTOR, async (dbClient) => {
+            if (await hasProcessedPaymentWebhookEvent(dbClient, "stripe", work.id)) return;
+            await work.apply(dbClient);
+            await insertPaymentWebhookEventRow(dbClient, {
+                provider: "stripe",
+                externalEventId: work.id,
+                eventType: work.type,
+                signatureValid: true,
+                payload: work.payload,
+                processedAt: new Date(),
+            });
+        });
+    } catch (exc) {
+        processingError = exc instanceof Error ? exc.message : String(exc);
+        logger.error("stripe-webhook", "Falha ao processar evento Stripe", {
+            tenantId: tenant.id,
+            eventId: work.id,
+            eventType: work.type,
+            ...errorMeta(exc),
+        });
+    }
+
+    if (processingError) {
+        await withTenantTransaction(tenant, SYSTEM_ACTOR, (dbClient) =>
+            insertPaymentWebhookEventRow(dbClient, {
+                provider: "stripe",
+                externalEventId: work.id,
+                eventType: work.type,
+                signatureValid: true,
+                payload: work.payload,
+                processingError,
+            }),
+        ).catch((loggingExc) => {
+            logger.error("stripe-webhook", "Falha ao registrar erro de processamento", errorMeta(loggingExc));
+        });
+    }
+}
+
+async function processV2AccountWebhook(
+    client: Stripe,
+    rawBody: string,
+    signature: string,
+    webhookSecret: string,
+): Promise<void> {
+    const notification = client.parseEventNotification(rawBody, signature, webhookSecret);
+    if (!V2_ACCOUNT_EVENT_TYPES.has(notification.type)) return;
+
+    const accountId = (notification as { related_object?: { id?: string } | null }).related_object?.id;
+    if (!accountId) {
+        await logUnresolvedEvent({
+            id: notification.id,
+            type: notification.type,
+            payload: notification as unknown as Record<string, unknown>,
+        }, "no_account_in_event");
+        return;
+    }
+
+    // Eventos v2 thin não trazem o snapshot da conta. A fonte de verdade é a
+    // leitura atual pela API v2, como exigido pela Stripe para esse payload.
+    const account = await client.v2.core.accounts.retrieve(accountId, {
+        include: [...V2_ACCOUNT_INCLUDES],
+    });
+    await processResolvedWebhook({
+        id: notification.id,
+        type: notification.type,
+        accountId,
+        payload: notification as unknown as Record<string, unknown>,
+        apply: (dbClient) => applyV2AccountState(dbClient, account),
+    });
+}
+
+async function processPaymentWebhook(
+    client: Stripe,
+    rawBody: string,
+    signature: string,
+    webhookSecret: string,
+): Promise<void> {
+    const event = client.webhooks.constructEvent(rawBody, signature, webhookSecret);
+    if (!PAYMENT_EVENT_TYPES.has(event.type)) return;
+    const accountId = (event as { account?: string }).account;
+    if (!accountId) {
+        await logUnresolvedEvent({
+            id: event.id,
+            type: event.type,
+            payload: event as unknown as Record<string, unknown>,
+        }, "no_account_in_event");
+        return;
+    }
+    const mapped = mapStripePaymentIntentEvent(event);
+    if (!mapped) return;
+    await processResolvedWebhook({
+        id: event.id,
+        type: event.type,
+        accountId,
+        payload: event as unknown as Record<string, unknown>,
+        apply: async (dbClient) => {
+            await applyPaymentChargeWebhookEvent(dbClient, "stripe", mapped);
+        },
+    });
 }
 
 export async function processStripeWebhook(
@@ -82,99 +204,34 @@ export async function processStripeWebhook(
     }
     if (!signature) throw new ValidationError("INVALID_WEBHOOK_SIGNATURE", "Assinatura ausente.");
 
-    let event: Stripe.Event;
+    let payload: { object?: string };
     try {
-        event = client.webhooks.constructEvent(rawBody, signature, webhookSecret);
+        payload = JSON.parse(rawBody) as { object?: string };
+        // Verifica a assinatura antes de tentar qualquer processamento ou
+        // consulta. O parse é repetido na função de processamento para obter
+        // o objeto tipado correspondente (thin v2 ou snapshot de pagamento).
+        if (payload.object === "v2.core.event") {
+            client.parseEventNotification(rawBody, signature, webhookSecret);
+        } else {
+            client.webhooks.constructEvent(rawBody, signature, webhookSecret);
+        }
     } catch (exc) {
-        logger.warn("stripe-webhook", "Assinatura de webhook inválida", errorMeta(exc));
-        throw new ValidationError("INVALID_WEBHOOK_SIGNATURE", "Assinatura inválida.");
+        logger.warn("stripe-webhook", "Webhook Stripe inválido ou não processável", errorMeta(exc));
+        throw new ValidationError("INVALID_WEBHOOK_SIGNATURE", "Assinatura ou payload de webhook inválido.");
     }
 
-    if (!HANDLED_EVENT_TYPES.has(event.type)) {
-        // Tipo que não assinamos/tratamos -- ack sem logar linha nenhuma
-        // (não é um evento "não identificável", é só irrelevante).
-        return { status: 200, body: { received: true } };
-    }
-
-    const account = (event as { account?: string }).account;
-    if (!account) {
-        await logUnresolvedEvent(event, "no_account_in_event");
-        return { status: 200, body: { received: true } };
-    }
-
-    const resolved = await resolveTenantByStripeAccount(account);
-    if (!resolved) {
-        await logUnresolvedEvent(event, "unknown_stripe_account");
-        return { status: 200, body: { received: true } };
-    }
-
-    const tenant = await findActiveTenantById(resolved.tenantId);
-    if (!tenant) {
-        await logUnresolvedEvent(event, "tenant_inactive_or_not_found");
-        return { status: 200, body: { received: true } };
-    }
-
-    let processingError: string | undefined;
     try {
-        await withTenantTransaction(tenant, SYSTEM_ACTOR, async (dbClient) => {
-            // Idempotência real: só um evento já processado COM SUCESSO é
-            // duplicata de verdade (ver hasProcessedPaymentWebhookEvent).
-            if (event.id && (await hasProcessedPaymentWebhookEvent(dbClient, "stripe", event.id))) {
-                return;
-            }
-            if (event.type === "account.updated") {
-                await applyAccountUpdated(dbClient, event.data.object as Stripe.Account);
-            } else {
-                const mapped = mapStripePaymentIntentEvent(event);
-                if (mapped) await applyPaymentChargeWebhookEvent(dbClient, "stripe", mapped);
-            }
-            await insertPaymentWebhookEventRow(dbClient, {
-                provider: "stripe",
-                externalEventId: event.id,
-                eventType: event.type,
-                signatureValid: true,
-                payload: event as unknown as Record<string, unknown>,
-                processedAt: new Date(),
-            });
-        });
+        if (payload.object === "v2.core.event") {
+            await processV2AccountWebhook(client, rawBody, signature, webhookSecret);
+        } else {
+            await processPaymentWebhook(client, rawBody, signature, webhookSecret);
+        }
     } catch (exc) {
-        processingError = exc instanceof Error ? exc.message : String(exc);
-        logger.error("stripe-webhook", "Falha ao processar evento Stripe", {
-            tenantId: tenant.id,
-            eventId: event.id,
-            eventType: event.type,
-            ...errorMeta(exc),
-        });
+        // A assinatura já foi verificada. Falhas transitórias de consulta ou
+        // banco ficam observáveis no log, mas não expõem o endpoint a retries
+        // infinitos de um evento que não pode ser aplicado naquele momento.
+        logger.error("stripe-webhook", "Falha ao processar webhook Stripe", errorMeta(exc));
     }
 
-    if (processingError) {
-        // Transação/conexão NOVA de propósito: se a falha acima veio de um
-        // erro de banco, o client anterior fica numa transação abortada até
-        // o ROLLBACK do withTenantTransaction que já rodou -- reusar aquele
-        // client pra este INSERT arriscaria falhar em cascata e deixar o
-        // evento sem log nenhum. Um erro AQUI (não deveria acontecer) só
-        // vira log, nunca propaga -- devolver 200 pra Stripe já foi decidido.
-        await withTenantTransaction(tenant, SYSTEM_ACTOR, (dbClient) =>
-            insertPaymentWebhookEventRow(dbClient, {
-                provider: "stripe",
-                externalEventId: event.id,
-                eventType: event.type,
-                signatureValid: true,
-                payload: event as unknown as Record<string, unknown>,
-                processingError,
-            }),
-        ).catch((loggingExc) => {
-            logger.error(
-                "stripe-webhook",
-                "Falha ao registrar o erro de processamento do webhook",
-                errorMeta(loggingExc),
-            );
-        });
-    }
-
-    // 200 mesmo em erro de processamento -- Stripe re-entregar não resolve
-    // um bug nosso, e o evento já está logado com processing_error (ver
-    // hasProcessedPaymentWebhookEvent, que deixa passar de novo numa
-    // redelivery real caso o bug seja corrigido).
     return { status: 200, body: { received: true } };
 }

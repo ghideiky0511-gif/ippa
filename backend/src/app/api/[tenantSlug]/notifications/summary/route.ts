@@ -28,7 +28,7 @@ export async function GET(
         const result = await pushNotifications.inbox(
             route.tenant,
             session.user,
-            false,
+            "all",
             1,
         );
         return { total: result.total, unread: result.unread };

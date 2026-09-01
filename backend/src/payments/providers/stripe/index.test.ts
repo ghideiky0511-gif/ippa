@@ -109,7 +109,10 @@ test("stripe: fetchChargeStatus mapeia status pendente e falho", async () => {
 });
 
 test("stripe: testConnection ok quando a connected account existe", async () => {
-    const mock = mockFetchOnce(() => jsonResponse({ id: "acct_123", object: "account", deleted: false }));
+    const mock = mockFetchOnce((url) => {
+        assert.ok(url.startsWith("https://api.stripe.com/v2/core/accounts/acct_123"));
+        return jsonResponse({ id: "acct_123", object: "v2.core.account", applied_configurations: ["merchant"], created: "2026-09-01T00:00:00.000Z", livemode: false, closed: false });
+    });
     try {
         const provider = createStripePaymentProvider({ stripeAccountId: "acct_123" });
         const result = await provider.testConnection?.();
@@ -140,30 +143,38 @@ test("createStripePaymentProvider exige stripeAccountId", () => {
     assert.throws(() => createStripePaymentProvider({}), /stripeAccountId/);
 });
 
-test("mapStripeAccountOnboardingStatus: pending antes do KYC", () => {
+test("mapStripeAccountOnboardingStatus: pending enquanto cartão está pendente", () => {
     assert.equal(
-        mapStripeAccountOnboardingStatus({ charges_enabled: false, details_submitted: false, requirements: undefined }),
-        "pending",
-    );
-    assert.equal(
-        mapStripeAccountOnboardingStatus({ charges_enabled: true, details_submitted: false, requirements: undefined }),
+        mapStripeAccountOnboardingStatus({
+            configuration: { merchant: { applied: true, capabilities: { card_payments: { status: "pending", status_details: [] } } } },
+        }),
         "pending",
     );
 });
 
-test("mapStripeAccountOnboardingStatus: complete quando charges_enabled e details_submitted", () => {
+test("mapStripeAccountOnboardingStatus: complete quando card_payments está ativa", () => {
     assert.equal(
-        mapStripeAccountOnboardingStatus({ charges_enabled: true, details_submitted: true, requirements: undefined }),
+        mapStripeAccountOnboardingStatus({
+            configuration: { merchant: { applied: true, capabilities: { card_payments: { status: "active", status_details: [] } } } },
+        }),
         "complete",
     );
 });
 
-test("mapStripeAccountOnboardingStatus: restricted quando a Stripe desabilita a conta, mesmo se completa", () => {
+test("mapStripeAccountOnboardingStatus: restricted quando cartão exige ação", () => {
     assert.equal(
         mapStripeAccountOnboardingStatus({
-            charges_enabled: true,
-            details_submitted: true,
-            requirements: { disabled_reason: "requirements.past_due" } as never,
+            configuration: {
+                merchant: {
+                    applied: true,
+                    capabilities: {
+                        card_payments: {
+                            status: "restricted",
+                            status_details: [{ code: "requirements_past_due", resolution: "provide_info" }],
+                        },
+                    },
+                },
+            },
         }),
         "restricted",
     );

@@ -19,6 +19,7 @@ export interface PaymentIntegrationOption {
   active: boolean;
   stripeAccountId?: string | null;
   stripeOnboardingStatus?: 'pending' | 'complete' | 'restricted' | null;
+  stripeApiVersion?: 'v2' | null;
   updatedAt: string | null;
 }
 

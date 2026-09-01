@@ -19,12 +19,21 @@ export function getStripeClient(): Stripe | null {
         const secretKey = String(process.env.STRIPE_SECRET_KEY ?? "").trim();
         client = secretKey
             ? new Stripe(secretKey, {
-                  apiVersion: "2025-02-24.acacia",
                   httpClient: Stripe.createFetchHttpClient(),
               })
             : null;
     }
     return client;
+}
+
+// Chave pública da plataforma (também única, não por tenant -- mesmo
+// raciocínio de STRIPE_SECRET_KEY acima) -- exposta ao navegador via a
+// resposta da API de resumo de pagamento (orderPaymentLinkService.ts), não
+// via env de build do frontend: o frontend é uma imagem Docker só, servindo
+// vários tenants, sem processo de build por tenant.
+export function getStripePublishableKey(): string | undefined {
+    const key = String(process.env.STRIPE_PUBLISHABLE_KEY ?? "").trim();
+    return key || undefined;
 }
 
 export function getConnectWebhookSecret(): string | undefined {

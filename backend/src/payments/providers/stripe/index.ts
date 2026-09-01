@@ -131,14 +131,20 @@ export function mapStripePaymentIntentEvent(event: Stripe.Event): WebhookEvent |
     };
 }
 
-// Lógica pura de mapeamento account.updated -> nosso status de onboarding,
+// Lógica pura de mapeamento Accounts v2 -> nosso status de onboarding,
 // extraída pra ser testável sem banco (ver stripeWebhookService.ts, que só
-// orquestra: chama isto e grava o resultado).
+// orquestra: busca o estado atual pela API v2, chama isto e grava o resultado).
 export function mapStripeAccountOnboardingStatus(
-    account: Pick<Stripe.Account, "charges_enabled" | "details_submitted" | "requirements">,
+    account: Pick<Stripe.V2.Core.Account, "closed" | "configuration" | "requirements">,
 ): "pending" | "complete" | "restricted" {
-    if (account.requirements?.disabled_reason) return "restricted";
-    if (account.charges_enabled && account.details_submitted) return "complete";
+    const cardPayments = account.configuration?.merchant?.capabilities?.card_payments;
+    const hasPastDueRequirement = account.requirements?.entries?.some(
+        (entry) => entry.minimum_deadline?.status === "past_due",
+    );
+    if (account.closed || hasPastDueRequirement || cardPayments?.status === "restricted" || cardPayments?.status === "unsupported") {
+        return "restricted";
+    }
+    if (cardPayments?.status === "active") return "complete";
     return "pending";
 }
 
@@ -210,7 +216,7 @@ export function createStripePaymentProvider(
                 "stripe.paymentIntents.retrieve",
                 "GET",
                 "/v1/payment_intents",
-                () => client.paymentIntents.retrieve(externalId, { stripeAccount: stripeAccountId }),
+                () => client.paymentIntents.retrieve(externalId, {}, { stripeAccount: stripeAccountId }),
             );
             return {
                 externalId: intent.id,
@@ -238,10 +244,12 @@ export function createStripePaymentProvider(
             const client = getStripeClient();
             if (!client) return { ok: false, message: "Stripe não configurado (STRIPE_SECRET_KEY ausente)." };
             try {
-                const account = await report(reporter, "stripe.accounts.retrieve", "GET", "/v1/accounts", () =>
-                    client.accounts.retrieve(stripeAccountId),
+                const account = await report(reporter, "stripe.v2.core.accounts.retrieve", "GET", "/v2/core/accounts", () =>
+                    client.v2.core.accounts.retrieve(stripeAccountId, {
+                        include: ["configuration.merchant"],
+                    }),
                 );
-                if (account.deleted) return { ok: false, message: "Connected account removida na Stripe." };
+                if (account.closed) return { ok: false, message: "Connected account removida na Stripe." };
                 return { ok: true };
             } catch (exc) {
                 return {

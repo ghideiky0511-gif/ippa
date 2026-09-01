@@ -1,6 +1,7 @@
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser } from "@/lib/types";
+import type Stripe from "stripe";
 import { getStripeClient } from "@/payments/providers/stripe/client";
 import { mapStripeAccountOnboardingStatus } from "@/payments/providers/stripe";
 import {
@@ -27,6 +28,22 @@ import { ValidationError } from "@/services/shared/errors";
 // quando o webhook account.updated confirma charges_enabled/details_submitted
 // (ver stripeWebhookService.ts).
 
+const V2_ACCOUNT_INCLUDES = ["configuration.merchant", "requirements"] as const;
+
+function describeV2Requirements(account: Stripe.V2.Core.Account): StripeOnboardingSyncResult["requirements"] {
+    const entries = account.requirements?.entries ?? [];
+    const descriptionsFor = (status: "currently_due" | "past_due") =>
+        entries
+            .filter((entry) => entry.minimum_deadline?.status === status)
+            .map((entry) => entry.description);
+    const statusDetails = account.configuration?.merchant?.capabilities?.card_payments?.status_details ?? [];
+    return {
+        disabledReason: statusDetails.map((detail) => detail.code).join(", ") || null,
+        currentlyDue: descriptionsFor("currently_due"),
+        pastDue: descriptionsFor("past_due"),
+    };
+}
+
 export async function createStripeOnboardingLink(
     tenant: Tenant,
     user: AuthUser,
@@ -43,9 +60,16 @@ export async function createStripeOnboardingLink(
         findPaymentIntegrationRowByProvider(dbClient, "stripe"),
     );
 
+    if (existing?.stripe_account_id && existing.stripe_api_version !== "v2") {
+        throw new ValidationError(
+            "STRIPE_ACCOUNT_V1_RECONNECT_REQUIRED",
+            "Esta loja possui uma conta Stripe vinculada pela API antiga. Use \"Trocar conta Stripe\" para reconectá-la exclusivamente pela Accounts v2.",
+        );
+    }
+
     let stripeAccountId = existing?.stripe_account_id ?? undefined;
     if (!stripeAccountId) {
-        // accounts.create é uma chamada de rede -- fica FORA da transação de
+        // Accounts v2.create é uma chamada de rede -- fica FORA da transação de
         // banco de propósito (mesmo raciocínio de createOrderCharge em
         // paymentChargeService.ts: nunca segurar conexão do pool durante
         // uma chamada à Stripe). Dois cliques concorrentes de "conectar"
@@ -53,13 +77,30 @@ export async function createStripeOnboardingLink(
         // Stripe -- upsertStripeAccountRow's COALESCE garante que só a
         // primeira grava no banco; a segunda fica órfã do lado da Stripe,
         // aceitável (ação manual de admin, sem dinheiro envolvido ainda).
-        const account = await client.accounts.create({
-            type: "express",
-            // O checkout atual faz direct charges na connected account. Sem
-            // pedir esta capability, a Stripe pode concluir o formulário mas
-            // manter a conta incapaz de aceitar cartão.
-            capabilities: { card_payments: { requested: true } },
+        const account = await client.v2.core.accounts.create({
+            contact_email: user.email,
+            display_name: tenant.name,
+            // `express` com a Stripe responsável pelos saldos negativos ainda
+            // exige uma versão preview da API. O Dashboard completo é a
+            // configuração estável compatível com as responsabilidades abaixo.
+            dashboard: "full",
+            // Obrigatório assim que qualquer configuration é pedida (erro
+            // `identity_country_required`) -- plataforma opera só no Brasil
+            // por ora, mesmo escopo de "apenas cartão" já decidido. O resto
+            // da identidade (CPF/CNPJ, endereço etc.) é coletado no próprio
+            // Account Link via collection_options abaixo.
+            identity: { country: "BR" },
+            // O checkout atual faz direct charges: merchant torna a connected
+            // account a merchant of record e card_payments habilita cartão.
+            configuration: { merchant: { capabilities: { card_payments: { requested: true } } } },
+            defaults: {
+                responsibilities: {
+                    fees_collector: "stripe",
+                    losses_collector: "stripe",
+                },
+            },
             metadata: { tenant_id: tenant.id, tenant_slug: tenant.slug },
+            include: [...V2_ACCOUNT_INCLUDES],
         });
         stripeAccountId = account.id;
         await withTenantTransaction(tenant, user, async (dbClient) => {
@@ -70,7 +111,8 @@ export async function createStripeOnboardingLink(
             });
             await upsertStripeAccountRow(dbClient, {
                 stripeAccountId: account.id,
-                onboardingStatus: "pending",
+                onboardingStatus: mapStripeAccountOnboardingStatus(account),
+                apiVersion: "v2",
             });
             await recordAuditEvent(dbClient, {
                 action: PAYMENT_INTEGRATION_AUDIT_ACTIONS.CONFIGURED,
@@ -83,33 +125,33 @@ export async function createStripeOnboardingLink(
     }
 
     try {
-        const accountLink = await client.accountLinks.create({
+        const accountLink = await client.v2.core.accountLinks.create({
             account: stripeAccountId,
-            type: "account_onboarding",
-            return_url: returnUrl,
-            refresh_url: returnUrl,
+            use_case: {
+                type: "account_onboarding",
+                account_onboarding: {
+                    configurations: ["merchant"],
+                    collection_options: {
+                        fields: "eventually_due",
+                        future_requirements: "include",
+                    },
+                    return_url: returnUrl,
+                    refresh_url: returnUrl,
+                },
+            },
         });
         return { url: accountLink.url };
     } catch (error) {
-        // Este caso acontece ao trocar STRIPE_SECRET_KEY por uma chave de
-        // outra plataforma. O acct_ salvo ainda existe, mas pertence à
-        // plataforma antiga e não pode receber Account Links desta nova.
-        if (error instanceof Error && /account link for an account that is not connected to your platform/i.test(error.message)) {
+        if (error instanceof Error && /accounts_v2_access_blocked/i.test(error.message)) {
             throw new ValidationError(
-                "STRIPE_ACCOUNT_BELONGS_TO_ANOTHER_PLATFORM",
-                "A conta Stripe vinculada pertence à plataforma anterior. Use \"Trocar conta Stripe\" para desvinculá-la desta loja e criar uma conta Connect na plataforma atual.",
+                "STRIPE_ACCOUNTS_V2_NOT_ENABLED",
+                "Accounts v2 ainda não está habilitada para esta plataforma Stripe. Habilite Accounts v2 no Dashboard da Stripe e tente novamente.",
             );
         }
         if (error instanceof Error && /only create new accounts if you've signed up for Connect/i.test(error.message)) {
             throw new ValidationError(
                 "STRIPE_CONNECT_NOT_ENABLED",
                 "A conta Stripe da plataforma ainda não está habilitada para o Stripe Connect. Abra https://dashboard.stripe.com/connect, conclua a adesão ao Connect no modo de teste e tente conectar a loja novamente.",
-            );
-        }
-        if (error instanceof Error && /no longer recommends Accounts v1 for new Connect integrations/i.test(error.message)) {
-            throw new ValidationError(
-                "STRIPE_ACCOUNTS_V1_NOT_ENABLED",
-                "Esta conta Stripe desativou a compatibilidade Accounts v1, usada pelo onboarding hospedado atual. Em modo de teste, abra https://dashboard.stripe.com/settings/features/feat_accounts_v1_support, habilite Accounts v1 support e tente conectar a loja novamente.",
             );
         }
         throw error;
@@ -164,19 +206,19 @@ export async function syncStripeOnboardingStatus(
     if (!existing?.stripe_account_id) {
         throw new ValidationError("STRIPE_ACCOUNT_NOT_CONNECTED", "Conecte uma conta Stripe antes de atualizar o status.");
     }
-
-    const stripeAccountId = existing.stripe_account_id;
-    let account = await client.accounts.retrieve(stripeAccountId);
-    if (account.deleted) {
-        throw new ValidationError("STRIPE_ACCOUNT_DELETED", "A conta conectada foi removida na Stripe.");
+    if (existing.stripe_api_version !== "v2") {
+        throw new ValidationError(
+            "STRIPE_ACCOUNT_V1_RECONNECT_REQUIRED",
+            "Esta loja possui uma conta Stripe vinculada pela API antiga. Use \"Trocar conta Stripe\" para reconectá-la exclusivamente pela Accounts v2.",
+        );
     }
 
-    // Contas criadas antes de pedirmos card_payments explicitamente ainda
-    // podem ser corrigidas sem recriar nem desvincular a conta do tenant.
-    if (!account.capabilities?.card_payments) {
-        account = await client.accounts.update(stripeAccountId, {
-            capabilities: { card_payments: { requested: true } },
-        });
+    const stripeAccountId = existing.stripe_account_id;
+    const account = await client.v2.core.accounts.retrieve(stripeAccountId, {
+        include: [...V2_ACCOUNT_INCLUDES],
+    });
+    if (account.closed) {
+        throw new ValidationError("STRIPE_ACCOUNT_DELETED", "A conta conectada foi removida na Stripe.");
     }
 
     const status = mapStripeAccountOnboardingStatus(account);
@@ -184,6 +226,7 @@ export async function syncStripeOnboardingStatus(
         const row = await upsertStripeAccountRow(dbClient, {
             stripeAccountId,
             onboardingStatus: status,
+            apiVersion: "v2",
         });
         if (status === "complete" && row && !row.active) {
             await activatePaymentIntegrationRow(dbClient, "stripe");
@@ -200,10 +243,6 @@ export async function syncStripeOnboardingStatus(
         stripeAccountId,
         status,
         active,
-        requirements: {
-            disabledReason: account.requirements?.disabled_reason ?? null,
-            currentlyDue: account.requirements?.currently_due ?? [],
-            pastDue: account.requirements?.past_due ?? [],
-        },
+        requirements: describeV2Requirements(account),
     };
 }

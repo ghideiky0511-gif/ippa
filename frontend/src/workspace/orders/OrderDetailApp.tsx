@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { ArrowLeft, Ban, CheckCircle2, PackagePlus, Printer, RefreshCw, Wrench } from 'lucide-react';
+import { ArrowLeft, Ban, CheckCircle2, PackageCheck, PackagePlus, Printer, RefreshCw, Wrench } from 'lucide-react';
 import type { Order, OrderSession } from '@/domain/orders/types';
 import type { ClientWithLogin } from '@/domain/clients/types';
 import type { ProviderOrderAttempt, ProviderOrderAttemptOutcome, ProviderOrderRow, ProviderOrderStatus } from '@/workspace/lib/erpIntegrationClient';
@@ -16,7 +16,7 @@ import { requestOrderPushResend } from '@/workspace/lib/erpIntegrationClient';
 import { useWorkspaceAuth } from '@/workspace/components/WorkspaceAuthProvider';
 import { Sheet, SheetContent, SheetHeader, SheetTrigger } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogCloseButton, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { markOrderPaid, cancelOrder, updateOrderSession } from '@/lib/ordersClient';
+import { markOrderPaid, cancelOrder, confirmOrderSeparation, updateOrderSession } from '@/lib/ordersClient';
 import { StatusChip, type StatusChipTone } from '@/components/StatusChip';
 import { ORDER_STATUS_LABELS, OrderStatusChip } from './orderStatus';
 
@@ -73,7 +73,7 @@ function StatusBadge({ status }: { status: ProviderOrderStatus }) {
   return <StatusChip label={PUSH_STATUS_LABELS[status]} tone={PUSH_STATUS_TONES[status]} />;
 }
 
-type ConfirmAction = 'mark-paid' | 'cancel';
+type ConfirmAction = 'mark-paid' | 'cancel' | 'confirm-separation';
 
 export default function OrderDetailApp({
   initialOrder,
@@ -106,6 +106,10 @@ export default function OrderDetailApp({
   const canManageOrder = Boolean(workspaceUser) && workspaceUser?.role !== 'cliente';
   const canMarkPaid = order.status !== 'aberto' && order.status !== 'pago' && order.status !== 'cancelado';
   const canCancel = order.status !== 'pago' && order.status !== 'cancelado';
+  // Pré-requisito manual pra cobrança real (Stripe) funcionar -- ver
+  // orderService.confirmOrderItemsSeparation. Só a partir de 'novo' (carrinho
+  // já fechado); pedidos 'separado'/'pago' não precisam confirmar de novo.
+  const canConfirmSeparation = canManageOrder && order.status === 'novo';
   // Upsell: reabre o atendimento que originou este pedido e leva pro
   // catálogo -- mesmo fluxo de sempre pra adicionar peça (websocket na
   // sessão ativa), só que numa sessão que já tinha fechado ao finalizar. O
@@ -152,6 +156,10 @@ export default function OrderDetailApp({
         if (updatedPushStatus !== undefined) setPushStatus(updatedPushStatus as ProviderOrderRow | null);
         toast.success('Pedido cancelado.');
         if (erpWarning) toast.error(`Cancelado localmente, mas houve um problema ao cancelar no ERP: ${erpWarning}`);
+      } else if (confirmAction === 'confirm-separation') {
+        const updated = await confirmOrderSeparation(order.id);
+        setOrder(updated);
+        toast.success('Separação confirmada.');
       }
       setConfirmAction(null);
       setPaymentMethodInput('');
@@ -334,6 +342,15 @@ export default function OrderDetailApp({
                 {upsellPending ? 'Abrindo...' : 'Adicionar peças'}
               </button>
             )}
+            {canConfirmSeparation && (
+              <button
+                type="button"
+                className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background"
+                onClick={() => { setFabOpen(false); setConfirmAction('confirm-separation'); }}
+              >
+                <PackageCheck className="mr-2 size-3.5" aria-hidden="true" />Confirmar separação
+              </button>
+            )}
             {canManageOrder && canMarkPaid && (
               <button
                 type="button"
@@ -369,12 +386,14 @@ export default function OrderDetailApp({
             <DialogTitle>
               {confirmAction === 'mark-paid' && 'Marcar pedido como pago?'}
               {confirmAction === 'cancel' && 'Cancelar pedido?'}
+              {confirmAction === 'confirm-separation' && 'Confirmar separação dos itens?'}
             </DialogTitle>
             <DialogCloseButton />
           </DialogHeader>
           <DialogDescription>
             {confirmAction === 'mark-paid' && 'Registra este pedido como pago manualmente (dinheiro, Pix direto etc.) — não passa por nenhum gateway de pagamento real.'}
             {confirmAction === 'cancel' && 'Cancela o pedido e as sessões/talão abertos vinculados a ele. Se o pedido já foi enviado ao ERP, o cancelamento também será tentado lá.'}
+            {confirmAction === 'confirm-separation' && 'Confirma que todas as peças deste pedido já foram separadas fisicamente. Necessário antes de qualquer cobrança real ser possível.'}
           </DialogDescription>
           {confirmAction === 'mark-paid' && (
             <div className={`${adminUi.field} mt-3`}>

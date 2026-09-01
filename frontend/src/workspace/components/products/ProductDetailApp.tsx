@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, LockKeyhole, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { ArrowLeft, Check, CircleX, LoaderCircle, LockKeyhole, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import Link from '@/components/TenantLink';
 import ProductImage from '@/components/ProductImage';
 import ProductPrice from '@/components/ProductPrice';
@@ -57,6 +57,8 @@ export default function ProductDetailApp({ initialProduct, allProducts, erpInteg
   const [cartIds, setCartIds] = useState(product.similarProductIdsCart ?? []);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshSucceeded, setRefreshSucceeded] = useState(false);
+  const [refreshFailed, setRefreshFailed] = useState(false);
   const [message, setMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
 
   const galleryUrls = useMemo(() => gallery.split('\n').map((url) => url.trim()).filter(Boolean), [gallery]);
@@ -121,16 +123,21 @@ export default function ProductDetailApp({ initialProduct, allProducts, erpInteg
   async function refreshFromErp() {
     if (!canRefreshFromErp) return;
     setRefreshing(true);
+    setRefreshSucceeded(false);
+    setRefreshFailed(false);
     setMessage(null);
     try {
       const result = await refreshProductFromErp(product.id);
       if (result.status === 'not_found') {
+        setRefreshFailed(true);
         setMessage({ tone: 'error', text: 'Esta referência não foi mais encontrada no ERP. Confirme se ela foi desativada ou removida.' });
         return;
       }
       applyProduct(result.product);
+      setRefreshSucceeded(true);
       setMessage({ tone: 'success', text: 'Produto atualizado com os dados mais recentes do ERP.' });
     } catch (error) {
+      setRefreshFailed(true);
       setMessage({
         tone: 'error',
         text: error instanceof Error && error.message
@@ -143,7 +150,7 @@ export default function ProductDetailApp({ initialProduct, allProducts, erpInteg
   }
 
   return <div>
-    <HubHeader title={product.name} description={sourceLabel(product.sourceOrigin)} secondaryActions={<><Link href="/workspace/produtos" className={adminUi.button}><ArrowLeft className="mr-1.5 inline size-3.5" aria-hidden="true" />Voltar ao hub</Link>{canRefreshFromErp && <Button type="button" variant="outline" loading={refreshing} onClick={refreshFromErp}>{!refreshing && <RefreshCw className="size-4" aria-hidden="true" />}Atualizar do ERP</Button>}</>} />
+    <HubHeader title={product.name} description={sourceLabel(product.sourceOrigin)} secondaryActions={<><Link href="/workspace/produtos" className={adminUi.button}><ArrowLeft className="mr-1.5 inline size-3.5" aria-hidden="true" />Voltar ao hub</Link>{canRefreshFromErp && <Button type="button" variant="outline" disabled={refreshing} onClick={refreshFromErp}><span className="relative size-4" aria-hidden="true"><RefreshCw className={`absolute inset-0 size-4 transition-opacity duration-200 ease-out ${!refreshing && !refreshSucceeded && !refreshFailed ? 'opacity-100' : 'opacity-0'}`} /><LoaderCircle className={`absolute inset-0 size-4 animate-spin transition-opacity duration-200 ease-out ${refreshing ? 'opacity-100' : 'opacity-0'}`} /><Check className={`absolute inset-0 size-4 text-emerald-600 transition-opacity duration-200 ease-out ${!refreshing && refreshSucceeded ? 'opacity-100' : 'opacity-0'}`} /><CircleX className={`absolute inset-0 size-4 text-[#b00020] transition-opacity duration-200 ease-out ${!refreshing && refreshFailed ? 'opacity-100' : 'opacity-0'}`} /></span>Atualizar do ERP</Button>}</>} />
     <main className={`${adminUi.productsEditor} flex flex-col gap-6`}>
       {readOnly && <section className="flex gap-3 rounded-brand border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800"><LockKeyhole className="mt-0.5 size-4 shrink-0" aria-hidden="true" /><div><p className="font-bold">Produto controlado pelo ERP</p><p className="mt-1">Os dados desta peça são somente leitura no Bippa. Faça qualquer alteração diretamente no ERP e aguarde a sincronização.</p></div></section>}
       {message && <p className={`rounded-brand border p-3 text-sm ${message.tone === 'error' ? 'border-[#dba0a0] bg-[#fff1f1] text-[#b00020]' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>{message.text}</p>}

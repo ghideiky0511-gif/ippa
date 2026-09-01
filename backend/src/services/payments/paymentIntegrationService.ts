@@ -49,6 +49,7 @@ export interface TenantPaymentIntegrationOption {
     // uma chave de API (a secret key permanece exclusivamente na plataforma).
     stripeAccountId?: string | null;
     stripeOnboardingStatus?: "pending" | "complete" | "restricted" | null;
+    stripeApiVersion?: "v2" | null;
     updatedAt: string | null;
 }
 
@@ -81,6 +82,10 @@ function toOption(
         stripeOnboardingStatus:
             entry.code === "stripe"
                 ? (row?.stripe_onboarding_status as TenantPaymentIntegrationOption["stripeOnboardingStatus"])
+                : undefined,
+        stripeApiVersion:
+            entry.code === "stripe"
+                ? row?.stripe_api_version ?? null
                 : undefined,
         updatedAt: row ? row.updated_at.toISOString() : null,
     };

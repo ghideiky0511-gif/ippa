@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { ArrowLeft, PackageCheck, ReceiptText, ShoppingBag } from 'lucide-react';
 import Link from '@/components/TenantLink';
 import ProductImage from '@/components/ProductImage';
 import { useAuthUser } from '@/components/AuthProvider';
+import { useTenant } from '@/components/TenantProvider';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -13,7 +15,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { Order } from '@/domain/orders/types';
 import { formatBRL } from '@/lib/format';
-import { fetchCustomerOrder } from '@/lib/ordersClient';
+import { fetchCustomerOrder, requestOrderPaymentLink } from '@/lib/ordersClient';
 import { publicUi } from '@/lib/ui';
 
 const STATUS_LABELS: Record<Order['status'], string> = {
@@ -31,12 +33,6 @@ const CHANNEL_LABELS: Record<Order['channel'], string> = {
   whatsapp: 'WhatsApp',
 };
 
-const PAYMENT_METHODS = [
-  { id: 'pix', label: 'Pix' },
-  { id: 'cartao', label: 'Cartão de crédito' },
-  { id: 'boleto', label: 'Boleto' },
-];
-
 function OrderDetailSkeleton() {
   return (
     <div className="flex flex-col gap-4" aria-hidden="true">
@@ -49,11 +45,26 @@ function OrderDetailSkeleton() {
 
 export default function PedidoDetalhePage() {
   const { authUser } = useAuthUser();
+  const { href } = useTenant();
+  const router = useRouter();
   const { orderNumber: rawOrderNumber } = useParams<{ orderNumber: string }>();
   const orderNumber = /^[1-9]\d*$/.test(rawOrderNumber || '') ? Number(rawOrderNumber) : NaN;
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [payingNow, setPayingNow] = useState(false);
+
+  async function payNow() {
+    if (!order) return;
+    setPayingNow(true);
+    try {
+      const { token } = await requestOrderPaymentLink(order.id);
+      router.push(href(`/pagar/${token}`));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Não foi possível abrir o pagamento.');
+      setPayingNow(false);
+    }
+  }
 
   useEffect(() => {
     if (!authUser || !Number.isSafeInteger(orderNumber)) {
@@ -157,18 +168,19 @@ export default function PedidoDetalhePage() {
             </div>
           </Card>
 
-          {order.status === 'separado' && (
+          {order.status === 'separado' && order.paymentStatus !== 'paid' && (
             <Card className="p-4">
               <h2 className="font-bold text-foreground">Pagamento</h2>
-              <div className={`${publicUi.paymentOptions} mt-3`}>
-                {PAYMENT_METHODS.map((method) => (
-                  <label key={method.id} className={`${publicUi.paymentOption} opacity-50`}>
-                    <input type="radio" name="payment" disabled />
-                    {method.label} <span className="text-xs">(em breve)</span>
-                  </label>
-                ))}
-              </div>
-              <p className="mt-3 text-sm text-muted-foreground">Pagamento pelo site em breve — a loja entra em contato para combinar o pagamento.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Suas peças já foram separadas — falta só pagar com cartão de crédito.</p>
+              <Button className="mt-3" onClick={() => void payNow()} disabled={payingNow}>
+                {payingNow ? 'Abrindo...' : 'Pagar agora'}
+              </Button>
+            </Card>
+          )}
+          {order.paymentStatus === 'paid' && (
+            <Card className="p-4">
+              <h2 className="font-bold text-foreground">Pagamento</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Pagamento confirmado{order.paidAt ? ` em ${new Date(order.paidAt).toLocaleString('pt-BR')}` : ''}.</p>
             </Card>
           )}
         </div>

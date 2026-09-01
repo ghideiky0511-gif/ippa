@@ -18,11 +18,22 @@ import {
   type OrderSession,
   type UpdateOrderSessionInput,
 } from '@/domain/orders/types';
+import { parseOrdersForHub, type OrdersHubResult } from '@/domain/orders/parseOrders';
 import { adminJson } from './http';
 
 export function fetchOrders(params?: { clientId?: string }): Promise<Order[]> {
   const query = params?.clientId ? `?clientId=${encodeURIComponent(params.clientId)}` : '';
   return adminJson(`/api/admin/orders${query}`, OrderSchema.array(), {}, 'Não foi possível carregar os pedidos.');
+}
+
+export async function fetchOrdersForHub(): Promise<OrdersHubResult> {
+  const payload = await adminJson(
+    '/api/admin/orders',
+    z.array(z.unknown()),
+    {},
+    'Não foi possível carregar os pedidos.',
+  );
+  return parseOrdersForHub(payload);
 }
 
 export function fetchCustomerOrder(orderNumber: number): Promise<Order> {
@@ -110,6 +121,26 @@ export function markOrderPaid(orderId: string, paymentMethod?: string): Promise<
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ paymentMethod }),
   }, 'Não foi possível marcar o pedido como pago.');
+}
+
+// Gera (ou reaproveita, se ainda válido) o token de cobrança deste pedido --
+// ver orderPaymentLinkService.ts. A cliente (dona do pedido) ou alguém da
+// loja pode chamar; usado pra levar pra /pagar/[token], a única tela onde a
+// cobrança de verdade acontece (ver comentário em orderPaymentLinkService.ts).
+export function requestOrderPaymentLink(orderId: string): Promise<{ token: string }> {
+  return adminJson(`/api/orders/${orderId}/payment-link`, z.object({ token: z.string() }), {
+    method: 'POST',
+  }, 'Não foi possível gerar o link de pagamento.');
+}
+
+// Confirmação manual da separação física dos itens -- sem integração de
+// fulfillment automática ainda, ver comentário em
+// orderService.confirmOrderItemsSeparation. Pré-requisito pra cobrar o
+// pedido (createOrderCharge exige qty_separated = qty em cada item).
+export function confirmOrderSeparation(orderId: string): Promise<Order> {
+  return adminJson(`/api/admin/orders/${orderId}/confirm-separation`, OrderSchema, {
+    method: 'PUT',
+  }, 'Não foi possível confirmar a separação dos itens.');
 }
 
 // Troca o tipo de frete (transportadora/correios/motoboy/etc.) de um pedido

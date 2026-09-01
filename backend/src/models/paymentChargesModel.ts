@@ -102,9 +102,9 @@ export async function applyPaymentChargeStatusByExternalId(
 ): Promise<PaymentChargeRow | null> {
     const result = await client.query<PaymentChargeRow>(
         `UPDATE payment_charges
-         SET status = $3, external_status = COALESCE($4, external_status),
+         SET status = $3::payment_charge_status, external_status = COALESCE($4, external_status),
              raw_last_webhook = $5::jsonb,
-             paid_at = CASE WHEN $3 = 'paid' THEN now() ELSE paid_at END,
+             paid_at = CASE WHEN $3::payment_charge_status = 'paid' THEN now() ELSE paid_at END,
              updated_at = now()
          WHERE tenant_id = app_tenant_id() AND provider = $1 AND external_id = $2
            AND status NOT IN ('paid', 'failed', 'cancelled')
@@ -121,9 +121,9 @@ export async function applyPaymentChargeStatusById(
 ): Promise<PaymentChargeRow | null> {
     const result = await client.query<PaymentChargeRow>(
         `UPDATE payment_charges
-         SET status = $2, external_status = COALESCE($3, external_status),
+         SET status = $2::payment_charge_status, external_status = COALESCE($3, external_status),
              raw_last_webhook = $4::jsonb,
-             paid_at = CASE WHEN $2 = 'paid' THEN now() ELSE paid_at END,
+             paid_at = CASE WHEN $2::payment_charge_status = 'paid' THEN now() ELSE paid_at END,
              updated_at = now()
          WHERE tenant_id = app_tenant_id() AND id = $1
            AND status NOT IN ('paid', 'failed', 'cancelled')

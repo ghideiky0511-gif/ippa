@@ -8,10 +8,12 @@ import {
     findOrderRowById,
     findOrderRowByNumber,
     findOrderSessionRow,
+    insertOrderItemFulfillmentEventRow,
     listOrderItemRows,
     listOrderItemRowsByOrder,
     listOrderRowsBy,
     listTenantOrderRows,
+    separateAllOrderItemsRow,
     updateOrderRow,
 } from "@/models/ordersModel";
 import { findFreightProviderRow } from "@/models/freightProvidersModel";
@@ -265,6 +267,57 @@ export async function createCustomerOrder(
     sendOrderConfirmedWhatsApp(tenant, whatsappRecipient, order);
     if (sellerRecipient) notifyNewOrderForSeller(tenant, sellerRecipient, order);
     await enqueueOrderPush(tenant, user, order.id);
+    return order;
+}
+
+// Confirmação manual da separação física dos itens (ver migration 023/036 --
+// nenhuma integração de fulfillment escreve qty_separated automaticamente
+// ainda, então é a loja quem confirma). Pré-requisito obrigatório pra
+// createOrderCharge aceitar cobrar o pedido (ver assertOrderChargeable em
+// paymentChargeService.ts) -- sem isso a cobrança real nunca teria como
+// funcionar. 'novo' é o único status de origem válido: 'aberto'/
+// 'aguardando_pagamento' ainda não fecharam o carrinho, e 'separado'/'pago'/
+// 'cancelado' já passaram desse ponto ou nunca vão passar.
+export async function confirmOrderItemsSeparation(
+    tenant: Tenant,
+    user: AuthUser,
+    orderId: string,
+    auditRequestContext: AuditRequestContext,
+): Promise<Order> {
+    requireInternal(user);
+    const order = await withTenantTransaction(tenant, user, async (client) => {
+        const existing = await findOrderRowById(client, orderId, true);
+        if (!existing) throw new NotFoundError("ORDER_NOT_FOUND");
+        if (existing.status === "aberto" || existing.status === "aguardando_pagamento") {
+            throw new ValidationError("ORDER_NOT_READY_FOR_SEPARATION");
+        }
+        if (existing.status === "separado" || existing.status === "pago") {
+            throw new ValidationError("ORDER_ALREADY_SEPARATED");
+        }
+        if (existing.status === "cancelado") throw new ValidationError("ORDER_ALREADY_CANCELLED");
+        const items = (await listOrderItemRowsByOrder(client, orderId)).map((item) => item.snapshot);
+        if (items.length === 0) throw new ValidationError("ORDER_HAS_NO_ITEMS");
+        const separated = await separateAllOrderItemsRow(client, orderId);
+        for (const item of separated) {
+            await insertOrderItemFulfillmentEventRow(client, {
+                orderId,
+                itemKey: item.item_key,
+                qtyDelta: item.qty_delta,
+            });
+        }
+        const row = await updateOrderRow(client, orderId, { status: "separado" });
+        if (!row) throw new NotFoundError("ORDER_NOT_FOUND");
+        await recordAuditEvent(client, {
+            action: ORDER_AUDIT_ACTIONS.ITEMS_SEPARATED,
+            entityId: orderId,
+            actor: user,
+            context: auditRequestContext,
+            metadata: {},
+        });
+        const freightRow = await findOrderFreightRowByOrderId(client, orderId);
+        return toOrder(row, items, freightRow);
+    });
+    notifyOrder(tenant.id, order);
     return order;
 }
 

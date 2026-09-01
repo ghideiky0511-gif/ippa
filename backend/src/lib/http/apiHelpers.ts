@@ -85,6 +85,11 @@ export const ERROR_MESSAGES: Record<string, string> = {
     DELIVERY_LAST_ACTIVE_TYPE: "Mantenha pelo menos um tipo de entrega ativo.",
     DELIVERY_ADDRESS_REQUIRED: "Informe o CEP para entrega no endereço.",
     DELIVERY_EXTERNAL_QUOTE_NOT_AVAILABLE: "A cotação externa ainda não está disponível.",
+    ORDER_NOT_READY_FOR_SEPARATION: "Este pedido ainda está em montagem — finalize o checkout antes de confirmar a separação.",
+    ORDER_ALREADY_SEPARATED: "Este pedido já teve a separação confirmada.",
+    ORDER_HAS_NO_ITEMS: "Este pedido não tem itens.",
+    ORDER_ITEMS_NOT_SEPARATED: "Os itens deste pedido ainda não foram confirmados como separados.",
+    PAYMENT_INTEGRATION_NOT_READY: "O gateway de pagamento deste tenant ainda não está pronto para cobrar.",
 };
 
 export function cookieOptions() {
@@ -190,13 +195,13 @@ export function tooManyRequests(retryAfterSeconds: number): NextResponse {
 // GETs em paralelo (tenant, categorias, config da loja, seções, destaques,
 // filtros) e todo tráfego atrás do mesmo IP (proxy/NAT, ou o próprio SSR
 // local em dev) soma no mesmo balde.
-export const GENERAL_RATE_LIMIT = { limit: 300, windowMs: 60_000 };
+export const GENERAL_RATE_LIMIT = { limit: 600, windowMs: 60_000 };
 
 // Limites para rotas sensíveis a força bruta / enumeração (login, cadastro,
 // consulta de documento) — mais apertado que o baseline geral, contado à
 // parte por IP+rota pra uma rajada de cadastro não consumir o orçamento do
 // login e vice-versa.
-export const AUTH_RATE_LIMIT = { limit: 10, windowMs: 10 * 60_000 };
+export const AUTH_RATE_LIMIT = { limit: 20, windowMs: 10 * 60_000 };
 
 export function parseIdsParam(value: string | null): string[] | undefined {
     if (!value) return undefined;

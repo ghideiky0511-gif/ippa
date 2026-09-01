@@ -4,7 +4,6 @@ export const adminUi = {
   root: 'min-h-screen bg-brand-background text-brand-text',
   page: 'min-h-screen bg-brand-background',
   workspaceNavItem: 'flex min-h-11 items-center gap-3 rounded-control px-3 text-sm font-semibold transition-[background-color,color,transform] duration-150 ease-out motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary active:scale-[.98] motion-reduce:transform-none',
-  sidebarTrigger: 'fixed top-4 left-4 z-20 hidden size-11 min-h-0 rounded-control border border-border bg-surface p-0 text-muted-foreground shadow-card hover:border-brand-primary/30 hover:bg-brand-background hover:text-brand-primary hover:shadow-md lg:inline-flex',
   topbar: 'flex flex-wrap items-center justify-between gap-3 border-b border-[#eee] bg-white px-6 py-4',
   topbarLeft: 'flex items-center gap-5',
   status: 'mr-3 text-[13px] text-brand-muted',

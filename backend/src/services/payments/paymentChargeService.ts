@@ -11,7 +11,12 @@ import {
     insertPendingPaymentChargeRow,
     markPaymentChargeCreatedRow,
 } from "@/models/paymentChargesModel";
-import { findOrderRowById, updateOrderPaymentStatusRow } from "@/models/ordersModel";
+import {
+    findOrderRowById,
+    listOrderItemSeparationRowsByOrder,
+    updateOrderPaymentStatusRow,
+    type OrderItemSeparationRow,
+} from "@/models/ordersModel";
 import { createExternalApiCallReporter } from "@/services/erp/externalApiLogService";
 import { NotFoundError, ValidationError } from "@/services/shared/errors";
 import { errorMeta, logger } from "@/lib/logger";
@@ -47,6 +52,9 @@ export async function createOrderCharge(
         }
         const order = await findOrderRowById(client, orderId);
         if (!order) throw new NotFoundError("ORDER_NOT_FOUND");
+
+        const items = await listOrderItemSeparationRowsByOrder(client, orderId);
+        assertOrderChargeable(items);
 
         // Grava a cobrança ANTES de chamar a Stripe (id gerado aqui) -- se o
         // webhook chegar antes desta função terminar, ele já encontra a
@@ -105,7 +113,24 @@ export async function createOrderCharge(
             });
             await updateOrderPaymentStatusRow(client, orderId, { paymentStatus: "payment_failed" });
         });
-        throw exc;
+        // Nunca relança o erro cru da Stripe: ele não é um dos tipos que
+        // apiHelpers.ts::serviceError reconhece, então a rota devolveria um
+        // 500 sem corpo (o cliente via "Unexpected end of JSON input" em vez
+        // de uma mensagem). Um erro de cartão (StripeCardError) é seguro de
+        // mostrar; qualquer outro tipo (ex. resource_missing por um
+        // PaymentMethod criado no contexto de conta errado) é um bug nosso,
+        // não algo que o cliente causou.
+        const stripeErrorType = (exc as { type?: string })?.type;
+        return {
+            method: "cartao",
+            externalId: "",
+            status: "failed",
+            failureReason:
+                stripeErrorType === "StripeCardError" && exc instanceof Error
+                    ? exc.message
+                    : "Não foi possível processar o pagamento. Tente novamente em instantes.",
+            raw: {},
+        };
     }
 
     await withTenantTransaction(tenant, actor, async (client) => {
@@ -129,6 +154,26 @@ export async function createOrderCharge(
     });
 
     return result;
+}
+
+// Regra de negócio "sem separação, sem cobrança" (ver comentário de
+// OrderStatusSchema em contracts/orders.ts: 'pago' só é alcançável a partir
+// de 'separado'). Checa direto qty x qty_separated em vez de orders.status
+// porque nada ainda escreve status='separado' (a transição fica para o
+// serviço de fulfillment do Bippa) -- qty_separated é o fato físico real.
+// Extraída pra ser testável sem banco, mesmo padrão de
+// mapChargeStatusToOrderPaymentUpdate abaixo.
+export function assertOrderChargeable(items: OrderItemSeparationRow[]): void {
+    if (items.length === 0) {
+        throw new ValidationError("ORDER_HAS_NO_ITEMS", "O pedido não tem itens e não pode ser cobrado.");
+    }
+    const pending = items.some((item) => item.qty_separated < item.qty);
+    if (pending) {
+        throw new ValidationError(
+            "ORDER_ITEMS_NOT_SEPARATED",
+            "Os itens do pedido ainda não foram confirmados como separados. Confirme a separação física antes de cobrar.",
+        );
+    }
 }
 
 export function extractInternalChargeId(raw: Record<string, unknown>): string | undefined {

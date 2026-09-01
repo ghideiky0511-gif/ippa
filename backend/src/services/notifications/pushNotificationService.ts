@@ -167,8 +167,9 @@ export async function pushStatus(
 export async function inbox(
     tenant: Tenant,
     user: AuthUser,
-    unreadOnly: boolean,
+    filter: "all" | "unread" | "read",
     limit: number,
+    offset: number = 0,
 ) {
     const [items, summary] = await withTenantTransaction(
         tenant,
@@ -177,8 +178,9 @@ export async function inbox(
             const notifications = await listNotifications(
                 client,
                 user.id,
-                unreadOnly,
+                filter,
                 Math.min(Math.max(limit, 1), 100),
+                Math.max(offset, 0),
             );
             const summaryRow = await notificationSummary(client, user.id);
             return [notifications, summaryRow] as const;

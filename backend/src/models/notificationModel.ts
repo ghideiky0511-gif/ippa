@@ -44,12 +44,21 @@ export async function insertNotification(client: PoolClient, input: Omit<Notific
   );
 }
 
-export async function listNotifications(client: PoolClient, userId: string, unreadOnly: boolean, limit: number): Promise<NotificationRow[]> {
+export async function listNotifications(
+  client: PoolClient,
+  userId: string,
+  filter: "all" | "unread" | "read",
+  limit: number,
+  offset: number = 0,
+): Promise<NotificationRow[]> {
+  const readAtCondition =
+    filter === "unread" ? "read_at IS NULL" :
+    filter === "read" ? "read_at IS NOT NULL" :
+    "true";
   const result = await client.query<NotificationRow>(
     `SELECT id, user_id, module, event, title, body, url, tag, data, read_at, delivery_status, attempts, next_attempt_at, created_at
-     FROM notifications WHERE tenant_id = app_tenant_id() AND user_id = $1
-       AND ($2::boolean = false OR read_at IS NULL)
-     ORDER BY created_at DESC LIMIT $3`, [userId, unreadOnly, limit],
+     FROM notifications WHERE tenant_id = app_tenant_id() AND user_id = $1 AND ${readAtCondition}
+     ORDER BY created_at DESC LIMIT $2 OFFSET $3`, [userId, limit, offset],
   );
   return result.rows;
 }

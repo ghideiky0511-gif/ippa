@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import type { Order, OrderSession } from '@/domain/orders/types';
 import { adminUi } from '@/workspace/lib/ui';
-import { fetchOrders, fetchOrderSessions } from '@/lib/ordersClient';
+import { fetchOrdersForHub, fetchOrderSessions } from '@/lib/ordersClient';
 import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import { KpiCard } from '@/workspace/components/shared/KpiCard';
 import { ResponsiveDataTable } from '@/workspace/components/shared/ResponsiveDataTable';
@@ -41,20 +42,24 @@ const STATUS_TONES: Record<OrderSession['status'], StatusChipTone> = {
 
 export default function OrdersApp({
   initialOrders,
+  initialInvalidOrderCount,
   initialSessions,
 }: {
   initialOrders: Order[];
+  initialInvalidOrderCount: number;
   initialSessions: OrderSession[];
 }) {
   const [orders, setOrders] = useState(initialOrders);
+  const [invalidOrderCount, setInvalidOrderCount] = useState(initialInvalidOrderCount);
   const [sessions, setSessions] = useState(initialSessions);
   const [query, setQuery] = useState('');
   const [isCreating, setCreating] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      const [nextOrders, nextSessions] = await Promise.all([fetchOrders(), fetchOrderSessions()]);
-      setOrders(nextOrders);
+      const [nextOrdersResult, nextSessions] = await Promise.all([fetchOrdersForHub(), fetchOrderSessions()]);
+      setOrders(nextOrdersResult.orders);
+      setInvalidOrderCount(nextOrdersResult.invalidOrderCount);
       setSessions(nextSessions);
     } catch {
       // Mantém os dados atuais se a atualização em segundo plano falhar.
@@ -103,6 +108,21 @@ export default function OrdersApp({
       />
 
       <main className={`${adminUi.productsEditor} flex flex-col gap-6`}>
+        {invalidOrderCount > 0 && (
+          <aside className="flex gap-3 rounded-brand border border-amber-200 bg-amber-50 p-4 text-amber-900" role="status">
+            <AlertTriangle className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
+            <div>
+              <p className="font-semibold">Histórico carregado parcialmente</p>
+              <p className="mt-1 text-sm">
+                {invalidOrderCount === 1
+                  ? '1 pedido não foi exibido porque possui dados incompletos.'
+                  : `${invalidOrderCount} pedidos não foram exibidos porque possuem dados incompletos.`}{' '}
+                Os demais pedidos e talões continuam disponíveis.
+              </p>
+            </div>
+          </aside>
+        )}
+
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <KpiCard label="Em montagem" value={formatCurrency(kpis.open.reduce((sum, session) => sum + sessionTotal(session), 0))} hint={`${kpis.open.length} pedidos`} />
           <KpiCard label="Aguardando pagamento" value={formatCurrency(kpis.awaiting.reduce((sum, session) => sum + sessionTotal(session), 0))} hint={`${kpis.awaiting.length} pedidos`} />

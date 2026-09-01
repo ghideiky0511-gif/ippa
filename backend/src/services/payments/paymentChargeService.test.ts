@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { extractInternalChargeId, mapChargeStatusToOrderPaymentUpdate } from "./paymentChargeService";
+import { ValidationError } from "@/services/shared/errors";
+import { assertOrderChargeable, extractInternalChargeId, mapChargeStatusToOrderPaymentUpdate } from "./paymentChargeService";
 
 test("extractInternalChargeId lê metadata.charge_id de um PaymentIntent", () => {
     assert.equal(
@@ -36,4 +37,31 @@ test("mapChargeStatusToOrderPaymentUpdate: authorized/processing viram awaiting_
 
 test("mapChargeStatusToOrderPaymentUpdate: pending não move a trilha financeira do pedido", () => {
     assert.equal(mapChargeStatusToOrderPaymentUpdate("pending"), null);
+});
+
+test("assertOrderChargeable: rejeita pedido sem itens", () => {
+    assert.throws(
+        () => assertOrderChargeable([]),
+        (error: unknown) => error instanceof ValidationError && error.code === "ORDER_HAS_NO_ITEMS",
+    );
+});
+
+test("assertOrderChargeable: rejeita item com separação incompleta", () => {
+    assert.throws(
+        () =>
+            assertOrderChargeable([
+                { item_key: "a", qty: 2, qty_separated: 2 },
+                { item_key: "b", qty: 3, qty_separated: 1 },
+            ]),
+        (error: unknown) => error instanceof ValidationError && error.code === "ORDER_ITEMS_NOT_SEPARATED",
+    );
+});
+
+test("assertOrderChargeable: aceita pedido com todos os itens totalmente separados", () => {
+    assert.doesNotThrow(() =>
+        assertOrderChargeable([
+            { item_key: "a", qty: 2, qty_separated: 2 },
+            { item_key: "b", qty: 1, qty_separated: 1 },
+        ]),
+    );
 });
