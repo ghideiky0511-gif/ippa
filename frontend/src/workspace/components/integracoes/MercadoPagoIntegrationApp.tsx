@@ -12,6 +12,7 @@ import {
   type PaymentIntegrationOption,
 } from '@/workspace/lib/paymentIntegrationClient';
 import { useTenant } from '@/components/TenantProvider';
+import { IntegrationRulesCard } from './IntegrationRulesCard';
 
 // Espelha StripeIntegrationApp.tsx, mas mais simples num ponto central: a
 // ativação do Mercado Pago é síncrona no callback OAuth (a troca do code JÁ
@@ -177,6 +178,16 @@ export default function MercadoPagoIntegrationApp() {
               </div>
               {message && <p className="mt-3 text-sm text-muted-foreground" role="status">{message}</p>}
             </section>
+
+            <IntegrationRulesCard
+              description="A conexão é autorizada no ambiente do Mercado Pago e volta para esta loja ao terminar."
+              rules={[
+                { title: 'Uma conta por loja', description: 'A conta conectada identifica a loja que receberá as cobranças via Pix e cartão.' },
+                { title: 'Gateway ativo', description: 'Somente um gateway de pagamento pode estar ativo por vez. Ao conectar o Mercado Pago, ele passa a ser o gateway da loja.' },
+                { title: 'Tokens protegidos', description: 'A autorização da conta é armazenada de forma protegida no backend; nenhum token é mostrado nesta tela.' },
+                { title: 'Reconexão', description: 'Se a autorização expirar ou a conta mudar, reconecte a conta e teste a conexão antes de realizar novas cobranças.' },
+              ]}
+            />
           </>
         )}
       </main>

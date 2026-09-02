@@ -15,28 +15,30 @@ import { errorMeta, logger } from "@/lib/logger";
 // Webhook Mercado Pago -- mesmo espírito de stripeWebhookService.ts, mas a
 // resolução de tenant é diferente: o payload do Stripe carrega
 // `event.account` inline; o do Mercado Pago só traz
-// `{ id, type, data: { id: paymentId } }` (sem status, sem identificador de
-// conta). Por isso: (1) o tenant é resolvido via payment_charges
-// (provider='mercadopago', external_id=paymentId) -- funciona porque essa
-// linha já é gravada com o payment_id ANTES do createCharge retornar (ver
-// paymentChargeService.ts::createOrderCharge); (2) depois de resolver o
-// tenant, ainda é preciso um GET /v1/payments/{id} pra saber o status real
-// (o corpo do webhook não traz).
+// `{ id, type: "order", data: { id: orderId } }` (sem status, sem
+// identificador de conta). Por isso: (1) o tenant é resolvido via
+// payment_charges (provider='mercadopago', external_id=orderId) -- funciona
+// porque essa linha já é gravada com o order_id ANTES do createCharge
+// retornar (ver paymentChargeService.ts::createOrderCharge, e
+// providers/mercadopago/index.ts, migrado da API de Pagamentos pra API de
+// Orders -- externalId agora é sempre order_id); (2) depois de resolver o
+// tenant, ainda é preciso um GET /v1/orders/{id} pra saber o status real (o
+// corpo do webhook não traz).
 //
 // Dois ids diferentes no mesmo payload, dois papéis diferentes: `data.id`
-// (o payment_id) entra no manifest de assinatura e na busca por tenant/
+// (o order_id) entra no manifest de assinatura e na busca por tenant/
 // status; `id` (o id da NOTIFICAÇÃO em si, distinto por entrega) é a chave
-// de idempotência -- usar payment_id pra idempotência apagaria eventos de
-// verdade (duas notificações "pending" depois "approved" pro MESMO
-// payment_id seriam tratadas como duplicatas uma da outra).
+// de idempotência -- usar order_id pra idempotência apagaria eventos de
+// verdade (duas notificações "action_required" depois "processed" pro
+// MESMO order_id seriam tratadas como duplicatas uma da outra).
 
 const SYSTEM_ACTOR: ActorContext = { role: "system" };
 
-async function resolveTenantByMercadoPagoPaymentId(paymentId: string): Promise<{ tenantId: string } | null> {
+async function resolveTenantByMercadoPagoOrderId(orderId: string): Promise<{ tenantId: string } | null> {
     return withControlTransaction(async (client) => {
         const result = await client.query<{ tenant_id: string }>(
             `SELECT tenant_id FROM payment_charges WHERE provider = 'mercadopago' AND external_id = $1 LIMIT 1`,
-            [paymentId],
+            [orderId],
         );
         return result.rows[0] ? { tenantId: result.rows[0].tenant_id } : null;
     });
@@ -78,9 +80,9 @@ export async function processMercadoPagoWebhook(
         throw new ValidationError("INVALID_WEBHOOK_SIGNATURE", "Corpo de webhook inválido.");
     }
 
-    const paymentId = payload.data?.id;
+    const orderId = payload.data?.id;
     const notificationId = payload.id !== undefined ? String(payload.id) : undefined;
-    if (!paymentId) {
+    if (!orderId) {
         // Tipo de evento sem data.id (ex. teste de conectividade do painel)
         // -- nada pra verificar/processar, mesmo espírito de "evento
         // irrelevante" nas outras rotas de webhook.
@@ -89,20 +91,20 @@ export async function processMercadoPagoWebhook(
 
     // Assinatura verificada ANTES de qualquer campo do payload virar
     // consulta ao banco -- mesma ordem de processStripeWebhook.
-    if (!verifyMercadoPagoWebhookSignature(paymentId, headers, webhookSecret)) {
-        logger.warn("mercadopago-webhook", "Assinatura de webhook Mercado Pago inválida", { paymentId });
+    if (!verifyMercadoPagoWebhookSignature(orderId, headers, webhookSecret)) {
+        logger.warn("mercadopago-webhook", "Assinatura de webhook Mercado Pago inválida", { orderId });
         throw new ValidationError("INVALID_WEBHOOK_SIGNATURE", "Assinatura de webhook inválida.");
     }
 
     try {
-        await processResolvedWebhook(paymentId, notificationId, payload as unknown as Record<string, unknown>);
+        await processResolvedWebhook(orderId, notificationId, payload as unknown as Record<string, unknown>);
     } catch (exc) {
         // Assinatura já verificada -- falha aqui é transitória (banco,
         // API do Mercado Pago fora do ar), não expõe o endpoint a retries
         // infinitos de um evento que não pode ser aplicado agora (mesmo
         // raciocínio de processStripeWebhook).
         logger.error("mercadopago-webhook", "Falha ao processar webhook Mercado Pago", {
-            paymentId,
+            orderId,
             ...errorMeta(exc),
         });
     }
@@ -111,13 +113,13 @@ export async function processMercadoPagoWebhook(
 }
 
 async function processResolvedWebhook(
-    paymentId: string,
+    orderId: string,
     notificationId: string | undefined,
     payload: Record<string, unknown>,
 ): Promise<void> {
-    const resolved = await resolveTenantByMercadoPagoPaymentId(paymentId);
+    const resolved = await resolveTenantByMercadoPagoOrderId(orderId);
     if (!resolved) {
-        await logUnresolvedEvent(notificationId, payload, "unknown_payment_id");
+        await logUnresolvedEvent(notificationId, payload, "unknown_order_id");
         return;
     }
     const tenant = await findActiveTenantById(resolved.tenantId);
@@ -144,7 +146,7 @@ async function processResolvedWebhook(
     }
     const integrationRow = prepared.integrationRow;
 
-    // Corpo do webhook é magro (sem status) -- busca o pagamento completo,
+    // Corpo do webhook é magro (sem status) -- busca o order completo,
     // mesmo papel de fetchChargeStatus na reconciliação. Fora de qualquer
     // transação de propósito (nunca segurar conexão do pool durante uma
     // chamada de rede).
@@ -154,7 +156,7 @@ async function processResolvedWebhook(
         credentials,
         createExternalApiCallReporter(tenant, SYSTEM_ACTOR, "mercadopago"),
     );
-    const event = await provider.fetchChargeStatus(paymentId);
+    const event = await provider.fetchChargeStatus(orderId);
 
     let processingError: string | undefined;
     try {
@@ -173,7 +175,7 @@ async function processResolvedWebhook(
         processingError = exc instanceof Error ? exc.message : String(exc);
         logger.error("mercadopago-webhook", "Falha ao aplicar evento Mercado Pago", {
             tenantId: tenant.id,
-            paymentId,
+            orderId,
             ...errorMeta(exc),
         });
     }

@@ -14,6 +14,7 @@ import {
   type StripeOnboardingStatusResult,
 } from '@/workspace/lib/paymentIntegrationClient';
 import { useTenant } from '@/components/TenantProvider';
+import { IntegrationRulesCard } from './IntegrationRulesCard';
 
 type Status = 'not_started' | 'pending' | 'complete' | 'restricted';
 
@@ -211,6 +212,16 @@ export default function StripeIntegrationApp() {
               </div>
               {message && <p className="mt-3 text-sm text-muted-foreground" role="status">{message}</p>}
             </section>
+
+            <IntegrationRulesCard
+              description="A ippa usa Stripe Connect: a conta pertence à loja e a verificação acontece na Stripe."
+              rules={[
+                { title: 'Ativação automática', description: 'A Stripe só fica ativa quando concluir o onboarding e confirmar que a conta pode receber cobranças.' },
+                { title: 'Dados protegidos', description: 'Chaves da plataforma e o segredo do webhook ficam exclusivamente no backend; esta tela não exibe nem solicita esses segredos.' },
+                { title: 'Atualização de status', description: 'Após alterar dados na Stripe, use “Atualizar status na Stripe” para consultar as pendências atuais.' },
+                { title: 'Troca de conta', description: 'Trocar a conta apenas desvincula a conta atual desta loja; ela não é apagada na Stripe.' },
+              ]}
+            />
 
             <p className="text-xs leading-5 text-muted-foreground">
               A conta só aparece como ativa depois que o webhook da Stripe confirmar a conclusão do onboarding. Nenhuma chave secreta é exibida ou armazenada por tenant.
