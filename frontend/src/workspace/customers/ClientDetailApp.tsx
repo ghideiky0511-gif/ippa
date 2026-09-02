@@ -1,14 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, RefreshCw } from 'lucide-react';
-import type { ClientWithLogin } from '@/domain/clients/types';
+import { ArrowLeft, LockKeyhole, RefreshCw } from 'lucide-react';
+import type { ClientWithLogin, UpdateClientProfileInput } from '@/domain/clients/types';
 import type { Order } from '@/domain/orders/types';
 import Link from '@/components/TenantLink';
 import { adminUi } from '@/workspace/lib/ui';
 import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import { ResponsiveDataTable } from '@/workspace/components/shared/ResponsiveDataTable';
-import { syncClientFromErp } from '@/workspace/lib/customersClient';
+import { syncClientFromErp, updateClient } from '@/workspace/lib/customersClient';
 import {
   addCommercialGroupMember,
   fetchCommercialGroup,
@@ -50,6 +50,54 @@ function InfoField({ label, value }: { label: string; value?: string }) {
       <p className="mt-0.5 text-sm text-foreground">{value?.trim() || <span className="text-muted-foreground">Não informado</span>}</p>
     </div>
   );
+}
+
+// CPF/CNPJ, e-mail e telefone são dados obrigatórios/sensíveis do cadastro —
+// só mudam via "Sincronizar com ERP" ou quando a própria cliente edita o
+// próprio login (ver bloqueio equivalente em updateTenantClient, backend).
+// Nunca editáveis por aqui, mesmo que a cliente não venha do ERP.
+function LockedField({ label, value }: { label: string; value?: string }) {
+  return (
+    <div>
+      <p className="flex items-center gap-1 text-xs text-muted-foreground">
+        {label}
+        <LockKeyhole className="size-3" aria-hidden="true" />
+      </p>
+      <p className="mt-0.5 text-sm text-foreground">{value?.trim() || <span className="text-muted-foreground">Não informado</span>}</p>
+    </div>
+  );
+}
+
+function Field({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
+  return <div className={`${adminUi.field} ${className ?? ''}`}><label>{label}</label>{children}</div>;
+}
+
+type ProfileFormState = {
+  name: string;
+  cep: string;
+  street: string;
+  number: string;
+  complement: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+  companyResponsible: string;
+  storeName: string;
+};
+
+function toFormState(client: ClientWithLogin): ProfileFormState {
+  return {
+    name: client.name ?? '',
+    cep: client.cep ?? '',
+    street: client.street ?? '',
+    number: client.number ?? '',
+    complement: client.complement ?? '',
+    neighborhood: client.neighborhood ?? '',
+    city: client.city ?? '',
+    state: client.state ?? '',
+    companyResponsible: client.companyResponsible ?? '',
+    storeName: client.storeName ?? '',
+  };
 }
 
 function digitsOnly(value: string | undefined | null): string {
@@ -252,6 +300,9 @@ export default function ClientDetailApp({
   const [orders, setOrders] = useState(initialOrders);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<{ type: 'success' | 'info' | 'error'; text: string } | null>(null);
+  const [form, setForm] = useState(() => toFormState(initialClient));
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const refreshOrders = useCallback(async () => {
     try {
@@ -272,7 +323,9 @@ export default function ClientDetailApp({
       const result = await syncClientFromErp(client.id);
       // A sincronização atualiza apenas o perfil comercial; `hasLogin` é
       // calculado no GET de detalhe e não faz parte da resposta do ERP.
-      setClient((current) => ({ ...result.client, hasLogin: current.hasLogin }));
+      const updated: ClientWithLogin = { ...result.client, hasLogin: client.hasLogin };
+      setClient(updated);
+      setForm(toFormState(updated));
       setSyncMessage(
         result.updatedFields.length > 0
           ? { type: 'success', text: `Atualizado com dados do ERP: ${result.updatedFields.map((field) => FIELD_LABELS[field] ?? field).join(', ')}.` }
@@ -285,8 +338,36 @@ export default function ClientDetailApp({
     }
   }
 
-  const address = [client.street, client.number].filter(Boolean).join(', ')
-    || undefined;
+  const original = toFormState(client);
+  const dirty = (Object.keys(form) as (keyof ProfileFormState)[]).some((key) => form[key] !== original[key]);
+  const isCompany = digitsOnly(client.cpfCnpj).length === 14;
+
+  async function handleSave() {
+    setSaving(true);
+    setSaveMessage(null);
+    try {
+      const payload: UpdateClientProfileInput = {
+        name: form.name.trim(),
+        cep: form.cep.trim() || undefined,
+        street: form.street.trim() || undefined,
+        number: form.number.trim() || undefined,
+        complement: form.complement.trim() || undefined,
+        neighborhood: form.neighborhood.trim() || undefined,
+        city: form.city.trim() || undefined,
+        state: form.state.trim() || undefined,
+        companyResponsible: form.companyResponsible.trim() || undefined,
+        storeName: form.storeName.trim() || undefined,
+      };
+      const updated = await updateClient(client.id, payload);
+      setClient(updated);
+      setForm(toFormState(updated));
+      setSaveMessage({ type: 'success', text: 'Cadastro atualizado.' });
+    } catch (cause) {
+      setSaveMessage({ type: 'error', text: cause instanceof Error ? cause.message : 'Não foi possível salvar o cadastro.' });
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div>
@@ -322,17 +403,78 @@ export default function ClientDetailApp({
         )}
 
         <section className="rounded-brand border border-border bg-surface p-4">
-          <h2 className="font-bold">Cadastro</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-bold">Cadastro</h2>
+            {dirty && (
+              <button type="button" className={adminUi.primaryButton} onClick={() => void handleSave()} disabled={saving}>
+                {saving ? 'Salvando...' : 'Salvar alterações'}
+              </button>
+            )}
+          </div>
+
+          {saveMessage && (
+            <p
+              className={`mt-3 rounded-brand border p-3 text-sm ${
+                saveMessage.type === 'error'
+                  ? 'border-[#dba0a0] bg-[#fff1f1] text-[#b00020]'
+                  : 'border-brand-primary/30 bg-brand-primary/8 text-brand-primary'
+              }`}
+            >
+              {saveMessage.text}
+            </p>
+          )}
+
           <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <InfoField label="CPF/CNPJ" value={client.cpfCnpj} />
-            <InfoField label="E-mail" value={client.email} />
-            <InfoField label="CEP" value={client.cep} />
-            <InfoField label="Endereço" value={address} />
-            <InfoField label="Complemento" value={client.complement} />
-            <InfoField label="Bairro" value={client.neighborhood} />
-            <InfoField label="Cidade" value={client.city} />
-            <InfoField label="Estado" value={client.state} />
+            <LockedField label="CPF/CNPJ" value={client.cpfCnpj} />
+            <LockedField label="E-mail" value={client.email} />
+            <LockedField label="Telefone" value={client.whatsappPhone} />
             <InfoField label="Cadastro desde" value={new Date(client.createdAt).toLocaleDateString('pt-BR')} />
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            <LockKeyhole className="mr-1 inline size-3" aria-hidden="true" />
+            CPF/CNPJ, e-mail e telefone não são editáveis aqui — use &quot;Sincronizar com ERP&quot; ou peça para a cliente confirmar no próprio login.
+          </p>
+
+          <div className="mt-4 flex flex-col gap-3">
+            <Field label="Nome">
+              <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+            </Field>
+            <div className={adminUi.fieldRow}>
+              <Field label="CEP" className="sm:max-w-[160px]">
+                <input value={form.cep} onChange={(e) => setForm((f) => ({ ...f, cep: e.target.value }))} />
+              </Field>
+              <Field label="Rua">
+                <input value={form.street} onChange={(e) => setForm((f) => ({ ...f, street: e.target.value }))} />
+              </Field>
+              <Field label="Número" className="sm:max-w-[120px]">
+                <input value={form.number} onChange={(e) => setForm((f) => ({ ...f, number: e.target.value }))} />
+              </Field>
+            </div>
+            <div className={adminUi.fieldRow}>
+              <Field label="Complemento">
+                <input value={form.complement} onChange={(e) => setForm((f) => ({ ...f, complement: e.target.value }))} />
+              </Field>
+              <Field label="Bairro">
+                <input value={form.neighborhood} onChange={(e) => setForm((f) => ({ ...f, neighborhood: e.target.value }))} />
+              </Field>
+            </div>
+            <div className={adminUi.fieldRow}>
+              <Field label="Cidade">
+                <input value={form.city} onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))} />
+              </Field>
+              <Field label="Estado" className="sm:max-w-[120px]">
+                <input value={form.state} onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))} />
+              </Field>
+            </div>
+            {isCompany ? (
+              <Field label="Responsável pela empresa">
+                <input value={form.companyResponsible} onChange={(e) => setForm((f) => ({ ...f, companyResponsible: e.target.value }))} />
+              </Field>
+            ) : (
+              <Field label="Nome da loja">
+                <input value={form.storeName} onChange={(e) => setForm((f) => ({ ...f, storeName: e.target.value }))} />
+              </Field>
+            )}
           </div>
         </section>
 

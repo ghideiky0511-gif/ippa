@@ -2,6 +2,7 @@
 import { publicUi } from '@/lib/ui';
 
 import { use, useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
 import { loadStripe, type Stripe as StripeJsInstance } from '@stripe/stripe-js';
 import { CardElement, Elements, useElements, useStripe } from '@stripe/react-stripe-js';
 import { Brand, CardPayment, initMercadoPago } from '@mercadopago/sdk-react';
@@ -440,13 +441,31 @@ function MercadoPagoChargeForm({ token, summary, onPaid }: { token: string; summ
 // tela larga. Estados de carregando/erro/concluído continuam numa coluna
 // única centralizada (não fazem parte do "checkout" em si).
 export default function PagarPage({ params }: { params: Promise<{ token: string }> }) {
-  const { tenant } = useTenant();
+  const { tenant, href } = useTenant();
+  const router = useRouter();
   const { token } = use(params);
   const [summary, setSummary] = useState<PaySummary | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState(false);
   const [done, setDone] = useState(false);
+
+  // Cobrança real (Stripe/Mercado Pago) confirmada: mostra o feedback aqui
+  // por um instante e já leva a cliente pra tela do pedido (mesma tela que
+  // ela usaria pra acompanhar o pedido depois), que exibe seu próprio aviso
+  // de "pago com sucesso" (ver ?pago=1 em pedidos/[orderNumber]/page.tsx).
+  // Fluxo de checkout antigo (sem cobrança real, ver handleConfirm) não
+  // redireciona -- continua só no "done" local, como sempre foi.
+  function handlePaid() {
+    setDone(true);
+    if (summary?.kind === 'charge') {
+      toast.success('Pagamento confirmado!');
+      const orderNumber = summary.orderNumber;
+      setTimeout(() => {
+        router.push(href(`/pedidos/${orderNumber}?pago=1`));
+      }, 1500);
+    }
+  }
 
   const stripePromise = useMemo<Promise<StripeJsInstance | null> | null>(() => {
     if (summary?.kind !== 'charge') return null;
@@ -536,7 +555,7 @@ export default function PagarPage({ params }: { params: Promise<{ token: string 
               </div>
             </div>
             {summary?.kind === 'charge' && (
-              <TenantLink href={`/pedidos/${summary.orderNumber}`} className={publicUi.primaryButton}>
+              <TenantLink href={`/pedidos/${summary.orderNumber}?pago=1`} className={publicUi.primaryButton}>
                 Ver pedido
               </TenantLink>
             )}
@@ -557,14 +576,14 @@ export default function PagarPage({ params }: { params: Promise<{ token: string 
                   summary.provider === 'stripe' ? (
                     stripePromise && stripeCredentials(summary) ? (
                       <Elements stripe={stripePromise}>
-                        <StripeChargeForm token={token} summary={summary} onPaid={() => setDone(true)} />
+                        <StripeChargeForm token={token} summary={summary} onPaid={handlePaid} />
                       </Elements>
                     ) : (
                       <p className={publicUi.error}>Pagamento por cartão indisponível no momento. Fale com a loja.</p>
                     )
                   ) : summary.provider === 'mercadopago' ? (
                     mercadoPagoCredentials(summary) ? (
-                      <MercadoPagoChargeForm token={token} summary={summary} onPaid={() => setDone(true)} />
+                      <MercadoPagoChargeForm token={token} summary={summary} onPaid={handlePaid} />
                     ) : (
                       <p className={publicUi.error}>Pagamento indisponível no momento. Fale com a loja.</p>
                     )

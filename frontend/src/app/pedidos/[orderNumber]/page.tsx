@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
-import { ArrowLeft, PackageCheck, ReceiptText, ShoppingBag } from 'lucide-react';
+import { useParams, useSearchParams } from 'next/navigation';
+import { ArrowLeft, CheckCircle2, PackageCheck, ReceiptText, ShoppingBag } from 'lucide-react';
 import Link from '@/components/TenantLink';
 import ProductImage from '@/components/ProductImage';
 import { useAuthUser } from '@/components/AuthProvider';
@@ -62,6 +62,12 @@ function OrderDetailSkeleton() {
 export default function PedidoDetalhePage() {
   const { authUser } = useAuthUser();
   const { orderNumber: rawOrderNumber } = useParams<{ orderNumber: string }>();
+  const searchParams = useSearchParams();
+  // ?pago=1 vem do redirect automático de /pagar/[token] logo após a
+  // confirmação (ver handlePaid em pagar/[token]/page.tsx) -- é só o
+  // gatilho pra mostrar o aviso de "pago com sucesso" nesta visita; o dado
+  // real de pagamento (order.paymentStatus) é sempre buscado do backend.
+  const justPaid = searchParams.get('pago') === '1';
   const orderNumber = /^[1-9]\d*$/.test(rawOrderNumber || '') ? Number(rawOrderNumber) : NaN;
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
@@ -130,6 +136,20 @@ export default function PedidoDetalhePage() {
             </div>
             <Badge>{STATUS_LABELS[order.status]}</Badge>
           </div>
+
+          {justPaid && order.paymentStatus === 'paid' && (
+            <Card className="border-emerald-200 bg-emerald-50/40 p-4">
+              <div className={publicUi.paySuccessWrap}>
+                <span className={publicUi.paySuccessIcon}>
+                  <CheckCircle2 strokeWidth={2} />
+                </span>
+                <div>
+                  <p className={publicUi.paySuccessTitle}>Pagamento confirmado!</p>
+                  <p className={publicUi.paySuccessSubtitle}>Recebemos seu pagamento — obrigado pela compra!</p>
+                </div>
+              </div>
+            </Card>
+          )}
 
           <Card className="p-4">
             <div className="flex items-start gap-3">

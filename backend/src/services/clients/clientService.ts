@@ -148,11 +148,22 @@ export async function updateTenantClient(
     if (!canManageClients(user) && user.clientId !== id) throw new ForbiddenError();
     const parsed = UpdateClientInputSchema.safeParse(value);
     if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
+    // CPF/CNPJ, e-mail e WhatsApp são dados obrigatórios/sensíveis do
+    // cadastro — a equipe (staff) editando o cadastro de outra pessoa nunca
+    // pode alterá-los por aqui, só via "Sincronizar com ERP". A própria
+    // cliente completando/editando o próprio cadastro (user.clientId === id)
+    // continua podendo preenchê-los normalmente.
+    const changes = { ...parsed.data };
+    if (user.clientId !== id) {
+        delete changes.cpfCnpj;
+        delete changes.email;
+        delete changes.whatsappPhone;
+    }
     return withTenantTransaction(tenant, user, async (client) => {
         const currentRow = await findClientRow(client, id);
         if (!currentRow) return null;
         const current = toClient(currentRow);
-        const merged = { ...current, ...parsed.data };
+        const merged = { ...current, ...changes };
         const digits = merged.cpfCnpj ? documentDigits(merged.cpfCnpj) : "";
         if (digits) {
             const existing = await findClientRowByDocumentDigits(client, digits);
@@ -163,7 +174,7 @@ export async function updateTenantClient(
             name: merged.name.trim(),
         });
         if (!row) return null;
-        const changedFields = AUDITED_CLIENT_FIELDS.filter((field) => Object.hasOwn(parsed.data, field));
+        const changedFields = AUDITED_CLIENT_FIELDS.filter((field) => Object.hasOwn(changes, field));
         await recordAuditEvent(client, {
             action: CLIENT_AUDIT_ACTIONS.UPDATED,
             entityId: id,

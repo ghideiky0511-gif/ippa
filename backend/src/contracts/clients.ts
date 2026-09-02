@@ -77,6 +77,17 @@ export type CreateClientInput = z.infer<typeof CreateClientInputSchema>;
 export const UpdateClientInputSchema = ClientProfileInputSchema.partial();
 export type UpdateClientInput = z.infer<typeof UpdateClientInputSchema>;
 
+// Formulário de edição do workspace (staff): CPF/CNPJ, e-mail e WhatsApp são
+// dados obrigatórios/sensíveis do cadastro e nunca devem ser alterados por
+// ali — só via "Sincronizar com ERP" ou pela própria cliente completando o
+// cadastro dela (ver bloqueio equivalente em updateTenantClient).
+export const UpdateClientProfileInputSchema = UpdateClientInputSchema.omit({
+    cpfCnpj: true,
+    email: true,
+    whatsappPhone: true,
+});
+export type UpdateClientProfileInput = z.infer<typeof UpdateClientProfileInputSchema>;
+
 export const ClientSchema = ClientProfileSchema.extend({
     id: EntityIdSchema,
     lastSellerId: EntityIdSchema.optional(),
