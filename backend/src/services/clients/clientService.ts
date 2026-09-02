@@ -148,21 +148,26 @@ export async function updateTenantClient(
     if (!canManageClients(user) && user.clientId !== id) throw new ForbiddenError();
     const parsed = UpdateClientInputSchema.safeParse(value);
     if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
-    // CPF/CNPJ, e-mail e WhatsApp são dados obrigatórios/sensíveis do
-    // cadastro — a equipe (staff) editando o cadastro de outra pessoa nunca
-    // pode alterá-los por aqui, só via "Sincronizar com ERP". A própria
-    // cliente completando/editando o próprio cadastro (user.clientId === id)
-    // continua podendo preenchê-los normalmente.
     const changes = { ...parsed.data };
-    if (user.clientId !== id) {
-        delete changes.cpfCnpj;
-        delete changes.email;
-        delete changes.whatsappPhone;
-    }
     return withTenantTransaction(tenant, user, async (client) => {
         const currentRow = await findClientRow(client, id);
         if (!currentRow) return null;
         const current = toClient(currentRow);
+        // CPF/CNPJ, e-mail e WhatsApp são dados obrigatórios/sensíveis do
+        // cadastro — a equipe (staff) editando o cadastro de outra pessoa nunca
+        // pode sobrescrever um valor já preenchido por aqui, só via "Sincronizar
+        // com ERP" (mesma regra de completude que o próprio sync usa: só toca
+        // campo em branco, ver ERP_SYNCABLE_FIELDS em syncClientFromErp).
+        // Preencher um campo que ainda está vazio continua permitido — é o
+        // caso do talão completando o cadastro de uma cliente antes do frete
+        // (ver ClientCadastroSection, TalaoDrawer.tsx). A própria cliente
+        // completando/editando o próprio cadastro (user.clientId === id)
+        // continua podendo alterá-los livremente.
+        if (user.clientId !== id) {
+            if (current.cpfCnpj?.trim()) delete changes.cpfCnpj;
+            if (current.email?.trim()) delete changes.email;
+            if (current.whatsappPhone?.trim()) delete changes.whatsappPhone;
+        }
         const merged = { ...current, ...changes };
         const digits = merged.cpfCnpj ? documentDigits(merged.cpfCnpj) : "";
         if (digits) {

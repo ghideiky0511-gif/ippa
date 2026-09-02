@@ -3,7 +3,7 @@ import { publicUi } from '@/lib/ui';
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, MoreHorizontal, Plus, Search, Share2, X } from 'lucide-react';
+import { ArrowRight, LockKeyhole, MoreHorizontal, Plus, Search, Share2, X } from 'lucide-react';
 import { useTalao } from './TalaoProvider';
 import { useCart } from './CartProvider';
 import { useTenant } from './TenantProvider';
@@ -90,6 +90,85 @@ function CreateLoginSection({ client, onCreated }: { client: ClientWithLogin; on
       {error && <p className={publicUi.error}>{error}</p>}
       <button className={publicUi.primaryButton} type="submit" disabled={loading}>
         {loading ? 'Criando…' : 'Criar login pra cliente'}
+      </button>
+    </form>
+  );
+}
+
+// Completa o cadastro da cliente já vinculada ao pedido — o botão
+// "(editar)" abria a busca/criação de um cadastro *novo*, mas não dava
+// nenhum jeito de preencher CPF/CNPJ, e-mail ou CEP que faltavam no
+// cadastro já vinculado (bug relatado: cliente com login mas /frete
+// continuava bloqueado pedindo CPF/CNPJ e e-mail, sem formulário pra
+// resolver ali). CPF/CNPJ e e-mail só ficam editáveis aqui enquanto
+// vazios — depois de preenchidos (por aqui ou pelo ERP), o backend
+// (updateTenantClient, clientService.ts) passa a ignorar mudanças da
+// equipe nesses dois campos, só "Sincronizar com ERP" atualiza.
+function CompleteLinkedClientSection({ client, onSaved }: { client: ClientWithLogin; onSaved: (c: Client) => void }) {
+  const docType = getDocumentType(client.cpfCnpj || '');
+  const [cpfCnpj, setCpfCnpj] = useState(client.cpfCnpj || '');
+  const [companyResponsible, setCompanyResponsible] = useState(client.companyResponsible || '');
+  const [storeName, setStoreName] = useState(client.storeName || '');
+  const [email, setEmail] = useState(client.email || '');
+  const [cep, setCep] = useState(client.cep || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const cpfLocked = Boolean(client.cpfCnpj?.trim());
+  const emailLocked = Boolean(client.email?.trim());
+  if (cpfLocked && emailLocked && client.cep?.trim()) return null;
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/clients/${client.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cpfCnpj, companyResponsible, storeName, email, cep }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(data?.error || 'Não foi possível salvar o cadastro.');
+        return;
+      }
+      onSaved(data);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form className="contents" onSubmit={handleSubmit}>
+      <p className={publicUi.muted}>
+        <LockKeyhole className="mr-1 inline size-3" aria-hidden="true" />
+        Falta completar o cadastro de {client.name} antes do frete (CPF/CNPJ, e-mail e CEP).
+      </p>
+      {cpfLocked ? (
+        <input value={cpfCnpj} placeholder="CPF/CNPJ" disabled readOnly />
+      ) : (
+        <input value={cpfCnpj} onChange={(e) => setCpfCnpj(e.target.value)} placeholder="CPF/CNPJ" />
+      )}
+      {docType === 'cnpj' && !cpfLocked && (
+        <input
+          value={companyResponsible}
+          onChange={(e) => setCompanyResponsible(e.target.value)}
+          placeholder="Responsável pela empresa (opcional)"
+        />
+      )}
+      {docType === 'cpf' && !cpfLocked && (
+        <input value={storeName} onChange={(e) => setStoreName(e.target.value)} placeholder="Nome da loja (opcional)" />
+      )}
+      {emailLocked ? (
+        <input value={email} placeholder="E-mail" disabled readOnly />
+      ) : (
+        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail" type="email" />
+      )}
+      <input value={cep} onChange={(e) => setCep(e.target.value)} placeholder="CEP" />
+      {error && <p className={publicUi.error}>{error}</p>}
+      <button className={publicUi.primaryButton} type="submit" disabled={saving}>
+        {saving ? 'Salvando…' : 'Salvar cadastro'}
       </button>
     </form>
   );
@@ -234,6 +313,14 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
       <CreateLoginSection client={linkedClient} onCreated={refetchLinkedClient} />
     ) : null;
 
+  // Não depende de `expanded` — mesmo motivo do createLoginSection acima:
+  // é uma pendência que bloqueia o frete, tem que aparecer sempre que
+  // faltar algo, não só quando a vendedora abrir "(editar)".
+  const completeLinkedClientSection =
+    session.clientId && linkedClient ? (
+      <CompleteLinkedClientSection client={linkedClient} onSaved={() => refetchLinkedClient()} />
+    ) : null;
+
   if (!expanded) {
     return (
       <>
@@ -242,8 +329,9 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
           onClick={() => setExpanded(true)}
           onAnimationEnd={() => setJustLinked(false)}
         >
-          {session.clientId ? `Cadastro vinculado: ${session.clientName} (editar)` : 'Vincular cadastro (CPF/CNPJ, e-mail, CEP)'}
+          {session.clientId ? `Cadastro vinculado: ${session.clientName} (trocar)` : 'Vincular cadastro (CPF/CNPJ, e-mail, CEP)'}
         </button>
+        {completeLinkedClientSection}
         {createLoginSection}
       </>
     );
@@ -293,6 +381,7 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
       )}
 
       <button className="contents" onClick={() => setExpanded(false)}>Fechar</button>
+      {completeLinkedClientSection}
       {createLoginSection}
     </div>
   );
