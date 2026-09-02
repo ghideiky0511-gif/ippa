@@ -2,7 +2,7 @@
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
 import { useState } from 'react';
-import { X } from 'lucide-react';
+import { LockKeyhole, X } from 'lucide-react';
 import { createVendedora, createCliente, updateUser, updateClient } from '@/workspace/lib/usersClient';
 import { DEFAULT_SELLER_CATALOG_AREAS } from '@/domain/clients/types';
 
@@ -184,16 +184,35 @@ export default function UserFormModal({ role, mode, user, onClose, onSaved }) {
             {isCliente && (
               <div className="contents">
                 <h3>Cadastro</h3>
-                <div className={adminUi.fieldRow}>
-                  <div className={adminUi.field}>
-                    <label>CPF/CNPJ</label>
-                    <input value={form.cpfCnpj} onChange={set('cpfCnpj')} placeholder="Somente números" />
+                {isEdit ? (
+                  <>
+                    <div className={adminUi.fieldRow}>
+                      <div className={adminUi.field}>
+                        <label>CPF/CNPJ</label>
+                        <input value={form.cpfCnpj} disabled readOnly />
+                      </div>
+                      <div className={adminUi.field}>
+                        <label>E-mail de contato</label>
+                        <input type="email" value={form.clientEmail} disabled readOnly />
+                      </div>
+                    </div>
+                    <p className="text-xs text-brand-muted">
+                      <LockKeyhole className="mr-1 inline size-3" aria-hidden="true" />
+                      CPF/CNPJ e e-mail não são editáveis aqui — use &quot;Sincronizar com ERP&quot; ou peça para a cliente confirmar no próprio login (ver /workspace/clientes).
+                    </p>
+                  </>
+                ) : (
+                  <div className={adminUi.fieldRow}>
+                    <div className={adminUi.field}>
+                      <label>CPF/CNPJ</label>
+                      <input value={form.cpfCnpj} onChange={set('cpfCnpj')} placeholder="Somente números" />
+                    </div>
+                    <div className={adminUi.field}>
+                      <label>E-mail de contato</label>
+                      <input type="email" value={form.clientEmail} onChange={set('clientEmail')} placeholder="Opcional, se diferente do login" />
+                    </div>
                   </div>
-                  <div className={adminUi.field}>
-                    <label>E-mail de contato</label>
-                    <input type="email" value={form.clientEmail} onChange={set('clientEmail')} placeholder="Opcional, se diferente do login" />
-                  </div>
-                </div>
+                )}
                 <div className={adminUi.fieldRow}>
                   <div className={adminUi.field}>
                     <label>Responsável (CNPJ)</label>

@@ -9,7 +9,7 @@ import { useCart } from './CartProvider';
 import { useTenant } from './TenantProvider';
 import { formatBRL } from '@/lib/format';
 import { clientSubtext, getDocumentType } from '@/lib/document';
-import { isClientCheckoutIdentityComplete } from '@/lib/clientComplete';
+import { isClientComplete } from '@/lib/clientComplete';
 import { z } from 'zod';
 import { ClientSchema, type Client } from '@/domain/clients/types';
 import type { OrderSession } from '@/domain/orders/types';
@@ -223,12 +223,14 @@ function ClientCadastroSection({ session }: { session: OrderSession }) {
 
   // Aparece independente do painel estar aberto/fechado — é um pendência
   // que bloqueia o frete (ver useTalaoClientGate.ts), não faz sentido
-  // esconder atrás do "editar". Só depois de isClientComplete: um login
-  // criado pra um cadastro sem CPF/CNPJ nunca mais aparece pro fluxo de
-  // /login por CPF da cliente (findClientRowByDocumentDigits não casa
-  // cpf_cnpj nulo), deixando essa conta travada.
+  // esconder atrás do "editar". Usa isClientComplete (nome+CPF/CNPJ+e-mail+
+  // CEP), não isClientCheckoutIdentityComplete: o backend
+  // (createClientLogin, clientAccountService.ts) exige CEP pra criar o
+  // login, então mostrar o botão sem essa checagem deixava a vendedora
+  // preencher e-mail/senha e levar um erro genérico sem saber que faltava
+  // CEP no cadastro.
   const createLoginSection =
-    session.clientId && linkedClient && isClientCheckoutIdentityComplete(linkedClient) && !linkedClient.hasLogin ? (
+    session.clientId && linkedClient && isClientComplete(linkedClient) && !linkedClient.hasLogin ? (
       <CreateLoginSection client={linkedClient} onCreated={refetchLinkedClient} />
     ) : null;
 

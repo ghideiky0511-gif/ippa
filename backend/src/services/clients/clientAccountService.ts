@@ -8,7 +8,7 @@ import { documentDigits, EmailSchema } from "@/contracts/shared";
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser, Client } from "@/lib/types";
-import { findClientRow, findClientRowByDocumentDigits, insertClientRow, updateClientRow } from "@/models/clientsModel";
+import { findClientRow, findClientRowByDocumentDigits, insertClientRow } from "@/models/clientsModel";
 import { findUserRowByClientId } from "@/models/usersModel";
 import type { AuditRequestContext } from "@/services/audit";
 import { notifySignup } from "@/services/notifications";
@@ -18,9 +18,7 @@ import { toClient } from "./clientMapper";
 
 // Campos comerciais usam clientEmail para não confundir contato com o e-mail
 // de login. O contrato já normaliza textos, documento e e-mail.
-const ClientRegistrationFieldsSchema = ClientRegistrationUpdateSchema;
-
-function registration(body: z.infer<typeof ClientRegistrationFieldsSchema>, fallbackEmail?: string): Omit<Client, "id" | "createdAt" | "updatedAt"> {
+function registration(body: z.infer<typeof ClientRegistrationUpdateSchema>, fallbackEmail?: string): Omit<Client, "id" | "createdAt" | "updatedAt"> {
   return {
     name: body.name ?? "",
     cpfCnpj: body.cpfCnpj,
@@ -96,43 +94,11 @@ export async function createClientLogin(
   return { user };
 }
 
-export async function updateAdministrativeClient(
-  tenant: Tenant,
-  actor: AuthUser,
-  clientId: string,
-  rawBody: unknown,
-): Promise<Client> {
-  if (!isAdministrator(actor)) throw new ForbiddenError();
-  const parsed = ClientRegistrationFieldsSchema.safeParse(rawBody);
-  if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
-  const body = parsed.data;
-  return withTenantTransaction(tenant, actor, async (client) => {
-    const currentRow = await findClientRow(client, clientId);
-    if (!currentRow) throw new NotFoundError("CLIENT_NOT_FOUND");
-    const current = toClient(currentRow);
-    const supplied = registration(body);
-    const cpfCnpj = Object.hasOwn(body, "cpfCnpj") ? supplied.cpfCnpj : current.cpfCnpj;
-    const digits = cpfCnpj ? documentDigits(cpfCnpj) : "";
-    if (digits) {
-      const duplicate = await findClientRowByDocumentDigits(client, digits);
-      if (duplicate && duplicate.id !== clientId) throw new ConflictError("DOCUMENT_TAKEN");
-    }
-    const updated = await updateClientRow(client, clientId, {
-      name: body.name ?? current.name,
-      cpfCnpj,
-      email: Object.hasOwn(body, "clientEmail") ? supplied.email : current.email,
-      cep: Object.hasOwn(body, "cep") ? supplied.cep : current.cep,
-      street: Object.hasOwn(body, "street") ? supplied.street : current.street,
-      number: Object.hasOwn(body, "number") ? supplied.number : current.number,
-      complement: Object.hasOwn(body, "complement") ? supplied.complement : current.complement,
-      neighborhood: Object.hasOwn(body, "neighborhood") ? supplied.neighborhood : current.neighborhood,
-      city: Object.hasOwn(body, "city") ? supplied.city : current.city,
-      state: Object.hasOwn(body, "state") ? supplied.state : current.state,
-      companyResponsible: Object.hasOwn(body, "companyResponsible") ? supplied.companyResponsible : current.companyResponsible,
-      storeName: Object.hasOwn(body, "storeName") ? supplied.storeName : current.storeName,
-      lastSellerId: current.lastSellerId,
-    });
-    if (!updated) throw new NotFoundError("CLIENT_NOT_FOUND");
-    return toClient(updated);
-  });
-}
+// Removida: updateAdministrativeClient permitia a um administrador editar
+// CPF/CNPJ e e-mail de um cadastro de cliente sem nenhuma trava — uma segunda
+// porta de entrada pro mesmo Client, com regras diferentes da usada em
+// /workspace/clientes (updateTenantClient, clientService.ts). O modal de
+// edição de cliente em /workspace/usuarios agora chama esse mesmo endpoint
+// travado (ver UserFormModal.tsx / usersClient.ts), então essa função e a
+// rota PUT /api/admin/clients/[id] foram removidas — uma regra só, um único
+// caminho de edição.
