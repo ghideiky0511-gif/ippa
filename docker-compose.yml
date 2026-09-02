@@ -43,8 +43,8 @@ services:
     build:
       context: ./backend
     environment:
-      ADMIN_ORIGIN: ${APP_URL:-http://localhost:3010}
-      REALTIME_ALLOWED_ORIGINS: ${APP_URL:-http://localhost:3010}
+      ADMIN_ORIGIN: ${APP_URL:-http://localhost:3015}
+      REALTIME_ALLOWED_ORIGINS: ${APP_URL:-http://localhost:3015}
       APP_COMERCIAL_NAME: ${APP_COMERCIAL_NAME:-}
       APP_COMERCIAL_NAME_INTEGRATION: ${APP_COMERCIAL_NAME_INTEGRATION:-}
       DEV_LAN_ACCESS: ${DEV_LAN_ACCESS:-true}
@@ -106,12 +106,12 @@ services:
       NEXT_PUBLIC_APP_URL: ${APP_URL:-}
       NEXT_PUBLIC_REALTIME_URL: ${REALTIME_URL:-}
     ports:
-      - "${APP_BIND_ADDRESS:-0.0.0.0}:3010:3010"
+      - "${APP_BIND_ADDRESS:-0.0.0.0}:3015:3015"
     depends_on:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3010/"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3015/"]
       interval: 10s
       timeout: 5s
       retries: 5

@@ -1,10 +1,10 @@
 # Catálogo IPPA/Bippa
 
 Aplicação de catálogo e pedidos com duas experiências no mesmo frontend, dentro do
-tenant (`http://localhost:3010/{tenant}/`):
+tenant (`http://localhost:3015/{tenant}/`):
 
-- loja e fluxo do cliente em `http://localhost:3010/{tenant}/`;
-- workspace interno da equipe do tenant em `http://localhost:3010/{tenant}/workspace`.
+- loja e fluxo do cliente em `http://localhost:3015/{tenant}/`;
+- workspace interno da equipe do tenant em `http://localhost:3015/{tenant}/workspace`.
 
 As regras, autenticação, dados e endpoints ficam em um backend separado, disponível em `http://localhost:3011/api`. O frontend encaminha chamadas `/api/*` para esse serviço, mantendo cookies e navegador na mesma origem.
 
@@ -38,9 +38,9 @@ docker compose up --build
 
 Endereços:
 
-- loja: `http://localhost:3010/{tenant}`;
-- workspace interno: `http://localhost:3010/{tenant}/workspace`;
-- control plane: `http://localhost:3010/control`;
+- loja: `http://localhost:3015/{tenant}`;
+- workspace interno: `http://localhost:3015/{tenant}/workspace`;
+- control plane: `http://localhost:3015/control`;
 - API: `http://localhost:3011/api/{tenant}/catalog`.
 
 ## Control plane
@@ -82,7 +82,7 @@ npm ci
 npm run dev
 ```
 
-Os valores padrão usam frontend na porta `3010` e backend na `3011`. Para outros endereços, configure `BACKEND_INTERNAL_URL` no frontend e `ADMIN_ORIGIN` no backend.
+Os valores padrão usam frontend na porta `3015` e backend na `3011`. Para outros endereços, configure `BACKEND_INTERNAL_URL` no frontend e `ADMIN_ORIGIN` no backend.
 
 ## Variáveis opcionais
 

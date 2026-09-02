@@ -51,7 +51,7 @@ export async function getCustomerDocumentAccess(
 }
 
 function confirmationLink(tenant: Tenant, token: string): string {
-    const origin = (process.env.APP_URL || process.env.ADMIN_ORIGIN || "http://localhost:3010").replace(/\/+$/, "");
+    const origin = (process.env.APP_URL || process.env.ADMIN_ORIGIN || "http://localhost:3015").replace(/\/+$/, "");
     return `${origin}/${tenant.slug}/confirmar-conta?token=${encodeURIComponent(token)}`;
 }
 

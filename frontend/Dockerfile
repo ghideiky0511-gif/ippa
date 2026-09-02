@@ -21,12 +21,12 @@ ARG BACKEND_INTERNAL_URL=http://backend:3011
 ENV BACKEND_INTERNAL_URL=$BACKEND_INTERNAL_URL
 ENV NODE_ENV=production
 ENV HOSTNAME=0.0.0.0
-ENV PORT=3010
+ENV PORT=3015
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --chown=nextjs:nodejs scripts/start.sh ./start.sh
 USER nextjs
-EXPOSE 3010
+EXPOSE 3015
 CMD ["sh", "./start.sh"]
