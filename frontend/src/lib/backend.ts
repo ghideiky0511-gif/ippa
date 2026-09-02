@@ -4,6 +4,12 @@ import { getBackendUrl } from '@/lib/api-config';
 import { forwardClientIpHeaders } from '@/lib/forwarded-client';
 
 const BACKEND_URL = getBackendUrl();
+const RETRYABLE_STARTUP_STATUSES = new Set([404, 502, 503, 504]);
+const STARTUP_RETRY_DELAYS_MS = [500, 1_000, 2_000, 4_000];
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
 
 export async function backendRequest(pathname: string, init: RequestInit = {}): Promise<Response> {
   const cookieStore = await cookies();
@@ -36,7 +42,16 @@ export async function backendJson<S extends z.ZodTypeAny>(
   schema: S,
   init: RequestInit = {},
 ): Promise<z.infer<S>> {
-  const response = await backendRequest(pathname, init);
+  // Durante um deploy/cold start do Render, o domínio público do backend pode
+  // responder 404/5xx por alguns segundos antes de o processo Next assumir a
+  // rota. O 404 também é incluído por ser a resposta transitória observada no
+  // proxy do Render; os demais 4xx continuam falhando imediatamente.
+  let response = await backendRequest(pathname, init);
+  for (const delay of STARTUP_RETRY_DELAYS_MS) {
+    if (!RETRYABLE_STARTUP_STATUSES.has(response.status)) break;
+    await wait(delay);
+    response = await backendRequest(pathname, init);
+  }
   if (!response.ok) {
     throw new Error(`Backend respondeu ${response.status} para ${pathname}.`);
   }

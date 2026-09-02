@@ -81,6 +81,7 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     plan: free
+    healthCheckPath: /api/health
     envVars:
       - fromGroup: ippa-env-prod
       # Mesmo valor no compose local é APP_URL — aqui cada serviço declara sua
