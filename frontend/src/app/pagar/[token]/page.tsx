@@ -5,11 +5,13 @@ import { use, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { loadStripe, type Stripe as StripeJsInstance } from '@stripe/stripe-js';
 import { CardElement, Elements, useElements, useStripe } from '@stripe/react-stripe-js';
 import { CardPayment, initMercadoPago } from '@mercadopago/sdk-react';
+import { Lock, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatBRL } from '@/lib/format';
 import { useTenant } from '@/components/TenantProvider';
 import ProductImage from '@/components/ProductImage';
 import TenantLink from '@/components/TenantLink';
+import { methodIcon } from '@/components/payments/paymentMethodMeta';
 import type { CartItem } from '@/domain/orders/types';
 
 const PAYMENT_METHODS = [
@@ -79,46 +81,48 @@ function SummaryCard({ summary }: { summary: PaySummary }) {
   const discountLabel = summary.kind === 'checkout' ? summary.cartDiscountLabel : summary.discount?.label ?? null;
   const discountTotal = summary.kind === 'checkout' ? summary.cartDiscountTotal : summary.discount?.amount ?? 0;
   return (
-    <>
-      <div className={publicUi.orderItems}>
-        {summary.items.map((item) => (
-          <div className={publicUi.orderItem} key={item.key}>
-            <ProductImage src={item.image} alt={item.name} className={publicUi.orderItemImage} />
-            <div>
-              <div className="contents">{item.name}</div>
-              <div className="contents">
-                {[item.color, item.size].filter(Boolean).join(' · ')} — {item.qty}x {formatBRL(item.price)}
+    <div className={publicUi.card}>
+      <div className="flex flex-col gap-2.5 p-4 sm:p-5">
+        <div className={publicUi.orderItems}>
+          {summary.items.map((item) => (
+            <div className={publicUi.orderItem} key={item.key}>
+              <ProductImage src={item.image} alt={item.name} className={publicUi.orderItemImage} />
+              <div>
+                <div className="contents">{item.name}</div>
+                <div className="contents">
+                  {[item.color, item.size].filter(Boolean).join(' · ')} — {item.qty}x {formatBRL(item.price)}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
 
-      <div className={publicUi.checkoutSummary}>
-        {summary.kind === 'checkout' && (
-          <div className={publicUi.summaryLine}>
-            <span>Subtotal</span>
-            <span>{formatBRL(summary.cartSubtotal)}</span>
+        <div className="flex flex-col gap-1.5 border-t border-[#f0f0f0] pt-3">
+          {summary.kind === 'checkout' && (
+            <div className={publicUi.summaryLine}>
+              <span>Subtotal</span>
+              <span>{formatBRL(summary.cartSubtotal)}</span>
+            </div>
+          )}
+          {discountTotal > 0 && (
+            <div className={publicUi.summaryLine}>
+              <span>Desconto ({discountLabel})</span>
+              <span>-{formatBRL(discountTotal)}</span>
+            </div>
+          )}
+          {summary.freight && (
+            <div className={publicUi.summaryLine}>
+              <span>Frete ({summary.freight.label})</span>
+              <span>{summary.freight.price === 0 ? 'Grátis' : formatBRL(summary.freight.price)}</span>
+            </div>
+          )}
+          <div className="flex justify-between pt-1 text-base font-bold text-brand-text">
+            <span>Total</span>
+            <span>{formatBRL(summary.total)}</span>
           </div>
-        )}
-        {discountTotal > 0 && (
-          <div className={publicUi.summaryLine}>
-            <span>Desconto ({discountLabel})</span>
-            <span>-{formatBRL(discountTotal)}</span>
-          </div>
-        )}
-        {summary.freight && (
-          <div className={publicUi.summaryLine}>
-            <span>Frete ({summary.freight.label})</span>
-            <span>{summary.freight.price === 0 ? 'Grátis' : formatBRL(summary.freight.price)}</span>
-          </div>
-        )}
-        <div className={publicUi.summaryLine}>
-          <span>Total</span>
-          <span>{formatBRL(summary.total)}</span>
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -292,22 +296,31 @@ function MercadoPagoChargeForm({ token, summary, onPaid }: { token: string; summ
     onPaid();
   }
 
+  // Cartões clicáveis (ícone + rótulo) em vez de radio cru -- mesmos ícones
+  // já usados no resumo do pedido (methodIcon, paymentMethodMeta.ts), pra o
+  // cliente reconhecer o mesmo símbolo de Pix/cartão em toda a jornada.
   const methodPicker = (
-    <div className={publicUi.paymentOptions}>
-      {(['pix', 'cartao'] as const).map((id) => (
-        <label key={id} className={publicUi.paymentOption}>
-          <input
-            type="radio"
-            name="mp-method"
-            checked={method === id}
-            onChange={() => {
+    <div className={publicUi.payMethodGrid} role="radiogroup" aria-label="Forma de pagamento">
+      {(['pix', 'cartao'] as const).map((id) => {
+        const Icon = methodIcon(id);
+        const active = method === id;
+        return (
+          <button
+            key={id}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            className={`${publicUi.payMethodCard} ${active ? publicUi.payMethodCardActive : ''}`}
+            onClick={() => {
               setMethod(id);
               setError('');
             }}
-          />
-          {id === 'pix' ? 'Pix' : 'Cartão de crédito'}
-        </label>
-      ))}
+          >
+            <Icon />
+            {id === 'pix' ? 'Pix' : 'Cartão de crédito'}
+          </button>
+        );
+      })}
     </div>
   );
 
@@ -323,7 +336,7 @@ function MercadoPagoChargeForm({ token, summary, onPaid }: { token: string; summ
         ) : (
           <div className={publicUi.field}>
             {/* eslint-disable-next-line @next/next/no-img-element -- data URI, não passa pelo otimizador de imagem */}
-            <img src={pix.qrCode} alt="QR code Pix" className="mx-auto w-48" />
+            <img src={pix.qrCode} alt="QR code Pix" className="mx-auto w-48 rounded-md border border-neutral-200 p-2" />
             <p className="mt-3 break-all rounded-md border border-neutral-300 bg-white p-2 text-xs">{pix.copyPaste}</p>
             <button type="button" className={publicUi.subtleButton} onClick={() => void copyPixCode()}>
               Copiar código
@@ -343,6 +356,13 @@ function MercadoPagoChargeForm({ token, summary, onPaid }: { token: string; summ
       {methodPicker}
       <CardPayment
         initialization={{ amount: summary.total }}
+        customization={{
+          // 'flat' tira a maior parte do chrome visual próprio do Brick
+          // (fontes/rótulos internos continuam fixos pelo Mercado Pago) pra
+          // aproximar do resto do formulário, mesmo espírito do CardElement
+          // da Stripe embrulhado à mão acima.
+          visual: { style: { theme: 'flat' } },
+        }}
         locale="pt-BR"
         onSubmit={(formData) => handleCardSubmit(formData)}
         onError={(brickError) => setError(brickError?.message || 'Não foi possível processar o cartão.')}
@@ -357,6 +377,12 @@ function MercadoPagoChargeForm({ token, summary, onPaid }: { token: string; summ
 // depois que a loja separa o pedido (ver /pedidos/[orderNumber], "Pagar
 // agora"). Sem AppShell (ConditionalShell.tsx) e sem exigir login: o token
 // da URL já é a autenticação (ver GET/POST /api/pay/[token]/route.ts).
+//
+// Layout de duas colunas a partir de lg (payGrid, ver ui.ts): resumo do
+// pedido fixo na coluna direita, form de pagamento na esquerda -- antes era
+// só a mesma caixa de 450px do login esticada, sem nenhum tratamento pra
+// tela larga. Estados de carregando/erro/concluído continuam numa coluna
+// única centralizada (não fazem parte do "checkout" em si).
 export default function PagarPage({ params }: { params: Promise<{ token: string }> }) {
   const { tenant } = useTenant();
   const { token } = use(params);
@@ -416,18 +442,28 @@ export default function PagarPage({ params }: { params: Promise<{ token: string 
   }
 
   const alreadyPaid = summary?.kind === 'charge' && summary.paymentStatus === 'paid';
+  const isChargeCheckout = summary?.kind === 'charge';
 
   return (
-    <div className={publicUi.loginPage}>
-      <section className={publicUi.loginForm}>
-        <h1>{tenant.name}</h1>
+    <div className={publicUi.payPage}>
+      <div className={publicUi.payContainer}>
+        <header className={publicUi.payHeader}>
+          <div>
+            <h1 className={publicUi.payHeaderTitle}>{tenant.name}</h1>
+            {isChargeCheckout && <p className={publicUi.payHeaderMeta}>Pedido #{summary.orderNumber}</p>}
+          </div>
+          <span className={publicUi.payTrustBadge}>
+            <Lock strokeWidth={2.5} />
+            Ambiente seguro
+          </span>
+        </header>
 
-        {loading && <p>Carregando…</p>}
+        {loading && <p className={publicUi.muted}>Carregando…</p>}
 
         {!loading && error && !done && <p className={publicUi.error}>{error}</p>}
 
         {!loading && (done || alreadyPaid) && (
-          <>
+          <div className={publicUi.payFormCard}>
             <p className="contents">
               {summary?.kind === 'charge' ? 'Pagamento confirmado! Obrigado.' : 'Pedido confirmado! A loja vai entrar em contato para combinar o pagamento.'}
             </p>
@@ -436,55 +472,68 @@ export default function PagarPage({ params }: { params: Promise<{ token: string 
                 Ver pedido
               </TenantLink>
             )}
-          </>
+          </div>
         )}
 
         {!loading && summary && !done && !alreadyPaid && (
-          <>
-            <p className="contents">Pedido de {summary.clientName}</p>
+          <div className={publicUi.payGrid}>
+            <div className={publicUi.paySummaryCol}>
+              <SummaryCard summary={summary} />
+            </div>
 
-            <SummaryCard summary={summary} />
+            <div className={publicUi.payFormCol}>
+              <div className={publicUi.payFormCard}>
+                <p className="text-sm text-brand-muted">Pedido de {summary.clientName}</p>
 
-            {summary.kind === 'charge' ? (
-              summary.provider === 'stripe' ? (
-                stripePromise && stripeCredentials(summary) ? (
-                  <Elements stripe={stripePromise}>
-                    <StripeChargeForm token={token} summary={summary} onPaid={() => setDone(true)} />
-                  </Elements>
+                {summary.kind === 'charge' ? (
+                  summary.provider === 'stripe' ? (
+                    stripePromise && stripeCredentials(summary) ? (
+                      <Elements stripe={stripePromise}>
+                        <StripeChargeForm token={token} summary={summary} onPaid={() => setDone(true)} />
+                      </Elements>
+                    ) : (
+                      <p className={publicUi.error}>Pagamento por cartão indisponível no momento. Fale com a loja.</p>
+                    )
+                  ) : summary.provider === 'mercadopago' ? (
+                    mercadoPagoCredentials(summary) ? (
+                      <MercadoPagoChargeForm token={token} summary={summary} onPaid={() => setDone(true)} />
+                    ) : (
+                      <p className={publicUi.error}>Pagamento indisponível no momento. Fale com a loja.</p>
+                    )
+                  ) : (
+                    <p className={publicUi.error}>Pagamento indisponível no momento. Fale com a loja.</p>
+                  )
                 ) : (
-                  <p className={publicUi.error}>Pagamento por cartão indisponível no momento. Fale com a loja.</p>
-                )
-              ) : summary.provider === 'mercadopago' ? (
-                mercadoPagoCredentials(summary) ? (
-                  <MercadoPagoChargeForm token={token} summary={summary} onPaid={() => setDone(true)} />
-                ) : (
-                  <p className={publicUi.error}>Pagamento indisponível no momento. Fale com a loja.</p>
-                )
-              ) : (
-                <p className={publicUi.error}>Pagamento indisponível no momento. Fale com a loja.</p>
-              )
-            ) : (
-              <>
-                <div className={publicUi.paymentOptions}>
-                  {PAYMENT_METHODS.map((method) => (
-                    <label key={method.id} className={`${publicUi.paymentOption} opacity-50`}>
-                      <input type="radio" name="payment" disabled />
-                      {method.label} <span className="text-xs">(em breve)</span>
-                    </label>
-                  ))}
-                </div>
+                  <>
+                    <div className={publicUi.paymentOptions}>
+                      {PAYMENT_METHODS.map((method) => (
+                        <label key={method.id} className={`${publicUi.paymentOption} opacity-50`}>
+                          <input type="radio" name="payment" disabled />
+                          {method.label} <span className="text-xs">(em breve)</span>
+                        </label>
+                      ))}
+                    </div>
 
-                {error && <p className={publicUi.error}>{error}</p>}
+                    {error && <p className={publicUi.error}>{error}</p>}
 
-                <button className={publicUi.primaryButton} disabled={confirming} onClick={handleConfirm}>
-                  {confirming ? 'Confirmando…' : 'Confirmar pedido'}
-                </button>
-                <div className={publicUi.hint}>Pagamento pelo site em breve — a loja entra em contato para combinar o pagamento.</div>
-              </>
-            )}
-          </>
+                    <button className={publicUi.primaryButton} disabled={confirming} onClick={handleConfirm}>
+                      {confirming ? 'Confirmando…' : 'Confirmar pedido'}
+                    </button>
+                    <div className={publicUi.hint}>Pagamento pelo site em breve — a loja entra em contato para combinar o pagamento.</div>
+                  </>
+                )}
+
+                {isChargeCheckout && (
+                  <p className={publicUi.paySecureFooter}>
+                    <ShieldCheck strokeWidth={2.5} />
+                    Seus dados de pagamento são criptografados e nunca ficam com {tenant.name}.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
         )}
-      </section>
+      </div>
     </div>
   );
 }
