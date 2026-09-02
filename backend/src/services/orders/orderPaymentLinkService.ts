@@ -134,7 +134,14 @@ export async function findOrderPaymentSummary(tenant: Tenant, token: string): Pr
 export async function chargeOrderPayment(
     tenant: Tenant,
     token: string,
-    input: { method: PaymentMethod; cardToken?: string; installments?: number; paymentMethodId?: string; issuerId?: string },
+    input: {
+        method: PaymentMethod;
+        cardToken?: string;
+        installments?: number;
+        paymentMethodId?: string;
+        issuerId?: string;
+        deviceId?: string;
+    },
 ): Promise<ChargeResult> {
     const prepared = await withTenantTransaction(tenant, {}, async (client) => {
         const order = await findOrderRowByPaymentTokenHash(client, digest(token), true);
@@ -167,6 +174,7 @@ export async function chargeOrderPayment(
         installments: input.installments,
         paymentMethodId: input.paymentMethodId,
         issuerId: input.issuerId,
+        deviceId: input.deviceId,
     });
 }
 

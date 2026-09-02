@@ -40,6 +40,12 @@ export interface CreateChargeInput {
     // providers que não precisam disso.
     paymentMethodId?: string;
     issuerId?: string;
+    // Fingerprint do device (window.MP_DEVICE_SESSION_ID, gerado pelo
+    // Security.js que o SDK JS do Mercado Pago carrega sozinho junto com
+    // initMercadoPago no frontend) -- enviado como header X-meli-session-id
+    // na criação da order, melhora a análise de risco/aprovação da MP.
+    // Específico de Mercado Pago; providers sem suporte simplesmente ignoram.
+    deviceId?: string;
     // Id da linha payment_charges já commitada por paymentChargeService
     // ANTES desta chamada -- providers que precisam de uma chave estável
     // pro webhook encontrar a cobrança mesmo que ele chegue antes desta

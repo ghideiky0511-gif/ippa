@@ -104,7 +104,7 @@ function applicationFeeAmount(amount: number): string | undefined {
 async function mercadoPagoFetch<T>(
     accessToken: string,
     path: string,
-    init: { method: string; body?: unknown; idempotencyKey?: string },
+    init: { method: string; body?: unknown; idempotencyKey?: string; deviceId?: string },
 ): Promise<T> {
     const headers: Record<string, string> = {
         Authorization: `Bearer ${accessToken}`,
@@ -112,6 +112,13 @@ async function mercadoPagoFetch<T>(
         Accept: "application/json",
     };
     if (init.idempotencyKey) headers["X-Idempotency-Key"] = init.idempotencyKey;
+    // Device fingerprint do Security.js (carregado automaticamente pelo SDK
+    // JS do Mercado Pago junto com initMercadoPago, ver
+    // window.MP_DEVICE_SESSION_ID no frontend) -- melhora a análise de risco
+    // da transação (o que provavelmente teria evitado o high_risk visto em
+    // teste manual sem device id). Documentado só pra API de Pagamentos
+    // legada, mas a Orders API aceita o mesmo header.
+    if (init.deviceId) headers["X-meli-session-id"] = init.deviceId;
     const response = await fetch(`${MERCADOPAGO_API_BASE}${path}`, {
         method: init.method,
         headers,
@@ -441,6 +448,7 @@ export function createMercadoPagoPaymentProvider(
                     mercadoPagoFetch<MercadoPagoOrderResponse>(accessToken, "/v1/orders", {
                         method: "POST",
                         idempotencyKey: input.internalChargeId,
+                        deviceId: input.deviceId,
                         body: {
                             type: "online",
                             processing_mode: "automatic",
@@ -477,6 +485,7 @@ export function createMercadoPagoPaymentProvider(
                 mercadoPagoFetch<MercadoPagoOrderResponse>(accessToken, "/v1/orders", {
                     method: "POST",
                     idempotencyKey: input.internalChargeId,
+                    deviceId: input.deviceId,
                     body: {
                         type: "online",
                         processing_mode: "automatic",

@@ -4,8 +4,8 @@ import { publicUi } from '@/lib/ui';
 import { use, useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { loadStripe, type Stripe as StripeJsInstance } from '@stripe/stripe-js';
 import { CardElement, Elements, useElements, useStripe } from '@stripe/react-stripe-js';
-import { CardPayment, initMercadoPago } from '@mercadopago/sdk-react';
-import { Lock, ShieldCheck } from 'lucide-react';
+import { Brand, CardPayment, initMercadoPago } from '@mercadopago/sdk-react';
+import { AlertCircle, CheckCircle2, Clock, Copy, Lock, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatBRL } from '@/lib/format';
 import { useTenant } from '@/components/TenantProvider';
@@ -19,6 +19,25 @@ const PAYMENT_METHODS = [
   { id: 'cartao', label: 'Cartão de crédito' },
   { id: 'boleto', label: 'Boleto' },
 ];
+
+// Referência estável (módulo, não recriada a cada render) -- o Brand Brick
+// tem o mesmo padrão de useEffect com `customization` na dependência que o
+// Card Payment Brick (ver comentário acima de MercadoPagoChargeForm): um
+// objeto novo a cada render desmontaria e remontaria o brick sem parar.
+const BRAND_BRICK_CUSTOMIZATION = {
+  text: { valueProp: 'security', size: 'small' },
+} as const;
+
+// window.MP_DEVICE_SESSION_ID é criado automaticamente pelo Security.js que
+// o SDK JS do Mercado Pago carrega sozinho junto com initMercadoPago (sem
+// precisar incluir o script manualmente) -- fingerprint do device, enviado
+// ao backend pra melhorar a análise de risco/aprovação da cobrança (ver
+// X-meli-session-id em providers/mercadopago/index.ts).
+function mercadoPagoDeviceId(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  const value = (window as unknown as { MP_DEVICE_SESSION_ID?: string }).MP_DEVICE_SESSION_ID;
+  return typeof value === 'string' && value ? value : undefined;
+}
 
 interface OrderFreightSummary {
   label: string;
@@ -251,7 +270,7 @@ function MercadoPagoChargeForm({ token, summary, onPaid }: { token: string; summ
       const res = await fetch(`/api/pay/${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ method: 'pix' }),
+        body: JSON.stringify({ method: 'pix', deviceId: mercadoPagoDeviceId() }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || data.error || 'Não foi possível gerar a cobrança Pix.');
@@ -294,6 +313,7 @@ function MercadoPagoChargeForm({ token, summary, onPaid }: { token: string; summ
           issuerId: formData.issuer_id,
           paymentMethodId: formData.payment_method_id,
           installments: formData.installments,
+          deviceId: mercadoPagoDeviceId(),
         }),
       });
       const data = await res.json();
@@ -339,26 +359,46 @@ function MercadoPagoChargeForm({ token, summary, onPaid }: { token: string; summ
     </div>
   );
 
+  // Selo "pago com segurança pelo Mercado Pago" -- passa credibilidade no
+  // momento do pagamento (o cliente reconhece que a cobrança é processada
+  // por um gateway conhecido, não só pela loja). Visível nos dois métodos.
+  const brandBrick = (
+    <div className={publicUi.payBrandBrick}>
+      <Brand customization={BRAND_BRICK_CUSTOMIZATION} locale="pt-BR" />
+    </div>
+  );
+
   if (method === 'pix') {
-    const expired = pix ? new Date(pix.expiresAt).getTime() <= now : false;
+    const remainingMs = pix ? new Date(pix.expiresAt).getTime() - now : 0;
+    const expired = pix ? remainingMs <= 0 : false;
+    const nearExpiry = pix ? remainingMs > 0 && remainingMs <= 60_000 : false;
     return (
       <div className="contents">
+        {brandBrick}
         {methodPicker}
         {!pix || expired ? (
           <button className={publicUi.primaryButton} onClick={() => void handlePixSubmit()} disabled={submittingPix}>
             {submittingPix ? 'Gerando…' : expired ? 'Gerar novo código Pix' : `Gerar Pix ${formatBRL(summary.total)}`}
           </button>
         ) : (
-          <div className={publicUi.field}>
-            {/* eslint-disable-next-line @next/next/no-img-element -- data URI, não passa pelo otimizador de imagem */}
-            <img src={pix.qrCode} alt="QR code Pix" className="mx-auto w-48 rounded-md border border-neutral-200 p-2" />
-            <p className="mt-3 break-all rounded-md border border-neutral-300 bg-white p-2 text-xs">{pix.copyPaste}</p>
-            <button type="button" className={publicUi.subtleButton} onClick={() => void copyPixCode()}>
+          <div className={publicUi.payPixCard}>
+            <div className={publicUi.payPixQrWrap}>
+              {/* eslint-disable-next-line @next/next/no-img-element -- data URI, não passa pelo otimizador de imagem */}
+              <img src={pix.qrCode} alt="QR code Pix" className={publicUi.payPixQr} />
+            </div>
+            <p className={publicUi.payPixCode}>{pix.copyPaste}</p>
+            <button type="button" className={`${publicUi.subtleButton} ${publicUi.payPixCopyButton}`} onClick={() => void copyPixCode()}>
+              <Copy strokeWidth={2} />
               Copiar código
             </button>
-            <p className={publicUi.hint}>
-              Expira em {formatCountdown(pix.expiresAt, now)} — aguardando confirmação do pagamento…
-            </p>
+            <div className={publicUi.payPixStatusRow}>
+              <span className={publicUi.payPixPulseDot} />
+              Aguardando confirmação do pagamento…
+            </div>
+            <span className={nearExpiry ? publicUi.payPixCountdownWarn : publicUi.payPixCountdown}>
+              {nearExpiry ? <AlertCircle strokeWidth={2.5} /> : <Clock strokeWidth={2.5} />}
+              Expira em {formatCountdown(pix.expiresAt, now)}
+            </span>
           </div>
         )}
         {error && <p className={publicUi.error}>{error}</p>}
@@ -368,6 +408,7 @@ function MercadoPagoChargeForm({ token, summary, onPaid }: { token: string; summ
 
   return (
     <div className="contents">
+      {brandBrick}
       {methodPicker}
       <CardPayment
         initialization={{ amount: summary.total }}
@@ -479,9 +520,21 @@ export default function PagarPage({ params }: { params: Promise<{ token: string 
 
         {!loading && (done || alreadyPaid) && (
           <div className={publicUi.payFormCard}>
-            <p className="contents">
-              {summary?.kind === 'charge' ? 'Pagamento confirmado! Obrigado.' : 'Pedido confirmado! A loja vai entrar em contato para combinar o pagamento.'}
-            </p>
+            <div className={publicUi.paySuccessWrap}>
+              <span className={publicUi.paySuccessIcon}>
+                <CheckCircle2 strokeWidth={2} />
+              </span>
+              <div>
+                <p className={publicUi.paySuccessTitle}>
+                  {summary?.kind === 'charge' ? 'Pagamento confirmado!' : 'Pedido confirmado!'}
+                </p>
+                <p className={publicUi.paySuccessSubtitle}>
+                  {summary?.kind === 'charge'
+                    ? 'Recebemos seu pagamento — obrigado pela compra!'
+                    : 'A loja vai entrar em contato para combinar o pagamento.'}
+                </p>
+              </div>
+            </div>
             {summary?.kind === 'charge' && (
               <TenantLink href={`/pedidos/${summary.orderNumber}`} className={publicUi.primaryButton}>
                 Ver pedido

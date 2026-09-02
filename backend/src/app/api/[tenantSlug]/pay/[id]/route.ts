@@ -56,6 +56,7 @@ export async function POST(
                 installments: typeof body.installments === "number" ? body.installments : undefined,
                 paymentMethodId: typeof body.paymentMethodId === "string" ? body.paymentMethodId : undefined,
                 issuerId: typeof body.issuerId === "string" ? body.issuerId : undefined,
+                deviceId: typeof body.deviceId === "string" ? body.deviceId : undefined,
             });
             return { kind: "charge" as const, result };
         }

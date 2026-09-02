@@ -249,4 +249,29 @@ export const publicUi = {
   payMethodCard: 'flex cursor-pointer flex-col items-center gap-1.5 rounded-brand border-2 border-transparent bg-brand-background px-3 py-3.5 text-sm font-semibold text-brand-muted transition-[border-color,background-color,color] [&>svg]:size-5 hover:text-brand-text',
   payMethodCardActive: 'border-brand-primary bg-brand-primary/6 text-brand-primary [&>svg]:text-brand-primary',
   paySecureFooter: 'mt-1 flex items-center justify-center gap-1.5 text-[11px] text-brand-muted [&>svg]:size-3.5',
+
+  // Tela de sucesso (pedido/pagamento confirmado) -- empilhada e centralizada
+  // no mobile, ícone ao lado do texto a partir de sm (mesmo breakpoint do
+  // resto do form de pagamento).
+  paySuccessWrap: 'flex flex-col items-center gap-3 py-1 text-center sm:flex-row sm:items-start sm:gap-4 sm:text-left',
+  paySuccessIcon: 'flex size-14 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 [&>svg]:size-8',
+  paySuccessTitle: 'text-lg font-bold text-brand-text sm:text-xl',
+  paySuccessSubtitle: 'mt-1 text-sm text-brand-muted',
+
+  // Cartão do QR Code Pix (estado "aguardando pagamento") -- destacado do
+  // resto do form com borda própria, QR com moldura branca (contraste
+  // garantido mesmo se o tema da loja tiver fundo escuro/colorido).
+  payPixCard: 'flex flex-col items-center gap-3.5 rounded-brand border border-[#eee] bg-white p-4 text-center sm:p-5',
+  payPixQrWrap: 'rounded-lg border border-neutral-200 bg-white p-2.5 shadow-[0_1px_4px_rgba(0,0,0,0.06)]',
+  payPixQr: 'size-[190px] sm:size-[210px]',
+  payPixCode: 'w-full max-w-[320px] rounded-md border border-neutral-300 bg-brand-background p-2.5 text-left text-xs break-all text-brand-muted',
+  payPixCopyButton: 'inline-flex items-center gap-1.5 [&>svg]:size-3.5',
+  payPixStatusRow: 'flex flex-wrap items-center justify-center gap-2 text-[13px] font-medium text-brand-text',
+  payPixPulseDot: 'inline-flex size-2 shrink-0 animate-pulse rounded-full bg-brand-primary',
+  payPixCountdown: 'inline-flex items-center gap-1 rounded-full bg-brand-background px-2.5 py-1 text-[11px] font-semibold text-brand-muted [&>svg]:size-3',
+  payPixCountdownWarn: 'inline-flex items-center gap-1 rounded-full bg-[#fdecea] px-2.5 py-1 text-[11px] font-semibold text-[#c0392b] [&>svg]:size-3',
+
+  // Faixa do Brand Brick (selo "pago com segurança pelo Mercado Pago") --
+  // moldura própria pra não colar direto no seletor de método logo abaixo.
+  payBrandBrick: 'mb-1 overflow-hidden rounded-brand border border-[#f0f0f0]',
 } as const;

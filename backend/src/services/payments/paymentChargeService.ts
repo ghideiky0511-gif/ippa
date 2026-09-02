@@ -62,6 +62,7 @@ export async function createOrderCharge(
         installments?: number;
         paymentMethodId?: string;
         issuerId?: string;
+        deviceId?: string;
     },
 ): Promise<ChargeResult> {
     const prepared = await withTenantTransaction(tenant, actor, async (client) => {
@@ -151,6 +152,7 @@ export async function createOrderCharge(
             installments: input.installments,
             paymentMethodId: input.paymentMethodId,
             issuerId: input.issuerId,
+            deviceId: input.deviceId,
             internalChargeId: chargeId,
         });
     } catch (exc) {
