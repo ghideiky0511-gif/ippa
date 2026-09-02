@@ -31,6 +31,18 @@ export const OrderPaymentChargeCardSchema = z.object({
 });
 export type OrderPaymentChargeCard = z.infer<typeof OrderPaymentChargeCardSchema>;
 
+// Copia-e-cola + QR code de uma cobrança Pix -- só method === 'pix' (ver
+// payments/types.ts, PixChargeResult). expiresAt é o prazo da cobrança no
+// provider, não o prazo do link de pagamento (esses são conceitos
+// diferentes, ver comentário de payment_charges.provider_expires_at na
+// migration 044).
+export const OrderPaymentChargePixSchema = z.object({
+  qrCode: z.string(),
+  copyPaste: z.string(),
+  expiresAt: IsoDateTimeSchema,
+});
+export type OrderPaymentChargePix = z.infer<typeof OrderPaymentChargePixSchema>;
+
 export const OrderPaymentChargeSchema = z.object({
   id: EntityIdSchema,
   provider: z.string(),
@@ -40,9 +52,11 @@ export const OrderPaymentChargeSchema = z.object({
   createdAt: IsoDateTimeSchema,
   paidAt: IsoDateTimeSchema.nullable().optional(),
   failureReason: z.string().optional(),
-  // Só preenchido para method === 'cartao' -- pix/boleto ainda não têm
-  // gateway real (ver payments/types.ts, ChargeResult é união por método),
-  // mas o campo já nasce opcional pra não exigir mudança de shape depois.
+  // Só preenchido para method === 'cartao'.
   card: OrderPaymentChargeCardSchema.optional(),
+  // Só preenchido para method === 'pix'. Boleto ainda não tem gateway real
+  // (ver payments/types.ts, ChargeResult é união por método), mas o campo
+  // já nasce opcional pra não exigir mudança de shape depois.
+  pix: OrderPaymentChargePixSchema.optional(),
 });
 export type OrderPaymentCharge = z.infer<typeof OrderPaymentChargeSchema>;

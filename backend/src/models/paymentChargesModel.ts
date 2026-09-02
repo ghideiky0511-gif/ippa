@@ -21,6 +21,14 @@ export interface PaymentChargeRow {
     external_status: string | null;
     card_last_digits: string | null;
     card_brand: string | null;
+    // Só preenchidos pra method = "pix" -- colunas existem desde a migration
+    // 044 mas ficaram sem uso até aqui (Stripe nunca implementou Pix, ver
+    // providers/stripe/index.ts). provider_expires_at é o prazo da cobrança
+    // no provider (Pix expira em minutos), não o prazo do link (ver comentário
+    // da coluna na migration 044).
+    pix_qr_code: string | null;
+    pix_copy_paste: string | null;
+    provider_expires_at: Date | null;
     raw_create_response: Record<string, unknown>;
     raw_last_webhook: Record<string, unknown>;
     next_check_at: Date | null;
@@ -30,7 +38,7 @@ export interface PaymentChargeRow {
 }
 
 const chargeFields =
-    "id, tenant_id, integration_id, provider, order_id, method, status, amount, external_id, external_status, card_last_digits, card_brand, raw_create_response, raw_last_webhook, next_check_at, paid_at, created_at, updated_at";
+    "id, tenant_id, integration_id, provider, order_id, method, status, amount, external_id, external_status, card_last_digits, card_brand, pix_qr_code, pix_copy_paste, provider_expires_at, raw_create_response, raw_last_webhook, next_check_at, paid_at, created_at, updated_at";
 
 // Grava a linha ANTES de chamar o provider (id gerado pela aplicação) --
 // resolve a corrida onde o webhook pode chegar antes da chamada de criação
@@ -61,13 +69,17 @@ export async function markPaymentChargeCreatedRow(
         status: string;
         cardLastDigits?: string;
         cardBrand?: string;
+        pixQrCode?: string;
+        pixCopyPaste?: string;
+        providerExpiresAt?: Date;
         rawCreateResponse: Record<string, unknown>;
     },
 ): Promise<PaymentChargeRow | null> {
     const result = await client.query<PaymentChargeRow>(
         `UPDATE payment_charges
          SET external_id = $2, status = $3, card_last_digits = $4, card_brand = $5,
-             raw_create_response = $6::jsonb, updated_at = now()
+             pix_qr_code = $6, pix_copy_paste = $7, provider_expires_at = $8,
+             raw_create_response = $9::jsonb, updated_at = now()
          WHERE tenant_id = app_tenant_id() AND id = $1
          RETURNING ${chargeFields}`,
         [
@@ -76,6 +88,9 @@ export async function markPaymentChargeCreatedRow(
             value.status,
             value.cardLastDigits ?? null,
             value.cardBrand ?? null,
+            value.pixQrCode ?? null,
+            value.pixCopyPaste ?? null,
+            value.providerExpiresAt ?? null,
             JSON.stringify(value.rawCreateResponse),
         ],
     );

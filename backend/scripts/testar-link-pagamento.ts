@@ -37,7 +37,7 @@ async function main(): Promise<void> {
         const summary = await findOrderPaymentSummary(tenant, token);
         console.log("Resumo:", JSON.stringify(summary, null, 2));
 
-        const result = await chargeOrderPayment(tenant, token, cardToken);
+        const result = await chargeOrderPayment(tenant, token, { method: "cartao", cardToken });
         console.log("Resultado da cobrança:", JSON.stringify(result, null, 2));
     } catch (error) {
         console.log("ERRO:", error instanceof Error ? error.message : error);

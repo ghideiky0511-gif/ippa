@@ -74,6 +74,16 @@ services:
         sync: false
       - key: REALTIME_ALLOWED_ORIGINS
         sync: false
+      # URL pública do PRÓPRIO backend, só pro callback OAuth do Mercado
+      # Pago (precisa bater exatamente com o redirect_uri cadastrado no
+      # painel do app -- ver mercadoPagoOnboardingService.ts). Mesma URL
+      # hardcoded que o frontend usa como BACKEND_INTERNAL_URL abaixo
+      # (plano Free não tem rede privada). MERCADOPAGO_CLIENT_ID/
+      # CLIENT_SECRET/WEBHOOK_SECRET/APPLICATION_FEE_BPS/OAUTH_STATE_SECRET
+      # são segredos de verdade -- entram no group ippa-env-prod (painel do
+      # Render), não aqui.
+      - key: MERCADOPAGO_REDIRECT_URI
+        value: https://ippa-backend.onrender.com/api/webhooks/mercadopago/oauth-callback
 
   - type: web
     name: ippa-frontend

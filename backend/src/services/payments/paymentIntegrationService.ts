@@ -50,6 +50,9 @@ export interface TenantPaymentIntegrationOption {
     stripeAccountId?: string | null;
     stripeOnboardingStatus?: "pending" | "complete" | "restricted" | null;
     stripeApiVersion?: "v2" | null;
+    // Espelha stripeAccountId: id do vendedor Mercado Pago, só exibição
+    // (não é segredo, ver models/paymentIntegrationsModel.ts).
+    mercadoPagoUserId?: string | null;
     updatedAt: string | null;
 }
 
@@ -87,6 +90,7 @@ function toOption(
             entry.code === "stripe"
                 ? row?.stripe_api_version ?? null
                 : undefined,
+        mercadoPagoUserId: entry.code === "mercadopago" ? row?.mercadopago_user_id ?? null : undefined,
         updatedAt: row ? row.updated_at.toISOString() : null,
     };
 }
@@ -270,10 +274,25 @@ export async function testTenantPaymentIntegrationConnection(
         );
         if (!stored) throw new NotFoundError("PAYMENT_INTEGRATION_NOT_CONFIGURED");
         if (entry.onboardingType === "redirect") {
-            if (!stored.stripe_account_id) {
-                return { ok: false, message: "Conecte uma conta Stripe antes de testar a conexão." };
+            if (provider === "stripe") {
+                if (!stored.stripe_account_id) {
+                    return { ok: false, message: "Conecte uma conta Stripe antes de testar a conexão." };
+                }
+                credentials = { stripeAccountId: stored.stripe_account_id };
+            } else if (provider === "mercadopago") {
+                if (!stored.mercadopago_user_id) {
+                    return { ok: false, message: "Conecte uma conta Mercado Pago antes de testar a conexão." };
+                }
+                // stored.credentials já vem decifrado pelo model
+                // (accessToken/refreshToken/expiresAt) -- teste manual não
+                // passa por resolveProviderCredentials de propósito (sem o
+                // efeito colateral de renovar+regravar token só por causa de
+                // um clique de "testar conexão"; um token expirado falhando
+                // o teste com mensagem clara já é UX aceitável aqui).
+                credentials = { ...stored.credentials, userId: stored.mercadopago_user_id };
+            } else {
+                return { ok: false, message: "Provider não suporta teste de conexão." };
             }
-            credentials = { stripeAccountId: stored.stripe_account_id };
         } else {
             credentials = stored.credentials;
         }

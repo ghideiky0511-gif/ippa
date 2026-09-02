@@ -3,9 +3,11 @@ import type { PoolClient } from "pg";
 import type { ActorContext, Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import { createPaymentProvider } from "@/payments/registry";
-import type { CardChargeResult, PaymentProvider, WebhookEvent } from "@/payments/types";
+import type { ChargeResult, PaymentMethod, PaymentProvider, WebhookEvent } from "@/payments/types";
 import { extractStripeCardTransactionDetails, extractStripeFailureMessage } from "@/payments/providers/stripe";
-import { findActivePaymentIntegrationRow } from "@/models/paymentIntegrationsModel";
+import { extractMercadoPagoCardTransactionDetails, extractMercadoPagoFailureMessage } from "@/payments/providers/mercadopago";
+import { resolveProviderCredentials } from "./providerCredentials";
+import { findActivePaymentIntegrationRow, type PaymentIntegrationRow } from "@/models/paymentIntegrationsModel";
 import {
     applyPaymentChargeStatusByExternalId,
     applyPaymentChargeStatusById,
@@ -31,25 +33,41 @@ import type { OrderPaymentCharge, PaymentChargeMethod, PaymentChargeStatus } fro
 // cobrança; qual tela de checkout chama ele é uma decisão em aberto (ver
 // plano) -- este arquivo não assume nenhuma.
 
+// Prontidão pra cobrar é diferente por provider: Stripe depende de um
+// status de onboarding assíncrono (KYC via webhook, ver
+// stripeWebhookService.ts); Mercado Pago não tem esse passo -- a troca do
+// código OAuth já É a confirmação (ver mercadoPagoOnboardingService.ts), a
+// própria ativação (`active = true`) já implica "pronto", só falta um
+// access_token salvo. Mesmo padrão de ternário inline por provider já
+// usado em paymentIntegrationService.ts::toOption.
+function isPaymentIntegrationReadyToCharge(row: PaymentIntegrationRow): boolean {
+    if (row.provider === "stripe") {
+        return Boolean(row.stripe_account_id) && row.stripe_onboarding_status === "complete";
+    }
+    if (row.provider === "mercadopago") {
+        return Boolean((row.credentials as { accessToken?: string }).accessToken);
+    }
+    return false;
+}
+
 export async function createOrderCharge(
     tenant: Tenant,
     actor: ActorContext,
     orderId: string,
     input: {
-        cardToken: string;
+        method: PaymentMethod;
         customer: { name: string; document: string; email: string };
+        cardToken?: string;
+        installments?: number;
+        paymentMethodId?: string;
+        issuerId?: string;
     },
-): Promise<CardChargeResult> {
+): Promise<ChargeResult> {
     const prepared = await withTenantTransaction(tenant, actor, async (client) => {
         const integrationRow = await findActivePaymentIntegrationRow(client);
         // Onboarding incompleto bloqueia a cobrança ANTES de qualquer chamada
-        // à Stripe -- falha rápido, sem depender da própria Stripe rejeitar.
-        if (
-            !integrationRow ||
-            integrationRow.provider !== "stripe" ||
-            !integrationRow.stripe_account_id ||
-            integrationRow.stripe_onboarding_status !== "complete"
-        ) {
+        // ao provider -- falha rápido, sem depender do próprio provider rejeitar.
+        if (!integrationRow || !isPaymentIntegrationReadyToCharge(integrationRow)) {
             throw new ValidationError(
                 "PAYMENT_INTEGRATION_NOT_READY",
                 "O gateway de pagamento deste tenant ainda não está pronto para cobrar (onboarding incompleto).",
@@ -64,17 +82,17 @@ export async function createOrderCharge(
         const liveCharges = await listLivePaymentChargeRowsByOrder(client, orderId);
 
         return {
-            integrationId: integrationRow.id,
-            stripeAccountId: integrationRow.stripe_account_id,
+            integrationRow,
             amount: Number(order.total),
             liveCharges,
         };
     });
 
+    const credentials = await resolveProviderCredentials(tenant, actor, prepared.integrationRow);
     const provider = createPaymentProvider(
-        "stripe",
-        { stripeAccountId: prepared.stripeAccountId },
-        createExternalApiCallReporter(tenant, actor, "stripe"),
+        prepared.integrationRow.provider,
+        credentials,
+        createExternalApiCallReporter(tenant, actor, prepared.integrationRow.provider),
     );
 
     // Regra "uma cobrança viva por pedido": antes de abrir uma tentativa
@@ -89,39 +107,42 @@ export async function createOrderCharge(
     }
 
     const chargeId = await withTenantTransaction(tenant, actor, async (client) => {
-        // Grava a cobrança ANTES de chamar a Stripe (id gerado aqui) -- se o
-        // webhook chegar antes desta função terminar, ele já encontra a
+        // Grava a cobrança ANTES de chamar o provider (id gerado aqui) -- se
+        // o webhook chegar antes desta função terminar, ele já encontra a
         // linha via metadata.charge_id (ver applyPaymentChargeWebhookEvent).
+        // É também esta linha que mercadoPagoWebhookService.ts usa pra
+        // resolver o tenant a partir de um payment_id, uma vez que
+        // markPaymentChargeCreatedRow grave o external_id abaixo.
         const chargeRow = await insertPendingPaymentChargeRow(client, {
             id: randomUUID(),
-            integrationId: prepared.integrationId,
-            provider: "stripe",
+            integrationId: prepared.integrationRow.id,
+            provider: prepared.integrationRow.provider,
             orderId,
-            method: "cartao",
+            method: input.method,
             amount: prepared.amount,
         });
         return chargeRow.id;
     });
 
-    let result: CardChargeResult;
+    let result: ChargeResult;
     try {
-        const charge = await provider.createCharge({
+        result = await provider.createCharge({
             amount: prepared.amount,
-            method: "cartao",
+            method: input.method,
             orderId,
             customer: input.customer,
             cardToken: input.cardToken,
+            installments: input.installments,
+            paymentMethodId: input.paymentMethodId,
+            issuerId: input.issuerId,
             internalChargeId: chargeId,
         });
-        // createCharge só devolve method "cartao" pro provider stripe --
-        // ver providers/stripe/index.ts (pix/boleto lançam em vez de
-        // devolver um ChargeResult "falhou").
-        result = charge as CardChargeResult;
     } catch (exc) {
-        logger.error("payment-charge", "Falha ao criar PaymentIntent na Stripe", {
+        logger.error("payment-charge", "Falha ao criar cobrança no provider", {
             tenantId: tenant.id,
             orderId,
             chargeId,
+            provider: prepared.integrationRow.provider,
             ...errorMeta(exc),
         });
         // Nunca deixa o pedido em limbo mesmo numa falha de rede/API antes de
@@ -136,20 +157,32 @@ export async function createOrderCharge(
             });
             await updateOrderPaymentStatusRow(client, orderId, { paymentStatus: "payment_failed" });
         });
-        // Nunca relança o erro cru da Stripe: ele não é um dos tipos que
+        // Pix/boleto não têm um ChargeResult "falhou" (o tipo assume criação
+        // bem-sucedida, ver payments/types.ts) -- lançar é a única opção
+        // honesta pra esses métodos, a rota devolve um erro de verdade em
+        // vez de um 200 fingindo sucesso. Só cartão tem o formato "falhou"
+        // pra devolver, mesmo raciocínio de sempre pra esse método.
+        if (input.method !== "cartao") {
+            throw new ValidationError(
+                "PAYMENT_CHARGE_FAILED",
+                "Não foi possível gerar a cobrança. Tente novamente em instantes.",
+            );
+        }
+        // Nunca relança o erro cru do provider: ele não é um dos tipos que
         // apiHelpers.ts::serviceError reconhece, então a rota devolveria um
         // 500 sem corpo (o cliente via "Unexpected end of JSON input" em vez
-        // de uma mensagem). Um erro de cartão (StripeCardError) é seguro de
-        // mostrar; qualquer outro tipo (ex. resource_missing por um
-        // PaymentMethod criado no contexto de conta errado) é um bug nosso,
-        // não algo que o cliente causou.
-        const stripeErrorType = (exc as { type?: string })?.type;
+        // de uma mensagem). Um erro de cartão reconhecido (StripeCardError)
+        // é seguro de mostrar; qualquer outro tipo (ex. resource_missing por
+        // um PaymentMethod criado no contexto de conta errado) é um bug
+        // nosso, não algo que o cliente causou.
+        const isRecognizedCardDecline =
+            prepared.integrationRow.provider === "stripe" && (exc as { type?: string })?.type === "StripeCardError";
         return {
             method: "cartao",
             externalId: "",
             status: "failed",
             failureReason:
-                stripeErrorType === "StripeCardError" && exc instanceof Error
+                isRecognizedCardDecline && exc instanceof Error
                     ? exc.message
                     : "Não foi possível processar o pagamento. Tente novamente em instantes.",
             raw: {},
@@ -157,23 +190,50 @@ export async function createOrderCharge(
     }
 
     await withTenantTransaction(tenant, actor, async (client) => {
-        await markPaymentChargeCreatedRow(client, {
-            id: chargeId,
-            externalId: result.externalId || null,
-            status: result.status === "authorized" ? "authorized" : "failed",
-            cardLastDigits: result.lastDigits,
-            cardBrand: result.brand,
-            rawCreateResponse: result.raw,
-        });
-        // "authorized" ainda não é "paid" (mesma distinção do enum
-        // payment_charge_status): o pagamento síncrono da Stripe some
-        // definitivo em payment_intent.succeeded, que chega por webhook
-        // (ou reconciliação) e é quem grava paid_at -- ver
-        // applyPaymentChargeWebhookEvent abaixo. Falha síncrona, porém, é
-        // definitiva aqui mesmo (requisito "sem limbo" no caminho síncrono).
-        await updateOrderPaymentStatusRow(client, orderId, {
-            paymentStatus: result.status === "authorized" ? "awaiting_confirmation" : "payment_failed",
-        });
+        if (result.method === "cartao") {
+            await markPaymentChargeCreatedRow(client, {
+                id: chargeId,
+                externalId: result.externalId || null,
+                status: result.status === "authorized" ? "authorized" : "failed",
+                cardLastDigits: result.lastDigits,
+                cardBrand: result.brand,
+                rawCreateResponse: result.raw,
+            });
+            // "authorized" ainda não é "paid" (mesma distinção do enum
+            // payment_charge_status): o pagamento síncrono some definitivo
+            // quando o webhook (ou reconciliação) confirma, e é quem grava
+            // paid_at -- ver applyPaymentChargeWebhookEvent abaixo. Falha
+            // síncrona, porém, é definitiva aqui mesmo (requisito "sem
+            // limbo" no caminho síncrono).
+            await updateOrderPaymentStatusRow(client, orderId, {
+                paymentStatus: result.status === "authorized" ? "awaiting_confirmation" : "payment_failed",
+            });
+        } else if (result.method === "pix") {
+            await markPaymentChargeCreatedRow(client, {
+                id: chargeId,
+                externalId: result.externalId || null,
+                status: "pending",
+                pixQrCode: result.qrCode,
+                pixCopyPaste: result.copyPaste,
+                providerExpiresAt: result.expiresAt,
+                rawCreateResponse: result.raw,
+            });
+            // Diferente do cartão, um Pix recém-criado ainda não foi pago
+            // pela cliente -- não move orders.payment_status aqui (fica
+            // como estava, tipicamente 'unpaid'); só avança quando o
+            // webhook/reconciliação confirma 'authorized'/'paid' (mesma
+            // regra de mapChargeStatusToOrderPaymentUpdate: 'pending' não
+            // move a trilha financeira do pedido).
+        } else {
+            // boleto: guard de tipo só -- ambos os providers lançam antes
+            // de chegar aqui (fora de escopo), nunca alcançado na prática.
+            await markPaymentChargeCreatedRow(client, {
+                id: chargeId,
+                externalId: result.externalId || null,
+                status: "pending",
+                rawCreateResponse: result.raw,
+            });
+        }
     });
 
     return result;
@@ -270,10 +330,12 @@ export function assertOrderChargeable(items: OrderItemSeparationRow[]): void {
 // espalhado (pedido explícito: a UI não pode ficar travada ao Stripe).
 const CARD_DETAIL_EXTRACTORS: Record<string, (raw: Record<string, unknown>) => { nsu?: string; installments: number }> = {
     stripe: extractStripeCardTransactionDetails,
+    mercadopago: extractMercadoPagoCardTransactionDetails,
 };
 
 const FAILURE_MESSAGE_EXTRACTORS: Record<string, (raw: Record<string, unknown>) => string | undefined> = {
     stripe: extractStripeFailureMessage,
+    mercadopago: extractMercadoPagoFailureMessage,
 };
 
 // Mapeia uma linha de payment_charges pro formato de EXIBIÇÃO
@@ -302,6 +364,17 @@ export function toOrderPaymentCharge(row: PaymentChargeRow): OrderPaymentCharge 
                 lastDigits: row.card_last_digits ?? undefined,
                 brand: row.card_brand ?? undefined,
                 ...(CARD_DETAIL_EXTRACTORS[row.provider]?.(row.raw_create_response) ?? { installments: 1 }),
+            }
+            : undefined,
+        // Só preenchido enquanto houver QR/copia-e-cola gravados (ver
+        // markPaymentChargeCreatedRow) -- útil sobretudo enquanto
+        // status === 'pending' (a cliente ainda não pagou), mas devolvido
+        // também depois de terminal (inofensivo, a UI decide se exibe).
+        pix: row.method === "pix" && row.pix_qr_code && row.pix_copy_paste
+            ? {
+                qrCode: row.pix_qr_code,
+                copyPaste: row.pix_copy_paste,
+                expiresAt: (row.provider_expires_at ?? row.created_at).toISOString(),
             }
             : undefined,
     };

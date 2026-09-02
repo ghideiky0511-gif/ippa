@@ -41,13 +41,22 @@ function maskCardNumber(lastDigits?: string): string {
 function ChargeRow({ charge }: { charge: OrderPaymentCharge }) {
   const Icon = methodIcon(charge.method);
   const card = charge.card;
+  // QR code/copia-e-cola só fazem sentido enquanto a cliente ainda está
+  // tentando pagar -- isso vive em /pagar/[token] (fluxo ativo), não aqui
+  // (histórico, reusado no workspace e em /pedidos/[orderNumber]). Aqui
+  // basta identificar que foi um Pix.
+  const pix = charge.pix;
   return (
     <div className="flex flex-col gap-3 border-b border-border py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-start gap-3">
         <Icon className="mt-0.5 size-5 shrink-0 text-brand-primary" aria-hidden="true" />
         <div>
           <p className="font-semibold text-foreground">
-            {card ? `${card.brand ? `${card.brand.toUpperCase()} · ` : ''}${maskCardNumber(card.lastDigits)}` : 'Cobrança'}
+            {card
+              ? `${card.brand ? `${card.brand.toUpperCase()} · ` : ''}${maskCardNumber(card.lastDigits)}`
+              : pix
+                ? 'Pix'
+                : 'Cobrança'}
           </p>
           <p className="mt-0.5 text-sm text-muted-foreground">
             {new Date(charge.createdAt).toLocaleString('pt-BR')}

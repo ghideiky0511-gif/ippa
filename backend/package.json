@@ -23,7 +23,7 @@
     "test:catalog": "tsx --test src/services/catalog/catalogService.test.ts",
     "test:catalog-sync": "tsx --test src/services/erp/catalogSyncService.test.ts src/erp/providers/totvsmoda/client.test.ts src/erp/providers/totvsmoda/mapper.test.ts",
     "test:erp-order-push": "tsx --test src/services/erp/orderPushService.test.ts",
-    "test:payments": "tsx --test src/lib/crypto/paymentCredentials.test.ts src/payments/registry.test.ts src/payments/providers/stripe/index.test.ts src/app/api/control/stripe-status/route.test.ts src/services/payments/paymentChargeService.test.ts src/services/payments/stripeWebhookService.test.ts",
+    "test:payments": "tsx --test src/lib/crypto/paymentCredentials.test.ts src/payments/registry.test.ts src/payments/providers/stripe/index.test.ts src/payments/providers/mercadopago/index.test.ts src/payments/providers/mercadopago/oauth.test.ts src/app/api/control/stripe-status/route.test.ts src/services/payments/paymentChargeService.test.ts src/services/payments/stripeWebhookService.test.ts",
     "test:whatsapp": "tsx --test src/lib/crypto/whatsappCredentials.test.ts src/whatsapp/*.test.ts src/services/whatsapp/*.test.ts",
     "sync-contracts": "node ../scripts/sync-contracts.mjs"
   },

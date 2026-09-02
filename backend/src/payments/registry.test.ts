@@ -6,6 +6,12 @@ test("registry conhece o provider mock", () => {
     assert.ok(listSupportedPaymentProviders().includes("mock"));
 });
 
+test("registry conhece o provider mercadopago", () => {
+    assert.ok(listSupportedPaymentProviders().includes("mercadopago"));
+    const provider = createPaymentProvider("mercadopago", { accessToken: "APP_USR-fake" });
+    assert.equal(provider.code, "mercadopago");
+});
+
 test("provider desconhecido lança erro explícito", () => {
     assert.throws(() => createPaymentProvider("inexistente", {}), /Unknown payment provider: inexistente/);
 });

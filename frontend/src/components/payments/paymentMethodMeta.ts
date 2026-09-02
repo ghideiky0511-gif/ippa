@@ -21,6 +21,7 @@ export function methodIcon(method: string): typeof CreditCard {
 
 const PROVIDER_LABELS: Record<string, string> = {
   stripe: 'Stripe',
+  mercadopago: 'Mercado Pago',
 };
 
 // Provider sem entrada no mapa (gateway novo) cai num label capitalizado a

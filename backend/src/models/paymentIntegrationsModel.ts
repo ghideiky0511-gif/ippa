@@ -17,6 +17,15 @@ export interface PaymentIntegrationRow {
     stripe_account_id: string | null;
     stripe_onboarding_status: string | null;
     stripe_api_version: "v2" | null;
+    // Só preenchidos pra provider = "mercadopago": mercadopago_user_id é o
+    // id do vendedor devolvido pelo OAuth (só exibição/integridade, NÃO
+    // participa da resolução de tenant do webhook -- ver
+    // mercadoPagoWebhookService.ts); mercadopago_public_key não é segredo
+    // (usado pelo frontend pra iniciar os Bricks). access_token/
+    // refresh_token/expiresAt (esses sim segredo, diferente da Stripe) vão
+    // dentro de `credentials` acima, cifrados como qualquer outro provider.
+    mercadopago_user_id: string | null;
+    mercadopago_public_key: string | null;
     created_at: Date;
     updated_at: Date;
 }
@@ -31,6 +40,8 @@ interface PaymentIntegrationRawRow {
     stripe_account_id: string | null;
     stripe_onboarding_status: string | null;
     stripe_api_version: "v2" | null;
+    mercadopago_user_id: string | null;
+    mercadopago_public_key: string | null;
     created_at: Date;
     updated_at: Date;
 }
@@ -42,7 +53,7 @@ export interface PaymentIntegrationWriteRow {
 }
 
 const integrationFields =
-    "id, provider, credentials_encrypted, credentials_meta, active, webhook_secret, stripe_account_id, stripe_onboarding_status, stripe_api_version, created_at, updated_at";
+    "id, provider, credentials_encrypted, credentials_meta, active, webhook_secret, stripe_account_id, stripe_onboarding_status, stripe_api_version, mercadopago_user_id, mercadopago_public_key, created_at, updated_at";
 
 // Decifra na borda do model (nunca antes) -- quem chama já recebe
 // `credentials` em claro, mas a linha nunca fica em claro fora deste
@@ -58,6 +69,8 @@ function toRow(raw: PaymentIntegrationRawRow): PaymentIntegrationRow {
         stripe_account_id: raw.stripe_account_id,
         stripe_onboarding_status: raw.stripe_onboarding_status,
         stripe_api_version: raw.stripe_api_version,
+        mercadopago_user_id: raw.mercadopago_user_id,
+        mercadopago_public_key: raw.mercadopago_public_key,
         created_at: raw.created_at,
         updated_at: raw.updated_at,
     };
@@ -191,6 +204,40 @@ export async function upsertStripeAccountRow(
          WHERE tenant_id = app_tenant_id() AND provider = 'stripe'
          RETURNING ${integrationFields}`,
         [value.stripeAccountId, value.onboardingStatus, value.apiVersion],
+    );
+    return result.rows[0] ? toRow(result.rows[0]) : null;
+}
+
+// Desvincula uma conta Mercado Pago sem apagar o histórico de cobranças --
+// espelha disconnectStripeAccountRow, mas sem checagem de versão de API
+// (Mercado Pago não tem esse conceito). Guard
+// `mercadopago_user_id IS NOT NULL` evita RETURNING vazio virar
+// "desconectado com sucesso" quando nunca houve conta conectada.
+export async function disconnectMercadoPagoAccountRow(client: PoolClient): Promise<PaymentIntegrationRow | null> {
+    const result = await client.query<PaymentIntegrationRawRow>(
+        `UPDATE tenant_payment_integrations
+         SET active = false, mercadopago_user_id = NULL, mercadopago_public_key = NULL, updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND provider = 'mercadopago' AND mercadopago_user_id IS NOT NULL
+         RETURNING ${integrationFields}`,
+    );
+    return result.rows[0] ? toRow(result.rows[0]) : null;
+}
+
+// Grava/atualiza o user_id e a public_key da conta Mercado Pago do tenant.
+// Diferente de upsertStripeAccountRow, sem COALESCE "nunca reatribui": a
+// troca de conta MP (reconexão explícita via novo onboarding) é um clique
+// deliberado do admin, não uma corrida assíncrona -- sobrescrever é o
+// comportamento certo (ver mercadoPagoOnboardingService.ts).
+export async function upsertMercadoPagoAccountRow(
+    client: PoolClient,
+    value: { userId: string; publicKey: string },
+): Promise<PaymentIntegrationRow | null> {
+    const result = await client.query<PaymentIntegrationRawRow>(
+        `UPDATE tenant_payment_integrations
+         SET mercadopago_user_id = $1, mercadopago_public_key = $2, updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND provider = 'mercadopago'
+         RETURNING ${integrationFields}`,
+        [value.userId, value.publicKey],
     );
     return result.rows[0] ? toRow(result.rows[0]) : null;
 }

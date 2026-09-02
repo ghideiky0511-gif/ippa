@@ -24,6 +24,9 @@ function fakeChargeRow(overrides: Partial<PaymentChargeRow> = {}): PaymentCharge
         external_status: "succeeded",
         card_last_digits: "4242",
         card_brand: "visa",
+        pix_qr_code: null,
+        pix_copy_paste: null,
+        provider_expires_at: null,
         raw_create_response: {},
         raw_last_webhook: {},
         next_check_at: null,
@@ -117,6 +120,7 @@ test("toOrderPaymentCharge: cobrança Stripe paga extrai NSU/parcelas do raw_cre
         paidAt: row.paid_at!.toISOString(),
         failureReason: undefined,
         card: { lastDigits: "4242", brand: "visa", installments: 2, nsu: "116728512090991" },
+        pix: undefined,
     });
 });
 

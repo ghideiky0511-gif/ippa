@@ -4,6 +4,8 @@ import { publicUi } from '@/lib/ui';
 import { use, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { loadStripe, type Stripe as StripeJsInstance } from '@stripe/stripe-js';
 import { CardElement, Elements, useElements, useStripe } from '@stripe/react-stripe-js';
+import { CardPayment, initMercadoPago } from '@mercadopago/sdk-react';
+import { toast } from 'sonner';
 import { formatBRL } from '@/lib/format';
 import { useTenant } from '@/components/TenantProvider';
 import ProductImage from '@/components/ProductImage';
@@ -38,8 +40,11 @@ interface CheckoutSummary {
 }
 
 // Fluxo novo: link gerado DEPOIS que a loja confirmou a separação física do
-// pedido (ver orderPaymentLinkService.ts) -- aqui sim roda uma cobrança real
-// via Stripe.
+// pedido (ver orderPaymentLinkService.ts) -- aqui sim roda uma cobrança real.
+// `provider`/`publicCredentials` são genéricos por gateway (ver
+// backend/src/services/orders/orderPaymentLinkService.ts::OrderPaymentSummary):
+// stripe -> { publishableKey, stripeAccountId }; mercadopago -> { publicKey, userId }.
+// null = nenhum gateway ativo/pronto pra cobrar.
 interface ChargeSummary {
   kind: 'charge';
   orderId: string;
@@ -50,11 +55,25 @@ interface ChargeSummary {
   discount?: { label: string; amount: number };
   freight?: OrderFreightSummary;
   paymentStatus: 'unpaid' | 'awaiting_confirmation' | 'paid' | 'payment_failed';
-  publishableKey: string | null;
-  stripeAccountId: string | null;
+  provider: string | null;
+  publicCredentials: Record<string, unknown>;
 }
 
 type PaySummary = CheckoutSummary | ChargeSummary;
+
+function stripeCredentials(summary: ChargeSummary): { publishableKey: string; stripeAccountId: string } | null {
+  if (summary.provider !== 'stripe') return null;
+  const creds = summary.publicCredentials as { publishableKey?: string | null; stripeAccountId?: string | null };
+  if (!creds.publishableKey || !creds.stripeAccountId) return null;
+  return { publishableKey: creds.publishableKey, stripeAccountId: creds.stripeAccountId };
+}
+
+function mercadoPagoCredentials(summary: ChargeSummary): { publicKey: string } | null {
+  if (summary.provider !== 'mercadopago') return null;
+  const creds = summary.publicCredentials as { publicKey?: string | null };
+  if (!creds.publicKey) return null;
+  return { publicKey: creds.publicKey };
+}
 
 function SummaryCard({ summary }: { summary: PaySummary }) {
   const discountLabel = summary.kind === 'checkout' ? summary.cartDiscountLabel : summary.discount?.label ?? null;
@@ -107,7 +126,7 @@ function SummaryCard({ summary }: { summary: PaySummary }) {
 // e manda só o PaymentMethod id resultante pro backend -- que cobra a
 // connected account correta (ver createOrderCharge). Precisa estar dentro
 // de <Elements> pra usar useStripe/useElements.
-function ChargeForm({ token, summary, onPaid }: { token: string; summary: ChargeSummary; onPaid: () => void }) {
+function StripeChargeForm({ token, summary, onPaid }: { token: string; summary: ChargeSummary; onPaid: () => void }) {
   const stripe = useStripe();
   const elements = useElements();
   const [submitting, setSubmitting] = useState(false);
@@ -134,7 +153,7 @@ function ChargeForm({ token, summary, onPaid }: { token: string; summary: Charge
       const res = await fetch(`/api/pay/${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cardToken: paymentMethod.id }),
+        body: JSON.stringify({ method: 'cartao', cardToken: paymentMethod.id }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || data.error || 'Não foi possível processar o pagamento.');
@@ -166,6 +185,173 @@ function ChargeForm({ token, summary, onPaid }: { token: string; summary: Charge
   );
 }
 
+function formatCountdown(expiresAt: string, now: number): string {
+  const remainingMs = new Date(expiresAt).getTime() - now;
+  if (remainingMs <= 0) return 'Expirado';
+  const totalSeconds = Math.floor(remainingMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+// Cobrança real via Mercado Pago (Split Payments) -- cliente escolhe Pix ou
+// cartão aqui dentro (diferente da Stripe, que só oferece cartão hoje).
+// Cartão usa o Card Payment Brick (tokeniza client-side, a ippa nunca vê o
+// PAN, mesma garantia do fluxo Stripe); Pix não precisa de Brick pra criar
+// a cobrança -- só GET/POST direto em /api/pay/[token] -- mas precisa de
+// polling até a confirmação (o Mercado Pago não empurra status pro
+// navegador, só por webhook pro backend).
+function MercadoPagoChargeForm({ token, summary, onPaid }: { token: string; summary: ChargeSummary; onPaid: () => void }) {
+  const [method, setMethod] = useState<'pix' | 'cartao'>('cartao');
+  const [error, setError] = useState('');
+  const [submittingPix, setSubmittingPix] = useState(false);
+  const [pix, setPix] = useState<{ qrCode: string; copyPaste: string; expiresAt: string } | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!pix) return;
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(tick);
+  }, [pix]);
+
+  // Sem webhook chegando no navegador -- só sabendo se já pagou perguntando
+  // de novo pro backend, que já reflete tanto o webhook quanto a
+  // reconciliação ativa (ver GET /api/pay/[token]).
+  useEffect(() => {
+    if (!pix) return;
+    const expired = new Date(pix.expiresAt).getTime() <= now;
+    if (expired) return;
+    const poll = setInterval(() => {
+      fetch(`/api/pay/${token}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data?.paymentStatus === 'paid') onPaid();
+        })
+        .catch(() => undefined);
+    }, 4000);
+    return () => clearInterval(poll);
+  }, [pix, now, token, onPaid]);
+
+  async function handlePixSubmit() {
+    if (submittingPix) return;
+    setSubmittingPix(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/pay/${token}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ method: 'pix' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || data.error || 'Não foi possível gerar a cobrança Pix.');
+      const result = data.result as { qrCode?: string; copyPaste?: string; expiresAt?: string } | undefined;
+      if (!result?.qrCode || !result.copyPaste || !result.expiresAt) {
+        throw new Error('Não foi possível gerar a cobrança Pix.');
+      }
+      setPix({ qrCode: result.qrCode, copyPaste: result.copyPaste, expiresAt: result.expiresAt });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível gerar a cobrança Pix.');
+    } finally {
+      setSubmittingPix(false);
+    }
+  }
+
+  async function copyPixCode() {
+    if (!pix) return;
+    try {
+      await navigator.clipboard.writeText(pix.copyPaste);
+      toast.success('Código Pix copiado.');
+    } catch {
+      toast.error('Não foi possível copiar o código — selecione e copie manualmente.');
+    }
+  }
+
+  async function handleCardSubmit(formData: {
+    token: string;
+    issuer_id: string;
+    payment_method_id: string;
+    installments: number;
+  }): Promise<void> {
+    const res = await fetch(`/api/pay/${token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        method: 'cartao',
+        cardToken: formData.token,
+        issuerId: formData.issuer_id,
+        paymentMethodId: formData.payment_method_id,
+        installments: formData.installments,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || data.error || 'Não foi possível processar o pagamento.');
+    if (data.result?.status === 'failed') {
+      setError(data.result.failureReason || 'Cartão recusado — tente outro cartão.');
+      return;
+    }
+    onPaid();
+  }
+
+  const methodPicker = (
+    <div className={publicUi.paymentOptions}>
+      {(['pix', 'cartao'] as const).map((id) => (
+        <label key={id} className={publicUi.paymentOption}>
+          <input
+            type="radio"
+            name="mp-method"
+            checked={method === id}
+            onChange={() => {
+              setMethod(id);
+              setError('');
+            }}
+          />
+          {id === 'pix' ? 'Pix' : 'Cartão de crédito'}
+        </label>
+      ))}
+    </div>
+  );
+
+  if (method === 'pix') {
+    const expired = pix ? new Date(pix.expiresAt).getTime() <= now : false;
+    return (
+      <div className="contents">
+        {methodPicker}
+        {!pix || expired ? (
+          <button className={publicUi.primaryButton} onClick={() => void handlePixSubmit()} disabled={submittingPix}>
+            {submittingPix ? 'Gerando…' : expired ? 'Gerar novo código Pix' : `Gerar Pix ${formatBRL(summary.total)}`}
+          </button>
+        ) : (
+          <div className={publicUi.field}>
+            {/* eslint-disable-next-line @next/next/no-img-element -- data URI, não passa pelo otimizador de imagem */}
+            <img src={pix.qrCode} alt="QR code Pix" className="mx-auto w-48" />
+            <p className="mt-3 break-all rounded-md border border-neutral-300 bg-white p-2 text-xs">{pix.copyPaste}</p>
+            <button type="button" className={publicUi.subtleButton} onClick={() => void copyPixCode()}>
+              Copiar código
+            </button>
+            <p className={publicUi.hint}>
+              Expira em {formatCountdown(pix.expiresAt, now)} — aguardando confirmação do pagamento…
+            </p>
+          </div>
+        )}
+        {error && <p className={publicUi.error}>{error}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="contents">
+      {methodPicker}
+      <CardPayment
+        initialization={{ amount: summary.total }}
+        locale="pt-BR"
+        onSubmit={(formData) => handleCardSubmit(formData)}
+        onError={(brickError) => setError(brickError?.message || 'Não foi possível processar o cartão.')}
+      />
+      {error && <p className={publicUi.error}>{error}</p>}
+    </div>
+  );
+}
+
 // Página pública de pagamento -- alcançada tanto pelo link de finalização de
 // checkout mais antigo (talão) quanto pelo link de cobrança real gerado
 // depois que a loja separa o pedido (ver /pedidos/[orderNumber], "Pagar
@@ -181,13 +367,24 @@ export default function PagarPage({ params }: { params: Promise<{ token: string 
   const [done, setDone] = useState(false);
 
   const stripePromise = useMemo<Promise<StripeJsInstance | null> | null>(() => {
-    if (summary?.kind !== 'charge' || !summary.publishableKey || !summary.stripeAccountId) return null;
+    if (summary?.kind !== 'charge') return null;
+    const creds = stripeCredentials(summary);
+    if (!creds) return null;
     // stripeAccount aqui é o que faz o PaymentMethod nascer já na connected
     // account do tenant -- sem isso a Stripe recusa a cobrança com
     // "resource_missing" (o PaymentMethod existiria só na conta da
     // plataforma, e createOrderCharge cobra via direct charge).
-    return loadStripe(summary.publishableKey, { stripeAccount: summary.stripeAccountId });
+    return loadStripe(creds.publishableKey, { stripeAccount: creds.stripeAccountId });
   }, [summary]);
+
+  const mercadoPagoCreds = summary?.kind === 'charge' ? mercadoPagoCredentials(summary) : null;
+  const mercadoPagoPublicKey = mercadoPagoCreds?.publicKey ?? null;
+  useEffect(() => {
+    // Depende só da string (não do objeto `mercadoPagoCreds`, recriado a
+    // cada render por mercadoPagoCredentials()) -- senão initMercadoPago
+    // rodaria de novo em todo render em vez de só quando a chave muda.
+    if (mercadoPagoPublicKey) initMercadoPago(mercadoPagoPublicKey, { locale: 'pt-BR' });
+  }, [mercadoPagoPublicKey]);
 
   useEffect(() => {
     fetch(`/api/pay/${token}`)
@@ -249,12 +446,22 @@ export default function PagarPage({ params }: { params: Promise<{ token: string 
             <SummaryCard summary={summary} />
 
             {summary.kind === 'charge' ? (
-              summary.publishableKey && stripePromise ? (
-                <Elements stripe={stripePromise}>
-                  <ChargeForm token={token} summary={summary} onPaid={() => setDone(true)} />
-                </Elements>
+              summary.provider === 'stripe' ? (
+                stripePromise && stripeCredentials(summary) ? (
+                  <Elements stripe={stripePromise}>
+                    <StripeChargeForm token={token} summary={summary} onPaid={() => setDone(true)} />
+                  </Elements>
+                ) : (
+                  <p className={publicUi.error}>Pagamento por cartão indisponível no momento. Fale com a loja.</p>
+                )
+              ) : summary.provider === 'mercadopago' ? (
+                mercadoPagoCredentials(summary) ? (
+                  <MercadoPagoChargeForm token={token} summary={summary} onPaid={() => setDone(true)} />
+                ) : (
+                  <p className={publicUi.error}>Pagamento indisponível no momento. Fale com a loja.</p>
+                )
               ) : (
-                <p className={publicUi.error}>Pagamento por cartão indisponível no momento. Fale com a loja.</p>
+                <p className={publicUi.error}>Pagamento indisponível no momento. Fale com a loja.</p>
               )
             ) : (
               <>

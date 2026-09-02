@@ -2,8 +2,10 @@ import { withControlTransaction } from "@/lib/db/control";
 import { findActiveTenantById, withTenantTransaction } from "@/lib/db/tenant";
 import { createPaymentProvider } from "@/payments/registry";
 import { scheduleNextPaymentChargeCheckRow } from "@/models/paymentChargesModel";
+import { findPaymentIntegrationRowByProvider } from "@/models/paymentIntegrationsModel";
 import { createExternalApiCallReporter } from "@/services/erp/externalApiLogService";
 import { applyPaymentChargeWebhookEvent } from "./paymentChargeService";
+import { resolveProviderCredentials } from "./providerCredentials";
 import { errorMeta, logger } from "@/lib/logger";
 
 // Rede de segurança pra quando o webhook falha/atrasa (ver next_check_at em
@@ -20,17 +22,22 @@ interface DueChargeRow {
     charge_id: string;
     external_id: string | null;
     provider: string;
-    stripe_account_id: string | null;
 }
 
 export async function dispatchPaymentReconciliation(
     input: { tenantId?: string } = {},
 ): Promise<{ checked: number; errors: Array<{ chargeId: string; error: string }> }> {
+    // Sem JOIN em tenant_payment_integrations aqui: credencial cifrada
+    // (Mercado Pago) precisa passar pela borda de decifra do model
+    // (findPaymentIntegrationRowByProvider, dentro do loop abaixo), que o
+    // SQL cru do control pool não tem -- antes só lia stripe_account_id em
+    // claro, o que escondia (sem erro nenhum) toda cobrança não-Stripe
+    // pendente de reconciliar (ver o `provider !== "stripe"` que existia
+    // aqui, corrigido nesta mudança).
     const dueCharges = await withControlTransaction(async (client) => {
         const result = await client.query<DueChargeRow>(
-            `SELECT pc.tenant_id, pc.id AS charge_id, pc.external_id, pc.provider, tpi.stripe_account_id
+            `SELECT pc.tenant_id, pc.id AS charge_id, pc.external_id, pc.provider
              FROM payment_charges pc
-             JOIN tenant_payment_integrations tpi ON tpi.tenant_id = pc.tenant_id AND tpi.id = pc.integration_id
              WHERE pc.status IN ('pending', 'processing')
                AND pc.next_check_at IS NOT NULL AND pc.next_check_at <= now()
                AND ($1::uuid IS NULL OR pc.tenant_id = $1)
@@ -44,12 +51,21 @@ export async function dispatchPaymentReconciliation(
     const errors: Array<{ chargeId: string; error: string }> = [];
     for (const due of dueCharges) {
         try {
-            if (!due.external_id || !due.stripe_account_id || due.provider !== "stripe") continue;
+            if (!due.external_id) continue;
             const tenant = await findActiveTenantById(due.tenant_id);
             if (!tenant) continue;
+            const integrationRow = await withTenantTransaction(tenant, SYSTEM_ACTOR, (client) =>
+                findPaymentIntegrationRowByProvider(client, due.provider),
+            );
+            if (!integrationRow) continue;
+            // É também aqui que a renovação periódica do access_token do
+            // Mercado Pago acontece (ver providerCredentials.ts) -- a
+            // reconciliação roda a cada poucos minutos, então cobre o caso
+            // de um token expirar entre cobranças reais.
+            const credentials = await resolveProviderCredentials(tenant, SYSTEM_ACTOR, integrationRow);
             const provider = createPaymentProvider(
                 due.provider,
-                { stripeAccountId: due.stripe_account_id },
+                credentials,
                 createExternalApiCallReporter(tenant, SYSTEM_ACTOR, due.provider),
             );
             const event = await provider.fetchChargeStatus(due.external_id);

@@ -22,6 +22,13 @@ export interface CreateChargeInput {
     // a ippa nunca vê o PAN, só recebe o token para autorizar a cobrança.
     cardToken?: string;
     installments?: number;
+    // Cartão via Mercado Pago: o Card Payment Brick devolve payment_method_id
+    // (bandeira, ex. "visa"/"master") e issuer_id junto do token -- a API de
+    // pagamentos exige os dois além do token (diferente da Stripe, que
+    // resolve a bandeira a partir do PaymentMethod já criado). Ausentes para
+    // providers que não precisam disso.
+    paymentMethodId?: string;
+    issuerId?: string;
     // Id da linha payment_charges já commitada por paymentChargeService
     // ANTES desta chamada -- providers que precisam de uma chave estável
     // pro webhook encontrar a cobrança mesmo que ele chegue antes desta

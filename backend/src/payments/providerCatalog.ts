@@ -46,6 +46,14 @@ export const PAYMENT_PROVIDER_CATALOG: PaymentProviderCatalogEntry[] = [
         credentialFields: [],
         onboardingType: "redirect",
     },
+    {
+        code: "mercadopago",
+        label: "Mercado Pago",
+        description:
+            "Pagamento com Pix e cartão via Mercado Pago -- sem formulário, ativado por um cadastro guiado hospedado pelo Mercado Pago.",
+        credentialFields: [],
+        onboardingType: "redirect",
+    },
 ];
 
 export function listVisiblePaymentProviderCatalog(): PaymentProviderCatalogEntry[] {

@@ -20,6 +20,8 @@ export interface PaymentIntegrationOption {
   stripeAccountId?: string | null;
   stripeOnboardingStatus?: 'pending' | 'complete' | 'restricted' | null;
   stripeApiVersion?: 'v2' | null;
+  // Espelha stripeAccountId: id do vendedor Mercado Pago, só exibição.
+  mercadoPagoUserId?: string | null;
   updatedAt: string | null;
 }
 
@@ -131,5 +133,32 @@ export function disconnectStripeAccount(): Promise<{ disconnected: boolean }> {
     unknown,
     { method: 'POST' },
     'Não foi possível desvincular a conta Stripe.'
+  ) as Promise<{ disconnected: boolean }>;
+}
+
+// Mercado Pago (Split Payments) -- mesmo desenho de onboarding hospedado da
+// Stripe (URL de uso único, navegação completa do browser), mas mais
+// simples: a ativação é síncrona no callback OAuth (ver
+// mercadoPagoOnboardingService.ts), sem um status assíncrono pra consultar
+// depois -- por isso não há um equivalente a refreshStripeOnboardingStatus.
+export function createMercadoPagoOnboardingLink(returnUrl: string): Promise<{ url: string }> {
+  return adminJson(
+    '/api/payment-integration/mercadopago/onboarding-link',
+    unknown,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ returnUrl }),
+    },
+    'Não foi possível iniciar a conexão com o Mercado Pago.'
+  ) as Promise<{ url: string }>;
+}
+
+export function disconnectMercadoPagoAccount(): Promise<{ disconnected: boolean }> {
+  return adminJson(
+    '/api/payment-integration/mercadopago/disconnect',
+    unknown,
+    { method: 'POST' },
+    'Não foi possível desvincular a conta Mercado Pago.'
   ) as Promise<{ disconnected: boolean }>;
 }

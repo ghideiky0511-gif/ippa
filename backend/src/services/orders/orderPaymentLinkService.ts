@@ -12,12 +12,12 @@ import {
     setOrderPaymentTokenRow,
 } from "@/models/ordersModel";
 import { findClientRow } from "@/models/clientsModel";
-import { findPaymentIntegrationRowByProvider } from "@/models/paymentIntegrationsModel";
+import { findActivePaymentIntegrationRow } from "@/models/paymentIntegrationsModel";
 import { findStoreSettingsRow } from "@/models/settingsModel";
 import { PAYMENT_LINK_EXPIRATION_DEFAULT_MINUTES } from "@/services/settings";
 import { createOrderCharge, toOrderPaymentCharge } from "@/services/payments/paymentChargeService";
 import { getStripePublishableKey } from "@/payments/providers/stripe/client";
-import type { CardChargeResult } from "@/payments/types";
+import type { ChargeResult, PaymentMethod } from "@/payments/types";
 import { listPaymentChargeRowsByOrder } from "@/models/paymentChargesModel";
 import type { OrderPaymentCharge } from "@/contracts/payments";
 import { ForbiddenError, GoneError, NotFoundError, ValidationError } from "@/services/shared/errors";
@@ -82,14 +82,16 @@ export interface OrderPaymentSummary {
     discount?: Order["discount"];
     freight?: OrderFreight;
     paymentStatus: NonNullable<Order["paymentStatus"]>;
-    publishableKey: string | null;
-    // PaymentMethods precisam ser criados pelo Stripe.js já no contexto da
-    // connected account (loadStripe(pk, { stripeAccount })) -- senão nascem
-    // na conta da plataforma e a Stripe recusa com "resource_missing" quando
-    // createOrderCharge tenta usá-los numa direct charge (stripeAccount no
-    // request option). null = onboarding incompleto, mesmo caso que já
-    // desabilita o formulário (publishableKey nulo cobre a chave ausente).
-    stripeAccountId: string | null;
+    // null = nenhum gateway ativo pra este tenant (onboarding nunca
+    // concluído) -- o front mostra "pagamento indisponível". O shape de
+    // publicCredentials varia por provider (ver findOrderPaymentSummary):
+    // stripe -> { publishableKey, stripeAccountId } (PaymentMethods
+    // precisam nascer já no contexto da connected account, loadStripe(pk,
+    // { stripeAccount }), senão a Stripe recusa com "resource_missing" numa
+    // direct charge); mercadopago -> { publicKey, userId } (inicializa os
+    // Bricks).
+    provider: string | null;
+    publicCredentials: Record<string, unknown>;
 }
 
 /** null = token não é (ou não é mais) um token de pedido válido -- quem
@@ -104,7 +106,16 @@ export async function findOrderPaymentSummary(tenant: Tenant, token: string): Pr
         }
         const items = (await listOrderItemRowsByOrder(client, order.id)).map((item) => item.snapshot);
         const freightRow = await findOrderFreightRowByOrderId(client, order.id);
-        const integrationRow = await findPaymentIntegrationRowByProvider(client, "stripe");
+        // A linha ATIVA, não "a linha da Stripe" -- é o gateway ativo que
+        // de fato vai processar a cobrança (regra "um gateway por vez", ver
+        // migration 044). null = nenhum gateway ativo ainda.
+        const integrationRow = await findActivePaymentIntegrationRow(client);
+        const publicCredentials: Record<string, unknown> =
+            integrationRow?.provider === "stripe"
+                ? { publishableKey: getStripePublishableKey() ?? null, stripeAccountId: integrationRow.stripe_account_id }
+                : integrationRow?.provider === "mercadopago"
+                    ? { publicKey: integrationRow.mercadopago_public_key, userId: integrationRow.mercadopago_user_id }
+                    : {};
         return {
             orderId: order.id,
             orderNumber: order.order_number,
@@ -114,13 +125,17 @@ export async function findOrderPaymentSummary(tenant: Tenant, token: string): Pr
             discount: order.discount ?? undefined,
             freight: freightRow ? toOrderFreight(freightRow) : undefined,
             paymentStatus: order.payment_status,
-            publishableKey: getStripePublishableKey() ?? null,
-            stripeAccountId: integrationRow?.stripe_account_id ?? null,
+            provider: integrationRow?.provider ?? null,
+            publicCredentials,
         };
     });
 }
 
-export async function chargeOrderPayment(tenant: Tenant, token: string, cardToken: string): Promise<CardChargeResult> {
+export async function chargeOrderPayment(
+    tenant: Tenant,
+    token: string,
+    input: { method: PaymentMethod; cardToken?: string; installments?: number; paymentMethodId?: string; issuerId?: string },
+): Promise<ChargeResult> {
     const prepared = await withTenantTransaction(tenant, {}, async (client) => {
         const order = await findOrderRowByPaymentTokenHash(client, digest(token), true);
         if (!order) throw new NotFoundError("INVALID_PAYMENT_LINK");
@@ -142,12 +157,16 @@ export async function chargeOrderPayment(tenant: Tenant, token: string, cardToke
             customer: { name: registration.name, document: registration.cpf_cnpj, email: registration.email },
         };
     });
-    // createOrderCharge abre suas próprias transações e chama a Stripe --
+    // createOrderCharge abre suas próprias transações e chama o provider --
     // fica fora da transação acima de propósito, mesmo raciocínio de nunca
     // segurar conexão do pool durante uma chamada de rede.
     return createOrderCharge(tenant, {}, prepared.orderId, {
-        cardToken,
+        method: input.method,
         customer: prepared.customer,
+        cardToken: input.cardToken,
+        installments: input.installments,
+        paymentMethodId: input.paymentMethodId,
+        issuerId: input.issuerId,
     });
 }
 

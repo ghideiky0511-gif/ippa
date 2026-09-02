@@ -2,6 +2,7 @@ import type { ExternalApiCallReporter } from "@/lib/externalApiCall";
 import type { PaymentProvider, PaymentProviderCredentials, PaymentProviderFactory } from "./types";
 import { createMockPaymentProvider } from "./providers/mock";
 import { createStripePaymentProvider } from "./providers/stripe";
+import { createMercadoPagoPaymentProvider } from "./providers/mercadopago";
 
 // Fábrica pura (sem banco/tenant) -- mapa código de provider -> implementação.
 // Um provider real novo entra como providers/<nome>/ (mesmo formato do mock:
@@ -10,6 +11,7 @@ import { createStripePaymentProvider } from "./providers/stripe";
 const PROVIDER_FACTORIES: Record<string, PaymentProviderFactory> = {
     mock: createMockPaymentProvider,
     stripe: createStripePaymentProvider,
+    mercadopago: createMercadoPagoPaymentProvider,
 };
 
 export function createPaymentProvider(

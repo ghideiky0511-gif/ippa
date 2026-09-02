@@ -17,6 +17,12 @@ function StripeIcon({ className }: { className?: string }) {
   );
 }
 
+// Mercado Pago não tem entrada aqui de propósito -- sem um path de glifo
+// oficial verificado à mão (o da Stripe acima já existia no repo antes
+// desta mudança), o risco de publicar uma marca registrada desenhada
+// errado de memória é maior que o ganho. providerLabel/methodIcon (ver
+// paymentMethodMeta.ts) já cobrem esse provider em texto sem ícone de
+// marca -- comportamento suportado, não uma lacuna.
 const PROVIDER_ICONS: Record<string, (props: { className?: string }) => React.JSX.Element> = {
   stripe: StripeIcon,
 };

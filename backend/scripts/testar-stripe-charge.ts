@@ -34,6 +34,7 @@ async function main(): Promise<void> {
     console.log(`Cobrando pedido ${orderId} do tenant ${tenant.name} (${tenant.id}) com ${cardToken}...`);
     try {
         const result = await createOrderCharge(tenant, { userId, role: "administrador" }, orderId, {
+            method: "cartao",
             cardToken,
             customer: { name: "Cliente Teste", document: "00000000000", email: "teste@example.com" },
         });
