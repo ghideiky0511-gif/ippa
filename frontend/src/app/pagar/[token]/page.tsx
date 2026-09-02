@@ -29,6 +29,35 @@ const BRAND_BRICK_CUSTOMIZATION = {
   text: { valueProp: 'security', size: 'small' },
 } as const;
 
+const MERCADO_PAGO_OPTIONS = { locale: 'pt-BR' } as const;
+
+// The Brand Brick is optional. A local badge prevents its remote skeleton
+// from becoming a permanent blank area when the provider script fails.
+function MercadoPagoBrand() {
+  const [brickReady, setBrickReady] = useState(false);
+  const [showFallback, setShowFallback] = useState(false);
+  const handleReady = useCallback(() => setBrickReady(true), []);
+
+  useEffect(() => {
+    if (brickReady) return;
+    const timeout = window.setTimeout(() => setShowFallback(true), 4_000);
+    return () => window.clearTimeout(timeout);
+  }, [brickReady]);
+
+  return (
+    <div className={publicUi.payBrandBrick}>
+      {showFallback ? (
+        <div className="flex items-center gap-2 px-4 py-3 text-xs text-brand-muted">
+          <ShieldCheck className="size-4 shrink-0 text-[#009ee3]" aria-hidden="true" />
+          <span>Pagamento processado com seguranca por <strong className="font-semibold text-brand-text">Mercado Pago</strong></span>
+        </div>
+      ) : (
+        <Brand customization={BRAND_BRICK_CUSTOMIZATION} locale="pt-BR" onReady={handleReady} />
+      )}
+    </div>
+  );
+}
+
 // window.MP_DEVICE_SESSION_ID é criado automaticamente pelo Security.js que
 // o SDK JS do Mercado Pago carrega sozinho junto com initMercadoPago (sem
 // precisar incluir o script manualmente) -- fingerprint do device, enviado
@@ -363,11 +392,7 @@ function MercadoPagoChargeForm({ token, summary, onPaid }: { token: string; summ
   // Selo "pago com segurança pelo Mercado Pago" -- passa credibilidade no
   // momento do pagamento (o cliente reconhece que a cobrança é processada
   // por um gateway conhecido, não só pela loja). Visível nos dois métodos.
-  const brandBrick = (
-    <div className={publicUi.payBrandBrick}>
-      <Brand customization={BRAND_BRICK_CUSTOMIZATION} locale="pt-BR" />
-    </div>
-  );
+  const brandBrick = <MercadoPagoBrand />;
 
   if (method === 'pix') {
     const remainingMs = pix ? new Date(pix.expiresAt).getTime() - now : 0;
@@ -480,12 +505,8 @@ export default function PagarPage({ params }: { params: Promise<{ token: string 
 
   const mercadoPagoCreds = summary?.kind === 'charge' ? mercadoPagoCredentials(summary) : null;
   const mercadoPagoPublicKey = mercadoPagoCreds?.publicKey ?? null;
-  useEffect(() => {
-    // Depende só da string (não do objeto `mercadoPagoCreds`, recriado a
-    // cada render por mercadoPagoCredentials()) -- senão initMercadoPago
-    // rodaria de novo em todo render em vez de só quando a chave muda.
-    if (mercadoPagoPublicKey) initMercadoPago(mercadoPagoPublicKey, { locale: 'pt-BR' });
-  }, [mercadoPagoPublicKey]);
+  // Initialize before rendering either Brick, so both receive a configured SDK.
+  if (mercadoPagoPublicKey) initMercadoPago(mercadoPagoPublicKey, MERCADO_PAGO_OPTIONS);
 
   useEffect(() => {
     fetch(`/api/pay/${token}`)
