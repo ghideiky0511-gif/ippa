@@ -1,7 +1,7 @@
 'use client';
 import { publicUi } from '@/lib/ui';
 
-import { use, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { use, useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { loadStripe, type Stripe as StripeJsInstance } from '@stripe/stripe-js';
 import { CardElement, Elements, useElements, useStripe } from '@stripe/react-stripe-js';
 import { CardPayment, initMercadoPago } from '@mercadopago/sdk-react';
@@ -212,17 +212,24 @@ function MercadoPagoChargeForm({ token, summary, onPaid }: { token: string; summ
   const [pix, setPix] = useState<{ qrCode: string; copyPaste: string; expiresAt: string } | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
+  // Só roda enquanto method === 'pix': senão o `now` ticando a cada
+  // segundo com o Card Payment Brick já montado (method === 'cartao')
+  // recria as callbacks inline abaixo (onSubmit/onError) a cada render,
+  // e o efeito interno do Brick reinicia (desmonta+remonta) o brick a
+  // cada tick -- na prática o formulário de cartão nunca termina de
+  // carregar ("bugando e não abria", visto em produção). Ver comentário
+  // acima de MercadoPagoChargeForm.
   useEffect(() => {
-    if (!pix) return;
+    if (!pix || method !== 'pix') return;
     const tick = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(tick);
-  }, [pix]);
+  }, [pix, method]);
 
   // Sem webhook chegando no navegador -- só sabendo se já pagou perguntando
   // de novo pro backend, que já reflete tanto o webhook quanto a
   // reconciliação ativa (ver GET /api/pay/[token]).
   useEffect(() => {
-    if (!pix) return;
+    if (!pix || method !== 'pix') return;
     const expired = new Date(pix.expiresAt).getTime() <= now;
     if (expired) return;
     const poll = setInterval(() => {
@@ -234,7 +241,7 @@ function MercadoPagoChargeForm({ token, summary, onPaid }: { token: string; summ
         .catch(() => undefined);
     }, 4000);
     return () => clearInterval(poll);
-  }, [pix, now, token, onPaid]);
+  }, [pix, now, token, onPaid, method]);
 
   async function handlePixSubmit() {
     if (submittingPix) return;
@@ -270,31 +277,39 @@ function MercadoPagoChargeForm({ token, summary, onPaid }: { token: string; summ
     }
   }
 
-  async function handleCardSubmit(formData: {
-    token: string;
-    issuer_id: string;
-    payment_method_id: string;
-    installments: number;
-  }): Promise<void> {
-    const res = await fetch(`/api/pay/${token}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        method: 'cartao',
-        cardToken: formData.token,
-        issuerId: formData.issuer_id,
-        paymentMethodId: formData.payment_method_id,
-        installments: formData.installments,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.message || data.error || 'Não foi possível processar o pagamento.');
-    if (data.result?.status === 'failed') {
-      setError(data.result.failureReason || 'Cartão recusado — tente outro cartão.');
-      return;
-    }
-    onPaid();
-  }
+  // useCallback (identidade estável entre renders) -- passada direto pro
+  // Brick como onSubmit/onError, cujo useEffect interno depende dessas
+  // funções (ver node_modules/@mercadopago/sdk-react cardPayment/index.js):
+  // uma nova identidade a cada render desmonta e reinicializa o brick
+  // inteiro. Combinado com o guard de `method` nos efeitos do Pix acima,
+  // fecha os dois jeitos desse remonte indesejado acontecer.
+  const handleCardSubmit = useCallback(
+    async (formData: { token: string; issuer_id: string; payment_method_id: string; installments: number }): Promise<void> => {
+      const res = await fetch(`/api/pay/${token}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: 'cartao',
+          cardToken: formData.token,
+          issuerId: formData.issuer_id,
+          paymentMethodId: formData.payment_method_id,
+          installments: formData.installments,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || data.error || 'Não foi possível processar o pagamento.');
+      if (data.result?.status === 'failed') {
+        setError(data.result.failureReason || 'Cartão recusado — tente outro cartão.');
+        return;
+      }
+      onPaid();
+    },
+    [token, onPaid],
+  );
+
+  const handleCardError = useCallback((brickError: { message?: string } | undefined) => {
+    setError(brickError?.message || 'Não foi possível processar o cartão.');
+  }, []);
 
   // Cartões clicáveis (ícone + rótulo) em vez de radio cru -- mesmos ícones
   // já usados no resumo do pedido (methodIcon, paymentMethodMeta.ts), pra o
@@ -364,8 +379,8 @@ function MercadoPagoChargeForm({ token, summary, onPaid }: { token: string; summ
           visual: { style: { theme: 'flat' } },
         }}
         locale="pt-BR"
-        onSubmit={(formData) => handleCardSubmit(formData)}
-        onError={(brickError) => setError(brickError?.message || 'Não foi possível processar o cartão.')}
+        onSubmit={handleCardSubmit}
+        onError={handleCardError}
       />
       {error && <p className={publicUi.error}>{error}</p>}
     </div>

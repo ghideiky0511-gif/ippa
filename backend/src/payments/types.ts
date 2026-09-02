@@ -17,6 +17,17 @@ export interface CreateChargeInput {
     amount: number;
     method: PaymentMethod;
     orderId: string;
+    // Número sequencial do pedido, mostrado ao cliente na loja (ex. "Pedido
+    // #42") -- diferente de orderId (uuid interno), que não é legível.
+    // Providers usam isso pra montar descrição/referência mais úteis do que
+    // o uuid puro na tela de detalhes do pagamento (ex. Mercado Pago
+    // mostrava só "Pedido <uuid>" sem contexto nenhum do pedido).
+    orderNumber?: number;
+    // Itens do pedido, pra providers que aceitam uma lista detalhada (ex.
+    // Mercado Pago Orders API `items[]`) e mostram isso na tela de detalhes
+    // do pagamento pro comprador. Opcional -- providers sem suporte
+    // simplesmente ignoram.
+    items?: Array<{ title: string; quantity: number; unitPrice: number }>;
     customer: { name: string; document: string; email: string };
     // Cartão: token gerado client-side pelo SDK do provider (ex. iugu.js) --
     // a ippa nunca vê o PAN, só recebe o token para autorizar a cobrança.

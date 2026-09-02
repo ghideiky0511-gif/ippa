@@ -19,6 +19,7 @@ import {
 } from "@/models/paymentChargesModel";
 import {
     findOrderRowById,
+    listOrderItemRowsByOrder,
     listOrderItemSeparationRowsByOrder,
     updateOrderPaymentStatusRow,
     type OrderItemSeparationRow,
@@ -81,9 +82,22 @@ export async function createOrderCharge(
 
         const liveCharges = await listLivePaymentChargeRowsByOrder(client, orderId);
 
+        // Snapshot (nome/preço) dos itens, só pra enriquecer o que o
+        // provider mostra na tela de detalhes do pagamento (ver
+        // CreateChargeInput.items) -- não confundir com `items` acima
+        // (qty/qty_separated, usado só pra checar se o pedido pode ser
+        // cobrado).
+        const itemRows = await listOrderItemRowsByOrder(client, orderId);
+
         return {
             integrationRow,
             amount: Number(order.total),
+            orderNumber: order.order_number,
+            chargeItems: itemRows.map((row) => ({
+                title: row.snapshot.name,
+                quantity: row.snapshot.qty,
+                unitPrice: row.snapshot.price,
+            })),
             liveCharges,
         };
     });
@@ -130,6 +144,8 @@ export async function createOrderCharge(
             amount: prepared.amount,
             method: input.method,
             orderId,
+            orderNumber: prepared.orderNumber,
+            items: prepared.chargeItems,
             customer: input.customer,
             cardToken: input.cardToken,
             installments: input.installments,

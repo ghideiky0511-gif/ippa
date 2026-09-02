@@ -7,8 +7,10 @@ import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import {
   createMercadoPagoOnboardingLink,
   disconnectMercadoPagoAccount,
+  fetchMercadoPagoAccountSummary,
   fetchPaymentIntegrations,
   testPaymentIntegrationConnection,
+  type MercadoPagoAccountSummary,
   type PaymentIntegrationOption,
 } from '@/workspace/lib/paymentIntegrationClient';
 import { useTenant } from '@/components/TenantProvider';
@@ -48,6 +50,8 @@ const STATUS_COPY: Record<Status, { title: string; body: string; className: stri
 export default function MercadoPagoIntegrationApp() {
   const { href } = useTenant();
   const [option, setOption] = useState<PaymentIntegrationOption | null>(null);
+  const [account, setAccount] = useState<MercadoPagoAccountSummary | null>(null);
+  const [accountError, setAccountError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -56,8 +60,24 @@ export default function MercadoPagoIntegrationApp() {
     setLoading(true);
     try {
       const result = await fetchPaymentIntegrations();
-      setOption(result.options.find((item) => item.provider === 'mercadopago') ?? null);
+      const found = result.options.find((item) => item.provider === 'mercadopago') ?? null;
+      setOption(found);
       setMessage(null);
+      if (found?.mercadoPagoUserId) {
+        // Chamada separada (não bloqueia o carregamento do status acima) --
+        // uma falha aqui não deveria impedir de ver se a loja está
+        // conectada, só a ficha de identificação da conta.
+        try {
+          setAccount(await fetchMercadoPagoAccountSummary());
+          setAccountError(null);
+        } catch (error) {
+          setAccount(null);
+          setAccountError(error instanceof Error ? error.message : 'Não foi possível carregar os dados da conta.');
+        }
+      } else {
+        setAccount(null);
+        setAccountError(null);
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Não foi possível carregar a integração do Mercado Pago.');
     } finally {
@@ -150,6 +170,49 @@ export default function MercadoPagoIntegrationApp() {
                 </p>
               )}
             </section>
+
+            {option?.mercadoPagoUserId && (
+              <section className="rounded-brand border border-border bg-surface p-5 shadow-card">
+                <div className="flex flex-wrap items-center gap-4">
+                  <img
+                    src="https://cdn.brandfetch.io/idnLXhq0AN/w/820/h/820/theme/dark/icon.jpeg"
+                    alt="Mercado Pago"
+                    width={56}
+                    height={56}
+                    className="size-14 shrink-0 rounded-xl object-cover"
+                  />
+                  <div className="min-w-0">
+                    <h2 className="font-bold text-foreground">
+                      {account ? [account.firstName, account.lastName].filter(Boolean).join(' ') || account.nickname || 'Conta verificada' : 'Verificando conta…'}
+                    </h2>
+                    {account?.nickname && <p className="text-sm text-muted-foreground">@{account.nickname}</p>}
+                  </div>
+                </div>
+                {account && (
+                  <dl className="mt-4 grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
+                    {account.email && (
+                      <div>
+                        <dt className="text-xs text-muted-foreground">E-mail</dt>
+                        <dd className="text-foreground">{account.email}</dd>
+                      </div>
+                    )}
+                    {account.documentNumberMasked && (
+                      <div>
+                        <dt className="text-xs text-muted-foreground">Documento{account.documentType ? ` (${account.documentType})` : ''}</dt>
+                        <dd className="text-foreground"><code>{account.documentNumberMasked}</code></dd>
+                      </div>
+                    )}
+                    {account.siteStatus && (
+                      <div>
+                        <dt className="text-xs text-muted-foreground">Situação da conta</dt>
+                        <dd className="text-foreground">{account.siteStatus}</dd>
+                      </div>
+                    )}
+                  </dl>
+                )}
+                {accountError && <p className="mt-3 text-sm text-red-700" role="status">{accountError}</p>}
+              </section>
+            )}
 
             <section className="rounded-brand border border-border bg-surface p-5">
               <h2 className="font-bold text-foreground">Configuração da loja</h2>

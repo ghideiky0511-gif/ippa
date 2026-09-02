@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import type { ExternalApiCallReporter } from "@/lib/externalApiCall";
 import type {
     CardChargeResult,
@@ -11,6 +11,7 @@ import type {
     WebhookEvent,
 } from "../../types";
 import { MERCADOPAGO_API_BASE, getMercadoPagoApplicationFeeBps } from "./client";
+import { getCommercialIntegrationBrand } from "@/lib/branding";
 
 // Split Payments (marketplace via OAuth): diferente da Stripe, aqui
 // `credentials` VEM de credentials_encrypted decifrado de verdade -- o
@@ -119,23 +120,60 @@ async function mercadoPagoFetch<T>(
     const text = await response.text();
     const parsed = text ? (JSON.parse(text) as unknown) : {};
     if (!response.ok) {
-        // parsed.message quase nunca vem preenchido nos erros de
-        // PROCESSAMENTO (ex. 402 "failed" -- a order foi aceita, mas a
-        // transação em si falhou) -- o detalhe de verdade fica em
-        // `cause[].description`/`.code` (formato padrão de erro da API de
-        // Orders). Sem isso, o erro caía pra `response.statusText` genérico
-        // ("Payment Required"), inútil pra diagnosticar por quê (ex. Pix
-        // desativado na conta, marketplace_fee rejeitado, etc.) -- descoberto
-        // ao investigar duas falhas reais de geração de Pix em produção.
-        const body = parsed as { message?: string; error?: string; cause?: Array<{ code?: string | number; description?: string }> };
+        // Um 402 de PROCESSAMENTO na API de Orders não é um erro de request
+        // malformado -- é "a order foi aceita, mas a transação em si
+        // falhou". Confirmado em produção que o corpo real desse caso é o
+        // envelope `{ errors: [{ code, message, details: ["<paymentId>:
+        // <status_detail>"] }], data: <objeto ORDER inteiro> }` -- nem o
+        // `cause[]`/`message` de erro de request (esses cobrem 400/401),
+        // nem o order puro sem wrapper (hipótese inicial, também vista em
+        // alguns relatos). O status_detail de verdade fica tanto em
+        // data.transactions.payments[0].status_detail quanto embutido em
+        // errors[0].details (formato "<paymentId>: <status_detail>") --
+        // manter os dois caminhos, além do body.cause antigo, já que a MP
+        // não documenta um schema de erro único e estável.
+        const body = parsed as {
+            message?: string;
+            error?: string;
+            cause?: Array<{ code?: string | number; description?: string }>;
+            errors?: Array<{ code?: string; message?: string; details?: string[] }>;
+            status_detail?: string;
+            transactions?: { payments?: Array<{ status_detail?: string }> };
+            data?: {
+                status_detail?: string;
+                transactions?: { payments?: Array<{ status_detail?: string }> };
+            };
+        };
         const causeText = Array.isArray(body.cause)
             ? body.cause.map((c) => c?.description ?? (c?.code !== undefined ? String(c.code) : undefined)).filter(Boolean).join("; ")
             : undefined;
-        const detail = body.message ?? causeText ?? body.error ?? response.statusText;
+        const errorsText = Array.isArray(body.errors)
+            ? body.errors
+                  .map((e) => [e?.message, ...(Array.isArray(e?.details) ? e.details : [])].filter(Boolean).join(" | "))
+                  .filter(Boolean)
+                  .join("; ")
+            : undefined;
+        const statusDetail =
+            body.transactions?.payments?.[0]?.status_detail ??
+            body.data?.transactions?.payments?.[0]?.status_detail ??
+            body.status_detail ??
+            body.data?.status_detail;
+        // Se nenhum dos campos conhecidos (message/cause/errors/status_detail)
+        // veio preenchido, o corpo pode estar vazio ou num formato ainda não
+        // mapeado -- nesse caso é melhor logar o corpo bruto do que um
+        // "Payment Required" mudo, pra dar pra diagnosticar (ex. aplicação
+        // sem meio de pagamento habilitado, moeda não suportada, token de
+        // ambiente errado -- casos que a API rejeita sem preencher nenhum
+        // desses campos "de transação").
+        const knownDetail = body.message ?? causeText ?? errorsText ?? body.error ?? statusDetail;
+        const detail = knownDetail ?? response.statusText;
+        const rawBodyDump = !knownDetail && text ? ` [body: ${text.slice(0, 500)}]` : !knownDetail ? " [body vazio]" : "";
         const error = new Error(
             `Mercado Pago ${init.method} ${path} falhou (${response.status}): ${detail}${
                 causeText && causeText !== detail ? ` [cause: ${causeText}]` : ""
-            }`,
+            }${errorsText && errorsText !== detail ? ` [errors: ${errorsText}]` : ""}${
+                statusDetail && statusDetail !== detail ? ` [status_detail: ${statusDetail}]` : ""
+            }${rawBodyDump}`,
         ) as MercadoPagoApiError;
         error.statusCode = response.status;
         error.body = parsed;
@@ -363,7 +401,40 @@ export function createMercadoPagoPaymentProvider(
             };
             const totalAmount = input.amount.toFixed(2);
             const marketplaceFee = applicationFeeAmount(input.amount);
-            const externalReference = input.internalChargeId ?? input.orderId;
+            // orderNumber (sequencial, mostrado na loja) é bem mais legível
+            // do que orderId (uuid interno) na tela de detalhes do
+            // pagamento do comprador -- cai pro uuid só se o chamador não
+            // tiver o número à mão. Marca vem de getCommercialIntegrationBrand
+            // (APP_COMERCIAL_NAME_INTEGRATION), mesmo padrão de identificador
+            // já usado pro pedido no ERP (ver buildProviderOrderIdempotencyKey
+            // em orderPushService.ts) -- mantém o pedido reconhecível pelo
+            // mesmo código em qualquer integração externa, não só uma marca
+            // genérica "Pedido". `items[]` é opcional na API de Orders, mas
+            // quando presente aparece detalhado na mesma tela (produto, qtd,
+            // valor unitário), em vez de só o total.
+            const brand = getCommercialIntegrationBrand();
+            const description = input.orderNumber
+                ? `${brand}${input.orderNumber}`
+                : `${brand}${input.orderId}`;
+            // Confirmado na tela "Detalhe da transação" do comprador: quando
+            // `items[]` é enviado, a MP substitui `description` por um
+            // resumo automático ("5 produtos") ali -- o único campo dessa
+            // tela que ainda ecoa o que mandamos é "Referência adicional",
+            // que é external_reference. Por isso usamos o mesmo texto
+            // com marca+número aqui (não internalChargeId/orderId cru): sem
+            // isso o pedido não fica identificável em lugar nenhum da tela
+            // pro comprador nem pro lojista no painel MP. external_reference
+            // não é lido de volta em nenhum lugar do código (reconciliação
+            // de webhook usa metadata.charge_id, ver extractInternalChargeId
+            // em paymentChargeService.ts), então reformatar aqui é seguro.
+            const externalReference = description;
+            const items = input.items?.length
+                ? input.items.map((item) => ({
+                      title: item.title,
+                      quantity: item.quantity,
+                      unit_price: item.unitPrice.toFixed(2),
+                  }))
+                : undefined;
 
             if (input.method === "pix") {
                 const order = await report(reporter, "mercadopago.orders.create.pix", "POST", "/v1/orders", () =>
@@ -375,7 +446,8 @@ export function createMercadoPagoPaymentProvider(
                             processing_mode: "automatic",
                             total_amount: totalAmount,
                             external_reference: externalReference,
-                            description: `Pedido ${input.orderId}`,
+                            description,
+                            items,
                             marketplace_fee: marketplaceFee,
                             payer,
                             transactions: {
@@ -410,19 +482,26 @@ export function createMercadoPagoPaymentProvider(
                         processing_mode: "automatic",
                         total_amount: totalAmount,
                         external_reference: externalReference,
-                        description: `Pedido ${input.orderId}`,
+                        description,
+                        items,
                         marketplace_fee: marketplaceFee,
                         payer,
                         transactions: {
                             payments: [
                                 {
                                     amount: totalAmount,
+                                    // issuer_id NÃO é aceito aqui -- confirmado em produção: 400
+                                    // "Properties not supported ... additionalProperties 'issuer_id'
+                                    // not allowed" em transactions.payments[0].payment_method. Diferente
+                                    // da API de Payments antiga (v1/payments), a API de Orders resolve
+                                    // o emissor sozinha a partir do token; o Card Payment Brick devolve
+                                    // issuer_id mesmo assim (ver CreateChargeInput.issuerId), então só
+                                    // ignoramos aqui em vez de tirar do contrato genérico.
                                     payment_method: {
                                         id: input.paymentMethodId,
                                         type: "credit_card",
                                         token: input.cardToken,
                                         installments: input.installments ?? 1,
-                                        ...(input.issuerId ? { issuer_id: input.issuerId } : {}),
                                     },
                                 },
                             ],
@@ -458,8 +537,18 @@ export function createMercadoPagoPaymentProvider(
             // chama (paymentChargeService.ts::resolveOrCancelLiveCharge)
             // trata o lançamento como "não dá pra abrir uma nova tentativa
             // agora", mesmo comportamento de antes.
+            // A API de Orders exige X-Idempotency-Key também no /cancel
+            // (confirmado em produção: 400 "Missing HTTP header:
+            // X-Idempotency-Key" sem ele) -- diferente da criação, aqui não
+            // há um id interno estável disponível (a assinatura não recebe
+            // chargeId), e cada chamada já representa uma tentativa de
+            // cancelamento nova e não repetida automaticamente por quem
+            // chama, então gerar uma chave nova por chamada é seguro.
             await report(reporter, "mercadopago.orders.cancel", "POST", "/v1/orders", () =>
-                mercadoPagoFetch(accessToken, `/v1/orders/${externalId}/cancel`, { method: "POST" }),
+                mercadoPagoFetch(accessToken, `/v1/orders/${externalId}/cancel`, {
+                    method: "POST",
+                    idempotencyKey: randomUUID(),
+                }),
             );
         },
 
@@ -504,5 +593,54 @@ export function createMercadoPagoPaymentProvider(
                 };
             }
         },
+    };
+}
+
+interface MercadoPagoUserResponse {
+    id: number | string;
+    nickname?: string;
+    first_name?: string;
+    last_name?: string;
+    email?: string;
+    identification?: { type?: string; number?: string };
+    site_status?: string;
+    [key: string]: unknown;
+}
+
+export interface MercadoPagoAccountSummary {
+    id: string;
+    nickname?: string;
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    documentType?: string;
+    documentNumber?: string;
+    siteStatus?: string;
+}
+
+// Chamado por mercadoPagoOnboardingService.ts::fetchMercadoPagoAccountSummary
+// pra provar visualmente, na tela de integração, que o access_token salvo
+// corresponde de fato à conta esperada (nome/apelido/documento) -- não usado
+// no fluxo de cobrança. Mesmo endpoint que testConnection() já chama, mas
+// devolvendo o corpo inteiro em vez de só validar `id`; documentNumber sai
+// completo daqui de propósito, o redigido fica a cargo de quem exibe (ver
+// maskDocumentNumber em mercadoPagoOnboardingService.ts) -- este arquivo não
+// decide o que é seguro mostrar na tela, só traduz a resposta da API.
+export async function fetchMercadoPagoAccountSummary(
+    accessToken: string,
+    reporter?: ExternalApiCallReporter,
+): Promise<MercadoPagoAccountSummary> {
+    const account = await report(reporter, "mercadopago.users.me", "GET", "/users/me", () =>
+        mercadoPagoFetch<MercadoPagoUserResponse>(accessToken, "/users/me", { method: "GET" }),
+    );
+    return {
+        id: String(account.id),
+        nickname: account.nickname,
+        firstName: account.first_name,
+        lastName: account.last_name,
+        email: account.email,
+        documentType: account.identification?.type,
+        documentNumber: account.identification?.number,
+        siteStatus: account.site_status,
     };
 }

@@ -12,6 +12,7 @@ import type { PoolClient } from "pg";
 import type { Tenant, ActorContext } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser } from "@/lib/types";
+import { getCommercialIntegrationBrand } from "@/lib/branding";
 import type { CartItem } from "@/contracts/shared";
 import { logger, errorMeta } from "@/lib/logger";
 import { createErpProviderForIntegration } from "@/services/erp/erpProviderFactory";
@@ -306,8 +307,7 @@ export async function assertProductCodesInStock(
 // (reenviar a MESMA chamada não deve virar pedido duplicado lá -- ver
 // comentário de idempotencyKey em erp/types.ts).
 export function buildProviderOrderIdempotencyKey(orderNumber: number, version: number): string {
-    const brand = (process.env.APP_COMERCIAL_NAME_INTEGRATION ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-    return `${brand}${orderNumber}_${String(version).padStart(2, "0")}`;
+    return `${getCommercialIntegrationBrand()}${orderNumber}_${String(version).padStart(2, "0")}`;
 }
 
 async function attemptProviderOrderPush(

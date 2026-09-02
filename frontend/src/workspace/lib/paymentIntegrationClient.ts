@@ -162,3 +162,26 @@ export function disconnectMercadoPagoAccount(): Promise<{ disconnected: boolean 
     'Não foi possível desvincular a conta Mercado Pago.'
   ) as Promise<{ disconnected: boolean }>;
 }
+
+export interface MercadoPagoAccountSummary {
+  id: string;
+  nickname?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  documentType?: string;
+  documentNumberMasked?: string;
+  siteStatus?: string;
+}
+
+// Busca nome/apelido/documento (já redigido pelo backend) da conta
+// conectada -- só pra exibir na tela como prova visual de qual conta o
+// access_token salvo representa, ver MercadoPagoIntegrationApp.tsx.
+export function fetchMercadoPagoAccountSummary(): Promise<MercadoPagoAccountSummary> {
+  return adminJson(
+    '/api/payment-integration/mercadopago/account',
+    unknown,
+    {},
+    'Não foi possível carregar os dados da conta Mercado Pago.'
+  ) as Promise<MercadoPagoAccountSummary>;
+}

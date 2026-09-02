@@ -11,12 +11,16 @@ import { exchangeMercadoPagoAuthorizationCode } from "@/payments/providers/merca
 import {
     activatePaymentIntegrationRow,
     disconnectMercadoPagoAccountRow,
+    findPaymentIntegrationRowByProvider,
     upsertMercadoPagoAccountRow,
     upsertPaymentIntegrationCredentialsRow,
 } from "@/models/paymentIntegrationsModel";
+import { fetchMercadoPagoAccountSummary as fetchMercadoPagoAccountSummaryFromApi } from "@/payments/providers/mercadopago/index";
+import { resolveProviderCredentials } from "@/services/payments/providerCredentials";
+import { createExternalApiCallReporter } from "@/services/erp/externalApiLogService";
 import { recordAuditEvent, PAYMENT_INTEGRATION_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
 import { requireSettingsAdministrator } from "@/services/settings/settingsAuthorization";
-import { ValidationError } from "@/services/shared/errors";
+import { NotFoundError, ValidationError } from "@/services/shared/errors";
 
 // Onboarding de Mercado Pago (Split Payments/marketplace via OAuth) --
 // mesmo espírito de stripeOnboardingService.ts, mas mais simples num ponto
@@ -173,4 +177,62 @@ export async function disconnectMercadoPagoAccount(
         });
         return { disconnected: true };
     });
+}
+
+export interface TenantMercadoPagoAccountSummary {
+    id: string;
+    nickname?: string;
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    documentType?: string;
+    // Redigido aqui (não em fetchMercadoPagoAccountSummary do provider) --
+    // este é o único ponto que decide o que sai do backend pra tela; o
+    // provider devolve o número completo porque não é ele quem sabe o que é
+    // seguro expor.
+    documentNumberMasked?: string;
+    siteStatus?: string;
+}
+
+function maskDocumentNumber(number: string): string {
+    const digits = number.replace(/\D/g, "");
+    if (digits.length <= 4) return "•".repeat(digits.length);
+    return `${"•".repeat(digits.length - 4)}${digits.slice(-4)}`;
+}
+
+// Busca nome/apelido/documento (redigido) da conta Mercado Pago já
+// conectada -- usado só pra provar visualmente, na tela de integração, que o
+// access_token salvo corresponde à conta esperada (ver
+// MercadoPagoIntegrationApp.tsx). Reaproveita resolveProviderCredentials
+// (mesma renovação de token perto de expirar que createCharge usa) em vez de
+// ler stored.credentials direto, diferente do teste manual de conexão em
+// paymentIntegrationService.ts (lá um token expirado falhando o teste já é
+// UX aceitável; aqui a tela carrega sozinha, então vale a pena renovar).
+export async function fetchMercadoPagoAccountSummary(
+    tenant: Tenant,
+    user: AuthUser,
+): Promise<TenantMercadoPagoAccountSummary> {
+    requireSettingsAdministrator(user);
+    const row = await withTenantTransaction(tenant, user, (client) =>
+        findPaymentIntegrationRowByProvider(client, "mercadopago"),
+    );
+    if (!row || !row.mercadopago_user_id) {
+        throw new NotFoundError("PAYMENT_INTEGRATION_NOT_CONFIGURED");
+    }
+    const credentials = await resolveProviderCredentials(tenant, user, row);
+    const accessToken = String((credentials as { accessToken?: string }).accessToken ?? "");
+    const summary = await fetchMercadoPagoAccountSummaryFromApi(
+        accessToken,
+        createExternalApiCallReporter(tenant, user, "mercadopago"),
+    );
+    return {
+        id: summary.id,
+        nickname: summary.nickname,
+        firstName: summary.firstName,
+        lastName: summary.lastName,
+        email: summary.email,
+        documentType: summary.documentType,
+        documentNumberMasked: summary.documentNumber ? maskDocumentNumber(summary.documentNumber) : undefined,
+        siteStatus: summary.siteStatus,
+    };
 }

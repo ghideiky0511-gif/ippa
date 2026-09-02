@@ -47,6 +47,23 @@ envVarGroups:
         sync: false
       - key: APP_COMERCIAL_NAME_INTEGRATION
         sync: false
+      # Mercado Pago Split Payments (ver backend/src/payments/providers/mercadopago
+      # e .env.example) -- credenciais do APP na plataforma (painel de
+      # desenvolvedores Mercado Pago), não de um tenant. Preencher no painel
+      # do Render: CLIENT_ID/CLIENT_SECRET vêm de "Suas integrações" > app >
+      # "Credenciais de produção"; WEBHOOK_SECRET vem da mesma tela onde a
+      # URL de notificações abaixo é cadastrada; OAUTH_STATE_SECRET é gerado
+      # localmente (ex. `openssl rand -base64 32`), não vem do painel MP.
+      - key: MERCADOPAGO_CLIENT_ID
+        sync: false
+      - key: MERCADOPAGO_CLIENT_SECRET
+        sync: false
+      - key: MERCADOPAGO_WEBHOOK_SECRET
+        sync: false
+      - key: MERCADOPAGO_APPLICATION_FEE_BPS
+        sync: false
+      - key: MERCADOPAGO_OAUTH_STATE_SECRET
+        sync: false
       # Cache opcional (ver backend/src/lib/redis.ts) -- preencha no painel
       # com a Internal Key Value URL do Redis (redis://..., mesma região do
       # ippa-backend). Free web service não recebe conexão privada, mas pode
@@ -84,6 +101,18 @@ services:
       # Render), não aqui.
       - key: MERCADOPAGO_REDIRECT_URI
         value: https://ippa-backend.onrender.com/api/webhooks/mercadopago/oauth-callback
+      # Dois endpoints Mercado Pago diferentes, dois lugares diferentes pra
+      # cadastrar no painel do app (developers.mercadopago.com/panel/app):
+      # (1) o redirect_uri acima entra na tela de OAuth/"Vinculação de
+      # aplicações"; (2) a URL DESTE comentário
+      # (https://ippa-backend.onrender.com/api/webhooks/mercadopago, SEM
+      # /oauth-callback) entra na tela "Webhooks"/Notificações, com só o
+      # tópico "Orders (Mercado Pago)" (`order`) ativado -- é o único que
+      # corresponde ao que este provider usa (POST /v1/orders pra Pix E
+      # cartão, ver providers/mercadopago/index.ts; o tópico "Pagamentos"
+      # é da API de Payments legada, não usada aqui, mesmo o cartão
+      # passando pelo Card Payment Brick do lado do cliente). O secret
+      # mostrado nessa mesma tela vai em MERCADOPAGO_WEBHOOK_SECRET acima.
 
   - type: web
     name: ippa-frontend
