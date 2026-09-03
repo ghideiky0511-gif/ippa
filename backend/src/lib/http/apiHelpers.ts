@@ -207,15 +207,19 @@ export function tooManyRequests(retryAfterSeconds: number): NextResponse {
 }
 
 // Limites de aplicação geral: baseline "por app" aplicado em toda rota de
-// tenant (ver resolveTenantRoute em lib/http/tenantRoute.ts). 120/min era
-// apertado demais: uma única navegação no catálogo público já dispara vários
-// GETs em paralelo (tenant, categorias, config da loja, seções, destaques,
-// filtros) e todo tráfego atrás do mesmo IP (proxy/NAT, ou o próprio SSR
-// local em dev) soma no mesmo balde. As chamadas SSR/proxy confiáveis já
-// saem daqui via isTrustedInternalRequest; este teto vale pro tráfego que
-// bate direto no backend público (navegador), então mantém folga pro
-// prefetch do Next sem deixar de conter abuso.
-export const GENERAL_RATE_LIMIT = { limit: 2_000, windowMs: 60_000 };
+// tenant (ver resolveTenantRoute em lib/http/tenantRoute.ts). Opt-in via
+// GENERAL_RATE_LIMIT_ENABLED=true — desligado, porque sem um IP de cliente
+// confiável (proxy/NAT, IPs de egress compartilhados do Render) ele agrupa
+// visitantes distintos no mesmo balde: uma page view do catálogo (vários
+// GETs + prefetch do Next) já estourava o teto e devolvia 429. Ligue só onde
+// dá pra confiar no IP por request (plano pago com rede privada, ou proxy
+// próprio repassando x-forwarded-for real). Os limites de brute-force
+// (AUTH_RATE_LIMIT) são independentes e continuam sempre ativos.
+export const GENERAL_RATE_LIMIT = {
+    enabled: process.env.GENERAL_RATE_LIMIT_ENABLED === "true",
+    limit: 2_000,
+    windowMs: 60_000,
+};
 
 // Limites para rotas sensíveis a força bruta / enumeração (login, cadastro,
 // consulta de documento) — mais apertado que o baseline geral, contado à

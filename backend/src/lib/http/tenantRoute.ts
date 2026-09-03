@@ -8,12 +8,16 @@ export async function resolveTenantRoute<TParams extends { tenantSlug: string }>
   request: NextRequest,
   params: Promise<TParams>,
 ): Promise<TenantRouteContext<TParams> | NextResponse> {
-  // O SSR e o proxy do Next batem aqui como "cliente" único (poucos IPs de
-  // egress no Render), então uma page view com vários GETs em paralelo +
-  // prefetch estoura o balde por IP. Essas chamadas vêm assinadas com
-  // INTERNAL_REQUEST_TOKEN e ficam de fora — o limite continua valendo pro
-  // tráfego que chega direto do navegador ao backend público.
-  if (!isTrustedInternalRequest(request)) {
+  // Limite "geral" (baseline por IP em toda rota de tenant) é opt-in: só vale
+  // com GENERAL_RATE_LIMIT_ENABLED=true. Fora dele, o rate limit por IP não
+  // distingue clientes atrás de proxy/NAT ou dos IPs de egress compartilhados
+  // do Render — uma page view do catálogo (vários GETs + prefetch do Next)
+  // caía toda no mesmo balde e retornava 429. Os limites sensíveis a
+  // brute-force (login, signup, document-access) são contados à parte no
+  // próprio route handler e continuam sempre ativos. Chamadas de servidor
+  // confiáveis (SSR/proxy) assinadas com INTERNAL_REQUEST_TOKEN ficam de fora
+  // mesmo quando o baseline está ligado.
+  if (GENERAL_RATE_LIMIT.enabled && !isTrustedInternalRequest(request)) {
     const limitResult = rateLimit('general', clientIp(request), GENERAL_RATE_LIMIT.limit, GENERAL_RATE_LIMIT.windowMs);
     if (!limitResult.allowed) return tooManyRequests(limitResult.retryAfterSeconds);
   }
