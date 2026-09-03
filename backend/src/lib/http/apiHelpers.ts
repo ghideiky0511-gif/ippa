@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
 import { NextRequest, NextResponse } from "next/server";
 import * as authentication from "@/services/auth";
@@ -130,6 +130,23 @@ export function clientIp(request: NextRequest): string | undefined {
     );
 }
 
+// Marca chamadas de servidor confiáveis (SSR/proxy do Next) que carregam o
+// header `x-ippa-internal` com o valor de INTERNAL_REQUEST_TOKEN. Sem o token
+// configurado, nada é confiável (dev local não precisa). Comparação em tempo
+// constante para não vazar o segredo por timing.
+export function isTrustedInternalRequest(request: NextRequest): boolean {
+    const expected = process.env.INTERNAL_REQUEST_TOKEN;
+    if (!expected) return false;
+    const provided = request.headers.get("x-ippa-internal");
+    if (!provided) return false;
+    const expectedBuf = Buffer.from(expected);
+    const providedBuf = Buffer.from(provided);
+    return (
+        expectedBuf.length === providedBuf.length &&
+        timingSafeEqual(expectedBuf, providedBuf)
+    );
+}
+
 export function auditContext(request: NextRequest): AuditRequestContext {
     return {
         requestId: randomUUID(),
@@ -194,8 +211,11 @@ export function tooManyRequests(retryAfterSeconds: number): NextResponse {
 // apertado demais: uma única navegação no catálogo público já dispara vários
 // GETs em paralelo (tenant, categorias, config da loja, seções, destaques,
 // filtros) e todo tráfego atrás do mesmo IP (proxy/NAT, ou o próprio SSR
-// local em dev) soma no mesmo balde.
-export const GENERAL_RATE_LIMIT = { limit: 600, windowMs: 60_000 };
+// local em dev) soma no mesmo balde. As chamadas SSR/proxy confiáveis já
+// saem daqui via isTrustedInternalRequest; este teto vale pro tráfego que
+// bate direto no backend público (navegador), então mantém folga pro
+// prefetch do Next sem deixar de conter abuso.
+export const GENERAL_RATE_LIMIT = { limit: 2_000, windowMs: 60_000 };
 
 // Limites para rotas sensíveis a força bruta / enumeração (login, cadastro,
 // consulta de documento) — mais apertado que o baseline geral, contado à
