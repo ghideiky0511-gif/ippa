@@ -20,12 +20,13 @@ import {
     type ClientRow,
     type ClientWriteRow,
 } from "@/models/clientsModel";
-import { findUserRowByClientId } from "@/models/usersModel";
+import { findUserRowByClientId, findUserRowById } from "@/models/usersModel";
 import { findActiveErpIntegrationRow } from "@/models/erpIntegrationsModel";
 import { findExternalIdByInternalId, upsertExternalReferenceRow } from "@/models/erpExternalReferencesModel";
 import { createExternalApiCallReporter } from "@/services/erp/externalApiLogService";
 import { createErpProviderForIntegration } from "@/services/erp/erpProviderFactory";
 import { recordAuditEvent, CLIENT_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
+import { isAdministrator } from "@/services/users/userService";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
 import { toClient } from "./clientMapper";
 
@@ -52,17 +53,49 @@ export async function searchTenantClients(tenant: Tenant, user: AuthUser, query?
 
 export type AdministrativeClientsPage = ClientsPage;
 
-export async function searchAdministrativeClients(tenant: Tenant, user: AuthUser, query?: string, requestedPage?: number, requestedPageSize?: number): Promise<AdministrativeClientsPage> {
+export async function searchAdministrativeClients(tenant: Tenant, user: AuthUser, query?: string, requestedPage?: number, requestedPageSize?: number, sellerId?: string): Promise<AdministrativeClientsPage> {
     if (!canManageClients(user)) throw new ForbiddenError();
     const pageSize = Math.min(Math.max(requestedPageSize || 20, 10), 100);
     const page = Math.max(requestedPage || 1, 1);
     return withTenantTransaction(tenant, user, async (client) => {
-        const result = await searchClientRowsPage(client, query?.trim() || null, page, pageSize);
+        const result = await searchClientRowsPage(client, query?.trim() || null, page, pageSize, sellerId || null);
         return {
             clients: result.rows.map(toClient),
             pagination: { page, pageSize, total: result.total, totalPages: Math.max(Math.ceil(result.total / pageSize), 1) },
             kpis: { newThisMonth: result.newThisMonth, withEmail: result.withEmail, withAddress: result.withAddress },
         };
+    });
+}
+
+// Reatribuição estreita da carteira: só troca last_seller_id, nunca reabre o
+// resto do cadastro do cliente (ver comentário em updateTenantClient sobre
+// por que a edição administrativa geral foi removida). Exige administradora
+// (não qualquer staff, diferente de canManageClients) porque mexe na
+// distribuição comercial entre vendedoras, não no cadastro da própria
+// cliente.
+export async function reassignClientSeller(
+    tenant: Tenant,
+    user: AuthUser,
+    clientId: string,
+    sellerId: string,
+    context: AuditRequestContext,
+): Promise<Client> {
+    if (!isAdministrator(user)) throw new ForbiddenError();
+    return withTenantTransaction(tenant, user, async (client) => {
+        const seller = await findUserRowById(client, sellerId);
+        if (!seller || seller.role !== "vendedora") {
+            throw new ValidationError("SELLER_NOT_FOUND", "Vendedora não encontrada nesta loja.");
+        }
+        const updated = await patchClientRow(client, clientId, { lastSellerId: sellerId });
+        if (!updated) throw new NotFoundError("CLIENT_NOT_FOUND");
+        await recordAuditEvent(client, {
+            action: CLIENT_AUDIT_ACTIONS.UPDATED,
+            entityId: clientId,
+            actor: user,
+            context,
+            metadata: { fields: ["lastSellerId"], sellerId },
+        });
+        return toClient(updated);
     });
 }
 

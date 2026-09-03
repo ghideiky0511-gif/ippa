@@ -3,12 +3,13 @@ import {
   AdminUserSchema,
   ClientSchema,
   ClientRegistrationSchema,
-  CreateUserCredentialsSchema,
+  CreateTenantUserInputSchema,
   UpdateClientProfileInputSchema,
   UpdateTenantUserInputSchema,
   type AdminUser,
   type Client,
   type ClientRegistration,
+  type CreateTenantUserInput,
   type UpdateClientProfileInput,
   type UserCredentials,
 } from '@/domain/clients/types';
@@ -24,14 +25,14 @@ export function fetchUsers(): Promise<AdminUser[]> {
   return adminJson('/api/admin/users', AdminUserSchema.array(), {}, 'Não foi possível carregar os usuários.');
 }
 
-export function createVendedora(credentials: UserCredentials & { password: string }): Promise<AdminUser> {
-  const payload = validated(CreateUserCredentialsSchema, credentials);
+export function createVendedora(credentials: CreateTenantUserInput & { password: string }): Promise<AdminUser> {
+  const payload = validated(CreateTenantUserInputSchema, credentials);
   return adminJson('/api/admin/users', AdminUserSchema, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   }, 'Não foi possível criar o acesso.') as Promise<AdminUser>;
 }
 
-export function updateUser(id: string, credentials: UserCredentials): Promise<AdminUser> {
+export function updateUser(id: string, credentials: UserCredentials & { whatsappPhone?: string }): Promise<AdminUser> {
   const payload = validated(UpdateTenantUserInputSchema, {
     ...credentials,
     password: credentials.password || undefined,

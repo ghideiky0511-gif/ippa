@@ -64,7 +64,7 @@ export async function createUserRecord(
     client: PoolClient,
     actor: Pick<AuthUser, "id" | "role" | "name"> | null,
     context: AuditRequestContext,
-    params: { email: string; name: string; password: string; role: UserRole; clientId?: string; permissions?: AuthUser["permissions"] },
+    params: { email: string; name: string; password: string; role: UserRole; clientId?: string; permissions?: AuthUser["permissions"]; whatsappPhone?: string },
 ): Promise<AuthUser> {
     return createUserRecordWithPasswordHash(client, actor, context, {
         ...params,
@@ -79,7 +79,7 @@ export async function createUserRecordWithPasswordHash(
     context: AuditRequestContext,
     params: {
         email: string; name: string; role: UserRole; clientId?: string;
-        permissions?: AuthUser["permissions"]; passwordHash: string;
+        permissions?: AuthUser["permissions"]; passwordHash: string; whatsappPhone?: string;
     },
 ): Promise<AuthUser> {
     const email = params.email.trim().toLowerCase();
@@ -91,6 +91,7 @@ export async function createUserRecordWithPasswordHash(
         passwordHash: params.passwordHash,
         clientId: params.clientId,
         permissions: params.permissions ?? defaultPermissionsFor(params.role),
+        whatsappPhone: params.whatsappPhone,
     }));
     await recordAuditEvent(client, {
         action: USER_AUDIT_ACTIONS.CREATED,
@@ -126,6 +127,10 @@ export async function users(tenant: Tenant, actor: AuthUser): Promise<Array<Auth
                 clientEmail: registration?.email,
                 lastSellerId: registration?.lastSellerId,
                 createdAt: registration?.createdAt,
+                // Telefone WhatsApp Business da própria vendedora (para
+                // conectar via bippa-messaging) -- vem direto de users, não do
+                // cadastro de cliente.
+                whatsappPhone: row.whatsapp_phone ?? undefined,
             };
         }));
     });
@@ -140,7 +145,7 @@ export async function createTenantUser(
     if (!isAdministrator(actor)) throw new ForbiddenError();
     const parsed = CreateTenantUserInputSchema.safeParse(body);
     if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
-    const { email, name, password, catalogAreas } = parsed.data;
+    const { email, name, password, catalogAreas, whatsappPhone } = parsed.data;
     const role: UserRole = parsed.data.role ?? "vendedora";
     const created = await withTenantTransaction(tenant, actor, (client) => createUserRecord(client, actor, context, {
         email,
@@ -151,6 +156,7 @@ export async function createTenantUser(
             adminAccess: role === "administrador",
             catalogAreas,
         } : undefined,
+        whatsappPhone,
     }));
     notifySignup(tenant, created);
     return created;
@@ -165,7 +171,7 @@ export async function updateTenantUser(
     if (!isAdministrator(actor)) throw new ForbiddenError();
     const parsed = UpdateTenantUserInputSchema.safeParse(body);
     if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
-    const { email, name, catalogAreas, password } = parsed.data;
+    const { email, name, catalogAreas, password, whatsappPhone } = parsed.data;
     return withTenantTransaction(tenant, actor, async (client) => {
         const current = await findUserRowById(client, id);
         if (!current) throw new NotFoundError("USER_NOT_FOUND");
@@ -178,6 +184,7 @@ export async function updateTenantUser(
             email,
             passwordHash: password ? await hash(password, PASSWORD_OPTIONS) : undefined,
             permissions: catalogAreas ? { ...current.permissions, catalogAreas } : undefined,
+            whatsappPhone,
         });
         if (!updated) throw new NotFoundError("USER_NOT_FOUND");
         return toAuthUser(updated);

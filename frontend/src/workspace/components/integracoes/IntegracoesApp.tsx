@@ -11,7 +11,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import { activateErpIntegration, deactivateErpIntegration, testErpIntegrationConnection } from '@/workspace/lib/erpIntegrationClient';
 import { activatePaymentIntegration, deactivatePaymentIntegration, testPaymentIntegrationConnection } from '@/workspace/lib/paymentIntegrationClient';
-import { CircleCheck, CircleX, CreditCard, ExternalLink, Landmark, PackageCheck, PlugZap, Settings2 } from 'lucide-react';
+import { CircleCheck, CircleX, CreditCard, ExternalLink, Landmark, MessageCircle, PackageCheck, PlugZap, Settings2 } from 'lucide-react';
 import { useState } from 'react';
 import ErpProviderCredentialsModal from './ErpProviderCredentialsModal';
 import PaymentProviderCredentialsModal from './PaymentProviderCredentialsModal';
@@ -109,6 +109,11 @@ export default function IntegracoesApp({ initialOptions, initialPaymentOptions }
           return <Card key={option.provider} className="flex flex-col p-5"><ProviderHeader option={option} state={state} icon={CreditCard} /><p className="mt-4 text-sm leading-6 text-muted-foreground">{option.description}</p><ConnectionCopy option={option} state={state} activeCopy="Este é o gateway ativo da loja." configuredCopy="Configuração salva. Teste a conexão para ativar." emptyCopy="Configure o provedor para receber pagamentos." /><div className="mt-5 flex flex-wrap gap-2">{redirect ? <Button asChild size="sm"><Link href={`/workspace/integracoes/${option.provider}`}><Settings2 className="size-4" />Configurar {option.label}</Link></Button> : <><Button type="button" variant="outline" size="sm" onClick={() => setEditingPaymentProvider(option.provider)}><Settings2 className="size-4" />{option.configured ? 'Editar' : 'Configurar'}</Button>{option.configured && <Button type="button" variant="outline" size="sm" loading={state.status === 'testing'} onClick={() => void testPayment(option.provider)}>Testar conexão</Button>}{option.configured && !option.active && <Button type="button" size="sm" disabled={state.status !== 'ok' || pending} loading={pending} onClick={() => void activatePayment(option.provider)}>Ativar</Button>}{option.active && <Button type="button" variant="destructive" size="sm" disabled={pending} loading={pending} onClick={() => setPaymentProviderToDeactivate(option)}>Desativar</Button>}</>}</div></Card>;
         })}</div>
         {paymentOptions.length === 0 && <Card className="mt-4 p-5 text-sm text-muted-foreground">Nenhum provedor de pagamento está disponível.</Card>}
+      </section>
+
+      <section aria-labelledby="messaging-heading">
+        <SectionHeader id="messaging-heading" icon={MessageCircle} title="Mensageria" description="Conecte um número de WhatsApp Business para notificar pedidos e links de pagamento." />
+        <Card className="mt-4 overflow-hidden"><div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-3"><span className="flex size-11 shrink-0 items-center justify-center rounded-control bg-emerald-500/10 text-emerald-600"><MessageCircle className="size-5" aria-hidden="true" /></span><div><h3 className="font-bold text-foreground">bippa-messaging (WhatsApp)</h3><p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">Conecte um número de WhatsApp Business através do bippa-messaging para enviar confirmação de pedido e link de pagamento diretamente para a cliente.</p></div></div><Button asChild className="shrink-0"><Link href="/workspace/integracoes/whatsapp"><Settings2 className="size-4" />Configurar WhatsApp</Link></Button></div></Card>
       </section>
 
       <section aria-labelledby="fulfillment-heading">

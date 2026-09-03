@@ -20,6 +20,7 @@ const EMPTY = {
   name: '',
   email: '',
   password: '',
+  whatsappPhone: '',
   cpfCnpj: '',
   clientEmail: '',
   cep: '',
@@ -45,6 +46,7 @@ export default function UserFormModal({ role, mode, user, onClose, onSaved }) {
     ...EMPTY,
     name: user?.name || '',
     email: user?.email || '',
+    whatsappPhone: user?.whatsappPhone || '',
     cpfCnpj: user?.cpfCnpj || '',
     clientEmail: user?.clientEmail || '',
     cep: user?.cep || '',
@@ -78,11 +80,11 @@ export default function UserFormModal({ role, mode, user, onClose, onSaved }) {
     try {
       let saved;
       if (!isEdit && !isCliente) {
-        saved = await createVendedora({ name: form.name, email: form.email, password: form.password, catalogAreas });
+        saved = await createVendedora({ name: form.name, email: form.email, password: form.password, whatsappPhone: form.whatsappPhone || undefined, catalogAreas });
       } else if (!isEdit && isCliente) {
         saved = await createCliente(form);
       } else if (isEdit && !isCliente) {
-        saved = await updateUser(user.id, { name: form.name, email: form.email, password: form.password, catalogAreas });
+        saved = await updateUser(user.id, { name: form.name, email: form.email, password: form.password, whatsappPhone: form.whatsappPhone || undefined, catalogAreas });
       } else {
         // Edita login e cadastro juntos — dois registros diferentes por
         // trás (ver comentário em Client, web/src/lib/types.ts).
@@ -164,6 +166,25 @@ export default function UserFormModal({ role, mode, user, onClose, onSaved }) {
                 </div>
               </div>
             </div>
+
+            {!isCliente && (
+              <div className="contents">
+                <h3>WhatsApp</h3>
+                <div className={adminUi.fieldRow}>
+                  <div className={adminUi.field}>
+                    <label>Telefone WhatsApp Business</label>
+                    <input
+                      value={form.whatsappPhone}
+                      onChange={set('whatsappPhone')}
+                      placeholder="(11) 91234-5678"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-brand-muted">
+                  Número próprio desta vendedora -- conecte-o em Integrações → WhatsApp depois de salvar aqui.
+                </p>
+              </div>
+            )}
 
             {!isCliente && (
               <div className="contents">

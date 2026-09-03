@@ -1,9 +1,11 @@
 import {
   ClientLookupResultSchema,
+  ClientSchema,
   ClientSyncResultSchema,
   ClientWithLoginSchema,
   ClientsPageSchema,
   UpdateClientProfileInputSchema,
+  type Client,
   type ClientLookupResult,
   type ClientSyncResult,
   type ClientWithLogin,
@@ -14,14 +16,26 @@ import { adminJson } from './http';
 
 export type { ClientsPage, ClientLookupResult, ClientSyncResult, ClientWithLogin, UpdateClientProfileInput };
 
-function clientsPath({ query = '', page = 1, pageSize = 20 }: { query?: string; page?: number; pageSize?: number } = {}) {
+function clientsPath({ query = '', page = 1, pageSize = 20, sellerId = '' }: { query?: string; page?: number; pageSize?: number; sellerId?: string } = {}) {
   const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
   if (query.trim()) params.set('q', query.trim());
+  if (sellerId.trim()) params.set('sellerId', sellerId.trim());
   return `/api/admin/clients?${params}`;
 }
 
-export function fetchClientsPage(params?: { query?: string; page?: number; pageSize?: number }): Promise<ClientsPage> {
+export function fetchClientsPage(params?: { query?: string; page?: number; pageSize?: number; sellerId?: string }): Promise<ClientsPage> {
   return adminJson(clientsPath(params), ClientsPageSchema, {}, 'Não foi possível carregar os clientes.');
+}
+
+// Reatribui a carteira: só troca a vendedora responsável (last_seller_id) --
+// endpoint estreito, não reabre o resto do cadastro (ver
+// clientService.reassignClientSeller no backend).
+export function reassignClientSeller(clientId: string, sellerId: string): Promise<Client> {
+  return adminJson(`/api/admin/clients/${encodeURIComponent(clientId)}/seller`, ClientSchema, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sellerId }),
+  }, 'Não foi possível reatribuir a carteira desta cliente.');
 }
 
 export function addClientByDocument(document: string): Promise<ClientLookupResult> {

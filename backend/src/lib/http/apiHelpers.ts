@@ -90,6 +90,14 @@ export const ERROR_MESSAGES: Record<string, string> = {
     ORDER_HAS_NO_ITEMS: "Este pedido não tem itens.",
     ORDER_ITEMS_NOT_SEPARATED: "Os itens deste pedido ainda não foram confirmados como separados.",
     PAYMENT_INTEGRATION_NOT_READY: "O gateway de pagamento deste tenant ainda não está pronto para cobrar.",
+    // WHATSAPP_INSTALLATION_FAILED/WHATSAPP_ONBOARDING_FAILED/
+    // WHATSAPP_CONNECTIONS_UNAVAILABLE/WHATSAPP_ASSOCIATION_FAILED
+    // (whatsapp*Service.ts) são deliberadamente omitidos aqui: a mensagem
+    // específica já vem preenchida dinamicamente a partir do erro do
+    // bippa-messaging (ex.: "instalação pertence a outra organização"), e
+    // este mapa só teria uma versão genérica pior -- serviceError() cai em
+    // error.message quando o código não está aqui, igual a
+    // WHATSAPP_NO_PHONE_NUMBER no fluxo antigo.
 };
 
 export function cookieOptions() {

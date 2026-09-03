@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveTenantRoute, isTenantRouteError } from "@/lib/http/tenantRoute";
-import { auditContext, execute, requestToken } from "@/lib/http/apiHelpers";
+import { execute, requestToken } from "@/lib/http/apiHelpers";
 import * as authentication from "@/services/auth";
 import * as whatsapp from "@/services/whatsapp";
 
@@ -12,19 +12,23 @@ export async function OPTIONS() {
     return new NextResponse(null, { status: 204 });
 }
 
-export async function POST(
+// Estado local de referência da conexão de CADA vendedora deste tenant
+// (whatsapp_connections) -- não é um dos 4 endpoints A-D do plano original,
+// adicionado para a tela de Integrações mostrar "conectado"/"não conectado"
+// por vendedora no carregamento sem depender de uma chamada remota ao
+// bippa-messaging a cada acesso (ver
+// whatsappIntegrationService.listTenantWhatsAppConnectionStatuses).
+export async function GET(
     request: NextRequest,
     context: RouteContext,
 ): Promise<Response> {
     const route = await resolveTenantRoute(request, context.params);
     if (isTenantRouteError(route)) return route;
-    const contextData = auditContext(request);
-    const authenticated = await authentication.getAuthenticatedSession(
+    const session = await authentication.getAuthenticatedSession(
         route.tenant,
         requestToken(request, route.tenant.slug),
     );
-    if (!authenticated)
+    if (!session)
         return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-    const mutationContext = { ...contextData, sessionId: authenticated.sessionId };
-    return execute(() => whatsapp.activateMyWhatsAppIntegration(route.tenant, authenticated.user, mutationContext));
+    return execute(() => whatsapp.listTenantWhatsAppConnectionStatuses(route.tenant, session.user));
 }

@@ -29,15 +29,21 @@ export const logger = {
     error(scope: string, message: string, meta?: LogMeta): void { log("error", scope, message, meta); },
 };
 
-// Extrai os campos úteis de um erro do pg (code/detail/constraint/table)
-// sem cada call site precisar checar o tipo na mão.
+// Extrai os campos úteis de um erro do pg (code/detail/constraint/table) ou
+// de um erro tipado de client HTTP externo (statusCode/endpoint — mesmo
+// padrão de erpProviders/totvsmoda/client.ts e messaging/errors.ts) sem cada
+// call site precisar checar o tipo na mão.
 export function errorMeta(error: unknown): LogMeta {
-    const err = error as { message?: string; code?: string; detail?: string; constraint?: string; table?: string } | null;
+    const err = error as
+        | { message?: string; code?: string; detail?: string; constraint?: string; table?: string; statusCode?: number; endpoint?: string }
+        | null;
     return {
         error: err?.message ?? String(error),
         code: err?.code,
         detail: err?.detail,
         constraint: err?.constraint,
         table: err?.table,
+        statusCode: err?.statusCode,
+        endpoint: err?.endpoint,
     };
 }

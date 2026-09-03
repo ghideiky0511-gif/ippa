@@ -1,155 +1,194 @@
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser } from "@/lib/types";
+import { getApiKey } from "@/messaging/bippaAuthClient";
+import * as bippaMessagingClient from "@/messaging/bippaMessagingClient";
+import { findUserRowById } from "@/models/usersModel";
 import {
-    activateWhatsAppIntegrationRow,
-    deactivateWhatsAppIntegrationRow,
-    findActiveWhatsAppIntegrationRowBySellerId,
-    findWhatsAppIntegrationRowBySellerId,
-    listWhatsAppIntegrationsForTenant,
-    type SellerWhatsAppIntegrationRow,
-    type WhatsAppIntegrationListEntry,
-} from "@/models/sellerWhatsappIntegrationsModel";
+    listWhatsAppConnectionsByTenant,
+    updateWhatsAppConnectionAfterAssociation,
+    type WhatsAppConnectionRow,
+} from "@/models/whatsappConnectionsModel";
 import {
     recordAuditEvent,
     WHATSAPP_INTEGRATION_AUDIT_ACTIONS,
     type AuditRequestContext,
 } from "@/services/audit";
 import { requireSettingsAdministrator } from "@/services/settings/settingsAuthorization";
-import { ForbiddenError, ValidationError } from "@/services/shared/errors";
-import { sendTemplateMessage } from "@/whatsapp/client";
-import { WhatsAppClientError } from "@/whatsapp/errors";
-import { toWaId } from "@/whatsapp/payloadBuilders";
+import { ValidationError } from "@/services/shared/errors";
 import { errorMeta, logger } from "@/lib/logger";
+import { externalReferenceForSeller, mapBippaMessagingError, senderProfileKeyForSeller } from "./whatsappServiceErrors";
 
-// Espelha payments/paymentIntegrationService.ts, mas escopado à vendedora
-// autenticada em vez de a um provider do tenant (ver models/
-// sellerWhatsappIntegrationsModel.ts e a decisão de design no plano).
+// Reescrito para o novo desenho: proxy fino sobre bippaMessagingClient +
+// espelho local em whatsapp_connections. Escopo é a VENDEDORA (sellerId),
+// dentro de um tenant administrado por quem chama (via
+// requireSettingsAdministrator) -- é a administradora quem conecta o número
+// em nome da vendedora, não a própria vendedora autenticada.
 
-export interface WhatsAppIntegrationStatusOption {
+async function requireSellerInTenant(tenant: Tenant, user: AuthUser, sellerId: string) {
+    const seller = await withTenantTransaction(tenant, user, (client) => findUserRowById(client, sellerId));
+    if (!seller || seller.role !== "vendedora") {
+        throw new ValidationError("SELLER_NOT_FOUND", "Vendedora não encontrada nesta loja.");
+    }
+    return seller;
+}
+
+export interface WhatsAppConnectionOption {
+    phoneId: string;
+    displayPhoneMasked: string | null;
+    verifiedName: string | null;
+    qualityRating: string | null;
+    senderProfileKey: string | null;
+    status: string;
+}
+
+// Lista os telefones já conectados à organização (do lado do
+// bippa-messaging) -- a administradora escolhe um para associar ao sender
+// profile deste tenant (ver associateWhatsAppSenderProfile). Nunca expõe
+// token nem qualquer credencial da Meta -- essas ficam só no bippa-messaging.
+export async function getWhatsAppConnections(
+    tenant: Tenant,
+    user: AuthUser,
+): Promise<WhatsAppConnectionOption[]> {
+    requireSettingsAdministrator(user);
+    try {
+        const entries = await bippaMessagingClient.listWhatsAppConnections(getApiKey());
+        return entries.map((entry) => ({
+            phoneId: entry.phoneId,
+            displayPhoneMasked: entry.displayPhoneMasked,
+            verifiedName: entry.verifiedName,
+            qualityRating: entry.qualityRating,
+            senderProfileKey: entry.senderProfileKey,
+            status: entry.status,
+        }));
+    } catch (exc) {
+        logger.error("whatsapp-integration", "Falha ao listar conexões de WhatsApp no bippa-messaging", {
+            tenantId: tenant.id,
+            ...errorMeta(exc),
+        });
+        throw mapBippaMessagingError(exc, "WHATSAPP_CONNECTIONS_UNAVAILABLE", "Não foi possível consultar os telefones conectados.");
+    }
+}
+
+export interface TenantWhatsAppConnectionStatus {
+    sellerId: string;
     connected: boolean;
-    active: boolean;
-    displayPhoneNumber: string | null;
-    status: SellerWhatsAppIntegrationRow["status"] | "not_connected";
-    templatesApproved: boolean;
-    lastError: string | null;
+    phoneId: string | null;
+    displayPhoneMasked: string | null;
+    verifiedName: string | null;
+    qualityRating: string | null;
+    senderProfileKey: string | null;
+    capabilityPayments: boolean;
+    status: string;
     updatedAt: string | null;
 }
 
-function requireSellerCapable(user: AuthUser): void {
-    if (user.role !== "vendedora" && user.role !== "administrador") throw new ForbiddenError();
-}
-
-function toStatusOption(row: SellerWhatsAppIntegrationRow | null): WhatsAppIntegrationStatusOption {
+function toStatus(sellerId: string, row: WhatsAppConnectionRow | null): TenantWhatsAppConnectionStatus {
     if (!row) {
         return {
+            sellerId,
             connected: false,
-            active: false,
-            displayPhoneNumber: null,
+            phoneId: null,
+            displayPhoneMasked: null,
+            verifiedName: null,
+            qualityRating: null,
+            senderProfileKey: null,
+            capabilityPayments: false,
             status: "not_connected",
-            templatesApproved: false,
-            lastError: null,
             updatedAt: null,
         };
     }
     return {
-        connected: row.status === "connected",
-        active: row.active,
-        displayPhoneNumber: row.display_phone_number,
+        sellerId,
+        connected: Boolean(row.phone_id) && row.status === "connected",
+        phoneId: row.phone_id,
+        displayPhoneMasked: row.display_phone_masked,
+        verifiedName: row.verified_name,
+        qualityRating: row.quality_rating,
+        senderProfileKey: row.sender_profile_key,
+        capabilityPayments: row.capability_payments,
         status: row.status,
-        templatesApproved: row.credentials_meta.templatesApproved ?? false,
-        lastError: row.last_error,
         updatedAt: row.updated_at.toISOString(),
     };
 }
 
-// Status da própria integração da vendedora autenticada.
-export async function getMyWhatsAppIntegration(tenant: Tenant, user: AuthUser): Promise<WhatsAppIntegrationStatusOption> {
-    requireSellerCapable(user);
-    const row = await withTenantTransaction(tenant, user, (client) => findWhatsAppIntegrationRowBySellerId(client, user.id));
-    return toStatusOption(row);
-}
-
-export async function activateMyWhatsAppIntegration(
+// Estado local de todas as vendedoras deste tenant que já têm (ou tiveram)
+// uma tentativa de conexão -- usado pela tela de Integrações para listar
+// vendedora a vendedora sem uma chamada por vendedora.
+export async function listTenantWhatsAppConnectionStatuses(
     tenant: Tenant,
     user: AuthUser,
+): Promise<TenantWhatsAppConnectionStatus[]> {
+    requireSettingsAdministrator(user);
+    const rows = await withTenantTransaction(tenant, user, (client) => listWhatsAppConnectionsByTenant(client));
+    return rows.map((row) => toStatus(row.seller_id, row));
+}
+
+// Vincula um telefone (já conectado à organização no bippa-messaging) ao
+// sender profile desta vendedora -- capability_payments sempre false aqui
+// (disponível só depois de aprovação Meta Payments, fora de escopo). A UI só
+// pode mostrar "conectado" a partir do retorno confirmado desta função,
+// nunca de forma otimista.
+export async function associateWhatsAppSenderProfile(
+    tenant: Tenant,
+    user: AuthUser,
+    sellerId: string,
+    phoneId: string,
     context: AuditRequestContext,
-): Promise<WhatsAppIntegrationStatusOption> {
-    requireSellerCapable(user);
+): Promise<TenantWhatsAppConnectionStatus> {
+    requireSettingsAdministrator(user);
+    await requireSellerInTenant(tenant, user, sellerId);
+    const normalizedPhoneId = phoneId?.trim();
+    if (!normalizedPhoneId) throw new ValidationError("INVALID_INPUT", "phoneId é obrigatório.");
+
+    // external_reference/sender_profile_key são sempre derivados do tenant
+    // autenticado (route → session) + da vendedora alvo, nunca de entrada
+    // externa -- garante isolamento entre tenants/vendedoras mesmo que o
+    // bippa-messaging aceitasse um valor arbitrário.
+    const externalReference = externalReferenceForSeller(tenant.id, sellerId);
+    const senderProfileKey = senderProfileKeyForSeller(tenant.id, sellerId);
+
+    let association;
+    try {
+        association = await bippaMessagingClient.associateSenderProfile(getApiKey(), normalizedPhoneId, {
+            externalReference,
+            senderProfileKey,
+            capabilityPayments: false,
+        });
+    } catch (exc) {
+        logger.error("whatsapp-integration", "Falha ao associar sender profile no bippa-messaging", {
+            tenantId: tenant.id,
+            sellerId,
+            phoneId: normalizedPhoneId,
+            ...errorMeta(exc),
+        });
+        throw mapBippaMessagingError(exc, "WHATSAPP_ASSOCIATION_FAILED", "Não foi possível associar este telefone à vendedora.");
+    }
+
     return withTenantTransaction(tenant, user, async (client) => {
-        const row = await activateWhatsAppIntegrationRow(client, user.id);
-        if (!row) throw new ValidationError("WHATSAPP_INTEGRATION_NOT_CONNECTED", "Conecte um número de WhatsApp antes de ativá-lo.");
+        const row = await updateWhatsAppConnectionAfterAssociation(client, sellerId, {
+            externalReference,
+            phoneId: association.phoneId,
+            senderProfileKey: association.senderProfileKey,
+            capabilityPayments: association.capabilityPayments,
+            displayPhoneMasked: association.displayPhoneMasked,
+            verifiedName: association.verifiedName,
+            qualityRating: association.qualityRating,
+            status: association.status || "connected",
+        });
+        // CONNECTED (não ACTIVATED): esta é a primeira vez que um telefone
+        // fica de fato vinculado à vendedora -- espelha o significado que
+        // "connected" tinha no fluxo antigo (Embedded Signup concluído).
+        // Não há um passo de "ativar" distinto no novo desenho (não existe
+        // mais toggle active/inactive local, ver whatsappNotificationService.ts
+        // que já resolve a conexão direto pela vendedora).
         await recordAuditEvent(client, {
-            action: WHATSAPP_INTEGRATION_AUDIT_ACTIONS.ACTIVATED,
+            action: WHATSAPP_INTEGRATION_AUDIT_ACTIONS.CONNECTED,
             entityId: row.id,
             actor: user,
             context,
+            metadata: { sellerId, phoneId: row.phone_id },
         });
-        return toStatusOption(row);
+        return toStatus(sellerId, row);
     });
-}
-
-export async function deactivateMyWhatsAppIntegration(
-    tenant: Tenant,
-    user: AuthUser,
-    context: AuditRequestContext,
-): Promise<WhatsAppIntegrationStatusOption> {
-    requireSellerCapable(user);
-    return withTenantTransaction(tenant, user, async (client) => {
-        const row = await deactivateWhatsAppIntegrationRow(client, user.id);
-        if (row) {
-            await recordAuditEvent(client, {
-                action: WHATSAPP_INTEGRATION_AUDIT_ACTIONS.DEACTIVATED,
-                entityId: row.id,
-                actor: user,
-                context,
-            });
-        }
-        return toStatusOption(row);
-    });
-}
-
-// Manda o template order_confirmed com dados fictícios para `toE164Phone` --
-// forma direta de a vendedora confirmar que o número está mesmo entregando
-// mensagens antes de contar com ele em produção. Nunca lança por falha da
-// Meta -- sempre devolve { ok, message }, mesmo raciocínio de
-// testTenantPaymentIntegrationConnection.
-export async function testMyWhatsAppIntegration(
-    tenant: Tenant,
-    user: AuthUser,
-    toE164Phone: string,
-): Promise<{ ok: boolean; message?: string }> {
-    requireSellerCapable(user);
-    const row = await withTenantTransaction(tenant, user, (client) => findActiveWhatsAppIntegrationRowBySellerId(client, user.id));
-    if (!row || !row.access_token || !row.phone_number_id) {
-        return { ok: false, message: "Conecte e ative um número de WhatsApp antes de testar o envio." };
-    }
-    try {
-        await sendTemplateMessage(row.phone_number_id, row.access_token, {
-            to: toWaId(toE164Phone),
-            templateName: "order_confirmed",
-            languageCode: "pt_BR",
-            bodyParameters: [
-                { type: "text", text: user.name },
-                { type: "text", text: "0000" },
-                { type: "text", text: "R$ 0,00" },
-                { type: "text", text: `${tenant.name} (teste)` },
-            ],
-        });
-        return { ok: true };
-    } catch (exc) {
-        logger.warn("whatsapp-integration-test", "Envio de teste falhou", { tenantId: tenant.id, sellerId: user.id, ...errorMeta(exc) });
-        return { ok: false, message: exc instanceof WhatsAppClientError ? exc.message : "Falha desconhecida ao enviar o teste." };
-    }
-}
-
-// Visão gerencial: todas as vendedoras do tenant e status de conexão de
-// cada uma -- não expõe token nem permite ativar/desativar em nome de
-// outra vendedora (cada uma mexe só na própria, ver funções acima).
-export async function listWhatsAppIntegrationsForAdministrator(
-    tenant: Tenant,
-    user: AuthUser,
-): Promise<WhatsAppIntegrationListEntry[]> {
-    requireSettingsAdministrator(user);
-    return withTenantTransaction(tenant, user, (client) => listWhatsAppIntegrationsForTenant(client));
 }

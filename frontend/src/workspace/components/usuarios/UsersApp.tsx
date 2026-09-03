@@ -5,6 +5,7 @@ import { Fragment, useMemo, useState } from 'react';
 import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import { fetchUsers, deleteUser } from '@/workspace/lib/usersClient';
 import UserFormModal from './UserFormModal';
+import SellerWalletPanel from './SellerWalletPanel';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Trash2 } from 'lucide-react';
 
@@ -38,6 +39,7 @@ const VENDEDORA_DETAILS = [
   ['id', 'ID da conta'],
   ['adminAccess', 'Acesso à plataforma admin'],
   ['catalogAreas', 'Ferramentas liberadas no catálogo'],
+  ['whatsappPhone', 'Telefone WhatsApp Business'],
   ['password', 'Senha'],
 ];
 
@@ -213,6 +215,12 @@ export default function UsersApp({ initialUsers }) {
                             </div>
                           ))}
                         </dl>
+                        {activeTab === 'vendedoras' && (
+                          <div className="mt-3">
+                            <h4 className="text-xs font-semibold text-brand-muted">Carteira de clientes</h4>
+                            <SellerWalletPanel seller={u} vendedoras={byTab.vendedoras} />
+                          </div>
+                        )}
                       </td>
                     </tr>
                   )}
@@ -247,6 +255,12 @@ export default function UsersApp({ initialUsers }) {
                       </div>
                     ))}
                   </dl>
+                )}
+                {isExpanded && activeTab === 'vendedoras' && (
+                  <div className="mt-3 border-t border-border pt-3">
+                    <h4 className="text-xs font-semibold text-brand-muted">Carteira de clientes</h4>
+                    <SellerWalletPanel seller={u} vendedoras={byTab.vendedoras} />
+                  </div>
                 )}
               </div>
             );
