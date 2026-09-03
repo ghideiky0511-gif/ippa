@@ -1,6 +1,14 @@
 envVarGroups:
   - name: ippa-env-prod
     envVars:
+      # Segredo compartilhado frontend<->backend: marca as chamadas de servidor
+      # confiáveis (SSR e proxy do Next) para o backend isentá-las do rate
+      # limit por IP (ver resolveTenantRoute / isTrustedInternalRequest). Sem
+      # isso, todo o SSR sai dos poucos IPs de egress compartilhados do Render
+      # e uma page view com prefetch estoura o limite (429). generateValue
+      # cria um valor único para o group, entregue aos dois serviços.
+      - key: INTERNAL_REQUEST_TOKEN
+        generateValue: true
       - key: DATABASE_SSL
         value: "true"
       - key: DATABASE_URL

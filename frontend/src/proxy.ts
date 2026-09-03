@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getBackendUrl } from '@/lib/api-config';
+import { getBackendUrl, applyInternalRequestHeader } from '@/lib/api-config';
 import type { AuthUser } from '@/domain/clients/types';
 import { forwardClientIpHeaders } from '@/lib/forwarded-client';
 
@@ -24,6 +24,7 @@ function tenantFromReferer(request: NextRequest): string | null {
 function internalBackendHeaders(request: NextRequest, init?: HeadersInit): Headers {
   const outgoingHeaders = new Headers(init);
   forwardClientIpHeaders(request.headers, outgoingHeaders);
+  applyInternalRequestHeader(outgoingHeaders);
   return outgoingHeaders;
 }
 

@@ -1,6 +1,6 @@
 import { cookies, headers } from 'next/headers';
 import type { z } from 'zod';
-import { getBackendUrl } from '@/lib/api-config';
+import { getBackendUrl, applyInternalRequestHeader } from '@/lib/api-config';
 import { forwardClientIpHeaders } from '@/lib/forwarded-client';
 
 const BACKEND_URL = getBackendUrl();
@@ -16,6 +16,7 @@ export async function backendRequest(pathname: string, init: RequestInit = {}): 
   const incomingHeaders = await headers();
   const outgoingHeaders = new Headers(init.headers);
   forwardClientIpHeaders(incomingHeaders, outgoingHeaders);
+  applyInternalRequestHeader(outgoingHeaders);
   const cookieHeader = cookieStore.toString();
   if (cookieHeader) outgoingHeaders.set('cookie', cookieHeader);
   const tenantSlug = incomingHeaders.get('x-ippa-tenant');
