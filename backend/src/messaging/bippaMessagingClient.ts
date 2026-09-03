@@ -17,47 +17,56 @@ function baseUrl(): string {
 }
 
 export interface EnsureApplicationInstallationInput {
-    applicationCode: string;
     sourceReference: string;
+    organizationName: string;
 }
 
 export interface ApplicationInstallation {
     id: string;
-    applicationCode: string;
-    sourceReference: string;
-    status: string;
+    externalReference: string;
+    created: boolean;
+    organizationId: string;
 }
 
-interface ApplicationInstallationResponse {
-    id: string;
-    application_code: string;
-    source_reference: string;
-    status: string;
+interface ApplicationInstallationProvisionResponse {
+    organization: { id: string; name: string };
+    installation: {
+        id: string;
+        application_code: string;
+        external_reference: string;
+        created: boolean;
+    };
 }
 
 // Garante que o tenant (identificado por source_reference = tenant.id) tem
-// uma instalação do app "bippa-catalogo" no bippa-messaging -- idempotente,
-// deve ser chamado antes de iniciar uma tentativa de onboarding.
+// uma instalação do app "bippa-catalogo" no bippa-messaging -- idempotente
+// por (application_code, source_reference), deve ser chamado antes de
+// iniciar uma tentativa de onboarding. application_code é lido pelo
+// bippa-messaging da própria API key autenticada (auth.application_code),
+// não vai no body -- a rota antiga (POST /v1/admin/application-installations,
+// que exige organization_id no body) foi substituída por esta
+// (.../provision) especificamente porque o Catálogo nunca tem esse id antes
+// da primeira chamada de um tenant novo.
 export function ensureApplicationInstallation(
     apiKey: string,
     input: EnsureApplicationInstallationInput,
     reporter?: ExternalApiCallReporter,
 ): Promise<ApplicationInstallation> {
-    return bippaMessagingRequest<ApplicationInstallationResponse>(
+    return bippaMessagingRequest<ApplicationInstallationProvisionResponse>(
         "POST",
-        `${baseUrl()}/v1/admin/application-installations`,
+        `${baseUrl()}/v1/admin/application-installations/provision`,
         {
             service: "bippa-messaging",
             apiKey,
-            jsonBody: { application_code: input.applicationCode, source_reference: input.sourceReference },
+            jsonBody: { source_reference: input.sourceReference, organization_name: input.organizationName },
             operation: "ensureApplicationInstallation",
             reporter,
         },
     ).then((response) => ({
-        id: response.id,
-        applicationCode: response.application_code,
-        sourceReference: response.source_reference,
-        status: response.status,
+        id: response.installation.id,
+        externalReference: response.installation.external_reference,
+        created: response.installation.created,
+        organizationId: response.organization.id,
     }));
 }
 

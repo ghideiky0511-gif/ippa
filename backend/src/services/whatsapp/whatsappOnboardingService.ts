@@ -52,6 +52,12 @@ export async function startWhatsAppOnboarding(
     const senderProfileKey = senderProfileKeyForSeller(tenant.id, sellerId);
     const externalReference = externalReferenceForSeller(tenant.id, sellerId);
 
+    logger.info("whatsapp-onboarding", "Iniciando tentativa de onboarding no bippa-messaging", {
+        tenantId: tenant.id,
+        sellerId,
+        externalReference,
+    });
+
     let attempt: WhatsAppOnboardingAttempt;
     try {
         attempt = await bippaMessagingClient.startOnboardingAttempt(getApiKey(), {
@@ -67,6 +73,13 @@ export async function startWhatsAppOnboarding(
         });
         throw mapBippaMessagingError(exc, "WHATSAPP_ONBOARDING_FAILED", "Não foi possível iniciar a conexão com o WhatsApp.");
     }
+
+    logger.info("whatsapp-onboarding", "Tentativa de onboarding aberta no bippa-messaging", {
+        tenantId: tenant.id,
+        sellerId,
+        externalReference,
+        state: attempt.state,
+    });
 
     await withTenantTransaction(tenant, user, (client) =>
         upsertWhatsAppConnectionRow(client, {

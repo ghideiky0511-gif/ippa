@@ -125,7 +125,7 @@ export default function WhatsAppIntegrationApp() {
     showMessage(sellerId, null);
     setPhoneOptions([]);
     try {
-      await ensureWhatsAppInstallation();
+      await ensureWhatsAppInstallation(sellerId);
       const attempt = await startWhatsAppOnboardingAttempt(sellerId);
       attemptStateRef.current = attempt.state;
 

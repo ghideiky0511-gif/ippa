@@ -19,27 +19,30 @@ function withFetch(handler: typeof globalThis.fetch, run: () => Promise<void>): 
     });
 }
 
-test("ensureApplicationInstallation envia application_code/source_reference e a API key de serviço", async () => {
+test("ensureApplicationInstallation envia source_reference/organization_name (sem application_code) e mapeia a resposta de /provision", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     await withFetch(
         async (input, init) => {
             calls.push({ url: String(input), init });
             return new Response(
-                JSON.stringify({ id: "inst-1", application_code: "bippa-catalogo", source_reference: "tenant-1", status: "active" }),
+                JSON.stringify({
+                    organization: { id: "org-1", name: "Loja Teste" },
+                    installation: { id: "inst-1", application_code: "bippa-catalogo", external_reference: "tenant-1", created: true },
+                }),
                 { status: 201, headers: { "Content-Type": "application/json" } },
             );
         },
         async () => {
             const result = await ensureApplicationInstallation("bippa_key123_segredo", {
-                applicationCode: "bippa-catalogo",
                 sourceReference: "tenant-1",
+                organizationName: "Loja Teste",
             });
-            assert.equal(result.id, "inst-1");
+            assert.deepEqual(result, { id: "inst-1", externalReference: "tenant-1", created: true, organizationId: "org-1" });
             assert.equal(calls.length, 1);
-            assert.equal(calls[0].url, `${DEFAULT_BASE_URL}/v1/admin/application-installations`);
+            assert.equal(calls[0].url, `${DEFAULT_BASE_URL}/v1/admin/application-installations/provision`);
             assert.equal((calls[0].init?.headers as Record<string, string>)["X-Bippa-Api-Key"], "bippa_key123_segredo");
             const body = JSON.parse(String(calls[0].init?.body));
-            assert.deepEqual(body, { application_code: "bippa-catalogo", source_reference: "tenant-1" });
+            assert.deepEqual(body, { source_reference: "tenant-1", organization_name: "Loja Teste" });
         },
     );
 });
@@ -184,7 +187,7 @@ test("HTTP 422 vira BippaMessagingClientError com a mensagem do serviço", async
             ),
         async () => {
             await assert.rejects(
-                () => ensureApplicationInstallation("human-token", { applicationCode: "bippa-catalogo", sourceReference: "tenant-1" }),
+                () => ensureApplicationInstallation("human-token", { sourceReference: "tenant-1", organizationName: "Loja Teste" }),
                 (error: unknown) => {
                     assert.ok(error instanceof BippaMessagingClientError);
                     assert.ok(!(error instanceof BippaMessagingAuthError));

@@ -22,11 +22,15 @@ export interface WhatsAppInstallationResult {
   installed: boolean;
 }
 
-export function ensureWhatsAppInstallation(): Promise<WhatsAppInstallationResult> {
+// sellerId precisa ser o mesmo passado depois para
+// startWhatsAppOnboardingAttempt -- a instalação é resolvida no
+// bippa-messaging por essa mesma referência (ver
+// whatsappInstallationService.ts no backend).
+export function ensureWhatsAppInstallation(sellerId: string): Promise<WhatsAppInstallationResult> {
   return adminJson(
     '/api/admin/whatsapp/installations',
     unknown,
-    { method: 'POST' },
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sellerId }) },
     'Não foi possível preparar a conexão com o WhatsApp.'
   ) as Promise<WhatsAppInstallationResult>;
 }
