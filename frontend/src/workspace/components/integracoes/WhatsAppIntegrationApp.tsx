@@ -39,8 +39,15 @@ const POPUP_FEATURES = 'width=480,height=720';
 // também é mandada por este timeout, caso o popup nunca sinalize "pronto".
 const READY_FALLBACK_MS = 4_000;
 // Se nada (completed/failed) chegar depois de mandar o início, evita deixar
-// a tela presa em "Conectando…" para sempre -- surge um erro explícito.
-const ONBOARDING_TIMEOUT_MS = 90_000;
+// a tela presa em "Conectando…" para sempre -- surge um erro explícito. O
+// Embedded Signup da Meta inclui passos que a vendedora preenche à mão
+// (verificação de telefone por SMS/ligação, criação de conta business) e que
+// podem levar vários minutos -- 90s cortava esse processo no meio antes dele
+// ter chance de terminar. 15 minutos ainda tem um teto (evita ficar preso
+// para sempre se a vendedora simplesmente fechar o popup sem avisar), mas dá
+// espaço de sobra; a administradora também pode cancelar manualmente antes
+// disso (ver cancelOnboarding).
+const ONBOARDING_TIMEOUT_MS = 15 * 60_000;
 
 export default function WhatsAppIntegrationApp() {
   const [sellers, setSellers] = useState<AdminUser[]>([]);
@@ -223,7 +230,7 @@ export default function WhatsAppIntegrationApp() {
         popup.close();
         teardownOnboardingListeners();
         setStatus('error');
-        showMessage(sellerId, 'A conexão com o WhatsApp demorou demais para responder. Tente novamente.', true);
+        showMessage(sellerId, 'A conexão com o WhatsApp demorou demais para responder (mais de 15 minutos). Tente novamente.', true);
         setPending(false);
       }, ONBOARDING_TIMEOUT_MS);
     } catch (error) {
@@ -231,6 +238,19 @@ export default function WhatsAppIntegrationApp() {
       showMessage(sellerId, error instanceof Error ? error.message : 'Não foi possível iniciar a conexão com o WhatsApp.', true);
       setPending(false);
     }
+  }
+
+  // Encerramento manual do onboarding em curso -- a administradora pode
+  // cancelar a qualquer momento em vez de esperar o timeout de 15 minutos
+  // (ex.: a vendedora desistiu ou fechou o popup sem que o bippa-messaging
+  // avisasse).
+  function cancelOnboarding(sellerId: string) {
+    popupRef.current?.close();
+    teardownOnboardingListeners();
+    setStatus('disconnected');
+    setPhoneOptions([]);
+    setPending(false);
+    showMessage(sellerId, null);
   }
 
   async function selectPhone(phoneId: string) {
@@ -381,6 +401,11 @@ export default function WhatsAppIntegrationApp() {
                     >
                       {connection?.connected ? 'Reconectar WhatsApp' : 'Conectar WhatsApp'}
                     </Button>
+                    {isActive && sellerStatus === 'connecting' && (
+                      <Button type="button" variant="outline" onClick={() => cancelOnboarding(seller.id)}>
+                        Cancelar
+                      </Button>
+                    )}
                     {connection?.connected && (
                       <Button
                         type="button"
