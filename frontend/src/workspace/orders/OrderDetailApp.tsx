@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { ArrowLeft, Ban, CheckCircle2, CreditCard, MessageCircle, PackageCheck, PackagePlus, Printer, RefreshCw, Wrench } from 'lucide-react';
@@ -16,9 +16,10 @@ import { requestOrderPushResend } from '@/workspace/lib/erpIntegrationClient';
 import { useWorkspaceAuth } from '@/workspace/components/WorkspaceAuthProvider';
 import { Sheet, SheetContent, SheetHeader, SheetTrigger } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogCloseButton, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { markOrderPaid, cancelOrder, confirmOrderSeparation, sendOrderWhatsApp, updateOrderSession } from '@/lib/ordersClient';
+import { markOrderPaid, cancelOrder, confirmOrderSeparation, sendOrderWhatsApp, updateOrderSession, fetchWhatsAppAvailability, type WhatsAppAvailabilityStatus } from '@/lib/ordersClient';
 import { StatusChip, type StatusChipTone } from '@/components/StatusChip';
 import PaymentMethodIndicator from '@/components/payments/PaymentMethodIndicator';
+import { DisabledActionHint } from '@/components/DisabledActionHint';
 import { ORDER_STATUS_LABELS, OrderStatusChip } from './orderStatus';
 
 const PAYMENT_STATUS_LABELS: Record<NonNullable<Order['paymentStatus']>, string> = {
@@ -114,6 +115,7 @@ export default function OrderDetailApp({
   const [paymentMethodInput, setPaymentMethodInput] = useState('');
   const [actionPending, setActionPending] = useState(false);
   const [upsellPending, setUpsellPending] = useState(false);
+  const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppAvailabilityStatus | null>(null);
 
   const router = useRouter();
   const { href } = useTenant();
@@ -132,6 +134,16 @@ export default function OrderDetailApp({
   // orderSessionService.ts), então não há necessidade de checar o status do
   // pedido além disso.
   const canUpsell = canManageOrder && Boolean(session) && order.status !== 'cancelado';
+
+  useEffect(() => {
+    let mounted = true;
+    void fetchWhatsAppAvailability(order.id).then((status) => {
+      if (mounted) setWhatsappStatus(status);
+    }).catch(() => {
+      if (mounted) setWhatsappStatus({ available: false, reason: 'Erro ao validar disponibilidade.' });
+    });
+    return () => { mounted = false; };
+  }, [order.id]);
 
   async function startUpsell() {
     if (!session) return;
@@ -376,27 +388,50 @@ export default function OrderDetailApp({
               </button>
             )}
             {canManageOrder && (
-              <button
-                type="button"
-                className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={actionPending || !client?.whatsappPhone || order.status === 'cancelado'}
-                title={!client?.whatsappPhone ? 'A cliente não tem um telefone WhatsApp cadastrado.' : undefined}
-                onClick={() => { setFabOpen(false); setConfirmAction('send-whatsapp-order'); }}
+              <DisabledActionHint
+                reason={whatsappStatus?.reason || 'Validando...'}
+                side="bottom"
               >
-                <MessageCircle className="mr-2 size-3.5" aria-hidden="true" />
-                {client?.whatsappPhone ? 'Enviar pedido pelo WhatsApp' : 'Cliente sem WhatsApp cadastrado'}
-              </button>
+                <button
+                  type="button"
+                  className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={actionPending || !whatsappStatus?.available || order.status === 'cancelado'}
+                  onClick={() => {
+                    if (!whatsappStatus?.available && whatsappStatus?.reason?.toLowerCase().includes('whatsapp')) {
+                      window.location.href = '/workspace/integracoes/whatsapp';
+                    } else if (whatsappStatus?.available) {
+                      setFabOpen(false);
+                      setConfirmAction('send-whatsapp-order');
+                    }
+                  }}
+                >
+                  <MessageCircle className="mr-2 size-3.5" aria-hidden="true" />
+                  Enviar pedido pelo WhatsApp
+                </button>
+              </DisabledActionHint>
             )}
             {canManageOrder && order.status === 'separado' && order.paymentStatus !== 'paid' && (
-              <button
-                type="button"
-                className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={actionPending || !client?.whatsappPhone}
-                title={!client?.whatsappPhone ? 'A cliente não tem um telefone WhatsApp cadastrado.' : undefined}
-                onClick={() => { setFabOpen(false); setConfirmAction('send-whatsapp-payment'); }}
+              <DisabledActionHint
+                reason={whatsappStatus?.reason || 'Validando...'}
+                side="bottom"
               >
-                <CreditCard className="mr-2 size-3.5" aria-hidden="true" />Enviar link de pagamento pelo WhatsApp
-              </button>
+                <button
+                  type="button"
+                  className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={actionPending || !whatsappStatus?.available}
+                  onClick={() => {
+                    if (!whatsappStatus?.available && whatsappStatus?.reason?.toLowerCase().includes('whatsapp')) {
+                      window.location.href = '/workspace/integracoes/whatsapp';
+                    } else if (whatsappStatus?.available) {
+                      setFabOpen(false);
+                      setConfirmAction('send-whatsapp-payment');
+                    }
+                  }}
+                >
+                  <CreditCard className="mr-2 size-3.5" aria-hidden="true" />
+                  Enviar link de pagamento pelo WhatsApp
+                </button>
+              </DisabledActionHint>
             )}
             {canConfirmSeparation && (
               <button

@@ -4,12 +4,14 @@ import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser } from "@/lib/types";
 import { findClientRow } from "@/models/clientsModel";
 import { findOrderRowById } from "@/models/ordersModel";
+import { findWhatsAppConnectionBySeller } from "@/models/whatsappConnectionsModel";
 import { orderPaymentLink } from "@/services/notifications";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
 import {
     assertWhatsAppConnectionAvailable,
     sendOrderConfirmedWhatsAppNow,
     sendPaymentLinkWhatsAppNow,
+    hasActiveWhatsAppConnection,
     type WhatsAppOrderRecipient,
 } from "@/services/whatsapp";
 import { createOrderPaymentLink } from "./orderPaymentLinkService";
@@ -32,8 +34,41 @@ export function maskWhatsAppPhone(phone: string): string {
     return `+${digits.slice(0, 2)} *****-${digits.slice(-4)}`;
 }
 
+export interface WhatsAppAvailabilityStatus {
+    available: boolean;
+    reason?: string;
+}
+
 function isAdministrator(user: AuthUser): boolean {
     return user.role === "administrador" && user.permissions?.adminAccess === true;
+}
+
+export async function validateWhatsAppAvailability(
+    tenant: Tenant,
+    orderId: string,
+): Promise<WhatsAppAvailabilityStatus> {
+    try {
+        return await withTenantTransaction(tenant, {}, async (client) => {
+            const order = await findOrderRowById(client, orderId);
+            if (!order) return { available: false, reason: "Pedido não encontrado." };
+            if (order.status === "cancelado") return { available: false, reason: "Pedido cancelado." };
+            if (!order.client_id) return { available: false, reason: "Vincule uma cliente ao pedido antes de enviar." };
+            if (!order.seller_id) return { available: false, reason: "Este pedido ainda não tem uma vendedora responsável." };
+
+            const registration = await findClientRow(client, order.client_id);
+            if (!registration) return { available: false, reason: "Cliente não encontrado." };
+            if (!registration.whatsapp_phone) return { available: false, reason: "Cadastre o telefone WhatsApp da cliente." };
+
+            const connection = await findWhatsAppConnectionBySeller(client, order.seller_id);
+            if (!hasActiveWhatsAppConnection(connection)) {
+                return { available: false, reason: "A vendedora ainda não tem um WhatsApp conectado." };
+            }
+
+            return { available: true };
+        });
+    } catch {
+        return { available: false, reason: "Erro ao validar disponibilidade." };
+    }
 }
 
 export async function sendOrderWhatsApp(

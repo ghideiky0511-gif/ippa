@@ -142,6 +142,20 @@ const SendOrderWhatsAppResultSchema = z.object({
 
 export type SendOrderWhatsAppKind = 'order' | 'payment_link';
 
+export interface WhatsAppAvailabilityStatus {
+  available: boolean;
+  reason?: string;
+}
+
+const WhatsAppAvailabilitySchema = z.object({
+  available: z.boolean(),
+  reason: z.string().optional(),
+});
+
+export function fetchWhatsAppAvailability(orderId: string): Promise<WhatsAppAvailabilityStatus> {
+  return adminJson(`/api/admin/orders/${encodeURIComponent(orderId)}/whatsapp`, WhatsAppAvailabilitySchema, {}, 'Não foi possível validar a disponibilidade do WhatsApp.');
+}
+
 export function sendOrderWhatsApp(orderId: string, kind: SendOrderWhatsAppKind) {
   return adminJson(`/api/admin/orders/${encodeURIComponent(orderId)}/whatsapp`, SendOrderWhatsAppResultSchema, {
     method: 'POST',
