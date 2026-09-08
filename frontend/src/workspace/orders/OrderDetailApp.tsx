@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { ArrowLeft, Ban, CheckCircle2, PackageCheck, PackagePlus, Printer, RefreshCw, Wrench } from 'lucide-react';
+import { ArrowLeft, Ban, CheckCircle2, CreditCard, MessageCircle, PackageCheck, PackagePlus, Printer, RefreshCw, Wrench } from 'lucide-react';
 import type { Order, OrderSession } from '@/domain/orders/types';
 import type { ClientWithLogin } from '@/domain/clients/types';
 import type { ProviderOrderAttempt, ProviderOrderAttemptOutcome, ProviderOrderRow, ProviderOrderStatus } from '@/workspace/lib/erpIntegrationClient';
@@ -16,7 +16,7 @@ import { requestOrderPushResend } from '@/workspace/lib/erpIntegrationClient';
 import { useWorkspaceAuth } from '@/workspace/components/WorkspaceAuthProvider';
 import { Sheet, SheetContent, SheetHeader, SheetTrigger } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogCloseButton, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { markOrderPaid, cancelOrder, confirmOrderSeparation, updateOrderSession } from '@/lib/ordersClient';
+import { markOrderPaid, cancelOrder, confirmOrderSeparation, sendOrderWhatsApp, updateOrderSession } from '@/lib/ordersClient';
 import { StatusChip, type StatusChipTone } from '@/components/StatusChip';
 import PaymentMethodIndicator from '@/components/payments/PaymentMethodIndicator';
 import { ORDER_STATUS_LABELS, OrderStatusChip } from './orderStatus';
@@ -88,7 +88,7 @@ function StatusBadge({ status }: { status: ProviderOrderStatus }) {
   return <StatusChip label={PUSH_STATUS_LABELS[status]} tone={PUSH_STATUS_TONES[status]} />;
 }
 
-type ConfirmAction = 'mark-paid' | 'cancel' | 'confirm-separation';
+type ConfirmAction = 'mark-paid' | 'cancel' | 'confirm-separation' | 'send-whatsapp-order' | 'send-whatsapp-payment';
 
 export default function OrderDetailApp({
   initialOrder,
@@ -175,6 +175,12 @@ export default function OrderDetailApp({
         const updated = await confirmOrderSeparation(order.id);
         setOrder(updated);
         toast.success('Separação confirmada.');
+      } else if (confirmAction === 'send-whatsapp-order') {
+        const result = await sendOrderWhatsApp(order.id, 'order');
+        toast.success(`Pedido enviado pelo WhatsApp para ${result.toMasked}.`);
+      } else if (confirmAction === 'send-whatsapp-payment') {
+        const result = await sendOrderWhatsApp(order.id, 'payment_link');
+        toast.success(`Link de pagamento enviado pelo WhatsApp para ${result.toMasked}.`);
       }
       setConfirmAction(null);
       setPaymentMethodInput('');
@@ -369,6 +375,29 @@ export default function OrderDetailApp({
                 {upsellPending ? 'Abrindo...' : 'Adicionar peças'}
               </button>
             )}
+            {canManageOrder && (
+              <button
+                type="button"
+                className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={actionPending || !client?.whatsappPhone || order.status === 'cancelado'}
+                title={!client?.whatsappPhone ? 'A cliente não tem um telefone WhatsApp cadastrado.' : undefined}
+                onClick={() => { setFabOpen(false); setConfirmAction('send-whatsapp-order'); }}
+              >
+                <MessageCircle className="mr-2 size-3.5" aria-hidden="true" />
+                {client?.whatsappPhone ? 'Enviar pedido pelo WhatsApp' : 'Cliente sem WhatsApp cadastrado'}
+              </button>
+            )}
+            {canManageOrder && order.status === 'separado' && order.paymentStatus !== 'paid' && (
+              <button
+                type="button"
+                className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={actionPending || !client?.whatsappPhone}
+                title={!client?.whatsappPhone ? 'A cliente não tem um telefone WhatsApp cadastrado.' : undefined}
+                onClick={() => { setFabOpen(false); setConfirmAction('send-whatsapp-payment'); }}
+              >
+                <CreditCard className="mr-2 size-3.5" aria-hidden="true" />Enviar link de pagamento pelo WhatsApp
+              </button>
+            )}
             {canConfirmSeparation && (
               <button
                 type="button"
@@ -414,6 +443,8 @@ export default function OrderDetailApp({
               {confirmAction === 'mark-paid' && 'Marcar pedido como pago?'}
               {confirmAction === 'cancel' && 'Cancelar pedido?'}
               {confirmAction === 'confirm-separation' && 'Confirmar separação dos itens?'}
+              {confirmAction === 'send-whatsapp-order' && 'Enviar este pedido pelo WhatsApp?'}
+              {confirmAction === 'send-whatsapp-payment' && 'Enviar o link de pagamento pelo WhatsApp?'}
             </DialogTitle>
             <DialogCloseButton />
           </DialogHeader>
@@ -421,6 +452,8 @@ export default function OrderDetailApp({
             {confirmAction === 'mark-paid' && 'Registra este pedido como pago manualmente (dinheiro, Pix direto etc.) — não passa por nenhum gateway de pagamento real.'}
             {confirmAction === 'cancel' && 'Cancela o pedido e as sessões/talão abertos vinculados a ele. Se o pedido já foi enviado ao ERP, o cancelamento também será tentado lá.'}
             {confirmAction === 'confirm-separation' && 'Confirma que todas as peças deste pedido já foram separadas fisicamente. Necessário antes de qualquer cobrança real ser possível.'}
+            {confirmAction === 'send-whatsapp-order' && 'O resumo do pedido será enviado para o telefone WhatsApp cadastrado da cliente.'}
+            {confirmAction === 'send-whatsapp-payment' && 'Um novo link seguro de pagamento será gerado e enviado para o WhatsApp cadastrado da cliente. Links anteriores deixarão de funcionar.'}
           </DialogDescription>
           {confirmAction === 'mark-paid' && (
             <div className={`${adminUi.field} mt-3`}>

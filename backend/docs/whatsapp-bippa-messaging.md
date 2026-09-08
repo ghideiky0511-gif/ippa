@@ -72,6 +72,11 @@ conveniente (não quebram nada se ficarem, só ficam órfãs).
 - `PATCH /api/[tenantSlug]/admin/whatsapp/phones/[phoneId]/sender-profile`
   -- associa um telefone ao sender profile da vendedora `sellerId` (no
   corpo).
+- `POST /api/[tenantSlug]/admin/orders/[id]/whatsapp` -- envio manual pelo
+  FAB do pedido. Aceita `{ "kind": "order" }` para o resumo do pedido ou
+  `{ "kind": "payment_link" }` para gerar e enviar um novo link seguro de
+  pagamento. Toda resolução de pedido, cliente, telefone e conexão ocorre no
+  backend; a resposta expõe apenas o `messageId` e o telefone mascarado.
 
 Rotas antigas removidas (grupo inteiro):
 `api/[tenantSlug]/whatsapp-integration/{route,connect,activate,deactivate,sellers,test}.ts`,
@@ -233,10 +238,16 @@ migration's own diff against current `stage.sql` is purely additive.
    função pura exportada (`frontend/src/workspace/lib/whatsappIntegrationClient.ts`)
    para ficar testável assim que houver infraestrutura de teste no
    frontend; por ora só foi exercitada manualmente.
-6. **Templates order_confirmed/payment_link** -- o Catálogo não registra
-   mais templates (essa lógica era Graph-API-specific); assume-se que o
-   bippa-messaging/Meta já tem os templates aprovados centralmente, fora do
-   escopo do Catálogo.
+6. **Cadastro de templates padronizados** -- a tela de Integrações permite
+   que somente o admin envie os modelos `bippa_order_confirmed_v1` e
+   `bippa_payment_link_v1` para o WABA de uma conexão ativa. O browser envia
+   apenas `sellerId` + chave lógica; texto, nome, idioma `pt_BR`, categoria
+   `UTILITY` e exemplos são definidos no backend em
+   `whatsappTemplates.ts`. O Catálogo chama
+   `POST /v1/admin/phones/:phoneId/message-templates` no bippa-messaging,
+   que deve resolver o WABA e encaminhar o componente à Graph API sem expor
+   WABA ID ou token Meta ao Catálogo. Esse novo contrato interno precisa
+   existir no deploy do bippa-messaging antes do teste integrado.
 
 ## Roteiro manual de smoke test
 
@@ -253,9 +264,18 @@ migration's own diff against current `stage.sql` is purely additive.
    associação (nunca antes, mesmo que o popup já tenha fechado).
 5. Clicar em "Verificar conexão" (ação restrita) -- deve confirmar telefone +
    sender profile associado via nova chamada a `fetchWhatsAppConnections`.
-6. Testar mensagem livre: mandar uma mensagem do celular de teste para o
+6. Na seção "Templates de pedidos", selecionar a conexão, revisar os dois
+   modelos e clicar em "Enviar para a Meta". Confirmar que o retorno mostra
+   `PENDING` (ou `APPROVED`, se o modelo já existir/aprovar imediatamente) e
+   que nenhum texto livre pode ser enviado pelo browser.
+7. Testar mensagem livre: mandar uma mensagem do celular de teste para o
    número conectado, responder pelo Catálogo (via um pedido de teste que
    dispare `sendOrderConfirmedWhatsApp`) dentro da janela de 24h.
-7. Confirmar que `capability_payments` permanece `false` na tela (sem
+8. Confirmar que `capability_payments` permanece `false` na tela (sem
    toggle disponível) -- só liberado após aprovação Meta Payments, fora de
    escopo aqui.
+9. Abrir um pedido no workspace e usar "Enviar pedido pelo WhatsApp" no FAB.
+   A ação deve retornar sucesso somente depois que o bippa-messaging aceitar
+   o envio. Em um pedido `separado` e ainda não pago, repetir com "Enviar link
+   de pagamento pelo WhatsApp" e validar a abertura de `/pagar/[token]` no
+   aparelho destinatário.

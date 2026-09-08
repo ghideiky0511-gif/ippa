@@ -31,7 +31,7 @@ import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@
 import { toClient } from "./clientMapper";
 
 const ERP_SYNCABLE_FIELDS = [
-    "cpfCnpj", "email", "cep", "street", "number",
+    "cpfCnpj", "email", "whatsappPhone", "cep", "street", "number",
     "complement", "neighborhood", "city", "state",
 ] as const satisfies readonly (keyof Client)[];
 

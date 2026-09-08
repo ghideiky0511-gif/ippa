@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
     associateSenderProfile,
+    createMessageTemplate,
     ensureApplicationInstallation,
     listWhatsAppConnections,
     sendMessage,
@@ -47,28 +48,56 @@ test("ensureApplicationInstallation envia source_reference/organization_name (se
     );
 });
 
-test("startOnboardingAttempt mapeia onboarding.connect_url/state", async () => {
+test("startOnboardingAttempt envia actor_reference e mapeia attempt_id/state/expires_at/sdk", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
     await withFetch(
-        async () =>
-            new Response(
-                JSON.stringify({ onboarding: { connect_url: "https://bippa-messaging.onrender.com/connect/abc", state: "state-xyz" } }),
-                { status: 200, headers: { "Content-Type": "application/json" } },
-            ),
+        async (input, init) => {
+            calls.push({ url: String(input), init });
+            return new Response(
+                JSON.stringify({
+                    onboarding: {
+                        attempt_id: "attempt-1",
+                        state: "state-xyz",
+                        expires_at: "2026-09-08T12:10:00.000Z",
+                        connect_url: "https://bippa-messaging.onrender.com/meta/embedded-signup",
+                        callback_url: "https://bippa-messaging.onrender.com/meta/oauth/callback",
+                        sdk: { app_id: "app-1", config_id: "config-1", graph_api_version: "v21.0" },
+                    },
+                }),
+                { status: 201, headers: { "Content-Type": "application/json" } },
+            );
+        },
         async () => {
             const result = await startOnboardingAttempt("bippa_key123_segredo", {
                 applicationCode: "bippa-catalogo",
-                sourceReference: "tenant-1",
+                sourceReference: "tenant-1:seller-1",
+                actorReference: "admin-1",
                 destinationKey: "catalogo-whatsapp-settings",
             });
-            assert.deepEqual(result, { connectUrl: "https://bippa-messaging.onrender.com/connect/abc", state: "state-xyz" });
+            assert.deepEqual(result, {
+                attemptId: "attempt-1",
+                connectUrl: "https://bippa-messaging.onrender.com/meta/embedded-signup",
+                state: "state-xyz",
+                expiresAt: "2026-09-08T12:10:00.000Z",
+                sdk: { appId: "app-1", configId: "config-1", graphApiVersion: "v21.0", extras: {} },
+            });
+            const body = JSON.parse(String(calls[0].init?.body));
+            assert.deepEqual(body, {
+                application_code: "bippa-catalogo",
+                source_reference: "tenant-1:seller-1",
+                actor_reference: "admin-1",
+                destination_key: "catalogo-whatsapp-settings",
+            });
         },
     );
 });
 
-test("listWhatsAppConnections mapeia snake_case para camelCase", async () => {
+test("listWhatsAppConnections manda source_reference como query param e mapeia snake_case para camelCase", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
     await withFetch(
-        async () =>
-            new Response(
+        async (input, init) => {
+            calls.push({ url: String(input), init });
+            return new Response(
                 JSON.stringify({
                     data: [
                         {
@@ -82,9 +111,10 @@ test("listWhatsAppConnections mapeia snake_case para camelCase", async () => {
                     ],
                 }),
                 { status: 200, headers: { "Content-Type": "application/json" } },
-            ),
+            );
+        },
         async () => {
-            const result = await listWhatsAppConnections("bippa_key123_segredo");
+            const result = await listWhatsAppConnections("bippa_key123_segredo", "tenant-1:seller-1");
             assert.deepEqual(result, [
                 {
                     phoneId: "phone-1",
@@ -95,6 +125,7 @@ test("listWhatsAppConnections mapeia snake_case para camelCase", async () => {
                     status: "connected",
                 },
             ]);
+            assert.equal(calls[0].url, `${DEFAULT_BASE_URL}/v1/admin/whatsapp-connections?source_reference=tenant-1%3Aseller-1`);
         },
     );
 });
@@ -137,6 +168,54 @@ test("associateSenderProfile chama PATCH /v1/admin/phones/:phoneId/sender-profil
     );
 });
 
+test("createMessageTemplate envia somente a definição controlada para o WABA do telefone", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    await withFetch(
+        async (input, init) => {
+            calls.push({ url: String(input), init });
+            return new Response(
+                JSON.stringify({ template: { id: "tpl-1", name: "bippa_order_confirmed_v1", status: "PENDING", category: "UTILITY", language: "pt_BR" } }),
+                { status: 201, headers: { "Content-Type": "application/json" } },
+            );
+        },
+        async () => {
+            const result = await createMessageTemplate("bippa_key123_segredo", "phone/1", {
+                sourceReference: "tenant-1:seller-1",
+                senderProfile: "catalogo:tenant-1:seller-1",
+                name: "bippa_order_confirmed_v1",
+                category: "UTILITY",
+                languageCode: "pt_BR",
+                body: "Olá, {{1}}. Pedido {{2}}.",
+                bodyExamples: ["Maria", "1234"],
+            });
+            assert.equal(calls[0].url, `${DEFAULT_BASE_URL}/v1/admin/phones/phone%2F1/message-templates`);
+            assert.equal(calls[0].init?.method, "POST");
+            assert.deepEqual(JSON.parse(String(calls[0].init?.body)), {
+                source_reference: "tenant-1:seller-1",
+                sender_profile: "catalogo:tenant-1:seller-1",
+                template: {
+                    name: "bippa_order_confirmed_v1",
+                    category: "UTILITY",
+                    language: "pt_BR",
+                    allow_category_change: false,
+                    components: [{
+                        type: "BODY",
+                        text: "Olá, {{1}}. Pedido {{2}}.",
+                        example: { body_text: [["Maria", "1234"]] },
+                    }],
+                },
+            });
+            assert.deepEqual(result, {
+                id: "tpl-1",
+                name: "bippa_order_confirmed_v1",
+                status: "PENDING",
+                category: "UTILITY",
+                languageCode: "pt_BR",
+            });
+        },
+    );
+});
+
 test("sendMessage envia source_reference/sender_profile/to/template com a API key de serviço", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     await withFetch(
@@ -171,7 +250,7 @@ test("HTTP 401 vira BippaMessagingAuthError", async () => {
             new Response(JSON.stringify({ error: "invalid_token" }), { status: 401, headers: { "Content-Type": "application/json" } }),
         async () => {
             await assert.rejects(
-                () => listWhatsAppConnections("bad-token"),
+                () => listWhatsAppConnections("bad-token", "tenant-1:seller-1"),
                 (error: unknown) => error instanceof BippaMessagingAuthError,
             );
         },

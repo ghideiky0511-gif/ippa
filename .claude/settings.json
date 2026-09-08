@@ -9,7 +9,8 @@
       "Bash(tasklist)",
       "mcp__mercadopago__search_documentation",
       "mcp__plugin_stripe_stripe__search_stripe_documentation",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(npm test *)"
     ]
   }
 }

@@ -16,6 +16,11 @@ export function orderDetailsLink(tenant: Tenant, orderNumber: number): string {
     return `${origin}/${encodeURIComponent(tenant.slug)}/pedidos/${encodeURIComponent(String(orderNumber))}`;
 }
 
+export function orderPaymentLink(tenant: Tenant, token: string): string {
+    const origin = (process.env.APP_URL || process.env.ADMIN_ORIGIN || "http://localhost:3015").replace(/\/+$/, "");
+    return `${origin}/${encodeURIComponent(tenant.slug)}/pagar/${encodeURIComponent(token)}`;
+}
+
 export function notifySignup(
     tenant: Tenant,
     user: { email: string; name: string },

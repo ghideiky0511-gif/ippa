@@ -8,6 +8,9 @@ import { toWaId } from "@/messaging/payloadBuilders";
 import { findWhatsAppConnectionBySeller, type WhatsAppConnectionRow } from "@/models/whatsappConnectionsModel";
 import type { ClientRow } from "@/models/clientsModel";
 import { orderDetailsLink } from "@/services/notifications/emailNotificationService";
+import { ValidationError } from "@/services/shared/errors";
+import { mapBippaMessagingError } from "./whatsappServiceErrors";
+import { WHATSAPP_TEMPLATE_NAMES } from "./whatsappTemplates";
 
 // Terceiro canal de notificação de pedido, ao lado de e-mail e push in-app
 // (emailNotificationService.ts) -- não é a fase de order_details/
@@ -21,9 +24,9 @@ import { orderDetailsLink } from "@/services/notifications/emailNotificationServ
 // tenant). O envio passa pelo bippa-messaging com a API key de serviço do
 // Catálogo (bippaAuthClient.getApiKey(), escopo messaging:write) -- não há
 // token de sessão humana envolvido aqui (este código roda em background,
-// sem requisição autenticada em mãos). O registro/aprovação de
-// template não é mais responsabilidade do Catálogo -- assume-se que os
-// templates já estão aprovados centralmente no bippa-messaging/Meta.
+// sem requisição autenticada em mãos). O cadastro dos templates oficiais é
+// iniciado pelo admin no Catálogo, mas a credencial e a chamada à Meta
+// continuam centralizadas no bippa-messaging.
 //
 // Nunca lança: falha vira log e retorno silencioso, mesmo princípio do
 // try/catch em notifyFirstAccessConfirmation -- e-mail/push já cobrem a
@@ -63,6 +66,39 @@ async function resolveActiveIntegration(tenant: Tenant, sellerId: string): Promi
     return withTenantTransaction(tenant, {}, (client) => findWhatsAppConnectionBySeller(client, sellerId));
 }
 
+export async function assertWhatsAppConnectionAvailable(tenant: Tenant, sellerId: string): Promise<void> {
+    const row = await resolveActiveIntegration(tenant, sellerId);
+    if (!hasActiveWhatsAppConnection(row)) {
+        throw new ValidationError(
+            "WHATSAPP_NOT_CONNECTED",
+            "A vendedora deste pedido ainda n\u00e3o tem um WhatsApp conectado.",
+        );
+    }
+}
+
+async function sendRequired(
+    tenant: Tenant,
+    recipient: WhatsAppOrderRecipient,
+    send: (row: WhatsAppConnectionRow, apiKey: string) => Promise<{ id: string }>,
+): Promise<{ id: string }> {
+    const row = await resolveActiveIntegration(tenant, recipient.sellerId);
+    if (!hasActiveWhatsAppConnection(row)) {
+        throw new ValidationError(
+            "WHATSAPP_NOT_CONNECTED",
+            "A vendedora deste pedido ainda n\u00e3o tem um WhatsApp conectado.",
+        );
+    }
+    try {
+        return await send(row, getApiKey());
+    } catch (exc) {
+        throw mapBippaMessagingError(
+            exc,
+            "WHATSAPP_SEND_FAILED",
+            "N\u00e3o foi poss\u00edvel enviar a mensagem pelo WhatsApp.",
+        );
+    }
+}
+
 async function deliver(
     tenant: Tenant,
     recipient: WhatsAppOrderRecipient,
@@ -99,7 +135,7 @@ export function sendOrderConfirmedWhatsApp(
             senderProfile: row.sender_profile_key,
             to: toWaId(recipient.whatsappPhone),
             template: {
-                name: "order_confirmed",
+                name: WHATSAPP_TEMPLATE_NAMES.orderConfirmed,
                 languageCode: "pt_BR",
                 bodyParameters: [
                     recipient.clientName,
@@ -125,11 +161,69 @@ export function sendPaymentLinkWhatsApp(
             senderProfile: row.sender_profile_key,
             to: toWaId(recipient.whatsappPhone),
             template: {
-                name: "payment_link",
+                name: WHATSAPP_TEMPLATE_NAMES.paymentLink,
                 languageCode: "pt_BR",
                 bodyParameters: [recipient.clientName, link],
             },
         });
         return result;
     });
+}
+
+// Awaitable variants for manual workspace actions. Unlike the automatic
+// notifications above, failures must reach the UI to avoid false success.
+export async function sendOrderConfirmedWhatsAppNow(
+    tenant: Tenant,
+    recipient: WhatsAppOrderRecipient,
+    order: { id: string; orderNumber: number; total: number },
+): Promise<{ id: string }> {
+    const result = await sendRequired(tenant, recipient, (row, apiKey) =>
+        bippaMessagingClient.sendMessage(apiKey, {
+            sourceReference: row.external_reference,
+            senderProfile: row.sender_profile_key,
+            to: toWaId(recipient.whatsappPhone),
+            template: {
+                name: WHATSAPP_TEMPLATE_NAMES.orderConfirmed,
+                languageCode: "pt_BR",
+                bodyParameters: [
+                    recipient.clientName,
+                    String(order.orderNumber),
+                    formatBRL(order.total),
+                    orderDetailsLink(tenant, order.orderNumber),
+                ],
+            },
+        }),
+    );
+    logger.info("manual-order-whatsapp", "Pedido enviado manualmente pelo WhatsApp", {
+        tenantId: tenant.id,
+        sellerId: recipient.sellerId,
+        orderId: order.id,
+        messageId: result.id,
+    });
+    return result;
+}
+
+export async function sendPaymentLinkWhatsAppNow(
+    tenant: Tenant,
+    recipient: WhatsAppOrderRecipient,
+    link: string,
+): Promise<{ id: string }> {
+    const result = await sendRequired(tenant, recipient, (row, apiKey) =>
+        bippaMessagingClient.sendMessage(apiKey, {
+            sourceReference: row.external_reference,
+            senderProfile: row.sender_profile_key,
+            to: toWaId(recipient.whatsappPhone),
+            template: {
+                name: WHATSAPP_TEMPLATE_NAMES.paymentLink,
+                languageCode: "pt_BR",
+                bodyParameters: [recipient.clientName, link],
+            },
+        }),
+    );
+    logger.info("manual-payment-link-whatsapp", "Link de pagamento enviado manualmente pelo WhatsApp", {
+        tenantId: tenant.id,
+        sellerId: recipient.sellerId,
+        messageId: result.id,
+    });
+    return result;
 }

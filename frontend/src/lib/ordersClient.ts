@@ -134,6 +134,22 @@ export function requestOrderPaymentLink(orderId: string): Promise<{ token: strin
   }, 'Não foi possível gerar o link de pagamento.');
 }
 
+const SendOrderWhatsAppResultSchema = z.object({
+  messageId: z.string(),
+  kind: z.enum(['order', 'payment_link']),
+  toMasked: z.string(),
+});
+
+export type SendOrderWhatsAppKind = 'order' | 'payment_link';
+
+export function sendOrderWhatsApp(orderId: string, kind: SendOrderWhatsAppKind) {
+  return adminJson(`/api/admin/orders/${encodeURIComponent(orderId)}/whatsapp`, SendOrderWhatsAppResultSchema, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kind }),
+  }, 'Não foi possível enviar pelo WhatsApp.');
+}
+
 // Histórico de cobrança do pedido (redigido: sem PAN, só os dados de
 // exibição já mascarados/normalizados pelo backend -- ver
 // orderPaymentDetailsService.ts::toOrderPaymentCharge). Mesma checagem de

@@ -73,21 +73,41 @@ export function ensureApplicationInstallation(
 export interface StartOnboardingAttemptInput {
     applicationCode: string;
     sourceReference: string;
+    actorReference: string;
     destinationKey: string;
 }
 
+export interface OnboardingSdkConfig {
+    appId: string;
+    configId: string;
+    graphApiVersion: string;
+    extras: Record<string, unknown>;
+}
+
 export interface OnboardingAttempt {
+    attemptId: string;
     connectUrl: string;
     state: string;
+    expiresAt: string;
+    sdk: OnboardingSdkConfig;
 }
 
 interface StartOnboardingAttemptResponse {
-    onboarding: { connect_url: string; state: string };
+    onboarding: {
+        attempt_id: string;
+        state: string;
+        expires_at: string;
+        connect_url: string;
+        callback_url: string;
+        sdk: { app_id: string; config_id: string; graph_api_version: string; extras?: Record<string, unknown> };
+    };
 }
 
 // Abre uma tentativa de Embedded Signup -- devolve a URL que o frontend abre
-// num popup e o `state` que confirma, no fim do fluxo, que a resposta
-// recebida via postMessage corresponde a esta tentativa.
+// num popup, o `attempt_id` que o backend persiste para reconciliar depois
+// (ver whatsappOnboardingService.ts) e o `state` que confirma, via
+// postMessage, que a resposta veio desta tentativa. `state` NUNCA deve ser
+// persistido nem logado -- só repassado ao frontend uma vez.
 export function startOnboardingAttempt(
     apiKey: string,
     input: StartOnboardingAttemptInput,
@@ -102,14 +122,148 @@ export function startOnboardingAttempt(
             jsonBody: {
                 application_code: input.applicationCode,
                 source_reference: input.sourceReference,
+                actor_reference: input.actorReference,
                 destination_key: input.destinationKey,
             },
             operation: "startOnboardingAttempt",
             reporter,
         },
     ).then((response) => ({
+        attemptId: response.onboarding.attempt_id,
         connectUrl: response.onboarding.connect_url,
         state: response.onboarding.state,
+        expiresAt: response.onboarding.expires_at,
+        sdk: {
+            appId: response.onboarding.sdk.app_id,
+            configId: response.onboarding.sdk.config_id,
+            graphApiVersion: response.onboarding.sdk.graph_api_version,
+            extras: response.onboarding.sdk.extras ?? {},
+        },
+    }));
+}
+
+export interface OnboardingAttemptConnection {
+    id: string;
+    wabaId: string;
+    status: string;
+    expiresAt: string | null;
+    ownerBusinessId: string;
+    grantedScopes: string[];
+}
+
+export interface OnboardingAttemptPhone {
+    id: string;
+    phoneNumberId: string;
+    displayPhoneNumber: string;
+    verifiedName: string | null;
+    qualityRating: string | null;
+    active: boolean;
+}
+
+export interface OnboardingAttemptResult {
+    connection: OnboardingAttemptConnection;
+    phones: OnboardingAttemptPhone[];
+}
+
+export interface OnboardingAttemptStatus {
+    id: string;
+    status: "pending" | "processing" | "completed" | "failed" | "expired";
+    result: OnboardingAttemptResult | null;
+    errorCode: string | null;
+    errorMessage: string | null;
+    expiresAt: string;
+    consumedAt: string | null;
+    completedAt: string | null;
+    createdAt: string;
+}
+
+interface GetOnboardingAttemptResponse {
+    onboarding: {
+        id: string;
+        destination_key: string;
+        status: OnboardingAttemptStatus["status"];
+        result: {
+            destination_key: string;
+            connection: {
+                id: string;
+                waba_id: string;
+                status: string;
+                expires_at: string | null;
+                owner_business_id: string;
+                granted_scopes: string[];
+            };
+            phones: Array<{
+                id: string;
+                phone_number_id: string;
+                display_phone_number: string;
+                verified_name: string | null;
+                quality_rating: string | null;
+                active: boolean;
+            }>;
+        } | null;
+        error_code: string | null;
+        error_message: string | null;
+        expires_at: string;
+        consumed_at: string | null;
+        completed_at: string | null;
+        created_at: string;
+    };
+}
+
+// Reconcilia uma tentativa pelo `attempt_id` -- fonte de verdade do estado
+// do onboarding (o postMessage do popup só antecipa a primeira consulta).
+// `sourceReference` é sempre a mesma referência canônica usada ao abrir a
+// tentativa; a rota exige o par (attempt_id, source_reference) para não
+// permitir que uma tentativa de outro tenant seja consultada mesmo que o
+// uuid vaze. Um 404 aqui (attempt_id ausente ou de outro tenant) chega como
+// BippaMessagingClientError com statusCode 404 -- ver
+// whatsappOnboardingService.reconcileWhatsAppOnboardingAttempt, que trata
+// isso separado de um 4xx de contrato.
+export function getOnboardingAttempt(
+    apiKey: string,
+    attemptId: string,
+    sourceReference: string,
+    reporter?: ExternalApiCallReporter,
+): Promise<OnboardingAttemptStatus> {
+    return bippaMessagingRequest<GetOnboardingAttemptResponse>(
+        "GET",
+        `${baseUrl()}/v1/admin/onboarding/attempts/${encodeURIComponent(attemptId)}`,
+        {
+            service: "bippa-messaging",
+            apiKey,
+            params: { source_reference: sourceReference },
+            operation: "getOnboardingAttempt",
+            reporter,
+        },
+    ).then((response) => ({
+        id: response.onboarding.id,
+        status: response.onboarding.status,
+        result: response.onboarding.result
+            ? {
+                  connection: {
+                      id: response.onboarding.result.connection.id,
+                      wabaId: response.onboarding.result.connection.waba_id,
+                      status: response.onboarding.result.connection.status,
+                      expiresAt: response.onboarding.result.connection.expires_at,
+                      ownerBusinessId: response.onboarding.result.connection.owner_business_id,
+                      grantedScopes: response.onboarding.result.connection.granted_scopes,
+                  },
+                  phones: response.onboarding.result.phones.map((phone) => ({
+                      id: phone.id,
+                      phoneNumberId: phone.phone_number_id,
+                      displayPhoneNumber: phone.display_phone_number,
+                      verifiedName: phone.verified_name,
+                      qualityRating: phone.quality_rating,
+                      active: phone.active,
+                  })),
+              }
+            : null,
+        errorCode: response.onboarding.error_code,
+        errorMessage: response.onboarding.error_message,
+        expiresAt: response.onboarding.expires_at,
+        consumedAt: response.onboarding.consumed_at,
+        completedAt: response.onboarding.completed_at,
+        createdAt: response.onboarding.created_at,
     }));
 }
 
@@ -135,18 +289,28 @@ interface ListWhatsAppConnectionsResponse {
     data: WhatsAppConnectionEntryResponse[];
 }
 
-// Lista os telefones do WhatsApp já vinculados à organização do token
-// autenticado no bippa-messaging -- usado depois do Embedded Signup
-// concluir, para a administradora escolher qual telefone associar ao
-// sender profile do tenant.
+// Lista os telefones do WhatsApp já vinculados à instalação identificada por
+// `sourceReference` no bippa-messaging -- usado depois do Embedded Signup
+// concluir, para a administradora escolher qual telefone associar ao sender
+// profile da vendedora. `source_reference` é OBRIGATÓRIO na rota: autenticar
+// só com a API key não diz qual tenant/vendedora deve ser consultado (a key
+// é da aplicação inteira, não por instalação) -- sem o filtro, uma
+// vendedora veria telefones de outra.
 export function listWhatsAppConnections(
     apiKey: string,
+    sourceReference: string,
     reporter?: ExternalApiCallReporter,
 ): Promise<WhatsAppConnectionEntry[]> {
     return bippaMessagingRequest<ListWhatsAppConnectionsResponse>(
         "GET",
         `${baseUrl()}/v1/admin/whatsapp-connections`,
-        { service: "bippa-messaging", apiKey, operation: "listWhatsAppConnections", reporter },
+        {
+            service: "bippa-messaging",
+            apiKey,
+            params: { source_reference: sourceReference },
+            operation: "listWhatsAppConnections",
+            reporter,
+        },
     ).then((response) =>
         (response.data ?? []).map((entry) => ({
             phoneId: entry.phone_id,
@@ -234,6 +398,87 @@ export interface SendMessageInput {
 
 export interface SendMessageResult {
     id: string;
+}
+
+export interface CreateMessageTemplateInput {
+    sourceReference: string;
+    senderProfile: string;
+    name: string;
+    category: "UTILITY";
+    languageCode: string;
+    body: string;
+    bodyExamples: string[];
+}
+
+export interface CreateMessageTemplateResult {
+    id: string | null;
+    name: string;
+    status: string;
+    category: string;
+    languageCode: string;
+}
+
+interface CreateMessageTemplateResponse {
+    id?: string;
+    name?: string;
+    status?: string;
+    category?: string;
+    language?: string;
+    template?: {
+        id?: string;
+        name?: string;
+        status?: string;
+        category?: string;
+        language?: string;
+    };
+}
+
+// O bippa-messaging resolve o WABA a partir do telefone conectado. Assim o
+// Catálogo não recebe waba_id nem credencial Meta. O payload interno mantém os
+// componentes no formato da Graph API para o serviço central validar,
+// autorizar e encaminhar a criação.
+export function createMessageTemplate(
+    apiKey: string,
+    phoneId: string,
+    input: CreateMessageTemplateInput,
+    reporter?: ExternalApiCallReporter,
+): Promise<CreateMessageTemplateResult> {
+    return bippaMessagingRequest<CreateMessageTemplateResponse>(
+        "POST",
+        `${baseUrl()}/v1/admin/phones/${encodeURIComponent(phoneId)}/message-templates`,
+        {
+            service: "bippa-messaging",
+            apiKey,
+            jsonBody: {
+                source_reference: input.sourceReference,
+                sender_profile: input.senderProfile,
+                template: {
+                    name: input.name,
+                    category: input.category,
+                    language: input.languageCode,
+                    allow_category_change: false,
+                    components: [
+                        {
+                            type: "BODY",
+                            text: input.body,
+                            example: { body_text: [input.bodyExamples] },
+                        },
+                    ],
+                },
+            },
+            operation: "createMessageTemplate",
+            reporter,
+        },
+    ).then((response) => {
+        const template = response.template ?? response;
+        return {
+            id: template.id ?? null,
+            name: template.name ?? input.name,
+            status: template.status ?? "PENDING",
+            category: template.category ?? input.category,
+            languageCode: template.language ?? input.languageCode,
+        };
+    });
 }
 
 interface SendMessageResponse {

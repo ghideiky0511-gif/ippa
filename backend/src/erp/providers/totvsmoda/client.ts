@@ -717,7 +717,7 @@ export class TotvsModaClient {
             },
             page: options.page,
             pageSize: options.pageSize,
-            expand: "addresses,emails",
+            expand: "addresses,emails,phones",
         };
         return this.searchAndValidate(
             "searchIndividuals",
@@ -742,7 +742,7 @@ export class TotvsModaClient {
             },
             page: options.page,
             pageSize: options.pageSize,
-            expand: "addresses,emails",
+            expand: "addresses,emails,phones",
         };
         return this.searchAndValidate(
             "searchLegalEntities",

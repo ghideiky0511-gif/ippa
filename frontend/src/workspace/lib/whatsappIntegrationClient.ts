@@ -6,14 +6,26 @@ import { adminJson } from './http';
 // bippa-messaging, nunca fala direto com a Meta nem guarda token no
 // frontend. Espelha a estrutura de paymentIntegrationClient.ts.
 
-// Origem confiável para o postMessage do popup de Embedded Signup -- NUNCA
-// aceitar eventos de outra origem, e nunca usar '*' como targetOrigin ao
-// mandar mensagem para o popup (ver WhatsAppIntegrationApp.tsx).
-export const BIPPA_MESSAGING_ORIGIN = 'https://bippa-messaging.onrender.com';
+// A origem confiável do popup de Embedded Signup NUNCA é uma constante fixa
+// -- é sempre derivada do `connectUrl` que o próprio backend devolveu para
+// ESTA tentativa (o handoff é explícito: nunca aceitar `connect_url` vindo
+// do navegador, e nunca usar '*' como targetOrigin). Uma constante
+// hardcoded ficaria dessincronizada se o Messaging um dia responder com
+// outro host (staging, troca de domínio) -- derivar por tentativa é o que
+// garante que a validação sempre bate com a URL que foi de fato aberta.
+export function onboardingOriginFromConnectUrl(connectUrl: string): string {
+  return new URL(connectUrl).origin;
+}
 
-/** Função pura, testável isoladamente sem DOM completo. */
-export function isTrustedBippaMessagingOrigin(origin: string): boolean {
-  return origin === BIPPA_MESSAGING_ORIGIN;
+// Um evento de popup só é confiável se BOTH `event.origin` (o host que
+// mandou a mensagem) E `event.source` (a janela exata) baterem -- checar só
+// a origem permite que outra aba/iframe do mesmo host injete eventos.
+export function isTrustedMessagingEvent(
+  event: MessageEvent,
+  expectedOrigin: string,
+  expectedSource: Window | null
+): boolean {
+  return event.origin === expectedOrigin && event.source === expectedSource;
 }
 
 const unknown = z.unknown();
@@ -35,14 +47,26 @@ export function ensureWhatsAppInstallation(sellerId: string): Promise<WhatsAppIn
   ) as Promise<WhatsAppInstallationResult>;
 }
 
+export interface WhatsAppOnboardingSdkConfig {
+  appId: string;
+  configId: string;
+  graphApiVersion: string;
+  extras: Record<string, unknown>;
+}
+
 export interface WhatsAppOnboardingAttempt {
+  attemptId: string;
   connectUrl: string;
   state: string;
+  expiresAt: string;
+  sdk: WhatsAppOnboardingSdkConfig;
 }
 
 // Abre a tentativa de conexão em nome de UMA vendedora (sellerId) -- cada
 // vendedora tem seu próprio número, então quem inicia precisa dizer para
-// qual vendedora está conectando.
+// qual vendedora está conectando. O navegador recebe só o necessário para
+// abrir o popup e completar o handshake do postMessage -- nunca a API key
+// nem qualquer credencial da Meta.
 export function startWhatsAppOnboardingAttempt(sellerId: string): Promise<WhatsAppOnboardingAttempt> {
   return adminJson(
     '/api/admin/whatsapp/onboarding-attempts',
@@ -50,6 +74,40 @@ export function startWhatsAppOnboardingAttempt(sellerId: string): Promise<WhatsA
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sellerId }) },
     'Não foi possível iniciar a conexão com o WhatsApp.'
   ) as Promise<WhatsAppOnboardingAttempt>;
+}
+
+export interface WhatsAppOnboardingAttemptPhone {
+  id: string;
+  phoneNumberId: string;
+  displayPhoneNumber: string;
+  verifiedName: string | null;
+  qualityRating: string | null;
+  active: boolean;
+}
+
+export type WhatsAppOnboardingAttemptStatusValue = 'pending' | 'processing' | 'completed' | 'failed' | 'expired';
+
+export interface WhatsAppOnboardingAttemptStatus {
+  attemptId: string;
+  sellerId: string;
+  status: WhatsAppOnboardingAttemptStatusValue;
+  errorCode: string | null;
+  errorMessage: string | null;
+  expiresAt: string;
+  phones: WhatsAppOnboardingAttemptPhone[];
+}
+
+// Reconcilia uma tentativa pelo attemptId -- fonte de verdade do fluxo,
+// chamada tanto pelo polling quanto (uma vez) em reação ao postMessage
+// `completed`/`failed` do popup. Repetir esta chamada é sempre seguro (GET
+// idempotente).
+export function fetchWhatsAppOnboardingAttemptStatus(attemptId: string): Promise<WhatsAppOnboardingAttemptStatus> {
+  return adminJson(
+    `/api/admin/whatsapp/onboarding-attempts/${encodeURIComponent(attemptId)}`,
+    unknown,
+    {},
+    'Não foi possível consultar o status da conexão com o WhatsApp.'
+  ) as Promise<WhatsAppOnboardingAttemptStatus>;
 }
 
 export interface WhatsAppConnectionOption {
@@ -61,12 +119,14 @@ export interface WhatsAppConnectionOption {
   status: string;
 }
 
-// Lista telefones já conectados à organização no bippa-messaging -- usada
-// tanto para escolher um telefone para associar quanto pela ação restrita
-// "Verificar conexão".
-export function fetchWhatsAppConnections(): Promise<WhatsAppConnectionOption[]> {
+// Lista telefones já conectados à instalação desta vendedora no
+// bippa-messaging -- usada tanto para escolher um telefone para associar
+// quanto pela ação restrita "Verificar conexão". `sellerId` nunca é o
+// source_reference cru -- o backend resolve isso a partir do tenant da
+// sessão + desta vendedora.
+export function fetchWhatsAppConnections(sellerId: string): Promise<WhatsAppConnectionOption[]> {
   return adminJson(
-    '/api/admin/whatsapp/connections',
+    `/api/admin/whatsapp/connections?sellerId=${encodeURIComponent(sellerId)}`,
     unknown,
     {},
     'Não foi possível consultar os telefones conectados.'
@@ -84,6 +144,60 @@ export interface TenantWhatsAppConnectionStatus {
   capabilityPayments: boolean;
   status: string;
   updatedAt: string | null;
+  // Tentativa de onboarding ainda não finalizada desta vendedora, se
+  // existir -- usado para retomar o polling de reconciliação depois de um
+  // refresh de página (ver WhatsAppIntegrationApp.tsx).
+  pendingAttemptId: string | null;
+  pendingExpiresAt: string | null;
+}
+
+const whatsappTemplateSchema = z.object({
+  key: z.enum(['order_confirmed', 'payment_link']),
+  name: z.string(),
+  title: z.string(),
+  description: z.string(),
+  category: z.literal('UTILITY'),
+  languageCode: z.literal('pt_BR'),
+  body: z.string(),
+  parameters: z.array(z.object({ key: z.string(), label: z.string(), example: z.string() })),
+});
+
+export type StandardWhatsAppTemplate = z.infer<typeof whatsappTemplateSchema>;
+
+const submittedTemplateSchema = z.object({
+  key: whatsappTemplateSchema.shape.key,
+  id: z.string().nullable(),
+  name: z.string(),
+  status: z.string(),
+  category: z.string(),
+  languageCode: z.string(),
+});
+
+export type SubmittedWhatsAppTemplate = z.infer<typeof submittedTemplateSchema>;
+
+export function fetchStandardWhatsAppTemplates(): Promise<StandardWhatsAppTemplate[]> {
+  return adminJson(
+    '/api/admin/whatsapp/templates',
+    z.array(whatsappTemplateSchema),
+    {},
+    'Não foi possível carregar os templates de WhatsApp.'
+  );
+}
+
+export function submitStandardWhatsAppTemplate(
+  sellerId: string,
+  templateKey: StandardWhatsAppTemplate['key'],
+): Promise<SubmittedWhatsAppTemplate> {
+  return adminJson(
+    '/api/admin/whatsapp/templates',
+    submittedTemplateSchema,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sellerId, templateKey }),
+    },
+    'Não foi possível enviar o template para aprovação da Meta.'
+  );
 }
 
 // Estado local (whatsapp_connections) de CADA vendedora deste tenant -- usado

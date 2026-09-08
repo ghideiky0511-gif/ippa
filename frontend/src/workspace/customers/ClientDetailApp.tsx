@@ -34,6 +34,7 @@ function itemCount(items: Order['items']) {
 const FIELD_LABELS: Record<string, string> = {
   cpfCnpj: 'CPF/CNPJ',
   email: 'E-mail',
+  whatsappPhone: 'Telefone',
   cep: 'CEP',
   street: 'Rua',
   number: 'Número',

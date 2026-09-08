@@ -9,6 +9,7 @@ import {
     updateWhatsAppConnectionAfterAssociation,
     type WhatsAppConnectionRow,
 } from "@/models/whatsappConnectionsModel";
+import { listPendingWhatsAppOnboardingAttemptsByTenant } from "@/models/whatsappOnboardingAttemptsModel";
 import {
     recordAuditEvent,
     WHATSAPP_INTEGRATION_AUDIT_ACTIONS,
@@ -42,17 +43,23 @@ export interface WhatsAppConnectionOption {
     status: string;
 }
 
-// Lista os telefones já conectados à organização (do lado do
+// Lista os telefones já conectados à instalação desta VENDEDORA (do lado do
 // bippa-messaging) -- a administradora escolhe um para associar ao sender
-// profile deste tenant (ver associateWhatsAppSenderProfile). Nunca expõe
-// token nem qualquer credencial da Meta -- essas ficam só no bippa-messaging.
+// profile dela (ver associateWhatsAppSenderProfile). Escopado por
+// `source_reference` (tenant+seller), nunca a lista bruta da organização
+// inteira -- sem esse filtro, uma vendedora apareceria com telefones de
+// outra. Nunca expõe token nem qualquer credencial da Meta -- essas ficam só
+// no bippa-messaging.
 export async function getWhatsAppConnections(
     tenant: Tenant,
     user: AuthUser,
+    sellerId: string,
 ): Promise<WhatsAppConnectionOption[]> {
     requireSettingsAdministrator(user);
+    await requireSellerInTenant(tenant, user, sellerId);
+    const sourceReference = externalReferenceForSeller(tenant.id, sellerId);
     try {
-        const entries = await bippaMessagingClient.listWhatsAppConnections(getApiKey());
+        const entries = await bippaMessagingClient.listWhatsAppConnections(getApiKey(), sourceReference);
         return entries.map((entry) => ({
             phoneId: entry.phoneId,
             displayPhoneMasked: entry.displayPhoneMasked,
@@ -64,6 +71,7 @@ export async function getWhatsAppConnections(
     } catch (exc) {
         logger.error("whatsapp-integration", "Falha ao listar conexões de WhatsApp no bippa-messaging", {
             tenantId: tenant.id,
+            sellerId,
             ...errorMeta(exc),
         });
         throw mapBippaMessagingError(exc, "WHATSAPP_CONNECTIONS_UNAVAILABLE", "Não foi possível consultar os telefones conectados.");
@@ -81,9 +89,21 @@ export interface TenantWhatsAppConnectionStatus {
     capabilityPayments: boolean;
     status: string;
     updatedAt: string | null;
+    // Tentativa de onboarding ainda não finalizada (pending/processing, não
+    // expirada) desta vendedora, se existir -- permite a tela retomar o
+    // polling de reconciliação depois de um refresh de página, sem depender
+    // de nada guardado no navegador (ver
+    // whatsappOnboardingService.reconcileWhatsAppOnboardingAttempt).
+    pendingAttemptId: string | null;
+    pendingExpiresAt: string | null;
 }
 
-function toStatus(sellerId: string, row: WhatsAppConnectionRow | null): TenantWhatsAppConnectionStatus {
+function toStatus(
+    sellerId: string,
+    row: WhatsAppConnectionRow | null,
+    pendingAttemptId: string | null = null,
+    pendingExpiresAt: string | null = null,
+): TenantWhatsAppConnectionStatus {
     if (!row) {
         return {
             sellerId,
@@ -96,6 +116,8 @@ function toStatus(sellerId: string, row: WhatsAppConnectionRow | null): TenantWh
             capabilityPayments: false,
             status: "not_connected",
             updatedAt: null,
+            pendingAttemptId,
+            pendingExpiresAt,
         };
     }
     return {
@@ -109,19 +131,28 @@ function toStatus(sellerId: string, row: WhatsAppConnectionRow | null): TenantWh
         capabilityPayments: row.capability_payments,
         status: row.status,
         updatedAt: row.updated_at.toISOString(),
+        pendingAttemptId,
+        pendingExpiresAt,
     };
 }
 
 // Estado local de todas as vendedoras deste tenant que já têm (ou tiveram)
 // uma tentativa de conexão -- usado pela tela de Integrações para listar
-// vendedora a vendedora sem uma chamada por vendedora.
+// vendedora a vendedora sem uma chamada por vendedora, e para retomar o
+// polling de uma tentativa em curso depois de um refresh de página.
 export async function listTenantWhatsAppConnectionStatuses(
     tenant: Tenant,
     user: AuthUser,
 ): Promise<TenantWhatsAppConnectionStatus[]> {
     requireSettingsAdministrator(user);
-    const rows = await withTenantTransaction(tenant, user, (client) => listWhatsAppConnectionsByTenant(client));
-    return rows.map((row) => toStatus(row.seller_id, row));
+    const [rows, pendingBySeller] = await withTenantTransaction(tenant, user, async (client) => [
+        await listWhatsAppConnectionsByTenant(client),
+        await listPendingWhatsAppOnboardingAttemptsByTenant(client),
+    ]);
+    return rows.map((row) => {
+        const pending = pendingBySeller.get(row.seller_id);
+        return toStatus(row.seller_id, row, pending?.id ?? null, pending?.expires_at.toISOString() ?? null);
+    });
 }
 
 // Vincula um telefone (já conectado à organização no bippa-messaging) ao
