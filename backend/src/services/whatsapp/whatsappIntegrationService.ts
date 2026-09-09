@@ -182,7 +182,12 @@ export async function associateWhatsAppSenderProfile(
     let association;
     try {
         association = await bippaMessagingClient.associateSenderProfile(getApiKey(), normalizedPhoneId, {
-            externalReference,
+            // Confirmado no bippa-messaging: source_reference (organização/
+            // tenant) e external_reference (vendedora) são campos distintos --
+            // NUNCA a referência composta tenant:seller aqui, isso é só para o
+            // nosso espelho local (externalReferenceForSeller, abaixo).
+            sourceReference: tenant.id,
+            externalReference: sellerId,
             senderProfileKey,
             capabilityPayments: false,
         });

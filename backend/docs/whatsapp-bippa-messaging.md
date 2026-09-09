@@ -274,6 +274,27 @@ migration's own diff against current `stage.sql` is purely additive.
      `listWhatsAppConnections`/`getOnboardingAttempt`). `sender_profile_key`
      tem fallback no bippa-messaging (`sender:${externalReference}` se
      ausente) -- não obrigatório, não precisa mexer.
+
+     **Terceira rodada, confirmado em produção (2026-09-08):** o fix acima
+     mandava `source_reference` E `external_reference` com o MESMO valor
+     (a referência composta `tenant:seller`), o que gerou `phone_not_found`.
+     Confirmado que os dois campos são semanticamente distintos e não
+     intercambiáveis: `source_reference` = só o tenant (o mesmo valor de
+     `tenant.id`), `external_reference` = só a vendedora (`sellerId`) --
+     nunca a referência composta em nenhum dos dois. Corrigido em
+     `AssociateSenderProfileInput`/`associateSenderProfile`
+     (`bippaMessagingClient.ts`) e no chamador
+     (`whatsappIntegrationService.associateWhatsAppSenderProfile`), que agora
+     passa `sourceReference: tenant.id` e `externalReference: sellerId`
+     separadamente só nesta chamada -- o espelho local
+     (`whatsapp_connections.external_reference`, via
+     `externalReferenceForSeller`) e as outras chamadas
+     (`ensureApplicationInstallation`, `listWhatsAppConnections`,
+     `getOnboardingAttempt`, `sendMessage`) continuam usando a referência
+     composta como já usavam, sem alteração -- não confirmado se também
+     precisam desse mesmo split (essas chamadas retornam 200 mesmo com a
+     referência composta, então não há evidência de bug ali ainda; mexer
+     nelas sem confirmação arrisca regressão num fluxo que hoje funciona).
 3. **Stage.sql** -- ver seção acima, alteração manual necessária.
 4. **Sinal `bippa.meta.onboarding.ready` não confirmado.** O plano previa
    mandar `onboarding.start` "quando o popup sinalizar pronto -- ou, se não

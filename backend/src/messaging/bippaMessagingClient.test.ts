@@ -101,12 +101,12 @@ test("listWhatsAppConnections manda source_reference como query param e mapeia s
                 JSON.stringify({
                     data: [
                         {
-                            phone_id: "phone-1",
-                            display_phone_masked: "+55 11 9****-9999",
+                            id: "phone-1",
+                            phone_number_id: "meta-phone-1",
+                            display_phone_number: "+55 11 99999-9999",
                             verified_name: "Loja Teste",
                             quality_rating: "GREEN",
-                            sender_profile_key: null,
-                            status: "connected",
+                            active: true,
                         },
                     ],
                 }),
@@ -118,7 +118,7 @@ test("listWhatsAppConnections manda source_reference como query param e mapeia s
             assert.deepEqual(result, [
                 {
                     phoneId: "phone-1",
-                    displayPhoneMasked: "+55 11 9****-9999",
+                    displayPhoneMasked: "+55 11 99999-9999",
                     verifiedName: "Loja Teste",
                     qualityRating: "GREEN",
                     senderProfileKey: null,
@@ -137,20 +137,23 @@ test("associateSenderProfile chama PATCH /v1/admin/phones/:phoneId/sender-profil
             calls.push({ url: String(input), init });
             return new Response(
                 JSON.stringify({
-                    phone_id: "phone-1",
-                    sender_profile_key: "catalogo:tenant-1",
-                    capability_payments: false,
-                    display_phone_masked: "+55 11 9****-9999",
-                    verified_name: "Loja Teste",
-                    quality_rating: "GREEN",
-                    status: "connected",
+                    sender_profile: {
+                        id: "sp-1",
+                        organization_id: "org-1",
+                        phone_id: "phone-1",
+                        key: "catalogo:tenant-1",
+                        external_reference: "seller-1",
+                        capability_payments: false,
+                        connection_id: "conn-1",
+                    },
                 }),
                 { status: 200, headers: { "Content-Type": "application/json" } },
             );
         },
         async () => {
             const result = await associateSenderProfile("bippa_key123_segredo", "phone-1", {
-                externalReference: "tenant-1",
+                sourceReference: "tenant-1",
+                externalReference: "seller-1",
                 senderProfileKey: "catalogo:tenant-1",
                 capabilityPayments: false,
             });
@@ -158,11 +161,13 @@ test("associateSenderProfile chama PATCH /v1/admin/phones/:phoneId/sender-profil
             assert.equal(calls[0].init?.method, "PATCH");
             const body = JSON.parse(String(calls[0].init?.body));
             assert.deepEqual(body, {
-                external_reference: "tenant-1",
+                source_reference: "tenant-1",
+                external_reference: "seller-1",
                 sender_profile_key: "catalogo:tenant-1",
                 capability_payments: false,
             });
             assert.equal(result.phoneId, "phone-1");
+            assert.equal(result.senderProfileKey, "catalogo:tenant-1");
             assert.equal(result.capabilityPayments, false);
         },
     );

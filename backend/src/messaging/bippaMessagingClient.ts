@@ -331,6 +331,15 @@ export function listWhatsAppConnections(
 }
 
 export interface AssociateSenderProfileInput {
+    // Referência do TENANT (organização no bippa-messaging) -- NUNCA a
+    // referência da vendedora. Confirmado em onboarding.js (assignPhone) +
+    // messaging_service.js (organizationForRequest): são dois campos
+    // distintos, ambos obrigatórios, nunca um pelo outro (foi essa troca que
+    // causou o "phone_not_found" -- source_reference estava recebendo a
+    // referência composta tenant:seller em vez de só o tenant).
+    sourceReference: string;
+    // Referência da VENDEDORA dentro deste tenant -- vira
+    // sender_profiles.external_reference, usado depois por resolveSender().
     externalReference: string;
     senderProfileKey: string;
     capabilityPayments: boolean;
@@ -380,18 +389,7 @@ export function associateSenderProfile(
             service: "bippa-messaging",
             apiKey,
             jsonBody: {
-                // Confirmado no código-fonte do bippa-messaging (onboarding.js
-                // assignPhone + messaging_service.js organizationForRequest):
-                // são DOIS campos distintos, ambos obrigatórios -- não um
-                // renomeando o outro. source_reference resolve a organização
-                // (o "installation" desta vendedora); external_reference vira
-                // sender_profiles.external_reference, usado depois por
-                // resolveSender() pra achar o perfil de envio de um pedido.
-                // No nosso desenho os dois são o mesmo valor por vendedora
-                // (externalReferenceForSeller), o mesmo já usado como
-                // sourceReference em ensureApplicationInstallation/
-                // listWhatsAppConnections/getOnboardingAttempt.
-                source_reference: input.externalReference,
+                source_reference: input.sourceReference,
                 external_reference: input.externalReference,
                 sender_profile_key: input.senderProfileKey,
                 capability_payments: input.capabilityPayments,
