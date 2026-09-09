@@ -38,6 +38,7 @@ export function metaGraphErrorMeta(exc: unknown): {
     metaCode?: number;
     metaSubcode?: number;
     metaTraceId?: string;
+    metaErrorDataDetails?: string;
 } {
     if (!(exc instanceof BippaMessagingClientError)) return {};
     const payload = exc.payload;
@@ -53,6 +54,15 @@ export function metaGraphErrorMeta(exc: unknown): {
         metaTraceId:
             typeof record.meta_trace_id === "string"
                 ? record.meta_trace_id
+                : undefined,
+        // `error.error_data.details` da Meta -- passou a ser repassado pelo
+        // bippa-messaging (2026-09) como `meta_error_data_details` porque
+        // costuma trazer a explicação exata de um subcode não documentado
+        // (ex.: "param at index 3 has invalid format" para uma URL usada
+        // como valor de variável do BODY, subcode 2388024).
+        metaErrorDataDetails:
+            typeof record.meta_error_data_details === "string"
+                ? record.meta_error_data_details
                 : undefined,
     };
 }

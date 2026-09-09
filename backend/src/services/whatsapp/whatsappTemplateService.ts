@@ -38,39 +38,28 @@ const SubmitTemplateSchema = z
     })
     .strict();
 
-// Sugestões de exemplo por parâmetro que dependem da loja (nunca de um
-// domínio fictício como "loja.exemplo.com"). `origin` vem de
-// publicOrigin(request) (whatsapp/templates/route.ts) -- o host real que a
-// administradora está usando para acessar o admin nesta requisição --, não
-// de APP_URL/ADMIN_ORIGIN, que fica "localhost" em ambientes sem essas
-// variáveis configuradas (ver orderDetailsLink/orderPaymentLink em
-// emailNotificationService.ts, usadas nos e-mails reais de pedido/pagamento,
-// que rodam fora de uma requisição HTTP e por isso dependem do env).
+// Sugestões de exemplo por parâmetro que dependem da loja. Só o CAMINHO
+// (sem domínio) -- o domínio já é texto estático no `body` do template
+// (ver PUBLIC_ORIGIN em whatsappTemplates.ts; a Meta rejeita URL completa
+// como valor de variável do BODY, subcode 2388024).
 function resolveTemplateExample(
-    origin: string,
     tenant: Tenant,
     parameterKey: string,
     fallback: string,
 ): string {
     const slug = encodeURIComponent(tenant.slug);
-    if (parameterKey === "order_url") return `${origin}/${slug}/pedidos/1234`;
-    if (parameterKey === "payment_url")
-        return `${origin}/${slug}/pagar/exemplo`;
+    if (parameterKey === "order_url") return `${slug}/pedidos/1234`;
+    if (parameterKey === "payment_url") return `${slug}/pagar/exemplo`;
     return fallback;
 }
 
-export function listStandardWhatsAppTemplates(
-    tenant: Tenant,
-    user: AuthUser,
-    origin: string,
-) {
+export function listStandardWhatsAppTemplates(tenant: Tenant, user: AuthUser) {
     requireSettingsAdministrator(user);
     return STANDARD_WHATSAPP_TEMPLATES.map((template) => ({
         ...template,
         parameters: template.parameters.map((parameter) => ({
             ...parameter,
             example: resolveTemplateExample(
-                origin,
                 tenant,
                 parameter.key,
                 parameter.example,

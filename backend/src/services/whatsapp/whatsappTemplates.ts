@@ -1,5 +1,16 @@
 import { z } from "zod";
 
+// Mesma resolução de domínio de emailNotificationService.ts
+// (orderDetailsLink/orderPaymentLink) -- um único domínio público para toda
+// a aplicação (multi-tenant por path, não por subdomínio), nunca por
+// tenant. Usado para embutir o domínio como texto ESTÁTICO no body dos
+// templates abaixo (ver motivo no comentário de STANDARD_WHATSAPP_TEMPLATES).
+const PUBLIC_ORIGIN = (
+    process.env.APP_URL ||
+    process.env.ADMIN_ORIGIN ||
+    "http://localhost:3015"
+).replace(/\/+$/, "");
+
 export const WhatsAppTemplateKeySchema = z.enum([
     "order_confirmed",
     "payment_link",
@@ -35,9 +46,11 @@ export interface StandardWhatsAppTemplate {
     // outro valor no momento do envio, e é esse valor editado que vai para
     // a Meta (submitStandardWhatsAppTemplate exige um `examples[]` do
     // chamador, nunca usa este campo diretamente). Os placeholders de
-    // "order_url"/"payment_url" abaixo (domínio fictício) só aparecem se
-    // este catálogo for lido sem tenant; listStandardWhatsAppTemplates
-    // (whatsappTemplateService.ts) os substitui pela URL real da loja.
+    // "order_url"/"payment_url" abaixo (loja fictícia) só aparecem se este
+    // catálogo for lido sem tenant; listStandardWhatsAppTemplates
+    // (whatsappTemplateService.ts) os substitui pelo caminho real da loja
+    // -- NUNCA com domínio (ver PUBLIC_ORIGIN acima: o domínio já está
+    // embutido como texto estático no `body`).
     parameters: Array<{ key: string; label: string; example: string }>;
 }
 
@@ -53,9 +66,19 @@ export interface StandardWhatsAppTemplate {
 // dois lados. Um único caractere de pontuação logo após a variável (ex.:
 // só um `.`) NÃO é suficiente para a Meta considerar isso "texto estático"
 // -- por isso todo `body` abaixo termina com uma frase de verdade (algumas
-// palavras) depois da última variável, não só um ponto solto (o erro mais
-// comum é justamente um link como última variável do corpo, seguido de
-// pouco ou nenhum texto).
+// palavras) depois da última variável, não só um ponto solto.
+//
+// Segunda regra da Meta, também confirmada em produção (422
+// meta_graph_error / subcode 2388024): o VALOR de uma variável do `body`
+// nunca pode ser uma URL completa -- a Meta só aceita link dinâmico via
+// botão dedicado (type: URL), não como texto solto no corpo. Em vez de
+// implementar botão dinâmico (mais uma chamada nova, ainda sem contrato
+// confirmado no bippa-messaging), o link fica simples: o domínio
+// (PUBLIC_ORIGIN) é texto ESTÁTICO no `body`, e a variável carrega só o
+// caminho relativo (ex.: "loja/pedidos/1234", sem "https://") --
+// whatsappNotificationService.ts extrai esse caminho de
+// orderDetailsLink()/orderPaymentLink() antes de montar os `params` do
+// dispatch.
 export const STANDARD_WHATSAPP_TEMPLATES: readonly StandardWhatsAppTemplate[] =
     [
         {
@@ -66,7 +89,7 @@ export const STANDARD_WHATSAPP_TEMPLATES: readonly StandardWhatsAppTemplate[] =
                 "Confirma o pedido e leva a cliente para a página de detalhes.",
             category: "UTILITY",
             languageCode: "pt_BR",
-            body: "Olá, {{1}}!\n\nSeu pedido nº {{2}}, no valor de {{3}}, foi confirmado.\n\nAcompanhe os detalhes em: {{4}}. Obrigada pela preferência!",
+            body: `Olá, {{1}}!\n\nSeu pedido nº {{2}}, no valor de {{3}}, foi confirmado.\n\nAcompanhe os detalhes em ${PUBLIC_ORIGIN}/{{4}}. Obrigada pela preferência!`,
             parameters: [
                 {
                     key: "client_name",
@@ -85,8 +108,8 @@ export const STANDARD_WHATSAPP_TEMPLATES: readonly StandardWhatsAppTemplate[] =
                 },
                 {
                     key: "order_url",
-                    label: "Link do pedido",
-                    example: "https://loja.exemplo.com/pedidos/1234",
+                    label: "Caminho do pedido (sem domínio)",
+                    example: "loja-exemplo/pedidos/1234",
                 },
             ],
         },
@@ -98,7 +121,7 @@ export const STANDARD_WHATSAPP_TEMPLATES: readonly StandardWhatsAppTemplate[] =
                 "Entrega à cliente o link seguro para pagamento do pedido.",
             category: "UTILITY",
             languageCode: "pt_BR",
-            body: "Olá, {{1}}!\n\nSeu link de pagamento está pronto. Pague com segurança em: {{2}}. Obrigada pela preferência!",
+            body: `Olá, {{1}}!\n\nSeu link de pagamento está pronto. Pague com segurança em ${PUBLIC_ORIGIN}/{{2}}. Obrigada pela preferência!`,
             parameters: [
                 {
                     key: "client_name",
@@ -107,8 +130,8 @@ export const STANDARD_WHATSAPP_TEMPLATES: readonly StandardWhatsAppTemplate[] =
                 },
                 {
                     key: "payment_url",
-                    label: "Link de pagamento",
-                    example: "https://loja.exemplo.com/pagamento/exemplo",
+                    label: "Caminho do link de pagamento (sem domínio)",
+                    example: "loja-exemplo/pagar/exemplo",
                 },
             ],
         },

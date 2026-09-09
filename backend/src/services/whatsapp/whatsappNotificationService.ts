@@ -86,6 +86,17 @@ function templateParams(values: string[]): Record<string, string> {
     return Object.fromEntries(values.map((value, index) => [String(index + 1), value]));
 }
 
+// A Meta rejeita URL completa como valor de variável do BODY (422
+// meta_graph_error / subcode 2388024, confirmado em produção) -- o domínio
+// já é texto estático no `body` dos templates (PUBLIC_ORIGIN em
+// whatsappTemplates.ts), então só o caminho (sem "https://dominio") vai
+// como variável. `orderDetailsLink`/`orderPaymentLink` continuam devolvendo
+// a URL completa (usadas também nos e-mails), então extrai-se o caminho
+// aqui em vez de duplicar a lógica de montagem de URL.
+function pathOnly(url: string): string {
+    return new URL(url).pathname.replace(/^\//, "");
+}
+
 async function sendRequired(
     tenant: Tenant,
     recipient: WhatsAppOrderRecipient,
@@ -154,7 +165,7 @@ export function sendOrderConfirmedWhatsApp(
                 recipient.clientName,
                 String(order.orderNumber),
                 formatBRL(order.total),
-                orderDetailsLink(tenant, order.orderNumber),
+                pathOnly(orderDetailsLink(tenant, order.orderNumber)),
             ]),
         });
         return result;
@@ -175,7 +186,7 @@ export function sendPaymentLinkWhatsApp(
             to: toWaId(recipient.whatsappPhone),
             idempotencyKey: paymentLinkIdempotencyKey(tenant.id, recipient.sellerId, referenceId),
             templateKey: WHATSAPP_TEMPLATE_KEYS.paymentLink,
-            params: templateParams([recipient.clientName, link]),
+            params: templateParams([recipient.clientName, pathOnly(link)]),
         });
         return result;
     });
@@ -211,7 +222,7 @@ export async function sendOrderConfirmedWhatsAppNow(
                 recipient.clientName,
                 String(order.orderNumber),
                 formatBRL(order.total),
-                orderDetailsLink(tenant, order.orderNumber),
+                pathOnly(orderDetailsLink(tenant, order.orderNumber)),
             ]),
         }),
     );
@@ -236,7 +247,7 @@ export async function sendPaymentLinkWhatsAppNow(
             to: toWaId(recipient.whatsappPhone),
             idempotencyKey: `bippa-catalogo:${tenant.id}:seller:${recipient.sellerId}:payment-link:manual:${randomUUID()}`,
             templateKey: WHATSAPP_TEMPLATE_KEYS.paymentLink,
-            params: templateParams([recipient.clientName, link]),
+            params: templateParams([recipient.clientName, pathOnly(link)]),
         }),
     );
     logger.info("manual-payment-link-whatsapp", "Link de pagamento enviado manualmente pelo WhatsApp", {
