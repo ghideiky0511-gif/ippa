@@ -28,8 +28,8 @@ export function senderProfileKeyForSeller(
 }
 
 // Extrai meta_code/meta_subcode/meta_trace_id do corpo de erro do
-// bippa-messaging (ver api-reference.md, seção Templates -- "os três campos
-// vêm juntos no corpo da resposta de erro sempre que a Meta devolveu esses
+// bippa-messaging (ver api-reference.md, seção Templates -- "os campos vêm
+// juntos no corpo da resposta de erro sempre que a Meta devolveu esses
 // dados"). Preferir isto a `errorMeta(exc).error`/`.message` para diagnosticar
 // um `422 meta_graph_error`: `message` costuma ser um texto genérico da Meta
 // ("Invalid parameter"), enquanto `meta_subcode` identifica a regra exata
@@ -39,6 +39,8 @@ export function metaGraphErrorMeta(exc: unknown): {
     metaSubcode?: number;
     metaTraceId?: string;
     metaErrorDataDetails?: string;
+    metaErrorUserTitle?: string;
+    metaErrorUserMsg?: string;
 } {
     if (!(exc instanceof BippaMessagingClientError)) return {};
     const payload = exc.payload;
@@ -63,6 +65,21 @@ export function metaGraphErrorMeta(exc: unknown): {
         metaErrorDataDetails:
             typeof record.meta_error_data_details === "string"
                 ? record.meta_error_data_details
+                : undefined,
+        // `error.error_user_title`/`error.error_user_msg` da Meta --
+        // passaram a ser repassados pelo bippa-messaging (2026-09, a pedido
+        // deste serviço) porque, quando a Meta os envia, tendem a nomear a
+        // regra exata violada de forma mais legível que
+        // `meta_error_data_details`. Nenhum dos três é garantido pela Meta
+        // por subcode -- api-reference.md documenta que às vezes só vem
+        // `message` genérico + `code`/`subcode`, sem nenhum dos três.
+        metaErrorUserTitle:
+            typeof record.meta_error_user_title === "string"
+                ? record.meta_error_user_title
+                : undefined,
+        metaErrorUserMsg:
+            typeof record.meta_error_user_msg === "string"
+                ? record.meta_error_user_msg
                 : undefined,
     };
 }

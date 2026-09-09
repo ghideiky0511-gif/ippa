@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { ArrowLeft, Ban, CheckCircle2, CreditCard, MessageCircle, PackageCheck, PackagePlus, Printer, QrCode, RefreshCw, Wrench } from 'lucide-react';
 import type { Order, OrderSession } from '@/domain/orders/types';
-import type { ClientWithLogin } from '@/domain/clients/types';
+import type { AdminUser, ClientWithLogin } from '@/domain/clients/types';
 import type { ProviderOrderAttempt, ProviderOrderAttemptOutcome, ProviderOrderRow, ProviderOrderStatus } from '@/workspace/lib/erpIntegrationClient';
 import Link from '@/components/TenantLink';
 import { useTenant } from '@/components/TenantProvider';
@@ -16,7 +16,7 @@ import { requestOrderPushResend } from '@/workspace/lib/erpIntegrationClient';
 import { useWorkspaceAuth } from '@/workspace/components/WorkspaceAuthProvider';
 import { Sheet, SheetContent, SheetHeader, SheetTrigger } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogCloseButton, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { markOrderPaid, cancelOrder, confirmOrderSeparation, sendOrderWhatsApp, updateOrderSession, fetchWhatsAppAvailability, type WhatsAppAvailabilityStatus } from '@/lib/ordersClient';
+import { markOrderPaid, cancelOrder, confirmOrderSeparation, reassignOrderSeller, sendOrderWhatsApp, updateOrderSession, fetchWhatsAppAvailability, type WhatsAppAvailabilityStatus } from '@/lib/ordersClient';
 import { StatusChip, type StatusChipTone } from '@/components/StatusChip';
 import PaymentMethodIndicator from '@/components/payments/PaymentMethodIndicator';
 import { DisabledActionHint } from '@/components/DisabledActionHint';
@@ -97,30 +97,44 @@ export default function OrderDetailApp({
   initialPushStatus,
   initialPushHistory,
   initialSession,
+  initialUsers,
 }: {
   initialOrder: Order;
   initialClient: ClientWithLogin | null;
   initialPushStatus: ProviderOrderRow | null;
   initialPushHistory: ProviderOrderAttempt[];
   initialSession: OrderSession | null;
+  initialUsers: AdminUser[];
 }) {
   const [order, setOrder] = useState(initialOrder);
   const [client] = useState(initialClient);
   const [pushStatus, setPushStatus] = useState(initialPushStatus);
   const [pushHistory] = useState(initialPushHistory);
   const [session] = useState(initialSession);
+  const [users] = useState(initialUsers);
   const [resending, setResending] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [paymentMethodInput, setPaymentMethodInput] = useState('');
   const [actionPending, setActionPending] = useState(false);
   const [upsellPending, setUpsellPending] = useState(false);
+  const [sellerPending, setSellerPending] = useState(false);
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppAvailabilityStatus | null>(null);
 
   const router = useRouter();
   const { href } = useTenant();
   const { workspaceUser } = useWorkspaceAuth();
   const canManageOrder = Boolean(workspaceUser) && workspaceUser?.role !== 'cliente';
+  // Reatribuir vendedor é uma decisão comercial (afeta a carteira/comissão),
+  // não uma operação qualquer do pedido -- mesmo critério exigido pelo
+  // backend em orderService.reassignOrderSeller.
+  // Bloqueado em pedido pago/cancelado -- mesmo gate do backend
+  // (orderService.reassignOrderSeller): a comissão já foi atribuída no
+  // momento da venda.
+  const canManageSeller = workspaceUser?.role === 'administrador' && workspaceUser?.permissions?.adminAccess === true
+    && order.status !== 'pago' && order.status !== 'cancelado';
+  const sellers = users.filter((candidate) => candidate.role === 'vendedora');
+  const currentSeller = users.find((candidate) => candidate.id === order.sellerId);
   const canMarkPaid = order.status !== 'aberto' && order.status !== 'pago' && order.status !== 'cancelado';
   const canCancel = order.status !== 'pago' && order.status !== 'cancelado';
   // Pré-requisito manual pra cobrança real (Stripe) funcionar -- ver
@@ -154,6 +168,20 @@ export default function OrderDetailApp({
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : 'Não foi possível reabrir o atendimento.');
       setUpsellPending(false);
+    }
+  }
+
+  async function handleSellerChange(sellerId: string) {
+    if (!sellerId || sellerId === order.sellerId) return;
+    setSellerPending(true);
+    try {
+      const updated = await reassignOrderSeller(order.id, sellerId);
+      setOrder(updated);
+      toast.success('Vendedor do pedido atualizado.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Não foi possível trocar o vendedor.');
+    } finally {
+      setSellerPending(false);
     }
   }
 
@@ -280,6 +308,30 @@ export default function OrderDetailApp({
               </>
             ) : (
               <p className="mt-3 text-sm text-muted-foreground">{order.clientName || 'Pedido sem cliente vinculado.'}</p>
+            )}
+          </section>
+
+          <section className="rounded-brand border border-border bg-surface p-4">
+            <h2 className="font-bold">Vendedor</h2>
+            {canManageSeller ? (
+              <div className="mt-3 flex items-center gap-2">
+                <select
+                  className="rounded-lg border border-[#ddd] bg-white px-2 py-1.5 text-sm"
+                  value={order.sellerId ?? ''}
+                  disabled={sellerPending}
+                  onChange={(event) => void handleSellerChange(event.target.value)}
+                >
+                  <option value="" disabled>Sem vendedor</option>
+                  {currentSeller && currentSeller.role !== 'vendedora' && (
+                    <option value={currentSeller.id}>{currentSeller.name}</option>
+                  )}
+                  {sellers.map((seller) => (
+                    <option key={seller.id} value={seller.id}>{seller.name}</option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-muted-foreground">{currentSeller?.name || 'Pedido sem vendedor vinculado.'}</p>
             )}
           </section>
 

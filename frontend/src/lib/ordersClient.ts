@@ -211,3 +211,13 @@ export function cancelOrder(orderId: string): Promise<{ order: Order; erpWarning
     body: JSON.stringify({}),
   }, 'Não foi possível cancelar o pedido.');
 }
+
+// Reatribui a vendedora responsável pelo pedido -- endpoint estreito, só
+// troca sellerId (ver orderService.reassignOrderSeller no backend).
+export function reassignOrderSeller(orderId: string, sellerId: string): Promise<Order> {
+  return adminJson(`/api/admin/orders/${orderId}/seller`, OrderSchema, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sellerId }),
+  }, 'Não foi possível reatribuir o vendedor deste pedido.');
+}

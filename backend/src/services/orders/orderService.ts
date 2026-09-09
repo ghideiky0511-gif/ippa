@@ -15,6 +15,7 @@ import {
     listTenantOrderRows,
     separateAllOrderItemsRow,
     updateOrderRow,
+    updateOrderSellerRow,
 } from "@/models/ordersModel";
 import { findFreightProviderRow } from "@/models/freightProvidersModel";
 import { findOrderFreightRowByOrderId, insertOrderFreightRow, listOrderFreightRows, updateOrderFreightMethodRow } from "@/models/orderFreightsModel";
@@ -449,6 +450,47 @@ export async function updateOrderFreightMethod(
             metadata: { method },
         });
         return toOrder(existing, items, freightRow);
+    });
+    notifyOrder(tenant.id, order);
+    return order;
+}
+
+// Reatribui a vendedora responsável pelo pedido -- mesmo critério de
+// reassignClientSeller (services/clients/clientService.ts): exige
+// administradora porque mexe na distribuição comercial entre vendedoras,
+// não é algo que a própria vendedora deveria poder fazer sozinha. Bloqueada
+// em pedido pago/cancelado (mesmo gate de cancelOrder/markOrderPaid): a
+// comissão é atribuída no momento da venda, então reabrir isso depois
+// desalinharia o que já foi fechado.
+export async function reassignOrderSeller(
+    tenant: Tenant,
+    user: AuthUser,
+    orderId: string,
+    sellerId: string,
+    auditRequestContext: AuditRequestContext,
+): Promise<Order> {
+    if (!isAdministrator(user)) throw new ForbiddenError();
+    const order = await withTenantTransaction(tenant, user, async (client) => {
+        const existing = await findOrderRowById(client, orderId);
+        if (!existing) throw new NotFoundError("ORDER_NOT_FOUND");
+        if (existing.status === "pago") throw new ValidationError("ORDER_ALREADY_PAID");
+        if (existing.status === "cancelado") throw new ValidationError("ORDER_ALREADY_CANCELLED");
+        const seller = await findUserRowById(client, sellerId);
+        if (!seller || seller.role !== "vendedora") {
+            throw new ValidationError("SELLER_NOT_FOUND", "Vendedora não encontrada nesta loja.");
+        }
+        const items = (await listOrderItemRowsByOrder(client, orderId)).map((item) => item.snapshot);
+        const row = await updateOrderSellerRow(client, orderId, sellerId);
+        if (!row) throw new NotFoundError("ORDER_NOT_FOUND");
+        await recordAuditEvent(client, {
+            action: ORDER_AUDIT_ACTIONS.SELLER_CHANGED,
+            entityId: orderId,
+            actor: user,
+            context: auditRequestContext,
+            metadata: { sellerId },
+        });
+        const freightRow = await findOrderFreightRowByOrderId(client, orderId);
+        return toOrder(row, items, freightRow);
     });
     notifyOrder(tenant.id, order);
     return order;

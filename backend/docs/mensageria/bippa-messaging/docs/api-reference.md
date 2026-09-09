@@ -452,6 +452,17 @@ Resposta `200`:
 
 Erro `409 connection_not_available` se a WABA não estiver `connected`.
 
+### `GET /v1/admin/templates/:templateId?source_reference=<tenant>`
+
+`:templateId` é o `id` local (uuid), não o `meta_template_id`. Busca **direto
+na Meta** (`GET /{TEMPLATE_ID}` da Graph API), ignorando o cache local, e
+atualiza a linha local com o que veio — útil para checar `status`/
+`quality_score`/`rejected_reason` mais recentes de um único template sem
+esperar o próximo `sync` completo de `GET .../templates`. Resposta `200` no
+mesmo formato de item da listagem acima. Erro `404 template_not_found` se o
+`id` não existir para esta organização; `409 connection_not_available` se a
+WABA não estiver `connected`.
+
 ### `POST /v1/admin/connections/:wabaId/templates`
 
 `:wabaId` é o `waba_id` (não o `connections.id`), mesma regra do `GET` acima.
@@ -512,19 +523,30 @@ formato básico correto" — a causa real vem anexada em `message` (texto
 original da Meta, ex.: _"Param components[0] is not a valid components..."_)
 e, quando disponíveis, em `meta_code`/`meta_subcode` (os códigos numéricos que
 a Meta retorna, ex.: `code: 100, subcode: 2388299` para variável colada na
-borda do `BODY`), `meta_error_data_details` e `meta_trace_id` (`fbtrace_id`
-da Meta, útil para abrir ticket no suporte deles). Os campos vêm juntos no
-corpo da resposta de erro sempre que a Meta devolveu esses dados — o serviço
-que consome esta API deve logar/exibir `meta_code`+`meta_subcode` em vez de
-só `message`, já que `message` costuma ser um texto genérico ("Invalid
-parameter") enquanto o subcode identifica a regra exata violada.
+borda do `BODY`), `meta_error_data_details`, `meta_error_user_title`,
+`meta_error_user_msg` e `meta_trace_id` (`fbtrace_id` da Meta, útil para
+abrir ticket no suporte deles). Os campos vêm juntos no corpo da resposta de
+erro sempre que a Meta devolveu esses dados — o serviço que consome esta API
+deve logar/exibir `meta_code`+`meta_subcode` em vez de só `message`, já que
+`message` costuma ser um texto genérico ("Invalid parameter") enquanto o
+subcode identifica a regra exata violada.
 `meta_error_data_details` (de `error.error_data.details` na resposta da
 Meta) costuma trazer a explicação mais específica ainda — ex.: para um
 subcode não documentado publicamente, é frequentemente a única pista de
 qual campo exato foi rejeitado (ex.: "Body parameter at index 3 contains a
 URL", quando uma variável de `BODY` recebe um link completo como
 `example` — a Meta não permite URL como valor de variável de `BODY`, só em
-botão `URL` dedicado). Internamente, toda falha da Graph
+botão `URL` dedicado). `meta_error_user_title`/`meta_error_user_msg` (de
+`error.error_user_title`/`error.error_user_msg`) são o título/explicação que
+a própria Meta escreveria para um usuário final — quando ela os envia, tendem
+a nomear a regra exata violada; mas **nem toda falha os traz** — a Meta às
+vezes só retorna `message` genérico + `code`/`subcode`, sem
+`error_user_title`/`error_user_msg`/`error_data.details` nenhum (esses três
+campos são independentes e opcionais na resposta dela, não uma garantia por
+subcode). Quando nenhum deles vem preenchido, `meta_trace_id` do
+`fbtrace_id` retornado é o único caminho pra Meta esclarecer via suporte —
+não é um problema deste serviço deixar de "descobrir" um campo que a própria
+Meta não mandou. Internamente, toda falha da Graph
 API também loga o `components`/`name`/`category` exato que foi enviado
 (`request_body`, truncado em 2000 caracteres) junto do `meta_trace_id` — se
 precisar confirmar se o que chegou na Meta é igual ao que foi enviado por

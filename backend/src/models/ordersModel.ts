@@ -452,6 +452,16 @@ export async function updateOrderRow(client: PoolClient, id: string, value: {
     return result.rows[0] ?? null;
 }
 
+export async function updateOrderSellerRow(client: PoolClient, id: string, sellerId: string): Promise<OrderRow | null> {
+    const result = await client.query<OrderRow>(
+        `UPDATE orders SET seller_id = $2, updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND id = $1
+         RETURNING ${orderFields}`,
+        [id, sellerId],
+    );
+    return result.rows[0] ?? null;
+}
+
 // Trilha financeira (payment_status/paid_at), separada do ciclo de
 // separação física de `status` (ver comentário de OrderStatusSchema em
 // contracts/orders.ts) -- usada por paymentChargeService.ts, tanto na

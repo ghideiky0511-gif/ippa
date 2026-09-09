@@ -2,6 +2,7 @@ import OrderDetailApp from '@/workspace/orders/OrderDetailApp';
 import { fetchOrder, fetchOrderSessions } from '@/workspace/lib/ordersClient.server';
 import { fetchClient } from '@/workspace/lib/customersClient.server';
 import { fetchOrderPushStatus, fetchOrderPushHistory } from '@/workspace/lib/erpIntegrationClient.server';
+import { fetchUsers } from '@/workspace/lib/usersClient.server';
 import type { OrderSession } from '@/domain/orders/types';
 import { WorkspaceLoadError } from '@/workspace/components/shared/WorkspaceLoadError';
 
@@ -14,15 +15,17 @@ export default async function PedidoDetailPage({ params }: { params: Promise<{ i
   let pushStatus: Awaited<ReturnType<typeof fetchOrderPushStatus>> = null;
   let pushHistory: Awaited<ReturnType<typeof fetchOrderPushHistory>> = [];
   let session: OrderSession | null = null;
+  let users: Awaited<ReturnType<typeof fetchUsers>> = [];
   let loadError: string | null = null;
 
   try {
     let sessions: OrderSession[] = [];
-    [order, pushStatus, pushHistory, sessions] = await Promise.all([
+    [order, pushStatus, pushHistory, sessions, users] = await Promise.all([
       fetchOrder(id),
       fetchOrderPushStatus(id),
       fetchOrderPushHistory(id),
       fetchOrderSessions(),
+      fetchUsers(),
     ]);
     if (order.clientId) {
       client = await fetchClient(order.clientId);
@@ -48,6 +51,7 @@ export default async function PedidoDetailPage({ params }: { params: Promise<{ i
       initialPushStatus={pushStatus}
       initialPushHistory={pushHistory}
       initialSession={session}
+      initialUsers={users}
     />
   );
 }
