@@ -57,6 +57,24 @@ export function metaGraphErrorMeta(exc: unknown): {
     };
 }
 
+// Corpo bruto de erro do bippa-messaging, para casos em que o código
+// (`record.error`, já capturado por `errorMeta(exc).error`) não basta para
+// saber qual campo falhou -- ex.: `400 invalid_request` genérico devolvido
+// por validações compartilhadas entre rotas administrativas (visto em
+// POST .../template-bindings), sem seção própria em api-reference.md.
+// `errorMeta()` só extrai `record.error`/`error_description`/`message` (o
+// primeiro que existir) para `.message` -- se o corpo trouxer os dois
+// (`error` + `message` mais descritivo), o segundo se perde. Logar o
+// payload inteiro aqui evita precisar pedir pro bippa-messaging reproduzir
+// o erro só para saber qual campo veio vazio.
+export function rawBippaMessagingPayload(exc: unknown): {
+    bippaMessagingPayload?: unknown;
+} {
+    if (!(exc instanceof BippaMessagingClientError)) return {};
+    if (exc.payload === undefined) return {};
+    return { bippaMessagingPayload: exc.payload };
+}
+
 // Traduz qualquer falha do bippa-messaging (ou de rede/timeout) numa
 // ValidationError com mensagem clara -- nunca deixa um erro genérico vazar
 // para a rota. Quando a falha já é um BippaMessagingClientError, sua

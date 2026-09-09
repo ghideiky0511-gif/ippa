@@ -198,7 +198,9 @@ test("createWabaTemplate cria o template na WABA (não no telefone)", async () =
         async (input, init) => {
             calls.push({ url: String(input), init });
             return new Response(
-                JSON.stringify({ id: "tpl-1", name: "bippa_order_confirmed_v1", status: "PENDING", category: "UTILITY", language: "pt_BR" }),
+                JSON.stringify({
+                    template: { id: "tpl-1", name: "bippa_order_confirmed_v1", status: "PENDING", category: "UTILITY", language: "pt_BR" },
+                }),
                 { status: 201, headers: { "Content-Type": "application/json" } },
             );
         },

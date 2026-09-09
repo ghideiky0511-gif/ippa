@@ -17,6 +17,7 @@ import { hasActiveWhatsAppConnection } from "./whatsappNotificationService";
 import {
     mapBippaMessagingError,
     metaGraphErrorMeta,
+    rawBippaMessagingPayload,
 } from "./whatsappServiceErrors";
 import {
     STANDARD_WHATSAPP_TEMPLATES,
@@ -122,12 +123,18 @@ export async function submitStandardWhatsAppTemplate(
     }
 
     let submitted;
+    // Fora do `try` para permanecer visível no `catch` -- é o diagnóstico
+    // nº 1 confirmado pelo bippa-messaging para o `400 invalid_request` do
+    // bind: se `created.id` (o `id` LOCAL devolvido pela criação do
+    // template, nunca o `meta_template_id`) vier vazio, o bind falha sem
+    // pista nenhuma no nosso log anterior.
+    let created: bippaMessagingClient.CreateWabaTemplateResult | undefined;
     try {
         // Fluxo real (backend/docs/mensageria/bippa-messaging/docs/
         // api-reference.md, seção "Templates"): criar o template na WABA e
         // só depois vincular ao sender profile sob a chave de negócio
         // (template_key) -- é esse vínculo que POST /v1/dispatches resolve.
-        const created = await bippaMessagingClient.createWabaTemplate(
+        created = await bippaMessagingClient.createWabaTemplate(
             getApiKey(),
             connection.waba_id,
             {
@@ -139,6 +146,16 @@ export async function submitStandardWhatsAppTemplate(
                 bodyExamples: parsed.data.examples,
             },
         );
+        if (!created.id) {
+            // Falha explícita em vez de mandar template_id vazio pro bind
+            // e receber de volta um `400 invalid_request` genérico (ver
+            // templates_service.js:9-13/250-258 do bippa-messaging) --
+            // confirmado por eles como a causa mais provável do incidente
+            // de 2026-09-09.
+            throw new Error(
+                `bippa-messaging não devolveu id para o template recém-criado (name=${definition.name}).`,
+            );
+        }
         await bippaMessagingClient.bindTemplateToSenderProfile(
             getApiKey(),
             connection.sender_profile_id,
@@ -158,8 +175,10 @@ export async function submitStandardWhatsAppTemplate(
                 sellerId: parsed.data.sellerId,
                 templateKey: definition.key,
                 examples: parsed.data.examples,
+                createdTemplateId: created?.id,
                 ...errorMeta(exc),
                 ...metaGraphErrorMeta(exc),
+                ...rawBippaMessagingPayload(exc),
             },
         );
         throw mapBippaMessagingError(

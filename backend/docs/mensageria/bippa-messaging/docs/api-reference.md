@@ -615,9 +615,16 @@ Content-Type: application/json
 ```
 
 `template_key` é a chave de negócio que o produto usa em
-`POST /v1/dispatches` (nunca o nome real do template na Meta). Resposta
-`201` no mesmo formato de uma linha de binding. Erros `404
-sender_profile_not_found` / `404 template_not_found`.
+`POST /v1/dispatches` (nunca o nome real do template na Meta). `template_id`
+é o `id` local (UUID) retornado na resposta de
+`POST /v1/admin/connections/:wabaId/templates` — não é o `meta_template_id`
+da Meta. Resposta `201` no mesmo formato de uma linha de binding. Erros `404
+sender_profile_not_found` / `404 template_not_found` / `400 invalid_request`
+se `source_reference`, `template_id` ou `template_key` vier ausente/vazio
+(mensagem no `message` identifica qual campo, ex.: `"template_id e
+obrigatorio."`). Não há restrição de `status` do template para o bind — um
+template ainda `PENDING` (aprovação da Meta é assíncrona) pode ser vinculado
+normalmente.
 
 ---
 

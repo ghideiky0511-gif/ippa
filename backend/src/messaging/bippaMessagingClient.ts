@@ -12,7 +12,9 @@ import type { ExternalApiCallReporter } from "@/lib/externalApiCall";
 import { bippaMessagingRequest } from "./http";
 
 function baseUrl(): string {
-    const base = process.env.BIPPA_MESSAGING_BASE_URL || "https://bippa-messaging.onrender.com";
+    const base =
+        process.env.BIPPA_MESSAGING_BASE_URL ||
+        "https://bippa-messaging.onrender.com";
     return base.replace(/\/+$/, "");
 }
 
@@ -58,7 +60,10 @@ export function ensureApplicationInstallation(
         {
             service: "bippa-messaging",
             apiKey,
-            jsonBody: { source_reference: input.sourceReference, organization_name: input.organizationName },
+            jsonBody: {
+                source_reference: input.sourceReference,
+                organization_name: input.organizationName,
+            },
             operation: "ensureApplicationInstallation",
             reporter,
         },
@@ -99,7 +104,12 @@ interface StartOnboardingAttemptResponse {
         expires_at: string;
         connect_url: string;
         callback_url: string;
-        sdk: { app_id: string; config_id: string; graph_api_version: string; extras?: Record<string, unknown> };
+        sdk: {
+            app_id: string;
+            config_id: string;
+            graph_api_version: string;
+            extras?: Record<string, unknown>;
+        };
     };
 }
 
@@ -244,9 +254,13 @@ export function getOnboardingAttempt(
                       id: response.onboarding.result.connection.id,
                       wabaId: response.onboarding.result.connection.waba_id,
                       status: response.onboarding.result.connection.status,
-                      expiresAt: response.onboarding.result.connection.expires_at,
-                      ownerBusinessId: response.onboarding.result.connection.owner_business_id,
-                      grantedScopes: response.onboarding.result.connection.granted_scopes,
+                      expiresAt:
+                          response.onboarding.result.connection.expires_at,
+                      ownerBusinessId:
+                          response.onboarding.result.connection
+                              .owner_business_id,
+                      grantedScopes:
+                          response.onboarding.result.connection.granted_scopes,
                   },
                   phones: response.onboarding.result.phones.map((phone) => ({
                       id: phone.id,
@@ -479,11 +493,20 @@ export interface CreateWabaTemplateResult {
 }
 
 interface CreateWabaTemplateResponse {
-    id: string;
-    name: string;
-    status: string;
-    category: string;
-    language: string;
+    // Envelope confirmado com o time do bippa-messaging (server.js:363-371):
+    // `res.status(201).json({ template: await templates.createTemplate(...) })`
+    // -- o objeto do template vem aninhado em `template`, nunca na raiz.
+    // Bug real de produção (2026-09): este client lia `response.id` direto
+    // e sempre recebia `undefined`, que virava um `template_id` vazio no
+    // POST .../template-bindings seguinte (rejeitado com `400
+    // invalid_request` do lado de lá, sem nenhuma pista do lado de cá).
+    template: {
+        id: string;
+        name: string;
+        status: string;
+        category: string;
+        language: string;
+    };
 }
 
 export function createWabaTemplate(
@@ -515,11 +538,11 @@ export function createWabaTemplate(
             reporter,
         },
     ).then((response) => ({
-        id: response.id,
-        name: response.name,
-        status: response.status,
-        category: response.category,
-        languageCode: response.language,
+        id: response.template.id,
+        name: response.template.name,
+        status: response.template.status,
+        category: response.template.category,
+        languageCode: response.template.language,
     }));
 }
 
@@ -609,24 +632,28 @@ export function dispatchTemplateMessage(
     input: DispatchTemplateMessageInput,
     reporter?: ExternalApiCallReporter,
 ): Promise<DispatchMessageResult> {
-    return bippaMessagingRequest<DispatchMessageResponse>("POST", `${baseUrl()}/v1/dispatches`, {
-        service: "bippa-messaging",
-        apiKey,
-        jsonBody: {
-            source_reference: input.sourceReference,
-            seller_reference: input.sellerReference,
-            recipient: input.to,
-            kind: "template",
-            idempotency_key: input.idempotencyKey,
-            payload: {
-                template_key: input.templateKey,
-                params: input.params,
-                ...(input.mediaUrl ? { media_url: input.mediaUrl } : {}),
+    return bippaMessagingRequest<DispatchMessageResponse>(
+        "POST",
+        `${baseUrl()}/v1/dispatches`,
+        {
+            service: "bippa-messaging",
+            apiKey,
+            jsonBody: {
+                source_reference: input.sourceReference,
+                seller_reference: input.sellerReference,
+                recipient: input.to,
+                kind: "template",
+                idempotency_key: input.idempotencyKey,
+                payload: {
+                    template_key: input.templateKey,
+                    params: input.params,
+                    ...(input.mediaUrl ? { media_url: input.mediaUrl } : {}),
+                },
             },
+            operation: "dispatchTemplateMessage",
+            reporter,
         },
-        operation: "dispatchTemplateMessage",
-        reporter,
-    }).then((response) => ({
+    ).then((response) => ({
         id: response.dispatch.id,
         duplicate: response.duplicate,
     }));
