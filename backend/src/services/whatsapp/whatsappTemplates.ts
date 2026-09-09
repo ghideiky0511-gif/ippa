@@ -46,11 +46,16 @@ export interface StandardWhatsAppTemplate {
 // são preenchidos pela administradora no momento do envio (ver `example`
 // acima).
 //
-// Regra da Meta (api-reference.md, seção Templates): o texto de `body` NUNCA
-// pode começar nem terminar com uma variável `{{n}}` -- precisa de texto
-// estático nos dois lados. Por isso todo `body` abaixo termina com um `.`
-// depois da última variável (o erro mais comum é justamente um link como
-// última variável do corpo).
+// Regra da Meta (api-reference.md, seção Templates; erro real observado em
+// produção: 422 meta_graph_error / code=100 subcode=2388299 "Leading or
+// trailing parameters not allowed"): o texto de `body` NUNCA pode começar
+// nem terminar com uma variável `{{n}}` -- precisa de texto estático nos
+// dois lados. Um único caractere de pontuação logo após a variável (ex.:
+// só um `.`) NÃO é suficiente para a Meta considerar isso "texto estático"
+// -- por isso todo `body` abaixo termina com uma frase de verdade (algumas
+// palavras) depois da última variável, não só um ponto solto (o erro mais
+// comum é justamente um link como última variável do corpo, seguido de
+// pouco ou nenhum texto).
 export const STANDARD_WHATSAPP_TEMPLATES: readonly StandardWhatsAppTemplate[] =
     [
         {
@@ -61,7 +66,7 @@ export const STANDARD_WHATSAPP_TEMPLATES: readonly StandardWhatsAppTemplate[] =
                 "Confirma o pedido e leva a cliente para a página de detalhes.",
             category: "UTILITY",
             languageCode: "pt_BR",
-            body: "Olá, {{1}}!\n\nSeu pedido nº {{2}}, no valor de {{3}}, foi confirmado.\n\nAcompanhe os detalhes em:\n{{4}}.",
+            body: "Olá, {{1}}!\n\nSeu pedido nº {{2}}, no valor de {{3}}, foi confirmado.\n\nAcompanhe os detalhes em: {{4}}. Obrigada pela preferência!",
             parameters: [
                 {
                     key: "client_name",
@@ -93,7 +98,7 @@ export const STANDARD_WHATSAPP_TEMPLATES: readonly StandardWhatsAppTemplate[] =
                 "Entrega à cliente o link seguro para pagamento do pedido.",
             category: "UTILITY",
             languageCode: "pt_BR",
-            body: "Olá, {{1}}!\n\nSeu link de pagamento está pronto. Pague com segurança em:\n{{2}}.",
+            body: "Olá, {{1}}!\n\nSeu link de pagamento está pronto. Pague com segurança em: {{2}}. Obrigada pela preferência!",
             parameters: [
                 {
                     key: "client_name",
