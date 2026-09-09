@@ -49,13 +49,13 @@ segue o valor definido no serviço (400 é o padrão quando não especificado).
 
 ## Modelo de dados
 
-| Conceito | Onde vive | Campo de referência externa | Regra |
-| --- | --- | --- | --- |
-| Tenant do produto cliente | Aplicação chamadora | `source_reference` | Só existe dentro da própria aplicação; o Messaging nunca o expõe a outra aplicação. |
-| Organização | Messaging (`organizations`) | `organization_id` (interno, nunca enviado pelo chamador) | Resolvida via `application_installations(application_code, source_reference)`. |
-| WABA | Meta / Messaging (`connections`) | `waba_id` | Conectada e cifrada somente pelo Messaging; uma organização pode ter várias. |
-| Número WhatsApp | Meta / Messaging (`phone_numbers`) | `phone_number_id` | Pertence a exatamente uma WABA; pode ter no máximo um perfil de envio. |
-| Perfil de envio | Messaging (`sender_profiles`) | `external_reference` (= `seller_reference` nas rotas de envio) | É a única referência que o chamador usa para rotear uma mensagem; o Messaging resolve o número e a WABA no servidor. A chave interna `sender_profiles.key` (`seller:<id>` por convenção) nunca é aceita nem devolvida como identificador de roteamento pelo chamador. |
+| Conceito                  | Onde vive                          | Campo de referência externa                                    | Regra                                                                                                                                                                                                                                                                 |
+| ------------------------- | ---------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tenant do produto cliente | Aplicação chamadora                | `source_reference`                                             | Só existe dentro da própria aplicação; o Messaging nunca o expõe a outra aplicação.                                                                                                                                                                                   |
+| Organização               | Messaging (`organizations`)        | `organization_id` (interno, nunca enviado pelo chamador)       | Resolvida via `application_installations(application_code, source_reference)`.                                                                                                                                                                                        |
+| WABA                      | Meta / Messaging (`connections`)   | `waba_id`                                                      | Conectada e cifrada somente pelo Messaging; uma organização pode ter várias.                                                                                                                                                                                          |
+| Número WhatsApp           | Meta / Messaging (`phone_numbers`) | `phone_number_id`                                              | Pertence a exatamente uma WABA; pode ter no máximo um perfil de envio.                                                                                                                                                                                                |
+| Perfil de envio           | Messaging (`sender_profiles`)      | `external_reference` (= `seller_reference` nas rotas de envio) | É a única referência que o chamador usa para rotear uma mensagem; o Messaging resolve o número e a WABA no servidor. A chave interna `sender_profiles.key` (`seller:<id>` por convenção) nunca é aceita nem devolvida como identificador de roteamento pelo chamador. |
 
 ```text
 Aplicação cliente (Count, Catálogo, ...)
@@ -111,13 +111,13 @@ Resposta (`201` na primeira chamada, `200` nas repetições):
 
 ```json
 {
-  "organization": { "id": "uuid-gerado", "name": "Empresa Exemplo" },
-  "installation": {
-    "id": "uuid-da-installation",
-    "application_code": "minha-aplicacao",
-    "external_reference": "tenant-123",
-    "created": true
-  }
+    "organization": { "id": "uuid-gerado", "name": "Empresa Exemplo" },
+    "installation": {
+        "id": "uuid-da-installation",
+        "application_code": "minha-aplicacao",
+        "external_reference": "tenant-123",
+        "created": true
+    }
 }
 ```
 
@@ -145,7 +145,15 @@ Content-Type: application/json
 Resposta `201`:
 
 ```json
-{ "installation": { "id": "...", "organization_id": "...", "application_code": "...", "external_reference": "...", "created": true } }
+{
+    "installation": {
+        "id": "...",
+        "organization_id": "...",
+        "application_code": "...",
+        "external_reference": "...",
+        "created": true
+    }
+}
 ```
 
 Erro `409 installation_owned_by_another_organization` se a instalação já
@@ -186,14 +194,19 @@ Resposta `201`:
 
 ```json
 {
-  "onboarding": {
-    "attempt_id": "uuid",
-    "state": "token-de-uso-unico",
-    "expires_at": "2026-09-09T12:10:00.000Z",
-    "connect_url": "https://messaging.bippa.com.br/meta/embedded-signup",
-    "callback_url": "https://messaging.bippa.com.br/meta/oauth/callback",
-    "sdk": { "app_id": "...", "config_id": "...", "graph_api_version": "v23.0", "extras": {} }
-  }
+    "onboarding": {
+        "attempt_id": "uuid",
+        "state": "token-de-uso-unico",
+        "expires_at": "2026-09-09T12:10:00.000Z",
+        "connect_url": "https://messaging.bippa.com.br/meta/embedded-signup",
+        "callback_url": "https://messaging.bippa.com.br/meta/oauth/callback",
+        "sdk": {
+            "app_id": "...",
+            "config_id": "...",
+            "graph_api_version": "v23.0",
+            "extras": {}
+        }
+    }
 }
 ```
 
@@ -208,15 +221,22 @@ Resposta `200`:
 
 ```json
 {
-  "onboarding": {
-    "id": "uuid",
-    "destination_key": "whatsapp-settings",
-    "status": "pending | processing | completed | failed | expired",
-    "result": { "destination_key": "...", "connection": { "...": "ver publicConnection abaixo" }, "phones": [ "...publicPhone..." ] },
-    "error_code": null,
-    "error_message": null,
-    "expires_at": "...", "consumed_at": "...", "completed_at": "...", "created_at": "..."
-  }
+    "onboarding": {
+        "id": "uuid",
+        "destination_key": "whatsapp-settings",
+        "status": "pending | processing | completed | failed | expired",
+        "result": {
+            "destination_key": "...",
+            "connection": { "...": "ver publicConnection abaixo" },
+            "phones": ["...publicPhone..."]
+        },
+        "error_code": null,
+        "error_message": null,
+        "expires_at": "...",
+        "consumed_at": "...",
+        "completed_at": "...",
+        "created_at": "..."
+    }
 }
 ```
 
@@ -238,11 +258,35 @@ Resposta `200`:
 
 ```json
 {
-  "onboarding": {
-    "destination_key": "whatsapp-settings",
-    "connection": { "id": "...", "waba_id": "...", "status": "connected", "expires_at": null, "owner_business_id": "...", "granted_scopes": ["business_management", "whatsapp_business_management", "whatsapp_business_messaging"] },
-    "phones": [ { "id": "...", "phone_number_id": "...", "display_phone_number": "...", "verified_name": "...", "quality_rating": "...", "active": true, "name_status": "...", "platform_type": "...", "code_verification_status": "...", "messaging_limit_tier": "..." } ]
-  }
+    "onboarding": {
+        "destination_key": "whatsapp-settings",
+        "connection": {
+            "id": "...",
+            "waba_id": "...",
+            "status": "connected",
+            "expires_at": null,
+            "owner_business_id": "...",
+            "granted_scopes": [
+                "business_management",
+                "whatsapp_business_management",
+                "whatsapp_business_messaging"
+            ]
+        },
+        "phones": [
+            {
+                "id": "...",
+                "phone_number_id": "...",
+                "display_phone_number": "...",
+                "verified_name": "...",
+                "quality_rating": "...",
+                "active": true,
+                "name_status": "...",
+                "platform_type": "...",
+                "code_verification_status": "...",
+                "messaging_limit_tier": "..."
+            }
+        ]
+    }
 }
 ```
 
@@ -288,33 +332,37 @@ Resposta `200`:
 
 ```json
 {
-  "data": [
-    {
-      "id": "uuid-da-conexao",
-      "waba_id": "1234567890",
-      "status": "connected",
-      "expires_at": null,
-      "owner_business_id": "...",
-      "granted_scopes": ["business_management", "whatsapp_business_management", "whatsapp_business_messaging"],
-      "phones": [
+    "data": [
         {
-          "id": "uuid-do-telefone",
-          "phone_number_id": "111222333",
-          "display_phone_number": "+55 11 5555-3333",
-          "verified_name": "Minha Empresa",
-          "quality_rating": "GREEN",
-          "active": true,
-          "name_status": "APPROVED",
-          "platform_type": "CLOUD_API",
-          "code_verification_status": "VERIFIED",
-          "messaging_limit_tier": "TIER_1K",
-          "sender_profile_key": "seller:17",
-          "external_reference": "17",
-          "capability_payments": false
+            "id": "uuid-da-conexao",
+            "waba_id": "1234567890",
+            "status": "connected",
+            "expires_at": null,
+            "owner_business_id": "...",
+            "granted_scopes": [
+                "business_management",
+                "whatsapp_business_management",
+                "whatsapp_business_messaging"
+            ],
+            "phones": [
+                {
+                    "id": "uuid-do-telefone",
+                    "phone_number_id": "111222333",
+                    "display_phone_number": "+55 11 5555-3333",
+                    "verified_name": "Minha Empresa",
+                    "quality_rating": "GREEN",
+                    "active": true,
+                    "name_status": "APPROVED",
+                    "platform_type": "CLOUD_API",
+                    "code_verification_status": "VERIFIED",
+                    "messaging_limit_tier": "TIER_1K",
+                    "sender_profile_key": "seller:17",
+                    "external_reference": "17",
+                    "capability_payments": false
+                }
+            ]
         }
-      ]
-    }
-  ]
+    ]
 }
 ```
 
@@ -352,7 +400,17 @@ em chamadas futuras. Um telefone tem no máximo um perfil de envio; um
 Resposta `200`:
 
 ```json
-{ "sender_profile": { "id": "...", "organization_id": "...", "phone_id": "...", "connection_id": "...", "key": "seller:17", "external_reference": "17", "capability_payments": false } }
+{
+    "sender_profile": {
+        "id": "...",
+        "organization_id": "...",
+        "phone_id": "...",
+        "connection_id": "...",
+        "key": "seller:17",
+        "external_reference": "17",
+        "capability_payments": false
+    }
+}
 ```
 
 Erro `404 phone_not_found` se o telefone não existir nesta organização.
@@ -371,15 +429,24 @@ Resposta `200`:
 
 ```json
 {
-  "data": [
-    {
-      "id": "uuid-local", "organization_id": "...", "waba_id": "1234567890",
-      "meta_template_id": "9876543210", "name": "pedido_confirmado", "language": "pt_BR",
-      "category": "UTILITY", "status": "APPROVED", "quality_score": null,
-      "rejection_reason": null, "components": [ { "type": "BODY", "text": "Seu pedido {{1}} foi confirmado." } ],
-      "last_synced_at": "..."
-    }
-  ]
+    "data": [
+        {
+            "id": "uuid-local",
+            "organization_id": "...",
+            "waba_id": "1234567890",
+            "meta_template_id": "9876543210",
+            "name": "pedido_confirmado",
+            "language": "pt_BR",
+            "category": "UTILITY",
+            "status": "APPROVED",
+            "quality_score": null,
+            "rejection_reason": null,
+            "components": [
+                { "type": "BODY", "text": "Seu pedido {{1}} foi confirmado." }
+            ],
+            "last_synced_at": "..."
+        }
+    ]
 }
 ```
 
@@ -420,25 +487,44 @@ normalmente `PENDING`).
 (`example.body_text` para `BODY`, `example.header_text` para `HEADER`) com um
 valor de amostra por variável — a Meta rejeita a criação do template sem isso.
 Além disso, o texto de `BODY` **não pode começar nem terminar** com uma
-variável — sempre precisa de texto estático envolvendo `{{n}}` dos dois lados
-(ex.: `"Seu pedido {{1}} foi confirmado."` é válido, mas
-`"Olá {{1}}, acompanhe aqui: {{4}}"` com `{{4}}` colado ao fim é o padrão mais
-comum de erro aqui — um link como última variável do corpo). Este serviço
-valida os dois casos **antes** de chamar a Meta: se o número de valores em
-`example.body_text`/`example.header_text` não bater com o número de variáveis
-no texto, ou se uma variável estiver na primeira/última posição do `BODY`, a
-requisição falha aqui mesmo com `400 invalid_template_components` (sem gastar
-uma chamada à Graph API). Todo o resto de `components` (tipos de botão,
-formato de header, limites de caracteres) continua sendo repassado como veio,
-sem validação própria — só a Meta valida.**
+variável — sempre precisa de uma **palavra real** (letra/número, não só
+pontuação) antes da primeira e depois da última variável (ex.:
+`"Seu pedido {{1}} foi confirmado."` é válido). **Pontuação sozinha depois da
+variável não conta como texto estático** — `"Olá {{1}}, acompanhe aqui:
+{{4}}."` (só um `.` depois de `{{4}}`) ainda é rejeitado pela Meta com
+`subcode 2388299` mesmo não terminando literalmente em `}}`; é preciso uma
+palavra de verdade depois, ex.: `"...{{4}}. Obrigada pela preferência!"`. Este
+foi um caso real em produção (2026-09) onde a correção inicial (só adicionar
+o ponto) não resolveu porque a validação local da época olhava apenas se a
+string terminava em `}}`, sem checar se havia conteúdo textual de fato depois
+— já corrigido. Este serviço valida os dois casos **antes** de chamar a Meta:
+se o número de valores em `example.body_text`/`example.header_text` não bater
+com o número de variáveis no texto, ou se não houver uma palavra real antes
+da primeira/depois da última variável do `BODY`, a requisição falha aqui
+mesmo com `400 invalid_template_components` (sem gastar uma chamada à Graph
+API). Todo o resto de `components` (tipos de botão, formato de header,
+limites de caracteres) continua sendo repassado como veio, sem validação
+própria — só a Meta valida.**
 
 **Erros comuns (`422 meta_graph_error`):** este é o código genérico deste
 serviço para "a Meta recusou `components`/`name`/`category` mesmo com o
 formato básico correto" — a causa real vem anexada em `message` (texto
-original da Meta, ex.: *"Param components[0] is not a valid components..."*)
-e, quando disponível, em `meta_trace_id` (útil para localizar o evento nos
-logs deste serviço). As causas mais frequentes (depois de `example` já estar
-correto, que é bloqueado localmente):
+original da Meta, ex.: _"Param components[0] is not a valid components..."_)
+e, quando disponíveis, em `meta_code`/`meta_subcode` (os códigos numéricos que
+a Meta retorna, ex.: `code: 100, subcode: 2388299` para variável colada na
+borda do `BODY`) e `meta_trace_id` (`fbtrace_id` da Meta, útil para abrir
+ticket no suporte deles). Os três campos vêm juntos no corpo da resposta de
+erro sempre que a Meta devolveu esses dados — o serviço que consome esta API
+deve logar/exibir `meta_code`+`meta_subcode` em vez de só `message`, já que
+`message` costuma ser um texto genérico ("Invalid parameter") enquanto o
+subcode identifica a regra exata violada. Internamente, toda falha da Graph
+API também loga o `components`/`name`/`category` exato que foi enviado
+(`request_body`, truncado em 2000 caracteres) junto do `meta_trace_id` — se
+precisar confirmar se o que chegou na Meta é igual ao que foi enviado por
+quem consome esta API, procure pelo `meta_trace_id` nos logs deste serviço em
+vez de pedir o payload de volta pra equipe cliente. As causas mais frequentes (depois de
+`example` e do posicionamento de variável no `BODY`, já bloqueados
+localmente):
 
 - `name` já existe para aquela combinação nome+idioma na WABA (a Meta não
   permite reaproveitar nome+idioma de um template excluído recentemente —
@@ -502,7 +588,20 @@ pelo `template_key`).
 Resposta `200`:
 
 ```json
-{ "data": [ { "id": "...", "organization_id": "...", "sender_profile_id": "...", "template_key": "pedido_confirmado", "template_id": "uuid-local", "name": "pedido_confirmado", "language": "pt_BR", "status": "APPROVED" } ] }
+{
+    "data": [
+        {
+            "id": "...",
+            "organization_id": "...",
+            "sender_profile_id": "...",
+            "template_key": "pedido_confirmado",
+            "template_id": "uuid-local",
+            "name": "pedido_confirmado",
+            "language": "pt_BR",
+            "status": "APPROVED"
+        }
+    ]
+}
 ```
 
 ### `POST /v1/admin/sender-profiles/:senderProfileId/template-bindings`
@@ -542,12 +641,15 @@ seguros), `payload` (formato depende de `kind`).
 
 ```json
 {
-  "source_reference": "tenant-123",
-  "seller_reference": "17",
-  "recipient": "5511999999999",
-  "kind": "text",
-  "idempotency_key": "minha-app:T-42:seller:17:conversation:abc:reply-1",
-  "payload": { "text": "Olá! Já estamos preparando seu pedido.", "preview_url": false }
+    "source_reference": "tenant-123",
+    "seller_reference": "17",
+    "recipient": "5511999999999",
+    "kind": "text",
+    "idempotency_key": "minha-app:T-42:seller:17:conversation:abc:reply-1",
+    "payload": {
+        "text": "Olá! Já estamos preparando seu pedido.",
+        "preview_url": false
+    }
 }
 ```
 
@@ -557,16 +659,16 @@ servidor:
 
 ```json
 {
-  "source_reference": "tenant-123",
-  "seller_reference": "17",
-  "recipient": "5511999999999",
-  "kind": "template",
-  "idempotency_key": "minha-app:T-42:seller:17:order:9081:created",
-  "payload": {
-    "template_key": "pedido_confirmado",
-    "params": { "1": "9081" },
-    "media_url": "https://exemplo.com/banner.png"
-  }
+    "source_reference": "tenant-123",
+    "seller_reference": "17",
+    "recipient": "5511999999999",
+    "kind": "template",
+    "idempotency_key": "minha-app:T-42:seller:17:order:9081:created",
+    "payload": {
+        "template_key": "pedido_confirmado",
+        "params": { "1": "9081" },
+        "media_url": "https://exemplo.com/banner.png"
+    }
 }
 ```
 
@@ -579,12 +681,20 @@ aquele tipo, ex.: `{ "link": "https://..." }` ou `{ "id": "media-id-da-meta" }`)
 
 ```json
 {
-  "source_reference": "tenant-123",
-  "seller_reference": "17",
-  "recipient": "5511999999999",
-  "kind": "media",
-  "idempotency_key": "minha-app:T-42:seller:17:order:9081:invoice",
-  "payload": { "media": { "type": "document", "content": { "link": "https://exemplo.com/nota-fiscal.pdf", "filename": "nota-fiscal.pdf" } } }
+    "source_reference": "tenant-123",
+    "seller_reference": "17",
+    "recipient": "5511999999999",
+    "kind": "media",
+    "idempotency_key": "minha-app:T-42:seller:17:order:9081:invoice",
+    "payload": {
+        "media": {
+            "type": "document",
+            "content": {
+                "link": "https://exemplo.com/nota-fiscal.pdf",
+                "filename": "nota-fiscal.pdf"
+            }
+        }
+    }
 }
 ```
 
@@ -597,12 +707,12 @@ que a própria Cloud API da Meta modela "desfazer reação", não existe um
 
 ```json
 {
-  "source_reference": "tenant-123",
-  "seller_reference": "17",
-  "recipient": "5511999999999",
-  "kind": "reaction",
-  "idempotency_key": "minha-app:T-42:seller:17:message:wamid123:reaction",
-  "payload": { "message_id": "wamid.HBg...", "emoji": "👍" }
+    "source_reference": "tenant-123",
+    "seller_reference": "17",
+    "recipient": "5511999999999",
+    "kind": "reaction",
+    "idempotency_key": "minha-app:T-42:seller:17:message:wamid123:reaction",
+    "payload": { "message_id": "wamid.HBg...", "emoji": "👍" }
 }
 ```
 
@@ -623,16 +733,19 @@ lógica de negócio):
 
 ```json
 {
-  "source_reference": "tenant-123",
-  "seller_reference": "17",
-  "recipient": "5511999999999",
-  "kind": "interactive",
-  "idempotency_key": "minha-app:T-42:seller:17:order:9081:confirm",
-  "payload": {
-    "type": "button",
-    "body": "Confirma o recebimento do pedido 9081?",
-    "buttons": [ { "id": "order:9081:confirm", "title": "Confirmar" }, { "id": "order:9081:reject", "title": "Recusar" } ]
-  }
+    "source_reference": "tenant-123",
+    "seller_reference": "17",
+    "recipient": "5511999999999",
+    "kind": "interactive",
+    "idempotency_key": "minha-app:T-42:seller:17:order:9081:confirm",
+    "payload": {
+        "type": "button",
+        "body": "Confirma o recebimento do pedido 9081?",
+        "buttons": [
+            { "id": "order:9081:confirm", "title": "Confirmar" },
+            { "id": "order:9081:reject", "title": "Recusar" }
+        ]
+    }
 }
 ```
 
@@ -642,17 +755,33 @@ Lista (`payload.button` é o rótulo do menu, até 20 caracteres;
 
 ```json
 {
-  "source_reference": "tenant-123",
-  "seller_reference": "17",
-  "recipient": "5511999999999",
-  "kind": "interactive",
-  "idempotency_key": "minha-app:T-42:seller:17:order:9081:pick-shipping",
-  "payload": {
-    "type": "list",
-    "body": "Escolha a forma de envio:",
-    "button": "Ver opções",
-    "sections": [ { "title": "Envio", "rows": [ { "id": "shipping:sedex", "title": "Sedex", "description": "2 dias úteis" }, { "id": "shipping:pac", "title": "PAC", "description": "5 dias úteis" } ] } ]
-  }
+    "source_reference": "tenant-123",
+    "seller_reference": "17",
+    "recipient": "5511999999999",
+    "kind": "interactive",
+    "idempotency_key": "minha-app:T-42:seller:17:order:9081:pick-shipping",
+    "payload": {
+        "type": "list",
+        "body": "Escolha a forma de envio:",
+        "button": "Ver opções",
+        "sections": [
+            {
+                "title": "Envio",
+                "rows": [
+                    {
+                        "id": "shipping:sedex",
+                        "title": "Sedex",
+                        "description": "2 dias úteis"
+                    },
+                    {
+                        "id": "shipping:pac",
+                        "title": "PAC",
+                        "description": "5 dias úteis"
+                    }
+                ]
+            }
+        ]
+    }
 }
 ```
 
@@ -661,17 +790,17 @@ já vinculado à WABA e `product_retailer_id` cadastrado nesse catálogo):
 
 ```json
 {
-  "source_reference": "tenant-123",
-  "seller_reference": "17",
-  "recipient": "5511999999999",
-  "kind": "interactive",
-  "idempotency_key": "minha-app:T-42:seller:17:product:SKU-1:share",
-  "payload": {
-    "type": "product",
-    "body": "Que tal esse aqui?",
-    "catalog_id": "1234567890",
-    "product_retailer_id": "SKU-1"
-  }
+    "source_reference": "tenant-123",
+    "seller_reference": "17",
+    "recipient": "5511999999999",
+    "kind": "interactive",
+    "idempotency_key": "minha-app:T-42:seller:17:product:SKU-1:share",
+    "payload": {
+        "type": "product",
+        "body": "Que tal esse aqui?",
+        "catalog_id": "1234567890",
+        "product_retailer_id": "SKU-1"
+    }
 }
 ```
 
@@ -681,18 +810,26 @@ produtos somados entre todas elas):
 
 ```json
 {
-  "source_reference": "tenant-123",
-  "seller_reference": "17",
-  "recipient": "5511999999999",
-  "kind": "interactive",
-  "idempotency_key": "minha-app:T-42:seller:17:catalog:vitrine",
-  "payload": {
-    "type": "product_list",
-    "header": "Nossos destaques",
-    "body": "Separamos alguns itens para você:",
-    "catalog_id": "1234567890",
-    "sections": [ { "title": "Promoções", "product_items": [ { "product_retailer_id": "SKU-1" }, { "product_retailer_id": "SKU-2" } ] } ]
-  }
+    "source_reference": "tenant-123",
+    "seller_reference": "17",
+    "recipient": "5511999999999",
+    "kind": "interactive",
+    "idempotency_key": "minha-app:T-42:seller:17:catalog:vitrine",
+    "payload": {
+        "type": "product_list",
+        "header": "Nossos destaques",
+        "body": "Separamos alguns itens para você:",
+        "catalog_id": "1234567890",
+        "sections": [
+            {
+                "title": "Promoções",
+                "product_items": [
+                    { "product_retailer_id": "SKU-1" },
+                    { "product_retailer_id": "SKU-2" }
+                ]
+            }
+        ]
+    }
 }
 ```
 
@@ -703,11 +840,14 @@ escolhida e `metadata.interactive_id` = o `id` que você definiu ao enviar
 repetir ou ser traduzido). Requer a migration
 `db/migrations/20260909010000_dispatches_allow_interactive_kind.sql`.
 
-> **Lacuna atual:** quando o contato finaliza um carrinho a partir de uma
-> mensagem de catálogo, a Meta entrega isso como `message.type: "order"`
-> (com `order.catalog_id` e `order.product_items`), não como
-> `interactive.list_reply`. Esse tipo inbound ainda não é capturado por
-> `ingestInbound` — hoje esse pedido simplesmente não aparece na conversa.
+> **Carrinho de catálogo:** quando o contato finaliza um carrinho a partir de
+> uma mensagem de catálogo, a Meta entrega isso como `message.type: "order"`
+> (não como `interactive.list_reply`). Esse tipo chega em
+> `GET /v1/conversations/:id/messages` com `type: "order"`,
+> `metadata.catalog_id` e `metadata.product_items` (array
+> `{ product_retailer_id, quantity, item_price, currency }` — o conteúdo
+> exato do carrinho); `body` traz o texto opcional que o contato pode anexar
+> ao pedido (`order.text`), quando presente.
 
 **`kind: "location"`** — envia um ponto geográfico. Sujeita à mesma janela
 de 24h de `kind: "text"`. `latitude`/`longitude` são obrigatórios
@@ -715,12 +855,17 @@ de 24h de `kind: "text"`. `latitude`/`longitude` são obrigatórios
 
 ```json
 {
-  "source_reference": "tenant-123",
-  "seller_reference": "17",
-  "recipient": "5511999999999",
-  "kind": "location",
-  "idempotency_key": "minha-app:T-42:seller:17:order:9081:pickup-point",
-  "payload": { "latitude": -23.5614, "longitude": -46.6558, "name": "Loja Paulista", "address": "Av. Paulista, 1000" }
+    "source_reference": "tenant-123",
+    "seller_reference": "17",
+    "recipient": "5511999999999",
+    "kind": "location",
+    "idempotency_key": "minha-app:T-42:seller:17:order:9081:pickup-point",
+    "payload": {
+        "latitude": -23.5614,
+        "longitude": -46.6558,
+        "name": "Loja Paulista",
+        "address": "Av. Paulista, 1000"
+    }
 }
 ```
 
@@ -736,20 +881,23 @@ presentes, seguem o mesmo formato de campos da Meta (`phones[].phone`,
 
 ```json
 {
-  "source_reference": "tenant-123",
-  "seller_reference": "17",
-  "recipient": "5511999999999",
-  "kind": "contacts",
-  "idempotency_key": "minha-app:T-42:seller:17:order:9081:share-contact",
-  "payload": {
-    "contacts": [
-      {
-        "name": { "formatted_name": "Suporte Minha Empresa", "first_name": "Suporte" },
-        "phones": [ { "phone": "+5511999999999", "type": "WORK" } ],
-        "emails": [ { "email": "suporte@exemplo.com", "type": "WORK" } ]
-      }
-    ]
-  }
+    "source_reference": "tenant-123",
+    "seller_reference": "17",
+    "recipient": "5511999999999",
+    "kind": "contacts",
+    "idempotency_key": "minha-app:T-42:seller:17:order:9081:share-contact",
+    "payload": {
+        "contacts": [
+            {
+                "name": {
+                    "formatted_name": "Suporte Minha Empresa",
+                    "first_name": "Suporte"
+                },
+                "phones": [{ "phone": "+5511999999999", "type": "WORK" }],
+                "emails": [{ "email": "suporte@exemplo.com", "type": "WORK" }]
+            }
+        ]
+    }
 }
 ```
 
@@ -764,13 +912,13 @@ mensagem citada, inbound ou outbound:
 
 ```json
 {
-  "source_reference": "tenant-123",
-  "seller_reference": "17",
-  "recipient": "5511999999999",
-  "kind": "text",
-  "idempotency_key": "minha-app:T-42:seller:17:conversation:abc:reply-2",
-  "context": { "message_id": "wamid.HBg..." },
-  "payload": { "text": "Sobre isso: já está a caminho." }
+    "source_reference": "tenant-123",
+    "seller_reference": "17",
+    "recipient": "5511999999999",
+    "kind": "text",
+    "idempotency_key": "minha-app:T-42:seller:17:conversation:abc:reply-2",
+    "context": { "message_id": "wamid.HBg..." },
+    "payload": { "text": "Sobre isso: já está a caminho." }
 }
 ```
 
@@ -782,12 +930,20 @@ Resposta `202` (ou `200` se `idempotency_key` já havia sido usada —
 
 ```json
 {
-  "dispatch": {
-    "id": "uuid", "organization_id": "...", "conversation_id": null, "sender_profile_id": "...",
-    "idempotency_key": "...", "kind": "text", "status": "queued",
-    "provider_message_id": null, "error_code": null, "created_at": "...", "sent_at": null
-  },
-  "duplicate": false
+    "dispatch": {
+        "id": "uuid",
+        "organization_id": "...",
+        "conversation_id": null,
+        "sender_profile_id": "...",
+        "idempotency_key": "...",
+        "kind": "text",
+        "status": "queued",
+        "provider_message_id": null,
+        "error_code": null,
+        "created_at": "...",
+        "sent_at": null
+    },
+    "duplicate": false
 }
 ```
 
@@ -820,7 +976,11 @@ Content-Type: application/json
 Limite de 16 MB por arquivo. Resposta `201`:
 
 ```json
-{ "storage_path": "uuid-gerado/nota-fiscal.pdf", "mime_type": "application/pdf", "size_bytes": 48213 }
+{
+    "storage_path": "uuid-gerado/nota-fiscal.pdf",
+    "mime_type": "application/pdf",
+    "size_bytes": 48213
+}
 ```
 
 ---
@@ -833,14 +993,21 @@ Visão humana das conversas, isolada por organização.
 
 ```json
 {
-  "data": [
-    {
-      "id": "uuid", "organization_id": "...", "phone_id": "...", "contact_id": "...",
-      "status": "open", "assigned_user_id": null, "last_inbound_at": "...",
-      "created_at": "...", "updated_at": "...",
-      "phone_number": "5511988887777", "preview": "Última mensagem em texto puro"
-    }
-  ]
+    "data": [
+        {
+            "id": "uuid",
+            "organization_id": "...",
+            "phone_id": "...",
+            "contact_id": "...",
+            "status": "open",
+            "assigned_user_id": null,
+            "last_inbound_at": "...",
+            "created_at": "...",
+            "updated_at": "...",
+            "phone_number": "5511988887777",
+            "preview": "Última mensagem em texto puro"
+        }
+    ]
 }
 ```
 
@@ -850,9 +1017,19 @@ Ordenado por `updated_at desc`, limitado a 100 conversas.
 
 ```json
 {
-  "data": [
-    { "id": "uuid", "conversation_id": "...", "direction": "inbound", "type": "text", "provider_message_id": "wamid...", "body": "Olá, quero saber do meu pedido", "metadata": { "type": "text" }, "occurred_at": "...", "expires_at": "..." }
-  ]
+    "data": [
+        {
+            "id": "uuid",
+            "conversation_id": "...",
+            "direction": "inbound",
+            "type": "text",
+            "provider_message_id": "wamid...",
+            "body": "Olá, quero saber do meu pedido",
+            "metadata": { "type": "text" },
+            "occurred_at": "...",
+            "expires_at": "..."
+        }
+    ]
 }
 ```
 
@@ -930,22 +1107,37 @@ recusa esses `kind`. Valores monetários são sempre inteiros em centavos.
 
 ```json
 {
-  "source_reference": "tenant-123",
-  "seller_reference": "17",
-  "recipient": "5511999999999",
-  "idempotency_key": "minha-app:T-42:order:9081:payment-request",
-  "reference_id": "pedido-9081",
-  "body": "Revise e pague seu pedido.",
-  "footer": "Pagamento seguro",
-  "goods_type": "physical-goods",
-  "payment": {
-    "methods": [
-      { "type": "pix_dynamic_code", "pix_dynamic_code": { "code": "copia-e-cola-gerado-pelo-psp", "merchant_name": "Minha Empresa", "key": "chave-pix-do-recebedor", "key_type": "EVP" } }
-    ]
-  },
-  "items": [ { "retailer_id": "SKU-1", "name": "Produto", "unit_amount": 5000, "quantity": 1 } ],
-  "tax_amount": 0,
-  "total_amount": 5000
+    "source_reference": "tenant-123",
+    "seller_reference": "17",
+    "recipient": "5511999999999",
+    "idempotency_key": "minha-app:T-42:order:9081:payment-request",
+    "reference_id": "pedido-9081",
+    "body": "Revise e pague seu pedido.",
+    "footer": "Pagamento seguro",
+    "goods_type": "physical-goods",
+    "payment": {
+        "methods": [
+            {
+                "type": "pix_dynamic_code",
+                "pix_dynamic_code": {
+                    "code": "copia-e-cola-gerado-pelo-psp",
+                    "merchant_name": "Minha Empresa",
+                    "key": "chave-pix-do-recebedor",
+                    "key_type": "EVP"
+                }
+            }
+        ]
+    },
+    "items": [
+        {
+            "retailer_id": "SKU-1",
+            "name": "Produto",
+            "unit_amount": 5000,
+            "quantity": 1
+        }
+    ],
+    "tax_amount": 0,
+    "total_amount": 5000
 }
 ```
 
@@ -965,9 +1157,11 @@ Resposta `202` (ou `200` se `idempotency_key` repetida — `duplicate: true`):
 
 ```json
 {
-  "payment_order": { "reference_id": "pedido-9081", "total_amount": 5000 },
-  "dispatch": { "...": "mesmo formato de POST /v1/dispatches, kind: payment_order" },
-  "duplicate": false
+    "payment_order": { "reference_id": "pedido-9081", "total_amount": 5000 },
+    "dispatch": {
+        "...": "mesmo formato de POST /v1/dispatches, kind: payment_order"
+    },
+    "duplicate": false
 }
 ```
 
@@ -978,10 +1172,10 @@ com `idempotency_key` diferente.
 
 ```json
 {
-  "source_reference": "tenant-123",
-  "idempotency_key": "minha-app:T-42:order:9081:status-shipped",
-  "body": "Seu pedido foi enviado!",
-  "order_status": "shipped"
+    "source_reference": "tenant-123",
+    "idempotency_key": "minha-app:T-42:order:9081:status-shipped",
+    "body": "Seu pedido foi enviado!",
+    "order_status": "shipped"
 }
 ```
 
@@ -997,9 +1191,15 @@ Resposta `202`/`200`:
 
 ```json
 {
-  "payment_order": { "reference_id": "pedido-9081", "status": "shipped", "payment_status": "pending" },
-  "dispatch": { "...": "mesmo formato de POST /v1/dispatches, kind: payment_status" },
-  "duplicate": false
+    "payment_order": {
+        "reference_id": "pedido-9081",
+        "status": "shipped",
+        "payment_status": "pending"
+    },
+    "dispatch": {
+        "...": "mesmo formato de POST /v1/dispatches, kind: payment_status"
+    },
+    "duplicate": false
 }
 ```
 
@@ -1009,20 +1209,29 @@ Resposta `202`/`200`:
 
 O worker da outbox entrega eventos ao endpoint HTTP da aplicação cliente:
 
-| Tipo | Quando dispara | `data` |
-| --- | --- | --- |
-| `conversation.inbound` | Mensagem recebida de um contato | `{ conversation_id, message_id, sender_reference }` |
-| `message.sent` | Mensagem entregue à Meta com sucesso | `{ dispatch_id, provider_message_id, sender_reference }` |
-| `message.delivered` | Meta confirma entrega ao destinatário | `{ dispatch_id, provider_message_id, sender_reference }` |
-| `message.read` | Destinatário leu a mensagem | `{ dispatch_id, provider_message_id, sender_reference }` |
-| `message.failed` | Envio falhou definitivamente | `{ dispatch_id, sender_reference }` |
-| `payment.status_changed` | Status de pagamento mudou (webhook da Meta) | `{ reference_id, order_status, payment_status, payment_timestamp, sender_reference }` |
-| `template.status_changed` | Meta aprovou/rejeitou/pausou um template | `{ template_id, name, language, status, rejection_reason }` |
+| Tipo                      | Quando dispara                              | `data`                                                                                |
+| ------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `conversation.inbound`    | Mensagem recebida de um contato             | `{ conversation_id, message_id, sender_reference }`                                   |
+| `message.sent`            | Mensagem entregue à Meta com sucesso        | `{ dispatch_id, provider_message_id, sender_reference }`                              |
+| `message.delivered`       | Meta confirma entrega ao destinatário       | `{ dispatch_id, provider_message_id, sender_reference }`                              |
+| `message.read`            | Destinatário leu a mensagem                 | `{ dispatch_id, provider_message_id, sender_reference }`                              |
+| `message.failed`          | Envio falhou definitivamente                | `{ dispatch_id, sender_reference }`                                                   |
+| `payment.status_changed`  | Status de pagamento mudou (webhook da Meta) | `{ reference_id, order_status, payment_status, payment_timestamp, sender_reference }` |
+| `template.status_changed` | Meta aprovou/rejeitou/pausou um template    | `{ template_id, name, language, status, rejection_reason }`                           |
 
 Corpo entregue (`POST` para o `callback_url` cadastrado):
 
 ```json
-{ "id": "uuid-do-evento", "type": "message.sent", "occurred_at": "...", "data": { "dispatch_id": "...", "provider_message_id": "wamid...", "sender_reference": "17" } }
+{
+    "id": "uuid-do-evento",
+    "type": "message.sent",
+    "occurred_at": "...",
+    "data": {
+        "dispatch_id": "...",
+        "provider_message_id": "wamid...",
+        "sender_reference": "17"
+    }
+}
 ```
 
 Header `x-bippa-signature-256: sha256=<hmac-sha256 hex do corpo exato acima,
@@ -1037,12 +1246,10 @@ uma resposta não-`2xx` faz o worker tentar de novo com backoff exponencial
 > banco. Uma API `POST /v1/admin/event-subscriptions` (ou equivalente) fica
 > como pendência antes de liberar novos consumidores em produção.
 >
-> **Lacuna atual:** `conversation.inbound` ainda **não** dispara o webhook
-> assinado acima, apesar de constar na tabela — hoje o worker só usa esse
-> evento internamente para marcar a mensagem como lida e abrir o indicador de
-> digitação (ver seção Inbox). Um subscriber cadastrado não é notificado de
-> mensagens inbound por enquanto; falta ligar esse evento a `signedWebhook`
-> no worker.
+> `conversation.inbound` dispara tanto o webhook assinado acima (para
+> subscribers cadastrados) quanto, internamente no worker, a confirmação de
+> leitura + indicador de digitação (ver seção Inbox) — as duas coisas
+> acontecem para o mesmo evento, na ordem: leitura primeiro, depois o webhook.
 
 ---
 
