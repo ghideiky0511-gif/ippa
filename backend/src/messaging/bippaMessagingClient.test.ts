@@ -101,12 +101,21 @@ test("listWhatsAppConnections manda source_reference como query param e mapeia s
                 JSON.stringify({
                     data: [
                         {
-                            id: "phone-1",
-                            phone_number_id: "meta-phone-1",
-                            display_phone_number: "+55 11 99999-9999",
-                            verified_name: "Loja Teste",
-                            quality_rating: "GREEN",
-                            active: true,
+                            // id da CONEXÃO/WABA -- propositalmente diferente do id do
+                            // telefone abaixo, pra pegar uma regressão de quem lê o
+                            // nível errado (bug real em produção: 2026-09-09).
+                            id: "connection-1",
+                            waba_id: "waba-1",
+                            phones: [
+                                {
+                                    id: "phone-1",
+                                    phone_number_id: "meta-phone-1",
+                                    display_phone_number: "+55 11 99999-9999",
+                                    verified_name: "Loja Teste",
+                                    quality_rating: "GREEN",
+                                    active: true,
+                                },
+                            ],
                         },
                     ],
                 }),

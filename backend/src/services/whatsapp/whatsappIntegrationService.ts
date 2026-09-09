@@ -71,6 +71,16 @@ export async function getWhatsAppConnections(
     requireSettingsAdministrator(user);
     await requireSellerInTenant(tenant, user, sellerId);
     const sourceReference = externalReferenceForSeller(tenant.id, sellerId);
+    // Mesmo formato do log em associateWhatsAppSenderProfile -- permite
+    // comparar, linha a linha, o source_reference exato usado aqui (GET, que
+    // encontra o telefone) com o usado no PATCH logo em seguida (que pode
+    // devolver phone_not_found mesmo com o telefone listado aqui segundos
+    // antes).
+    logger.info("whatsapp-integration", "Listando conexões de WhatsApp no bippa-messaging", {
+        tenantId: tenant.id,
+        sellerId,
+        sourceReference,
+    });
     try {
         const entries = await bippaMessagingClient.listWhatsAppConnections(
             getApiKey(),
@@ -212,6 +222,22 @@ export async function associateWhatsAppSenderProfile(
     // bippa-messaging aceitasse um valor arbitrário.
     const externalReference = externalReferenceForSeller(tenant.id, sellerId);
     const senderProfileKey = senderProfileKeyForSeller(tenant.id, sellerId);
+
+    // Log do valor exato de source_reference indo pro bippa-messaging --
+    // gravado independente de sucesso/erro. Existe pra provar, com o wire
+    // value em mãos, se um "phone_not_found" futuro é de fato o mesmo
+    // source_reference que resolveu o telefone no GET
+    // /v1/admin/whatsapp-connections logo antes (ver
+    // getWhatsAppConnections, mesmo log) ou se diverge -- sem isso, a
+    // única forma de comparar era confiar que os dois lados leem o mesmo
+    // código-fonte, o que não basta se o bug estiver do lado do
+    // bippa-messaging.
+    logger.info("whatsapp-integration", "Associando sender profile no bippa-messaging", {
+        tenantId: tenant.id,
+        sellerId,
+        phoneId: normalizedPhoneId,
+        sourceReference: externalReference,
+    });
 
     let association;
     try {

@@ -366,6 +366,32 @@ migration's own diff against current `stage.sql` is purely additive.
        (`schema.sql:186-189,208`) -- a segunda organização a tentar recebe
        erro explícito ("Esta WABA ja esta conectada a outra organizacao."),
        nunca um vazamento silencioso de dado entre vendedoras.
+
+     **Sexta rodada, bug real confirmado em produção (2026-09-09), NO NOSSO
+     LADO desta vez:** o "phone_not_found" desta rodada não era mais
+     divergência de `source_reference` (o log provou os dois lados idênticos
+     -- GET e PATCH usando o mesmo valor, segundos de diferença, GET achando
+     o telefone e PATCH não). Causa raiz: `GET /v1/admin/whatsapp-connections`
+     devolve uma lista de CONEXÕES (`publicConnection`: `id` = id da
+     conexão/WABA), cada uma com `phones: []` aninhado (`publicPhone`: `id` =
+     `phone_numbers.id`) -- `messaging_repository.js:227`. Os dois níveis têm
+     um campo `id` com o MESMO NOME e significados diferentes.
+     `listWhatsAppConnections` (`bippaMessagingClient.ts`) estava lendo
+     `entry.id` (id da conexão) como se fosse o `phoneId`, tratando a
+     resposta como uma lista flat de telefones -- nunca era. Confirmado via
+     log de auditoria do bippa-messaging: o UUID usado nos testes anteriores
+     (`d75c4c2e-...`) reapareceu idêntico em 6 eventos
+     `meta_onboarding_completed` distintos ao longo de várias horas -- exatamente
+     o comportamento de um `connection_id` (estável entre reconexões da mesma
+     WABA), nunca de um `phone_numbers.id`. Corrigido: `WhatsAppConnectionEntryResponse`
+     virou `WhatsAppConnectionResponse` (nível da conexão, com `phones:
+     WhatsAppConnectionPhoneResponse[]`), e o mapeamento em
+     `listWhatsAppConnections` agora faz `flatMap` sobre `connection.phones`,
+     lendo `phone.id` (não `connection.id`) como `phoneId`. Isso também
+     resolve, sem precisar de mudança adicional, o caso de uma conexão/WABA
+     com mais de um número -- antes essa listagem so retornaria 1 "telefone"
+     por conexão (o id errado dela), agora retorna todos os telefones reais
+     de todas as conexões da organização.
 3. **Stage.sql** -- ver seção acima, alteração manual necessária.
 4. **Sinal `bippa.meta.onboarding.ready` não confirmado.** O plano previa
    mandar `onboarding.start` "quando o popup sinalizar pronto -- ou, se não

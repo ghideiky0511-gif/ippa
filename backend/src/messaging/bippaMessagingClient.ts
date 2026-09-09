@@ -276,12 +276,20 @@ export interface WhatsAppConnectionEntry {
     status: string;
 }
 
-// Formato confirmado no código-fonte do bippa-messaging (messaging_repository.js,
-// função publicPhone): id/phone_number_id/display_phone_number/verified_name/
-// quality_rating/active. Não inclui sender_profile_key -- essa listagem é dos
-// telefones conectados à organização, não do vínculo por vendedora (esse
-// vínculo é o nosso espelho local em whatsapp_connections).
-interface WhatsAppConnectionEntryResponse {
+// Formato confirmado no código-fonte do bippa-messaging
+// (messaging_repository.js:227): cada item de `data` é uma CONEXÃO
+// (publicConnection: id=connection_id, waba_id, ...), não um telefone -- os
+// telefones ficam aninhados em `phones[]` (publicPhone: id=phone_numbers.id,
+// phone_number_id, display_phone_number, verified_name, quality_rating,
+// active). `id` existe nos dois níveis com significados DIFERENTES --
+// confirmado por bug em produção (2026-09-09): estávamos lendo o `id` do
+// nível da conexão como se fosse o phoneId, o que produz um UUID que nunca
+// existe em `phone_numbers` (é sempre o id de `connections`) e causa
+// `phone_not_found` no PATCH .../sender-profile mesmo o telefone existindo e
+// aparecendo nesta mesma listagem. Não inclui sender_profile_key -- essa
+// listagem é dos telefones conectados à organização, não do vínculo por
+// vendedora (esse vínculo é o nosso espelho local em whatsapp_connections).
+interface WhatsAppConnectionPhoneResponse {
     id: string;
     display_phone_number?: string | null;
     verified_name?: string | null;
@@ -289,8 +297,13 @@ interface WhatsAppConnectionEntryResponse {
     active: boolean;
 }
 
+interface WhatsAppConnectionResponse {
+    id: string; // id da CONEXÃO/WABA -- nunca usar como phoneId, ver acima.
+    phones?: WhatsAppConnectionPhoneResponse[];
+}
+
 interface ListWhatsAppConnectionsResponse {
-    data: WhatsAppConnectionEntryResponse[];
+    data: WhatsAppConnectionResponse[];
 }
 
 // Lista os telefones do WhatsApp já vinculados à instalação identificada por
@@ -316,17 +329,19 @@ export function listWhatsAppConnections(
             reporter,
         },
     ).then((response) =>
-        (response.data ?? []).map((entry) => ({
-            phoneId: entry.id,
-            displayPhoneMasked: entry.display_phone_number ?? null,
-            verifiedName: entry.verified_name ?? null,
-            qualityRating: entry.quality_rating ?? null,
-            // Não retornado por esta listagem (ver WhatsAppConnectionEntryResponse) --
-            // o vínculo com a vendedora é o nosso espelho local, não algo que o
-            // bippa-messaging saiba nesta rota.
-            senderProfileKey: null,
-            status: entry.active ? "connected" : "not_connected",
-        })),
+        (response.data ?? []).flatMap((connection) =>
+            (connection.phones ?? []).map((phone) => ({
+                phoneId: phone.id,
+                displayPhoneMasked: phone.display_phone_number ?? null,
+                verifiedName: phone.verified_name ?? null,
+                qualityRating: phone.quality_rating ?? null,
+                // Não retornado por esta listagem (ver WhatsAppConnectionPhoneResponse) --
+                // o vínculo com a vendedora é o nosso espelho local, não algo que o
+                // bippa-messaging saiba nesta rota.
+                senderProfileKey: null,
+                status: phone.active ? "connected" : "not_connected",
+            })),
+        ),
     );
 }
 
