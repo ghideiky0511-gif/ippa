@@ -22,13 +22,22 @@ export const WhatsAppTemplateKeySchema = z.enum([
 ]);
 export type WhatsAppTemplateKey = z.infer<typeof WhatsAppTemplateKeySchema>;
 
-// _v2: a Meta não permite editar `components` de um template já submetido
-// sob o mesmo nome+idioma (ver comentário abaixo sobre subcode 2388024) --
-// bippa_order_confirmed_v1/bippa_payment_link_v1 já foram submetidos com o
-// link como variável solta no BODY e precisam ficar como "mortos" na WABA;
-// a correção (link em botão URL) vai como template novo.
+// _v2/_v3: a Meta não permite recriar `components` de um template já
+// submetido sob o mesmo nome+idioma (ver comentário abaixo sobre subcode
+// 2388024) -- bippa_order_confirmed_v1/bippa_payment_link_v1 já foram
+// submetidos com o link como variável solta no BODY e precisam ficar como
+// "mortos" na WABA; a correção (link em botão URL) foi como template novo.
+// bippa_order_confirmed_v2 sofreu o mesmo destino: ficou com conteúdo
+// pt_BR registrado na Meta de uma tentativa anterior (ainda com o payload
+// de URL incorreto) e passou a devolver 422/subcode 2388024 com
+// meta_error_user_title="Já existe conteúdo nesse idioma" em toda
+// resubmissão -- confirmado em produção 2026-09-09 via
+// meta_error_user_title/meta_error_user_msg (ver metaGraphErrorMeta em
+// whatsappServiceErrors.ts). bippa_payment_link_v2 nunca teve esse
+// problema (nenhuma tentativa anterior chegou a criar conteúdo pt_BR para
+// ele), por isso continua na v2.
 export const WHATSAPP_TEMPLATE_NAMES = {
-    orderConfirmed: "bippa_order_confirmed_v2",
+    orderConfirmed: "bippa_order_confirmed_v3",
     paymentLink: "bippa_payment_link_v2",
 } as const;
 
