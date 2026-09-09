@@ -232,6 +232,15 @@ export async function associateWhatsAppSenderProfile(
                 sourceReference: externalReference,
                 externalReference: sellerId,
                 senderProfileKey,
+                // ATENÇÃO se implementar aprovação de Meta Payments no futuro:
+                // este PATCH é full-replace em sender_profiles (UPDATE SET
+                // capability_payments=EXCLUDED.capability_payments no upsert
+                // por external_reference, bippa-messaging), não merge. Uma
+                // troca de telefone (reassociação) chamando este mesmo
+                // endpoint com capabilityPayments: false vai resetar
+                // silenciosamente uma aprovação já concedida -- nesse dia,
+                // essa chamada precisa ler o valor atual antes de decidir o
+                // que enviar aqui, em vez de hardcodar false.
                 capabilityPayments: false,
             },
         );

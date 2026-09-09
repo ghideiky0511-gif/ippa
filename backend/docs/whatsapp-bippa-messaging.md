@@ -322,6 +322,50 @@ migration's own diff against current `stage.sql` is purely additive.
      `associateSenderProfile` tinha um segundo campo (`external_reference`)
      que exige um valor diferente (a vendedora) do `source_reference`
      (a instalação/composta).
+
+     **Quinta rodada, confirmado por leitura direta do código-fonte do
+     bippa-messaging (2026-09-08), fechando as dúvidas em aberto da rodada
+     anterior:**
+     - **Troca de telefone (reassociação):** `assignPhoneToSender` faz
+       `INSERT ... ON CONFLICT(organization_id, external_reference) DO UPDATE
+       SET phone_id=EXCLUDED.phone_id, key=EXCLUDED.key,
+       capability_payments=EXCLUDED.capability_payments`
+       (`messaging_repository.js:247-259`; índice único
+       `(organization_id, external_reference)` em `schema.sql:50-52`). Upsert
+       por vendedora, não por telefone -- chamar o PATCH de novo com um
+       `:id` de telefone diferente para a mesma vendedora move a mesma linha
+       para o novo `phone_id`, sem erro de conflito e sem precisar
+       "desconectar" o telefone antigo antes.
+     - **`capability_payments` é full-replace, não merge** (mesma linha do
+       upsert acima: `capability_payments=EXCLUDED.capability_payments`).
+       **Gap real para o futuro:** hoje sempre mandamos
+       `capabilityPayments: false` neste PATCH
+       (`whatsappIntegrationService.ts`, `associateWhatsAppSenderProfile`) e
+       não há problema porque nada mais escreve `true`. No dia em que um
+       fluxo de aprovação Meta Payments passar a setar
+       `capability_payments: true`, uma troca de telefone que chame este
+       mesmo PATCH com `capabilityPayments: false` hardcoded vai resetar essa
+       aprovação silenciosamente -- nesse dia, essa chamada precisa ler o
+       valor atual (via `listWhatsAppConnections` ou equivalente) antes de
+       decidir o que enviar, em vez de hardcodar `false`. Comentário de aviso
+       já deixado no código no ponto exato.
+     - **Múltiplos `sender_profiles` para a mesma vendedora:** estruturalmente
+       impossível -- o mesmo índice único `(organization_id,
+       external_reference)`, mais `UNIQUE(organization_id, key)`
+       (`schema.sql:47`), garante no máximo uma linha ativa por vendedora
+       antes mesmo de `resolveSender` rodar (`messaging_repository.js:274-277`).
+     - **Isolamento do `GET /v1/admin/whatsapp-connections`:** confirmado em
+       dois níveis independentes -- `listConnectionsForOrganization` filtra
+       estritamente pelo `organization_id` resolvido via
+       `resolveInstallation(application_code, source_reference)`
+       (`messaging_repository.js:221-228`, `messaging_service.js:10-23`,
+       ambos com `UNIQUE(application_code, external_reference)` em
+       `application_installations`); e mesmo que duas vendedoras tentassem
+       conectar a mesma conta Meta Business, `connections.waba_id` e
+       `phone_numbers.phone_number_id` são `UNIQUE` globalmente
+       (`schema.sql:186-189,208`) -- a segunda organização a tentar recebe
+       erro explícito ("Esta WABA ja esta conectada a outra organizacao."),
+       nunca um vazamento silencioso de dado entre vendedoras.
 3. **Stage.sql** -- ver seção acima, alteração manual necessária.
 4. **Sinal `bippa.meta.onboarding.ready` não confirmado.** O plano previa
    mandar `onboarding.start` "quando o popup sinalizar pronto -- ou, se não
