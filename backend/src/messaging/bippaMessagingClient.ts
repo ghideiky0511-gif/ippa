@@ -283,9 +283,15 @@ export function getOnboardingAttempt(
 
 export interface WhatsAppConnectionEntry {
     phoneId: string;
+    phoneNumberId: string | null;
     displayPhoneMasked: string | null;
     verifiedName: string | null;
     qualityRating: string | null;
+    active: boolean;
+    nameStatus: string | null;
+    platformType: string | null;
+    codeVerificationStatus: string | null;
+    messagingLimitTier: string | null;
     // Chave interna de roteamento do bippa-messaging -- NUNCA usar para
     // comparar/filtrar por vendedora (ver externalReference abaixo). Exposta
     // só para log/depuração.
@@ -303,6 +309,7 @@ export interface WhatsAppConnectionEntry {
     wabaId: string;
     connectionId: string;
     status: string;
+    connectionStatus: string;
 }
 
 // Formato confirmado na doc oficial
@@ -320,10 +327,15 @@ export interface WhatsAppConnectionEntry {
 // listagem.
 interface WhatsAppConnectionPhoneResponse {
     id: string;
+    phone_number_id?: string | null;
     display_phone_number?: string | null;
     verified_name?: string | null;
     quality_rating?: string | null;
     active: boolean;
+    name_status?: string | null;
+    platform_type?: string | null;
+    code_verification_status?: string | null;
+    messaging_limit_tier?: string | null;
     sender_profile_key?: string | null;
     external_reference?: string | null;
     capability_payments?: boolean;
@@ -332,6 +344,7 @@ interface WhatsAppConnectionPhoneResponse {
 interface WhatsAppConnectionResponse {
     id: string; // id da CONEXÃO/WABA -- nunca usar como phoneId, ver acima.
     waba_id: string;
+    status?: string;
     phones?: WhatsAppConnectionPhoneResponse[];
 }
 
@@ -352,6 +365,7 @@ interface ListWhatsAppConnectionsResponse {
 export function listWhatsAppConnections(
     apiKey: string,
     sourceReference: string,
+    sync = false,
     reporter?: ExternalApiCallReporter,
 ): Promise<WhatsAppConnectionEntry[]> {
     return bippaMessagingRequest<ListWhatsAppConnectionsResponse>(
@@ -360,7 +374,7 @@ export function listWhatsAppConnections(
         {
             service: "bippa-messaging",
             apiKey,
-            params: { source_reference: sourceReference },
+            params: { source_reference: sourceReference, sync: sync ? "true" : undefined },
             operation: "listWhatsAppConnections",
             reporter,
         },
@@ -368,15 +382,22 @@ export function listWhatsAppConnections(
         (response.data ?? []).flatMap((connection) =>
             (connection.phones ?? []).map((phone) => ({
                 phoneId: phone.id,
+                phoneNumberId: phone.phone_number_id ?? null,
                 displayPhoneMasked: phone.display_phone_number ?? null,
                 verifiedName: phone.verified_name ?? null,
                 qualityRating: phone.quality_rating ?? null,
+                active: phone.active,
+                nameStatus: phone.name_status ?? null,
+                platformType: phone.platform_type ?? null,
+                codeVerificationStatus: phone.code_verification_status ?? null,
+                messagingLimitTier: phone.messaging_limit_tier ?? null,
                 senderProfileKey: phone.sender_profile_key ?? null,
                 externalReference: phone.external_reference ?? null,
                 capabilityPayments: phone.capability_payments ?? false,
                 wabaId: connection.waba_id,
                 connectionId: connection.id,
                 status: phone.active ? "connected" : "not_connected",
+                connectionStatus: connection.status ?? "unknown",
             })),
         ),
     );
@@ -576,6 +597,154 @@ export function createWabaTemplate(
         category: response.template.category,
         languageCode: response.template.language,
     }));
+}
+
+// Administração de templates exibidos no painel. Ao contrário de
+// createWabaTemplate, estas operações preservam os componentes devolvidos pela
+// API para que o produto não tente reinterpretar botões, headers ou formatos
+// que pertencem à Meta.
+export interface WhatsAppTemplateEntry {
+    id: string;
+    organizationId: string | null;
+    wabaId: string;
+    metaTemplateId: string | null;
+    name: string;
+    language: string;
+    category: string;
+    status: string;
+    qualityScore: string | null;
+    rejectionReason: string | null;
+    components: Array<Record<string, unknown>>;
+    lastSyncedAt: string | null;
+}
+
+interface WhatsAppTemplateResponse {
+    id: string;
+    organization_id?: string | null;
+    waba_id: string;
+    meta_template_id?: string | null;
+    name: string;
+    language: string;
+    category: string;
+    status: string;
+    quality_score?: string | null;
+    rejection_reason?: string | null;
+    components?: Array<Record<string, unknown>>;
+    last_synced_at?: string | null;
+}
+
+function toWhatsAppTemplateEntry(template: WhatsAppTemplateResponse): WhatsAppTemplateEntry {
+    return {
+        id: template.id,
+        organizationId: template.organization_id ?? null,
+        wabaId: template.waba_id,
+        metaTemplateId: template.meta_template_id ?? null,
+        name: template.name,
+        language: template.language,
+        category: template.category,
+        status: template.status,
+        qualityScore: template.quality_score ?? null,
+        rejectionReason: template.rejection_reason ?? null,
+        components: template.components ?? [],
+        lastSyncedAt: template.last_synced_at ?? null,
+    };
+}
+
+function unwrapWhatsAppTemplate(
+    response: WhatsAppTemplateResponse | { template: WhatsAppTemplateResponse },
+): WhatsAppTemplateResponse {
+    return "template" in response ? response.template : response;
+}
+
+export function listWabaTemplates(
+    apiKey: string,
+    wabaId: string,
+    sourceReference: string,
+    sync = true,
+    reporter?: ExternalApiCallReporter,
+): Promise<WhatsAppTemplateEntry[]> {
+    return bippaMessagingRequest<{ data: WhatsAppTemplateResponse[] }>(
+        "GET",
+        `${baseUrl()}/v1/admin/connections/${encodeURIComponent(wabaId)}/templates`,
+        {
+            service: "bippa-messaging",
+            apiKey,
+            params: { source_reference: sourceReference, sync: String(sync) },
+            operation: "listWabaTemplates",
+            reporter,
+        },
+    ).then((response) => (response.data ?? []).map(toWhatsAppTemplateEntry));
+}
+
+export interface CreateWhatsAppTemplateInput {
+    sourceReference: string;
+    name: string;
+    language: string;
+    category: "UTILITY" | "MARKETING" | "AUTHENTICATION";
+    components: Array<Record<string, unknown>>;
+}
+
+export function createWhatsAppTemplate(
+    apiKey: string,
+    wabaId: string,
+    input: CreateWhatsAppTemplateInput,
+    reporter?: ExternalApiCallReporter,
+): Promise<WhatsAppTemplateEntry> {
+    return bippaMessagingRequest<WhatsAppTemplateResponse | { template: WhatsAppTemplateResponse }>(
+        "POST",
+        `${baseUrl()}/v1/admin/connections/${encodeURIComponent(wabaId)}/templates`,
+        {
+            service: "bippa-messaging",
+            apiKey,
+            jsonBody: {
+                source_reference: input.sourceReference,
+                name: input.name,
+                language: input.language,
+                category: input.category,
+                components: input.components,
+            },
+            operation: "createWhatsAppTemplate",
+            reporter,
+        },
+    ).then((response) => toWhatsAppTemplateEntry(unwrapWhatsAppTemplate(response)));
+}
+
+export function getWhatsAppTemplate(
+    apiKey: string,
+    templateId: string,
+    sourceReference: string,
+    reporter?: ExternalApiCallReporter,
+): Promise<WhatsAppTemplateEntry> {
+    return bippaMessagingRequest<WhatsAppTemplateResponse | { template: WhatsAppTemplateResponse }>(
+        "GET",
+        `${baseUrl()}/v1/admin/templates/${encodeURIComponent(templateId)}`,
+        {
+            service: "bippa-messaging",
+            apiKey,
+            params: { source_reference: sourceReference },
+            operation: "getWhatsAppTemplate",
+            reporter,
+        },
+    ).then((response) => toWhatsAppTemplateEntry(unwrapWhatsAppTemplate(response)));
+}
+
+export function deleteWhatsAppTemplate(
+    apiKey: string,
+    templateId: string,
+    sourceReference: string,
+    reporter?: ExternalApiCallReporter,
+): Promise<void> {
+    return bippaMessagingRequest(
+        "DELETE",
+        `${baseUrl()}/v1/admin/templates/${encodeURIComponent(templateId)}`,
+        {
+            service: "bippa-messaging",
+            apiKey,
+            jsonBody: { source_reference: sourceReference },
+            operation: "deleteWhatsAppTemplate",
+            reporter,
+        },
+    ).then(() => undefined);
 }
 
 // Vincula um template já criado na WABA (createWabaTemplate) a um sender

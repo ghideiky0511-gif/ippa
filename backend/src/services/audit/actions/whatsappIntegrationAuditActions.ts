@@ -5,6 +5,7 @@ export const WHATSAPP_INTEGRATION_AUDIT_ACTIONS = {
   DEACTIVATED: 'whatsapp_integration.deactivated',
   DISCONNECTED: 'whatsapp_integration.disconnected',
   TEMPLATE_SUBMITTED: 'whatsapp_integration.template_submitted',
+  TEMPLATE_DELETED: 'whatsapp_integration.template_deleted',
 } as const;
 
 export type WhatsAppIntegrationAuditAction = (typeof WHATSAPP_INTEGRATION_AUDIT_ACTIONS)[keyof typeof WHATSAPP_INTEGRATION_AUDIT_ACTIONS];

@@ -131,11 +131,41 @@ export function fetchWhatsAppOnboardingAttemptStatus(
 
 export interface WhatsAppConnectionOption {
     phoneId: string;
+    phoneNumberId: string | null;
     displayPhoneMasked: string | null;
     verifiedName: string | null;
     qualityRating: string | null;
+    active: boolean;
+    nameStatus: string | null;
+    messagingLimitTier: string | null;
     senderProfileKey: string | null;
     status: string;
+}
+
+export interface TenantWhatsAppPhoneHealth {
+    phoneId: string;
+    phoneNumberId: string | null;
+    displayPhoneNumber: string | null;
+    verifiedName: string | null;
+    qualityRating: string | null;
+    active: boolean;
+    nameStatus: string | null;
+    platformType: string | null;
+    codeVerificationStatus: string | null;
+    messagingLimitTier: string | null;
+    sellerId: string | null;
+    capabilityPayments: boolean;
+    wabaId: string;
+    connectionStatus: string;
+}
+
+export function fetchTenantWhatsAppPhoneHealth(sync = false): Promise<TenantWhatsAppPhoneHealth[]> {
+    return adminJson(
+        `/api/admin/whatsapp/numbers?sync=${sync ? "true" : "false"}`,
+        unknown,
+        {},
+        "Não foi possível carregar os dados dos números de WhatsApp.",
+    ) as Promise<TenantWhatsAppPhoneHealth[]>;
 }
 
 // Lista telefones já conectados à instalação desta vendedora no
@@ -224,6 +254,66 @@ export function submitStandardWhatsAppTemplate(
         },
         "Não foi possível enviar o template para aprovação da Meta.",
     );
+}
+
+export interface WhatsAppTemplateEntry {
+    id: string;
+    organizationId: string | null;
+    wabaId: string;
+    metaTemplateId: string | null;
+    name: string;
+    language: string;
+    category: string;
+    status: string;
+    qualityScore: string | null;
+    rejectionReason: string | null;
+    components: Array<Record<string, unknown>>;
+    lastSyncedAt: string | null;
+}
+
+export interface CreateWhatsAppTemplateInput {
+    sellerId: string;
+    name: string;
+    language: string;
+    category: "UTILITY" | "MARKETING" | "AUTHENTICATION";
+    body: string;
+    examples: string[];
+}
+
+export function fetchWhatsAppTemplateLibrary(sellerId: string, sync = true): Promise<WhatsAppTemplateEntry[]> {
+    return adminJson(
+        `/api/admin/whatsapp/template-library?sellerId=${encodeURIComponent(sellerId)}&sync=${sync ? "true" : "false"}`,
+        unknown,
+        {},
+        "Não foi possível carregar os templates da Meta.",
+    ) as Promise<WhatsAppTemplateEntry[]>;
+}
+
+export function createWhatsAppTemplate(input: CreateWhatsAppTemplateInput): Promise<WhatsAppTemplateEntry> {
+    return adminJson(
+        "/api/admin/whatsapp/template-library",
+        unknown,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) },
+        "Não foi possível enviar o template para análise da Meta.",
+    ) as Promise<WhatsAppTemplateEntry>;
+}
+
+export function inspectWhatsAppTemplate(sellerId: string, templateId: string): Promise<WhatsAppTemplateEntry> {
+    return adminJson(
+        `/api/admin/whatsapp/template-library/${encodeURIComponent(templateId)}?sellerId=${encodeURIComponent(sellerId)}`,
+        unknown,
+        {},
+        "Não foi possível atualizar a análise do template.",
+    ) as Promise<WhatsAppTemplateEntry>;
+}
+
+export function deleteWhatsAppTemplate(sellerId: string, templateId: string): Promise<void> {
+    return adminJson(
+        `/api/admin/whatsapp/template-library/${encodeURIComponent(templateId)}?sellerId=${encodeURIComponent(sellerId)}`,
+        unknown,
+        { method: "DELETE" },
+        "Não foi possível excluir o template.",
+    ) as Promise<void>;
 }
 
 // Estado local (whatsapp_connections) de CADA vendedora deste tenant -- usado

@@ -13,6 +13,7 @@ import {
     ensureWhatsAppInstallation,
     fetchTenantWhatsAppConnectionStatuses,
     fetchStandardWhatsAppTemplates,
+    fetchTenantWhatsAppPhoneHealth,
     fetchWhatsAppConnections,
     fetchWhatsAppOnboardingAttemptStatus,
     isTrustedMessagingEvent,
@@ -21,6 +22,7 @@ import {
     submitStandardWhatsAppTemplate,
     type StandardWhatsAppTemplate,
     type TenantWhatsAppConnectionStatus,
+    type TenantWhatsAppPhoneHealth,
     type WhatsAppConnectionOption,
     type WhatsAppOnboardingAttemptStatusValue,
 } from "@/workspace/lib/whatsappIntegrationClient";
@@ -79,11 +81,29 @@ function isAttemptPastGrace(expiresAtMs: number): boolean {
     return Date.now() > expiresAtMs + EXPIRY_GRACE_MS;
 }
 
+function formatMessagingLimit(limit: string | null): string {
+    const labels: Record<string, string> = { TIER_250: "250/dia", TIER_1K: "1 mil/dia", TIER_10K: "10 mil/dia", TIER_100K: "100 mil/dia", TIER_UNLIMITED: "Ilimitado" };
+    return limit ? (labels[limit] ?? limit.replace(/^TIER_/, "")) : "Não informado";
+}
+
+function formatQuality(quality: string | null): string {
+    const labels: Record<string, string> = { GREEN: "Boa", YELLOW: "Média", RED: "Baixa", UNKNOWN: "Não informada" };
+    return quality ? (labels[quality] ?? quality) : "Não informada";
+}
+
+function formatNameStatus(status: string | null): string {
+    const labels: Record<string, string> = { APPROVED: "Aprovado", PENDING_REVIEW: "Em análise", DECLINED: "Reprovado", AVAILABLE_WITHOUT_REVIEW: "Sem revisão" };
+    return status ? (labels[status] ?? status) : "Não informado";
+}
+
 export default function WhatsAppIntegrationApp() {
     const [sellers, setSellers] = useState<AdminUser[]>([]);
     const [connectionsBySeller, setConnectionsBySeller] = useState<
         Record<string, TenantWhatsAppConnectionStatus>
     >({});
+    const [phones, setPhones] = useState<TenantWhatsAppPhoneHealth[]>([]);
+    const [refreshingPhones, setRefreshingPhones] = useState(false);
+    const [phoneHealthError, setPhoneHealthError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -152,16 +172,18 @@ export default function WhatsAppIntegrationApp() {
         setLoading(true);
         setLoadError(null);
         try {
-            const [users, statuses, standardTemplates] = await Promise.all([
+            const [users, statuses, standardTemplates, phoneHealth] = await Promise.all([
                 fetchUsers(),
                 fetchTenantWhatsAppConnectionStatuses(),
                 fetchStandardWhatsAppTemplates(),
+                fetchTenantWhatsAppPhoneHealth().catch(() => []),
             ]);
             setSellers(users.filter((u) => u.role === "vendedora"));
             setConnectionsBySeller(
                 Object.fromEntries(statuses.map((s) => [s.sellerId, s])),
             );
             setTemplates(standardTemplates);
+            setPhones(phoneHealth);
             const firstConnectedSellerId =
                 statuses.find((connection) => connection.connected)?.sellerId ??
                 "";
@@ -182,6 +204,18 @@ export default function WhatsAppIntegrationApp() {
             );
         } finally {
             setLoading(false);
+        }
+    }
+
+    async function refreshPhoneHealth() {
+        setRefreshingPhones(true);
+        setPhoneHealthError(null);
+        try {
+            setPhones(await fetchTenantWhatsAppPhoneHealth(true));
+        } catch (error) {
+            setPhoneHealthError(error instanceof Error ? error.message : "Não foi possível atualizar os números de WhatsApp.");
+        } finally {
+            setRefreshingPhones(false);
         }
     }
 
@@ -665,7 +699,7 @@ export default function WhatsAppIntegrationApp() {
                 }
             />
 
-            <main className="mx-auto flex max-w-3xl flex-col gap-5 p-4 sm:p-6">
+            <main className="mx-auto flex max-w-5xl flex-col gap-5 p-4 sm:p-6">
                 {loading ? (
                     <p className="text-sm text-muted-foreground">
                         Carregando vendedoras…
@@ -679,6 +713,47 @@ export default function WhatsAppIntegrationApp() {
                     </p>
                 ) : (
                     <>
+                        <section className="rounded-brand border border-border bg-surface p-5 shadow-card">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <p className="text-xs font-bold uppercase tracking-wide text-brand-primary">Saúde dos números</p>
+                                    <h2 className="mt-1 text-lg font-bold text-foreground">Números conectados</h2>
+                                    <p className="mt-1 text-sm leading-6 text-muted-foreground">Status sincronizado com a Meta: qualidade, nome de perfil, limite e disponibilidade de envio.</p>
+                                </div>
+                                <Button type="button" variant="outline" size="sm" loading={refreshingPhones} onClick={() => void refreshPhoneHealth()}>
+                                    Atualizar status
+                                </Button>
+                            </div>
+                            {phones.length === 0 ? (
+                                <p className="mt-4 rounded-control bg-brand-background p-3 text-sm text-muted-foreground">Nenhum número foi encontrado. Conecte um WhatsApp Business para visualizar a saúde dele aqui.</p>
+                            ) : (
+                                <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                                    {phones.map((phone) => {
+                                        const seller = phone.sellerId ? sellers.find((item) => item.id === phone.sellerId) : null;
+                                        return <article key={phone.phoneId} className="rounded-control border border-border p-4">
+                                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <h3 className="font-bold text-foreground">{phone.verifiedName || phone.displayPhoneNumber || "Número sem nome"}</h3>
+                                                    <p className="mt-1 text-sm text-muted-foreground">{phone.displayPhoneNumber || phone.phoneNumberId || phone.phoneId}</p>
+                                                    <p className="mt-1 text-xs text-muted-foreground">{seller ? `Vendedora: ${seller.name}` : "Ainda não associado a uma vendedora"}</p>
+                                                </div>
+                                                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${phone.active && phone.connectionStatus === "connected" ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
+                                                    {phone.active && phone.connectionStatus === "connected" ? "Ativo (LIVE)" : "Requer atenção"}
+                                                </span>
+                                            </div>
+                                            <dl className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                                                <div><dt className="text-muted-foreground">Limite</dt><dd className="mt-1 font-semibold text-foreground">{formatMessagingLimit(phone.messagingLimitTier)}</dd></div>
+                                                <div><dt className="text-muted-foreground">Qualidade</dt><dd className="mt-1 font-semibold text-foreground">{formatQuality(phone.qualityRating)}</dd></div>
+                                                <div><dt className="text-muted-foreground">Nome de perfil</dt><dd className="mt-1 font-semibold text-foreground">{formatNameStatus(phone.nameStatus)}</dd></div>
+                                                <div><dt className="text-muted-foreground">Verificação</dt><dd className="mt-1 font-semibold text-foreground">{phone.codeVerificationStatus === "VERIFIED" ? "Verificado" : phone.codeVerificationStatus || "Não informado"}</dd></div>
+                                            </dl>
+                                            <p className="mt-4 border-t border-border pt-3 text-xs text-muted-foreground">WABA: <code>{phone.wabaId}</code> · Plataforma: {phone.platformType || "Não informada"}</p>
+                                        </article>;
+                                    })}
+                                </div>
+                            )}
+                            {phoneHealthError && <p role="status" className="mt-3 text-sm text-red-700">{phoneHealthError}</p>}
+                        </section>
                         {sellers.map((seller) => {
                             const connection = connectionsBySeller[seller.id];
                             const isActive = activeSellerId === seller.id;
@@ -865,12 +940,13 @@ export default function WhatsAppIntegrationApp() {
                         })}
 
                         <section className="rounded-brand border border-border bg-surface p-5 shadow-card">
-                            <div>
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
                                 <p className="text-xs font-bold uppercase tracking-wide text-brand-primary">
                                     Templates
                                 </p>
                                 <h2 className="mt-1 text-lg font-bold text-foreground">
-                                    Templates de pedidos
+                                    Modelos recomendados
                                 </h2>
                                 <p className="mt-1 text-sm leading-6 text-muted-foreground">
                                     No MVP, o conteúdo é padronizado pela Bippa.
@@ -878,6 +954,10 @@ export default function WhatsAppIntegrationApp() {
                                     para cadastro no WABA conectado; a Meta fará
                                     a análise antes de liberar o uso.
                                 </p>
+                                </div>
+                                <Button asChild type="button" variant="outline" size="sm">
+                                    <Link href="/workspace/integracoes/whatsapp/templates">Gerenciar templates</Link>
+                                </Button>
                             </div>
 
                             <div className="mt-4">

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { toast } from 'sonner';
 import { ArrowLeft, Ban, CheckCircle2, CreditCard, MessageCircle, PackageCheck, PackagePlus, Printer, QrCode, RefreshCw, Wrench } from 'lucide-react';
 import type { Order, OrderSession } from '@/domain/orders/types';
@@ -123,14 +124,13 @@ export default function OrderDetailApp({
 
   const router = useRouter();
   const { href } = useTenant();
+  const shouldReduceMotion = useReducedMotion();
   const { workspaceUser } = useWorkspaceAuth();
   const canManageOrder = Boolean(workspaceUser) && workspaceUser?.role !== 'cliente';
   // Reatribuir vendedor é uma decisão comercial (afeta a carteira/comissão),
   // não uma operação qualquer do pedido -- mesmo critério exigido pelo
-  // backend em orderService.reassignOrderSeller.
-  // Bloqueado em pedido pago/cancelado -- mesmo gate do backend
-  // (orderService.reassignOrderSeller): a comissão já foi atribuída no
-  // momento da venda.
+  // backend em orderService.reassignOrderSeller, que também bloqueia pedido
+  // pago/cancelado (a comissão já foi atribuída no momento da venda).
   const canManageSeller = workspaceUser?.role === 'administrador' && workspaceUser?.permissions?.adminAccess === true
     && order.status !== 'pago' && order.status !== 'cancelado';
   const sellers = users.filter((candidate) => candidate.role === 'vendedora');
@@ -313,26 +313,40 @@ export default function OrderDetailApp({
 
           <section className="rounded-brand border border-border bg-surface p-4">
             <h2 className="font-bold">Vendedor</h2>
-            {canManageSeller ? (
-              <div className="mt-3 flex items-center gap-2">
-                <select
-                  className="rounded-lg border border-[#ddd] bg-white px-2 py-1.5 text-sm"
-                  value={order.sellerId ?? ''}
-                  disabled={sellerPending}
-                  onChange={(event) => void handleSellerChange(event.target.value)}
-                >
-                  <option value="" disabled>Sem vendedor</option>
-                  {currentSeller && currentSeller.role !== 'vendedora' && (
-                    <option value={currentSeller.id}>{currentSeller.name}</option>
-                  )}
-                  {sellers.map((seller) => (
-                    <option key={seller.id} value={seller.id}>{seller.name}</option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <p className="mt-3 text-sm text-muted-foreground">{currentSeller?.name || 'Pedido sem vendedor vinculado.'}</p>
-            )}
+            {/* Crossfade na confirmação da troca -- mesmo padrão de transição de
+                valor usado no carrossel de imagens (ProductDetailContent.tsx). */}
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={order.sellerId ?? 'none'}
+                initial={shouldReduceMotion ? false : { opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={shouldReduceMotion ? undefined : { opacity: 0 }}
+                transition={{ duration: shouldReduceMotion ? 0 : 0.3, ease: 'easeInOut' }}
+              >
+                {canManageSeller ? (
+                  <div className={`${adminUi.field} mt-3 max-w-xs`}>
+                    <label>Vendedor responsável</label>
+                    <select
+                      value={order.sellerId ?? ''}
+                      disabled={sellerPending}
+                      onChange={(event) => void handleSellerChange(event.target.value)}
+                    >
+                      <option value="" disabled>Sem vendedor</option>
+                      {currentSeller && currentSeller.role !== 'vendedora' && (
+                        <option value={currentSeller.id}>{currentSeller.name}</option>
+                      )}
+                      {sellers.map((seller) => (
+                        <option key={seller.id} value={seller.id}>{seller.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="mt-3">
+                    <InfoField label="Vendedor responsável" value={currentSeller?.name} />
+                  </div>
+                )}
+              </motion.div>
+            </AnimatePresence>
           </section>
 
           <section className="rounded-brand border border-border bg-surface p-4">

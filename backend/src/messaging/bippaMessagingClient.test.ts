@@ -109,6 +109,7 @@ test("listWhatsAppConnections manda source_reference como query param e mapeia s
                             // nível errado (bug real em produção: 2026-09-09).
                             id: "connection-1",
                             waba_id: "waba-1",
+                            status: "connected",
                             phones: [
                                 {
                                     id: "phone-1",
@@ -117,6 +118,10 @@ test("listWhatsAppConnections manda source_reference como query param e mapeia s
                                     verified_name: "Loja Teste",
                                     quality_rating: "GREEN",
                                     active: true,
+                                    name_status: "APPROVED",
+                                    platform_type: "CLOUD_API",
+                                    code_verification_status: "VERIFIED",
+                                    messaging_limit_tier: "TIER_1K",
                                     sender_profile_key: "seller:17",
                                     external_reference: "seller-1",
                                     capability_payments: false,
@@ -133,15 +138,22 @@ test("listWhatsAppConnections manda source_reference como query param e mapeia s
             assert.deepEqual(result, [
                 {
                     phoneId: "phone-1",
+                    phoneNumberId: "meta-phone-1",
                     displayPhoneMasked: "+55 11 99999-9999",
                     verifiedName: "Loja Teste",
                     qualityRating: "GREEN",
+                    active: true,
+                    nameStatus: "APPROVED",
+                    platformType: "CLOUD_API",
+                    codeVerificationStatus: "VERIFIED",
+                    messagingLimitTier: "TIER_1K",
                     senderProfileKey: "seller:17",
                     externalReference: "seller-1",
                     capabilityPayments: false,
                     wabaId: "waba-1",
                     connectionId: "connection-1",
                     status: "connected",
+                    connectionStatus: "connected",
                 },
             ]);
             assert.equal(calls[0].url, `${DEFAULT_BASE_URL}/v1/admin/whatsapp-connections?source_reference=tenant-1`);

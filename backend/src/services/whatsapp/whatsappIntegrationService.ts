@@ -45,9 +45,13 @@ async function requireSellerInTenant(
 
 export interface WhatsAppConnectionOption {
     phoneId: string;
+    phoneNumberId: string | null;
     displayPhoneMasked: string | null;
     verifiedName: string | null;
     qualityRating: string | null;
+    active: boolean;
+    nameStatus: string | null;
+    messagingLimitTier: string | null;
     senderProfileKey: string | null;
     status: string;
 }
@@ -97,9 +101,13 @@ export async function getWhatsAppConnections(
             .filter((entry) => entry.externalReference === null || entry.externalReference === sellerId)
             .map((entry) => ({
                 phoneId: entry.phoneId,
+                phoneNumberId: entry.phoneNumberId,
                 displayPhoneMasked: entry.displayPhoneMasked,
                 verifiedName: entry.verifiedName,
                 qualityRating: entry.qualityRating,
+                active: entry.active,
+                nameStatus: entry.nameStatus,
+                messagingLimitTier: entry.messagingLimitTier,
                 senderProfileKey: entry.senderProfileKey,
                 status: entry.status,
             }));
@@ -117,6 +125,69 @@ export async function getWhatsAppConnections(
             exc,
             "WHATSAPP_CONNECTIONS_UNAVAILABLE",
             "Não foi possível consultar os telefones conectados.",
+        );
+    }
+}
+
+// Foto operacional dos números da organização. Diferente do espelho local em
+// whatsapp_connections, esta consulta expõe os campos de saúde que a Meta
+// fornece (qualidade, aprovação do nome, limite e estado LIVE) para a tela de
+// configurações. `sync=true` atualiza esses campos antes de responder.
+export interface TenantWhatsAppPhoneHealth {
+    phoneId: string;
+    phoneNumberId: string | null;
+    displayPhoneNumber: string | null;
+    verifiedName: string | null;
+    qualityRating: string | null;
+    active: boolean;
+    nameStatus: string | null;
+    platformType: string | null;
+    codeVerificationStatus: string | null;
+    messagingLimitTier: string | null;
+    sellerId: string | null;
+    capabilityPayments: boolean;
+    wabaId: string;
+    connectionStatus: string;
+}
+
+export async function listTenantWhatsAppPhoneHealth(
+    tenant: Tenant,
+    user: AuthUser,
+    sync = false,
+): Promise<TenantWhatsAppPhoneHealth[]> {
+    requireSettingsAdministrator(user);
+    try {
+        const entries = await bippaMessagingClient.listWhatsAppConnections(
+            getApiKey(),
+            tenant.id,
+            sync,
+        );
+        return entries.map((entry) => ({
+            phoneId: entry.phoneId,
+            phoneNumberId: entry.phoneNumberId,
+            displayPhoneNumber: entry.displayPhoneMasked,
+            verifiedName: entry.verifiedName,
+            qualityRating: entry.qualityRating,
+            active: entry.active,
+            nameStatus: entry.nameStatus,
+            platformType: entry.platformType,
+            codeVerificationStatus: entry.codeVerificationStatus,
+            messagingLimitTier: entry.messagingLimitTier,
+            sellerId: entry.externalReference,
+            capabilityPayments: entry.capabilityPayments,
+            wabaId: entry.wabaId,
+            connectionStatus: entry.connectionStatus,
+        }));
+    } catch (exc) {
+        logger.error("whatsapp-integration", "Falha ao consultar a saúde dos números de WhatsApp", {
+            tenantId: tenant.id,
+            sync,
+            ...errorMeta(exc),
+        });
+        throw mapBippaMessagingError(
+            exc,
+            "WHATSAPP_PHONE_HEALTH_UNAVAILABLE",
+            "Não foi possível atualizar os dados dos números de WhatsApp.",
         );
     }
 }
