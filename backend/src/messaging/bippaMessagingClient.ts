@@ -276,13 +276,17 @@ export interface WhatsAppConnectionEntry {
     status: string;
 }
 
+// Formato confirmado no código-fonte do bippa-messaging (messaging_repository.js,
+// função publicPhone): id/phone_number_id/display_phone_number/verified_name/
+// quality_rating/active. Não inclui sender_profile_key -- essa listagem é dos
+// telefones conectados à organização, não do vínculo por vendedora (esse
+// vínculo é o nosso espelho local em whatsapp_connections).
 interface WhatsAppConnectionEntryResponse {
-    phone_id: string;
-    display_phone_masked?: string | null;
+    id: string;
+    display_phone_number?: string | null;
     verified_name?: string | null;
     quality_rating?: string | null;
-    sender_profile_key?: string | null;
-    status: string;
+    active: boolean;
 }
 
 interface ListWhatsAppConnectionsResponse {
@@ -313,12 +317,15 @@ export function listWhatsAppConnections(
         },
     ).then((response) =>
         (response.data ?? []).map((entry) => ({
-            phoneId: entry.phone_id,
-            displayPhoneMasked: entry.display_phone_masked ?? null,
+            phoneId: entry.id,
+            displayPhoneMasked: entry.display_phone_number ?? null,
             verifiedName: entry.verified_name ?? null,
             qualityRating: entry.quality_rating ?? null,
-            senderProfileKey: entry.sender_profile_key ?? null,
-            status: entry.status,
+            // Não retornado por esta listagem (ver WhatsAppConnectionEntryResponse) --
+            // o vínculo com a vendedora é o nosso espelho local, não algo que o
+            // bippa-messaging saiba nesta rota.
+            senderProfileKey: null,
+            status: entry.active ? "connected" : "not_connected",
         })),
     );
 }
@@ -339,14 +346,22 @@ export interface SenderProfileAssociation {
     status: string;
 }
 
+// Formato confirmado no código-fonte do bippa-messaging (messaging_repository.js,
+// assignPhoneToSender + server.js) -- é a linha crua de bippa_messaging.sender_profiles
+// (RETURNING *) embrulhada em { sender_profile }, não o formato de publicPhone().
+// Por isso não tem display_phone_number/verified_name/quality_rating (essas colunas
+// são de phone_numbers, não de sender_profiles) e a chave do sender profile é `key`,
+// não `sender_profile_key`.
 interface SenderProfileAssociationResponse {
-    phone_id: string;
-    sender_profile_key: string;
-    capability_payments: boolean;
-    display_phone_masked?: string | null;
-    verified_name?: string | null;
-    quality_rating?: string | null;
-    status: string;
+    sender_profile: {
+        id: string;
+        organization_id: string;
+        phone_id: string;
+        key: string;
+        external_reference: string;
+        capability_payments: boolean;
+        connection_id: string;
+    };
 }
 
 // Vincula um telefone já conectado no bippa-messaging ao sender profile
@@ -373,13 +388,18 @@ export function associateSenderProfile(
             reporter,
         },
     ).then((response) => ({
-        phoneId: response.phone_id,
-        senderProfileKey: response.sender_profile_key,
-        capabilityPayments: response.capability_payments,
-        displayPhoneMasked: response.display_phone_masked ?? null,
-        verifiedName: response.verified_name ?? null,
-        qualityRating: response.quality_rating ?? null,
-        status: response.status,
+        phoneId: response.sender_profile.phone_id,
+        senderProfileKey: response.sender_profile.key,
+        capabilityPayments: response.sender_profile.capability_payments,
+        // sender_profiles não guarda esses três -- pertencem a phone_numbers
+        // (já obtidos antes, em listWhatsAppConnections). Este PATCH só
+        // confirma o vínculo, não devolve metadados do telefone.
+        displayPhoneMasked: null,
+        verifiedName: null,
+        qualityRating: null,
+        // Sem coluna "status" em sender_profiles -- chegar aqui sem lançar já
+        // significa que o vínculo foi criado/atualizado com sucesso.
+        status: "connected",
     }));
 }
 

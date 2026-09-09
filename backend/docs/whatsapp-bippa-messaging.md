@@ -218,8 +218,43 @@ migration's own diff against current `stage.sql` is purely additive.
      `onboarding/attempts`, `whatsapp-connections`,
      `phones/:phoneId/sender-profile`) seguem a convenção REST descrita na
      tarefa; os nomes de campo da resposta (`onboarding.connect_url`,
-     `onboarding.state`, `phone_id`, etc.) também são melhores palpites, não
-     confirmados.
+     `onboarding.state`, etc.) ainda são melhores palpites para os dois
+     primeiros, não confirmados.
+   - **`GET /v1/admin/whatsapp-connections` -- CONFIRMADO em 2026-09-08**
+     contra o código-fonte do bippa-messaging (`messaging_repository.js`,
+     função `publicPhone`, usada por `listConnectionsForOrganization`): cada
+     item devolvido é `{ id, phone_number_id, display_phone_number,
+     verified_name, quality_rating, active }`. O palpite anterior
+     (`phone_id`, `display_phone_masked`, `status`, `sender_profile_key`)
+     estava incorreto -- `entry.phone_id` vinha `undefined`, e esse valor
+     percorria intacto até `PATCH /v1/admin/phones/undefined/sender-profile`
+     (rejeitado pelo bippa-messaging com `400 onboarding_rejected`; a
+     verificação `if (!normalizedPhoneId)` não pega isso porque
+     `encodeURIComponent(undefined)` produz a string não-vazia
+     `"undefined"`). Corrigido em `bippaMessagingClient.ts` para usar `id`;
+     `sender_profile_key` não existe nesta resposta (sempre `null` aqui --
+     o vínculo por vendedora é só o espelho local em `whatsapp_connections`).
+   - **`PATCH /v1/admin/phones/:id/sender-profile` -- CONFIRMADO em
+     2026-09-08** contra `messaging_repository.js` (`assignPhoneToSender`,
+     `INSERT ... RETURNING *` em `bippa_messaging.sender_profiles`) e
+     `db/schema.sql` (tabela `sender_profiles`: `id, organization_id,
+     phone_id, key, external_reference, capability_payments`, mais
+     `connection_id` do JOIN) e `server.js`, que embrulha o retorno em
+     `{ sender_profile: {...} }`. Diferente do `GET /whatsapp-connections`,
+     aqui `phone_id` É um nome de coluna real (FK para `phone_numbers.id`),
+     não um apelido -- então o parâmetro da URL (`:id`) e o campo do corpo
+     (`sender_profile.phone_id`) são coisas diferentes, ambas corretas com
+     esses nomes. Mas o código antigo lia `response.phone_id` direto (sem
+     desembrulhar `sender_profile`) e esperava `sender_profile_key`/
+     `display_phone_masked`/`verified_name`/`quality_rating`/`status`, que
+     nunca existiram nessa resposta (as três primeiras são colunas de
+     `phone_numbers`, a chave real é `key`, e não há coluna de status em
+     `sender_profiles`). Corrigido em `bippaMessagingClient.ts`
+     (`associateSenderProfile`) para ler `response.sender_profile.*`; os
+     metadados do telefone (display/verified/quality) são buscados de novo
+     via `listWhatsAppConnections` em
+     `whatsappIntegrationService.associateWhatsAppSenderProfile`, já que este
+     PATCH não os devolve.
 3. **Stage.sql** -- ver seção acima, alteração manual necessária.
 4. **Sinal `bippa.meta.onboarding.ready` não confirmado.** O plano previa
    mandar `onboarding.start` "quando o popup sinalizar pronto -- ou, se não

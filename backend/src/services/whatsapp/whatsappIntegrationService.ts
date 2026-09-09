@@ -196,15 +196,34 @@ export async function associateWhatsAppSenderProfile(
         throw mapBippaMessagingError(exc, "WHATSAPP_ASSOCIATION_FAILED", "Não foi possível associar este telefone à vendedora.");
     }
 
+    // PATCH .../sender-profile devolve a linha crua de sender_profiles (id,
+    // phone_id, key, capability_payments, ...) -- não tem display_phone_number/
+    // verified_name/quality_rating, que são colunas de phone_numbers. Busca de
+    // novo na listagem de conexões para não gravar essas colunas como null no
+    // espelho local; falha aqui não desfaz a associação (já confirmada no
+    // bippa-messaging), só deixa os metadados em branco até a próxima consulta.
+    let phoneMeta: bippaMessagingClient.WhatsAppConnectionEntry | null = null;
+    try {
+        const connections = await bippaMessagingClient.listWhatsAppConnections(getApiKey(), externalReference);
+        phoneMeta = connections.find((entry) => entry.phoneId === association.phoneId) ?? null;
+    } catch (exc) {
+        logger.error("whatsapp-integration", "Falha ao buscar metadados do telefone após associar sender profile", {
+            tenantId: tenant.id,
+            sellerId,
+            phoneId: association.phoneId,
+            ...errorMeta(exc),
+        });
+    }
+
     return withTenantTransaction(tenant, user, async (client) => {
         const row = await updateWhatsAppConnectionAfterAssociation(client, sellerId, {
             externalReference,
             phoneId: association.phoneId,
             senderProfileKey: association.senderProfileKey,
             capabilityPayments: association.capabilityPayments,
-            displayPhoneMasked: association.displayPhoneMasked,
-            verifiedName: association.verifiedName,
-            qualityRating: association.qualityRating,
+            displayPhoneMasked: phoneMeta?.displayPhoneMasked ?? null,
+            verifiedName: phoneMeta?.verifiedName ?? null,
+            qualityRating: phoneMeta?.qualityRating ?? null,
             status: association.status || "connected",
         });
         // CONNECTED (não ACTIVATED): esta é a primeira vez que um telefone
