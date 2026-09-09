@@ -295,6 +295,33 @@ migration's own diff against current `stage.sql` is purely additive.
      precisam desse mesmo split (essas chamadas retornam 200 mesmo com a
      referência composta, então não há evidência de bug ali ainda; mexer
      nelas sem confirmação arrisca regressão num fluxo que hoje funciona).
+
+     **Quarta rodada, confirmado em produção (2026-09-08):** o fix acima
+     (`sourceReference: tenant.id`) gerou um erro novo: `400 "Instalacao da
+     aplicacao nao autorizada"`. Causa: `organizationForRequest`
+     (bippa-messaging) resolve a instalação por
+     `(application_code, source_reference)` contra `application_installations`
+     -- e essa linha foi criada por `ensureWhatsAppInstallation`
+     (`whatsappInstallationService.ts`), que **sempre** provisionou com a
+     referência composta `externalReferenceForSeller(tenant.id, sellerId)`
+     (`tenant:seller`), nunca com `tenant.id` sozinho. Ou seja: no nosso
+     desenho, cada vendedora tem sua própria "organização"/instalação no
+     bippa-messaging -- a composta É o "tenant" do ponto de vista do
+     bippa-messaging para este app. `source_reference` no PATCH precisa
+     bater com o valor usado na instalação, senão `resolveInstallation` não
+     acha a linha. Corrigido revertendo `sourceReference` para a referência
+     composta (mesmo valor de `ensureWhatsAppInstallation`,
+     `listWhatsAppConnections`, `startOnboardingAttempt`) -- só
+     `external_reference` continua distinto (`sellerId` puro). Ou seja: a
+     "regra de ouro" (source_reference=tenant, external_reference=vendedora)
+     está correta em espírito, mas "tenant" aqui É a composta, não
+     `tenant.id` isolado -- resolve também a pergunta em aberto da rodada
+     anterior: as outras chamadas (`ensureApplicationInstallation`,
+     `listWhatsAppConnections`, `getOnboardingAttempt`, `sendMessage`) já
+     usavam o valor certo e não precisam de nenhum split; só
+     `associateSenderProfile` tinha um segundo campo (`external_reference`)
+     que exige um valor diferente (a vendedora) do `source_reference`
+     (a instalação/composta).
 3. **Stage.sql** -- ver seção acima, alteração manual necessária.
 4. **Sinal `bippa.meta.onboarding.ready` não confirmado.** O plano previa
    mandar `onboarding.start` "quando o popup sinalizar pronto -- ou, se não

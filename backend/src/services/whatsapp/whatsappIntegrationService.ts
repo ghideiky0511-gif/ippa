@@ -18,7 +18,11 @@ import {
 import { requireSettingsAdministrator } from "@/services/settings/settingsAuthorization";
 import { ValidationError } from "@/services/shared/errors";
 import { errorMeta, logger } from "@/lib/logger";
-import { externalReferenceForSeller, mapBippaMessagingError, senderProfileKeyForSeller } from "./whatsappServiceErrors";
+import {
+    externalReferenceForSeller,
+    mapBippaMessagingError,
+    senderProfileKeyForSeller,
+} from "./whatsappServiceErrors";
 
 // Reescrito para o novo desenho: proxy fino sobre bippaMessagingClient +
 // espelho local em whatsapp_connections. Escopo é a VENDEDORA (sellerId),
@@ -26,10 +30,19 @@ import { externalReferenceForSeller, mapBippaMessagingError, senderProfileKeyFor
 // requireSettingsAdministrator) -- é a administradora quem conecta o número
 // em nome da vendedora, não a própria vendedora autenticada.
 
-async function requireSellerInTenant(tenant: Tenant, user: AuthUser, sellerId: string) {
-    const seller = await withTenantTransaction(tenant, user, (client) => findUserRowById(client, sellerId));
+async function requireSellerInTenant(
+    tenant: Tenant,
+    user: AuthUser,
+    sellerId: string,
+) {
+    const seller = await withTenantTransaction(tenant, user, (client) =>
+        findUserRowById(client, sellerId),
+    );
     if (!seller || seller.role !== "vendedora") {
-        throw new ValidationError("SELLER_NOT_FOUND", "Vendedora não encontrada nesta loja.");
+        throw new ValidationError(
+            "SELLER_NOT_FOUND",
+            "Vendedora não encontrada nesta loja.",
+        );
     }
     return seller;
 }
@@ -59,7 +72,10 @@ export async function getWhatsAppConnections(
     await requireSellerInTenant(tenant, user, sellerId);
     const sourceReference = externalReferenceForSeller(tenant.id, sellerId);
     try {
-        const entries = await bippaMessagingClient.listWhatsAppConnections(getApiKey(), sourceReference);
+        const entries = await bippaMessagingClient.listWhatsAppConnections(
+            getApiKey(),
+            sourceReference,
+        );
         return entries.map((entry) => ({
             phoneId: entry.phoneId,
             displayPhoneMasked: entry.displayPhoneMasked,
@@ -69,12 +85,20 @@ export async function getWhatsAppConnections(
             status: entry.status,
         }));
     } catch (exc) {
-        logger.error("whatsapp-integration", "Falha ao listar conexões de WhatsApp no bippa-messaging", {
-            tenantId: tenant.id,
-            sellerId,
-            ...errorMeta(exc),
-        });
-        throw mapBippaMessagingError(exc, "WHATSAPP_CONNECTIONS_UNAVAILABLE", "Não foi possível consultar os telefones conectados.");
+        logger.error(
+            "whatsapp-integration",
+            "Falha ao listar conexões de WhatsApp no bippa-messaging",
+            {
+                tenantId: tenant.id,
+                sellerId,
+                ...errorMeta(exc),
+            },
+        );
+        throw mapBippaMessagingError(
+            exc,
+            "WHATSAPP_CONNECTIONS_UNAVAILABLE",
+            "Não foi possível consultar os telefones conectados.",
+        );
     }
 }
 
@@ -145,13 +169,22 @@ export async function listTenantWhatsAppConnectionStatuses(
     user: AuthUser,
 ): Promise<TenantWhatsAppConnectionStatus[]> {
     requireSettingsAdministrator(user);
-    const [rows, pendingBySeller] = await withTenantTransaction(tenant, user, async (client) => [
-        await listWhatsAppConnectionsByTenant(client),
-        await listPendingWhatsAppOnboardingAttemptsByTenant(client),
-    ]);
+    const [rows, pendingBySeller] = await withTenantTransaction(
+        tenant,
+        user,
+        async (client) => [
+            await listWhatsAppConnectionsByTenant(client),
+            await listPendingWhatsAppOnboardingAttemptsByTenant(client),
+        ],
+    );
     return rows.map((row) => {
         const pending = pendingBySeller.get(row.seller_id);
-        return toStatus(row.seller_id, row, pending?.id ?? null, pending?.expires_at.toISOString() ?? null);
+        return toStatus(
+            row.seller_id,
+            row,
+            pending?.id ?? null,
+            pending?.expires_at.toISOString() ?? null,
+        );
     });
 }
 
@@ -170,7 +203,8 @@ export async function associateWhatsAppSenderProfile(
     requireSettingsAdministrator(user);
     await requireSellerInTenant(tenant, user, sellerId);
     const normalizedPhoneId = phoneId?.trim();
-    if (!normalizedPhoneId) throw new ValidationError("INVALID_INPUT", "phoneId é obrigatório.");
+    if (!normalizedPhoneId)
+        throw new ValidationError("INVALID_INPUT", "phoneId é obrigatório.");
 
     // external_reference/sender_profile_key são sempre derivados do tenant
     // autenticado (route → session) + da vendedora alvo, nunca de entrada
@@ -181,24 +215,42 @@ export async function associateWhatsAppSenderProfile(
 
     let association;
     try {
-        association = await bippaMessagingClient.associateSenderProfile(getApiKey(), normalizedPhoneId, {
-            // Confirmado no bippa-messaging: source_reference (organização/
-            // tenant) e external_reference (vendedora) são campos distintos --
-            // NUNCA a referência composta tenant:seller aqui, isso é só para o
-            // nosso espelho local (externalReferenceForSeller, abaixo).
-            sourceReference: tenant.id,
-            externalReference: sellerId,
-            senderProfileKey,
-            capabilityPayments: false,
-        });
+        association = await bippaMessagingClient.associateSenderProfile(
+            getApiKey(),
+            normalizedPhoneId,
+            {
+                // source_reference precisa ser o MESMO valor usado em
+                // ensureWhatsAppInstallation (externalReferenceForSeller, ver
+                // whatsappInstallationService.ts) -- no nosso desenho cada
+                // vendedora tem sua própria "organização"/instalação no
+                // bippa-messaging, provisionada com a referência composta
+                // tenant:seller. Usar tenant.id sozinho aqui faz
+                // organizationForRequest não achar nenhuma linha em
+                // application_installations e devolver "Instalacao da aplicacao
+                // nao autorizada". external_reference continua distinto --
+                // sempre a vendedora (sellerId puro), nunca essa mesma composta.
+                sourceReference: externalReference,
+                externalReference: sellerId,
+                senderProfileKey,
+                capabilityPayments: false,
+            },
+        );
     } catch (exc) {
-        logger.error("whatsapp-integration", "Falha ao associar sender profile no bippa-messaging", {
-            tenantId: tenant.id,
-            sellerId,
-            phoneId: normalizedPhoneId,
-            ...errorMeta(exc),
-        });
-        throw mapBippaMessagingError(exc, "WHATSAPP_ASSOCIATION_FAILED", "Não foi possível associar este telefone à vendedora.");
+        logger.error(
+            "whatsapp-integration",
+            "Falha ao associar sender profile no bippa-messaging",
+            {
+                tenantId: tenant.id,
+                sellerId,
+                phoneId: normalizedPhoneId,
+                ...errorMeta(exc),
+            },
+        );
+        throw mapBippaMessagingError(
+            exc,
+            "WHATSAPP_ASSOCIATION_FAILED",
+            "Não foi possível associar este telefone à vendedora.",
+        );
     }
 
     // PATCH .../sender-profile devolve a linha crua de sender_profiles (id,
@@ -209,28 +261,42 @@ export async function associateWhatsAppSenderProfile(
     // bippa-messaging), só deixa os metadados em branco até a próxima consulta.
     let phoneMeta: bippaMessagingClient.WhatsAppConnectionEntry | null = null;
     try {
-        const connections = await bippaMessagingClient.listWhatsAppConnections(getApiKey(), externalReference);
-        phoneMeta = connections.find((entry) => entry.phoneId === association.phoneId) ?? null;
+        const connections = await bippaMessagingClient.listWhatsAppConnections(
+            getApiKey(),
+            externalReference,
+        );
+        phoneMeta =
+            connections.find(
+                (entry) => entry.phoneId === association.phoneId,
+            ) ?? null;
     } catch (exc) {
-        logger.error("whatsapp-integration", "Falha ao buscar metadados do telefone após associar sender profile", {
-            tenantId: tenant.id,
-            sellerId,
-            phoneId: association.phoneId,
-            ...errorMeta(exc),
-        });
+        logger.error(
+            "whatsapp-integration",
+            "Falha ao buscar metadados do telefone após associar sender profile",
+            {
+                tenantId: tenant.id,
+                sellerId,
+                phoneId: association.phoneId,
+                ...errorMeta(exc),
+            },
+        );
     }
 
     return withTenantTransaction(tenant, user, async (client) => {
-        const row = await updateWhatsAppConnectionAfterAssociation(client, sellerId, {
-            externalReference,
-            phoneId: association.phoneId,
-            senderProfileKey: association.senderProfileKey,
-            capabilityPayments: association.capabilityPayments,
-            displayPhoneMasked: phoneMeta?.displayPhoneMasked ?? null,
-            verifiedName: phoneMeta?.verifiedName ?? null,
-            qualityRating: phoneMeta?.qualityRating ?? null,
-            status: association.status || "connected",
-        });
+        const row = await updateWhatsAppConnectionAfterAssociation(
+            client,
+            sellerId,
+            {
+                externalReference,
+                phoneId: association.phoneId,
+                senderProfileKey: association.senderProfileKey,
+                capabilityPayments: association.capabilityPayments,
+                displayPhoneMasked: phoneMeta?.displayPhoneMasked ?? null,
+                verifiedName: phoneMeta?.verifiedName ?? null,
+                qualityRating: phoneMeta?.qualityRating ?? null,
+                status: association.status || "connected",
+            },
+        );
         // CONNECTED (não ACTIVATED): esta é a primeira vez que um telefone
         // fica de fato vinculado à vendedora -- espelha o significado que
         // "connected" tinha no fluxo antigo (Embedded Signup concluído).
