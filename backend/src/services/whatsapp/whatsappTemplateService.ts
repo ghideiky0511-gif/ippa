@@ -48,19 +48,37 @@ export async function submitStandardWhatsAppTemplate(
             "Conecte o WhatsApp da vendedora antes de cadastrar templates.",
         );
     }
+    // waba_id/sender_profile_id só existem a partir desta migration (ver
+    // 066_whatsapp_connection_metadata.sql) -- uma conexão associada antes
+    // dela ainda não tem esses campos gravados localmente.
+    if (!connection.waba_id || !connection.sender_profile_id) {
+        throw new ValidationError(
+            "WHATSAPP_RECONNECT_REQUIRED",
+            "Reconecte o WhatsApp da vendedora antes de cadastrar templates.",
+        );
+    }
 
     const definition = standardWhatsAppTemplate(parsed.data.templateKey);
     let submitted;
     try {
-        submitted = await bippaMessagingClient.createMessageTemplate(getApiKey(), connection.phone_id!, {
-            sourceReference: connection.external_reference,
-            senderProfile: connection.sender_profile_key,
+        // Fluxo real (backend/docs/mensageria/bippa-messaging/docs/
+        // api-reference.md, seção "Templates"): criar o template na WABA e
+        // só depois vincular ao sender profile sob a chave de negócio
+        // (template_key) -- é esse vínculo que POST /v1/dispatches resolve.
+        const created = await bippaMessagingClient.createWabaTemplate(getApiKey(), connection.waba_id, {
+            sourceReference: tenant.id,
             name: definition.name,
             category: definition.category,
             languageCode: definition.languageCode,
             body: definition.body,
             bodyExamples: definition.parameters.map((parameter) => parameter.example),
         });
+        await bippaMessagingClient.bindTemplateToSenderProfile(getApiKey(), connection.sender_profile_id, {
+            sourceReference: tenant.id,
+            templateId: created.id,
+            templateKey: definition.key,
+        });
+        submitted = created;
     } catch (exc) {
         logger.error("whatsapp-template", "Falha ao cadastrar template no WABA", {
             tenantId: tenant.id,

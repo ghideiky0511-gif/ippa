@@ -21,13 +21,6 @@ export function senderProfileKeyForSeller(tenantId: string, sellerId: string): s
     return `catalogo:${tenantId}:${sellerId}`;
 }
 
-// Idem, para o external_reference (source_reference) que o bippa-messaging
-// usa para reconhecer "qual conexão é esta" -- um tenant agora pode ter
-// várias (uma por vendedora), então tenantId sozinho não basta mais.
-export function externalReferenceForSeller(tenantId: string, sellerId: string): string {
-    return `${tenantId}:${sellerId}`;
-}
-
 // Traduz qualquer falha do bippa-messaging (ou de rede/timeout) numa
 // ValidationError com mensagem clara -- nunca deixa um erro genérico vazar
 // para a rota. Quando a falha já é um BippaMessagingClientError, sua

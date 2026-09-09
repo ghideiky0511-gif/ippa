@@ -57,6 +57,6 @@ export async function createPaymentLink(
   }
   const paymentUrl = `${publicOrigin}/${tenant.slug}/pagar/${token}`;
   notifyPaymentLink(tenant, recipient, paymentUrl);
-  sendPaymentLinkWhatsApp(tenant, whatsappRecipient, paymentUrl);
+  sendPaymentLinkWhatsApp(tenant, whatsappRecipient, paymentUrl, token);
   return { token };
 }

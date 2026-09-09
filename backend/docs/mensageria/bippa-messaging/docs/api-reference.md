@@ -534,6 +534,28 @@ aquele tipo, ex.: `{ "link": "https://..." }` ou `{ "id": "media-id-da-meta" }`)
 }
 ```
 
+**`kind: "reaction"`** — reage com um emoji a uma mensagem existente
+(inbound ou outbound) identificada pelo `provider_message_id` (wamid) dela.
+Está sujeita à mesma janela de 24h do `kind: "text"` (mesmo erro `422` fora
+dela). Enviar `emoji: ""` remove uma reação enviada anteriormente — é assim
+que a própria Cloud API da Meta modela "desfazer reação", não existe um
+`kind` separado para isso:
+
+```json
+{
+  "source_reference": "tenant-123",
+  "seller_reference": "17",
+  "recipient": "5511999999999",
+  "kind": "reaction",
+  "idempotency_key": "minha-app:T-42:seller:17:message:wamid123:reaction",
+  "payload": { "message_id": "wamid.HBg...", "emoji": "👍" }
+}
+```
+
+> Requer a migration `db/migrations/20260909000000_dispatches_allow_reaction_kind.sql`
+> aplicada no banco (adiciona `'reaction'` ao `CHECK` de `dispatches.kind`);
+> sem ela a Meta nunca chega a ser chamada, o insert falha antes.
+
 Resposta `202` (ou `200` se `idempotency_key` já havia sido usada —
 `duplicate: true`, sem reenviar):
 
@@ -614,7 +636,15 @@ Ordenado por `updated_at desc`, limitado a 100 conversas.
 ```
 
 `body` já vem decifrado; após 90 dias o conteúdo é purgado e `body` volta
-vazio com `metadata: {"retained": true}`.
+vazio com `metadata: {"retained": true}`. Para `type: "reaction"`, `body` é
+o próprio emoji recebido e `metadata.reacted_to` traz o `provider_message_id`
+(wamid) da mensagem que foi reagida.
+
+Toda mensagem inbound recebe automaticamente, no worker, uma confirmação de
+leitura à Meta (equivalente ao "✓✓ azul") acompanhada de um indicador de
+"digitando..." de ~25s — uma única chamada Graph por evento
+`conversation.inbound`, sem rota própria nem opção de desativar por
+enquanto.
 
 ### `POST /v1/conversations/:id/reply`
 
@@ -774,6 +804,13 @@ uma resposta não-`2xx` faz o worker tentar de novo com backoff exponencial
 > (`bippa_messaging.event_subscriptions`) — hoje isso é feito manualmente no
 > banco. Uma API `POST /v1/admin/event-subscriptions` (ou equivalente) fica
 > como pendência antes de liberar novos consumidores em produção.
+>
+> **Lacuna atual:** `conversation.inbound` ainda **não** dispara o webhook
+> assinado acima, apesar de constar na tabela — hoje o worker só usa esse
+> evento internamente para marcar a mensagem como lida e abrir o indicador de
+> digitação (ver seção Inbox). Um subscriber cadastrado não é notificado de
+> mensagens inbound por enquanto; falta ligar esse evento a `signedWebhook`
+> no worker.
 
 ---
 

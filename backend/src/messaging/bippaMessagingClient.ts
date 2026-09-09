@@ -272,33 +272,52 @@ export interface WhatsAppConnectionEntry {
     displayPhoneMasked: string | null;
     verifiedName: string | null;
     qualityRating: string | null;
+    // Chave interna de roteamento do bippa-messaging -- NUNCA usar para
+    // comparar/filtrar por vendedora (ver externalReference abaixo). Exposta
+    // só para log/depuração.
     senderProfileKey: string | null;
+    // `sender_profiles.external_reference` deste telefone, quando já
+    // associado a algum sender profile -- é ISSO que identifica "de qual
+    // vendedora é este telefone" (nunca senderProfileKey). `null` quando o
+    // telefone ainda não foi reivindicado por nenhuma vendedora.
+    externalReference: string | null;
+    capabilityPayments: boolean;
+    // WABA e conexão-pai deste telefone -- necessários para o fluxo de
+    // templates (createWabaTemplate usa wabaId; bindTemplateToSenderProfile
+    // usa o sender_profile_id retornado por associateSenderProfile, não
+    // este connectionId, mas guardamos os dois para referência/depuração).
+    wabaId: string;
+    connectionId: string;
     status: string;
 }
 
-// Formato confirmado no código-fonte do bippa-messaging
-// (messaging_repository.js:227): cada item de `data` é uma CONEXÃO
-// (publicConnection: id=connection_id, waba_id, ...), não um telefone -- os
-// telefones ficam aninhados em `phones[]` (publicPhone: id=phone_numbers.id,
-// phone_number_id, display_phone_number, verified_name, quality_rating,
-// active). `id` existe nos dois níveis com significados DIFERENTES --
-// confirmado por bug em produção (2026-09-09): estávamos lendo o `id` do
-// nível da conexão como se fosse o phoneId, o que produz um UUID que nunca
-// existe em `phone_numbers` (é sempre o id de `connections`) e causa
-// `phone_not_found` no PATCH .../sender-profile mesmo o telefone existindo e
-// aparecendo nesta mesma listagem. Não inclui sender_profile_key -- essa
-// listagem é dos telefones conectados à organização, não do vínculo por
-// vendedora (esse vínculo é o nosso espelho local em whatsapp_connections).
+// Formato confirmado na doc oficial
+// (backend/docs/mensageria/bippa-messaging/docs/api-reference.md, seção
+// "Conexões, números e perfis de envio"): cada item de `data` é uma CONEXÃO
+// (id=connection_id, waba_id, ...), não um telefone -- os telefones ficam
+// aninhados em `phones[]` (id=phone_numbers.id, phone_number_id,
+// display_phone_number, verified_name, quality_rating, active,
+// sender_profile_key, external_reference, capability_payments). `id` existe
+// nos dois níveis com significados DIFERENTES -- confirmado por bug em
+// produção (2026-09-09): estávamos lendo o `id` do nível da conexão como se
+// fosse o phoneId, o que produz um UUID que nunca existe em `phone_numbers`
+// (é sempre o id de `connections`) e causa `phone_not_found` no PATCH
+// .../sender-profile mesmo o telefone existindo e aparecendo nesta mesma
+// listagem.
 interface WhatsAppConnectionPhoneResponse {
     id: string;
     display_phone_number?: string | null;
     verified_name?: string | null;
     quality_rating?: string | null;
     active: boolean;
+    sender_profile_key?: string | null;
+    external_reference?: string | null;
+    capability_payments?: boolean;
 }
 
 interface WhatsAppConnectionResponse {
     id: string; // id da CONEXÃO/WABA -- nunca usar como phoneId, ver acima.
+    waba_id: string;
     phones?: WhatsAppConnectionPhoneResponse[];
 }
 
@@ -306,13 +325,16 @@ interface ListWhatsAppConnectionsResponse {
     data: WhatsAppConnectionResponse[];
 }
 
-// Lista os telefones do WhatsApp já vinculados à instalação identificada por
-// `sourceReference` no bippa-messaging -- usado depois do Embedded Signup
-// concluir, para a administradora escolher qual telefone associar ao sender
-// profile da vendedora. `source_reference` é OBRIGATÓRIO na rota: autenticar
-// só com a API key não diz qual tenant/vendedora deve ser consultado (a key
-// é da aplicação inteira, não por instalação) -- sem o filtro, uma
-// vendedora veria telefones de outra.
+// Lista os telefones do WhatsApp já vinculados à ORGANIZAÇÃO (= tenant, ver
+// whatsappInstallationService.ts) identificada por `sourceReference` no
+// bippa-messaging -- usado depois do Embedded Signup concluir, para a
+// administradora escolher qual telefone associar ao sender profile da
+// vendedora. `source_reference` é OBRIGATÓRIO na rota: autenticar só com a
+// API key não diz qual tenant deve ser consultado (a key é da aplicação
+// inteira, não por instalação). A rota NÃO filtra por vendedora no servidor
+// -- devolve todos os telefones da organização; quem chama filtra
+// localmente comparando `externalReference` (ver
+// whatsappIntegrationService.getWhatsAppConnections).
 export function listWhatsAppConnections(
     apiKey: string,
     sourceReference: string,
@@ -335,10 +357,11 @@ export function listWhatsAppConnections(
                 displayPhoneMasked: phone.display_phone_number ?? null,
                 verifiedName: phone.verified_name ?? null,
                 qualityRating: phone.quality_rating ?? null,
-                // Não retornado por esta listagem (ver WhatsAppConnectionPhoneResponse) --
-                // o vínculo com a vendedora é o nosso espelho local, não algo que o
-                // bippa-messaging saiba nesta rota.
-                senderProfileKey: null,
+                senderProfileKey: phone.sender_profile_key ?? null,
+                externalReference: phone.external_reference ?? null,
+                capabilityPayments: phone.capability_payments ?? false,
+                wabaId: connection.waba_id,
+                connectionId: connection.id,
                 status: phone.active ? "connected" : "not_connected",
             })),
         ),
@@ -349,9 +372,7 @@ export interface AssociateSenderProfileInput {
     // Referência do TENANT (organização no bippa-messaging) -- NUNCA a
     // referência da vendedora. Confirmado em onboarding.js (assignPhone) +
     // messaging_service.js (organizationForRequest): são dois campos
-    // distintos, ambos obrigatórios, nunca um pelo outro (foi essa troca que
-    // causou o "phone_not_found" -- source_reference estava recebendo a
-    // referência composta tenant:seller em vez de só o tenant).
+    // distintos, ambos obrigatórios, nunca um pelo outro.
     sourceReference: string;
     // Referência da VENDEDORA dentro deste tenant -- vira
     // sender_profiles.external_reference, usado depois por resolveSender().
@@ -362,6 +383,10 @@ export interface AssociateSenderProfileInput {
 
 export interface SenderProfileAssociation {
     phoneId: string;
+    // Id do sender profile (sender_profiles.id) -- necessário para
+    // bindTemplateToSenderProfile (ver whatsappTemplateService.ts).
+    senderProfileId: string;
+    connectionId: string;
     senderProfileKey: string;
     capabilityPayments: boolean;
     displayPhoneMasked: string | null;
@@ -414,6 +439,8 @@ export function associateSenderProfile(
         },
     ).then((response) => ({
         phoneId: response.sender_profile.phone_id,
+        senderProfileId: response.sender_profile.id,
+        connectionId: response.sender_profile.connection_id,
         senderProfileKey: response.sender_profile.key,
         capabilityPayments: response.sender_profile.capability_payments,
         // sender_profiles não guarda esses três -- pertencem a phone_numbers
@@ -428,135 +455,179 @@ export function associateSenderProfile(
     }));
 }
 
-export interface SendMessageTemplateInput {
+// Contrato confirmado em
+// backend/docs/mensageria/bippa-messaging/docs/api-reference.md, seção
+// "Templates". Criar um template é por WABA (não por telefone -- um WABA
+// pode ter vários números, o template pertence à WABA); vincular ao sender
+// profile (bindTemplateToSenderProfile, logo abaixo) é o passo separado que
+// permite POST /v1/dispatches resolver `template_key`.
+export interface CreateWabaTemplateInput {
+    sourceReference: string;
     name: string;
     languageCode: string;
-    bodyParameters?: string[];
-}
-
-export interface SendMessageInput {
-    sourceReference: string;
-    senderProfile: string;
-    to: string;
-    template: SendMessageTemplateInput;
-}
-
-export interface SendMessageResult {
-    id: string;
-}
-
-export interface CreateMessageTemplateInput {
-    sourceReference: string;
-    senderProfile: string;
-    name: string;
     category: "UTILITY";
-    languageCode: string;
     body: string;
     bodyExamples: string[];
 }
 
-export interface CreateMessageTemplateResult {
-    id: string | null;
+export interface CreateWabaTemplateResult {
+    id: string;
     name: string;
     status: string;
     category: string;
     languageCode: string;
 }
 
-interface CreateMessageTemplateResponse {
-    id?: string;
-    name?: string;
-    status?: string;
-    category?: string;
-    language?: string;
-    template?: {
-        id?: string;
-        name?: string;
-        status?: string;
-        category?: string;
-        language?: string;
-    };
+interface CreateWabaTemplateResponse {
+    id: string;
+    name: string;
+    status: string;
+    category: string;
+    language: string;
 }
 
-// O bippa-messaging resolve o WABA a partir do telefone conectado. Assim o
-// Catálogo não recebe waba_id nem credencial Meta. O payload interno mantém os
-// componentes no formato da Graph API para o serviço central validar,
-// autorizar e encaminhar a criação.
-export function createMessageTemplate(
+export function createWabaTemplate(
     apiKey: string,
-    phoneId: string,
-    input: CreateMessageTemplateInput,
+    wabaId: string,
+    input: CreateWabaTemplateInput,
     reporter?: ExternalApiCallReporter,
-): Promise<CreateMessageTemplateResult> {
-    return bippaMessagingRequest<CreateMessageTemplateResponse>(
+): Promise<CreateWabaTemplateResult> {
+    return bippaMessagingRequest<CreateWabaTemplateResponse>(
         "POST",
-        `${baseUrl()}/v1/admin/phones/${encodeURIComponent(phoneId)}/message-templates`,
+        `${baseUrl()}/v1/admin/connections/${encodeURIComponent(wabaId)}/templates`,
         {
             service: "bippa-messaging",
             apiKey,
             jsonBody: {
                 source_reference: input.sourceReference,
-                sender_profile: input.senderProfile,
-                template: {
-                    name: input.name,
-                    category: input.category,
-                    language: input.languageCode,
-                    allow_category_change: false,
-                    components: [
-                        {
-                            type: "BODY",
-                            text: input.body,
-                            example: { body_text: [input.bodyExamples] },
-                        },
-                    ],
-                },
+                name: input.name,
+                language: input.languageCode,
+                category: input.category,
+                components: [
+                    {
+                        type: "BODY",
+                        text: input.body,
+                        example: { body_text: [input.bodyExamples] },
+                    },
+                ],
             },
-            operation: "createMessageTemplate",
+            operation: "createWabaTemplate",
             reporter,
         },
-    ).then((response) => {
-        const template = response.template ?? response;
-        return {
-            id: template.id ?? null,
-            name: template.name ?? input.name,
-            status: template.status ?? "PENDING",
-            category: template.category ?? input.category,
-            languageCode: template.language ?? input.languageCode,
-        };
-    });
+    ).then((response) => ({
+        id: response.id,
+        name: response.name,
+        status: response.status,
+        category: response.category,
+        languageCode: response.language,
+    }));
 }
 
-interface SendMessageResponse {
+// Vincula um template já criado na WABA (createWabaTemplate) a um sender
+// profile, sob uma chave de negócio (`templateKey`, ex.: "order_confirmed")
+// -- é essa chave que POST /v1/dispatches usa depois em
+// payload.template_key, nunca o nome real da template na Meta.
+export interface BindTemplateToSenderProfileInput {
+    sourceReference: string;
+    templateId: string;
+    templateKey: string;
+}
+
+export interface TemplateBinding {
     id: string;
+    senderProfileId: string;
+    templateId: string;
+    templateKey: string;
+    status: string;
 }
 
-// ATENÇÃO: o contrato exato deste endpoint NÃO está especificado na tarefa
-// que originou esta integração -- POST /v1/messages com o body abaixo é um
-// formato PLAUSÍVEL (espelha o envelope de template da própria Cloud API,
-// que era o transporte anterior), mas precisa ser VALIDADO contra a
-// documentação real do bippa-messaging antes do primeiro envio real (mesmo
-// disclaimer que existia em whatsapp/client.ts sobre a Graph API -- aqui o
-// risco é maior porque não há doc pública nenhuma pra conferir, só a
-// convenção REST já usada nos outros endpoints A-D deste client).
-export function sendMessage(
+interface TemplateBindingResponse {
+    id: string;
+    sender_profile_id: string;
+    template_id: string;
+    template_key: string;
+    status: string;
+}
+
+export function bindTemplateToSenderProfile(
     apiKey: string,
-    input: SendMessageInput,
+    senderProfileId: string,
+    input: BindTemplateToSenderProfileInput,
     reporter?: ExternalApiCallReporter,
-): Promise<SendMessageResult> {
-    return bippaMessagingRequest<SendMessageResponse>("POST", `${baseUrl()}/v1/messages`, {
+): Promise<TemplateBinding> {
+    return bippaMessagingRequest<TemplateBindingResponse>(
+        "POST",
+        `${baseUrl()}/v1/admin/sender-profiles/${encodeURIComponent(senderProfileId)}/template-bindings`,
+        {
+            service: "bippa-messaging",
+            apiKey,
+            jsonBody: {
+                source_reference: input.sourceReference,
+                template_id: input.templateId,
+                template_key: input.templateKey,
+            },
+            operation: "bindTemplateToSenderProfile",
+            reporter,
+        },
+    ).then((response) => ({
+        id: response.id,
+        senderProfileId: response.sender_profile_id,
+        templateId: response.template_id,
+        templateKey: response.template_key,
+        status: response.status,
+    }));
+}
+
+// Contrato confirmado em api-reference.md, seção "Envio de mensagens" --
+// substitui o antigo POST /v1/messages (nunca validado contra documentação
+// real, ver histórico deste arquivo). `sellerReference` é o
+// `external_reference` do sender profile (nunca a chave interna
+// `sender_profile_key`); `idempotencyKey` é obrigatória e única por
+// organização.
+export interface DispatchTemplateMessageInput {
+    sourceReference: string;
+    sellerReference: string;
+    to: string;
+    idempotencyKey: string;
+    templateKey: string;
+    params: Record<string, string>;
+    mediaUrl?: string;
+}
+
+export interface DispatchMessageResult {
+    id: string;
+    duplicate: boolean;
+}
+
+interface DispatchMessageResponse {
+    dispatch: { id: string };
+    duplicate: boolean;
+}
+
+export function dispatchTemplateMessage(
+    apiKey: string,
+    input: DispatchTemplateMessageInput,
+    reporter?: ExternalApiCallReporter,
+): Promise<DispatchMessageResult> {
+    return bippaMessagingRequest<DispatchMessageResponse>("POST", `${baseUrl()}/v1/dispatches`, {
         service: "bippa-messaging",
         apiKey,
         jsonBody: {
             source_reference: input.sourceReference,
-            sender_profile: input.senderProfile,
-            to: input.to,
-            template: {
-                name: input.template.name,
-                languageCode: input.template.languageCode,
-                bodyParameters: input.template.bodyParameters ?? [],
+            seller_reference: input.sellerReference,
+            recipient: input.to,
+            kind: "template",
+            idempotency_key: input.idempotencyKey,
+            payload: {
+                template_key: input.templateKey,
+                params: input.params,
+                ...(input.mediaUrl ? { media_url: input.mediaUrl } : {}),
             },
         },
-        operation: "sendMessage",
+        operation: "dispatchTemplateMessage",
         reporter,
-    });
+    }).then((response) => ({
+        id: response.dispatch.id,
+        duplicate: response.duplicate,
+    }));
 }

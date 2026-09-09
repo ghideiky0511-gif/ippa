@@ -16,7 +16,7 @@ import {
 import { requireSettingsAdministrator } from "@/services/settings/settingsAuthorization";
 import { NotFoundError, ValidationError } from "@/services/shared/errors";
 import { errorMeta, logger } from "@/lib/logger";
-import { externalReferenceForSeller, mapBippaMessagingError, senderProfileKeyForSeller } from "./whatsappServiceErrors";
+import { mapBippaMessagingError, senderProfileKeyForSeller } from "./whatsappServiceErrors";
 
 // Reescrito para o novo desenho: quem fala com a Meta é o bippa-messaging,
 // não o Catálogo -- este serviço só abre uma "tentativa de onboarding"
@@ -25,10 +25,13 @@ import { externalReferenceForSeller, mapBippaMessagingError, senderProfileKeyFor
 // waba_id/phone_number_id aqui (ver whatsappIntegrationService.ts para o
 // passo seguinte, depois que o popup termina).
 //
-// O vínculo é por VENDEDORA: é a administradora quem inicia o onboarding em
-// nome de uma vendedora específica (sellerId), não em nome do tenant como um
-// todo -- um tenant pode ter várias vendedoras, cada uma com seu próprio
-// número.
+// O vínculo do NÚMERO é por VENDEDORA: é a administradora quem inicia o
+// onboarding em nome de uma vendedora específica (sellerId) -- um tenant pode
+// ter várias vendedoras, cada uma com seu próprio número. A ORGANIZAÇÃO no
+// bippa-messaging, porém, é por TENANT (não por vendedora): todas as
+// tentativas de onboarding de um mesmo tenant usam o mesmo source_reference
+// (tenant.id) -- ver backend/docs/mensageria/bippa-messaging/docs/
+// api-reference.md ("Modelo de dados").
 
 async function requireSellerInTenant(tenant: Tenant, user: AuthUser, sellerId: string) {
     const seller = await withTenantTransaction(tenant, user, (client) => findUserRowById(client, sellerId));
@@ -63,19 +66,22 @@ export async function startWhatsAppOnboarding(
     requireSettingsAdministrator(user);
     await requireSellerInTenant(tenant, user, sellerId);
     const senderProfileKey = senderProfileKeyForSeller(tenant.id, sellerId);
-    const externalReference = externalReferenceForSeller(tenant.id, sellerId);
+    // Organização = tenant (não mais tenant+vendedora, ver
+    // whatsappInstallationService.ts) -- o source_reference usado aqui
+    // precisa ser o MESMO usado em ensureWhatsAppInstallation.
+    const sourceReference = tenant.id;
 
     logger.info("whatsapp-onboarding", "Iniciando tentativa de onboarding no bippa-messaging", {
         tenantId: tenant.id,
         sellerId,
-        externalReference,
+        sourceReference,
     });
 
     let attempt: WhatsAppOnboardingAttempt;
     try {
         attempt = await bippaMessagingClient.startOnboardingAttempt(getApiKey(), {
             applicationCode: APPLICATION_CODE,
-            sourceReference: externalReference,
+            sourceReference,
             actorReference: user.id,
             destinationKey: DESTINATION_KEY,
         });
@@ -102,13 +108,17 @@ export async function startWhatsAppOnboarding(
         await upsertWhatsAppConnectionRow(client, {
             tenantId: tenant.id,
             sellerId,
-            externalReference,
+            // sender_profiles.external_reference no bippa-messaging é
+            // sempre a vendedora pura (ver associateWhatsAppSenderProfile em
+            // whatsappIntegrationService.ts) -- o espelho local segue o
+            // mesmo valor, nunca mais um composto tenant:seller.
+            externalReference: sellerId,
             senderProfileKey,
         });
         await insertWhatsAppOnboardingAttempt(client, {
             attemptId: attempt.attemptId,
             sellerId,
-            sourceReference: externalReference,
+            sourceReference,
             destinationKey: DESTINATION_KEY,
             expiresAt: new Date(attempt.expiresAt),
         });

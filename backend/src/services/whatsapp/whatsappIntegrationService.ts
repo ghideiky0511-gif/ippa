@@ -18,11 +18,7 @@ import {
 import { requireSettingsAdministrator } from "@/services/settings/settingsAuthorization";
 import { ValidationError } from "@/services/shared/errors";
 import { errorMeta, logger } from "@/lib/logger";
-import {
-    externalReferenceForSeller,
-    mapBippaMessagingError,
-    senderProfileKeyForSeller,
-} from "./whatsappServiceErrors";
+import { mapBippaMessagingError, senderProfileKeyForSeller } from "./whatsappServiceErrors";
 
 // Reescrito para o novo desenho: proxy fino sobre bippaMessagingClient +
 // espelho local em whatsapp_connections. Escopo é a VENDEDORA (sellerId),
@@ -56,13 +52,18 @@ export interface WhatsAppConnectionOption {
     status: string;
 }
 
-// Lista os telefones já conectados à instalação desta VENDEDORA (do lado do
-// bippa-messaging) -- a administradora escolhe um para associar ao sender
-// profile dela (ver associateWhatsAppSenderProfile). Escopado por
-// `source_reference` (tenant+seller), nunca a lista bruta da organização
-// inteira -- sem esse filtro, uma vendedora apareceria com telefones de
-// outra. Nunca expõe token nem qualquer credencial da Meta -- essas ficam só
-// no bippa-messaging.
+// Lista os telefones já conectados à organização deste TENANT no
+// bippa-messaging -- a administradora escolhe um para associar ao sender
+// profile de uma vendedora (ver associateWhatsAppSenderProfile). A rota do
+// bippa-messaging não filtra por vendedora no servidor (devolve todos os
+// telefones da organização/tenant, ver
+// backend/docs/mensageria/bippa-messaging/docs/api-reference.md, seção
+// "Conexões, números e perfis de envio") -- por isso filtramos aqui,
+// comparando `external_reference` (nunca `sender_profile_key`, que é chave
+// interna do bippa-messaging) com `sellerId`. Sem esse filtro local, uma
+// vendedora veria telefones já associados a outra vendedora do mesmo tenant.
+// Nunca expõe token nem qualquer credencial da Meta -- essas ficam só no
+// bippa-messaging.
 export async function getWhatsAppConnections(
     tenant: Tenant,
     user: AuthUser,
@@ -70,7 +71,7 @@ export async function getWhatsAppConnections(
 ): Promise<WhatsAppConnectionOption[]> {
     requireSettingsAdministrator(user);
     await requireSellerInTenant(tenant, user, sellerId);
-    const sourceReference = externalReferenceForSeller(tenant.id, sellerId);
+    const sourceReference = tenant.id;
     // Mesmo formato do log em associateWhatsAppSenderProfile -- permite
     // comparar, linha a linha, o source_reference exato usado aqui (GET, que
     // encontra o telefone) com o usado no PATCH logo em seguida (que pode
@@ -86,14 +87,22 @@ export async function getWhatsAppConnections(
             getApiKey(),
             sourceReference,
         );
-        return entries.map((entry) => ({
-            phoneId: entry.phoneId,
-            displayPhoneMasked: entry.displayPhoneMasked,
-            verifiedName: entry.verifiedName,
-            qualityRating: entry.qualityRating,
-            senderProfileKey: entry.senderProfileKey,
-            status: entry.status,
-        }));
+        // Um telefone recém-conectado pelo Embedded Signup ainda não tem
+        // sender profile nenhum (external_reference nulo) -- precisa
+        // continuar aparecendo aqui pra administradora poder escolhê-lo (ver
+        // WhatsAppIntegrationApp.tsx, fluxo de seleção de telefone logo após
+        // o onboarding). Só exclui telefones já reivindicados por OUTRA
+        // vendedora do mesmo tenant.
+        return entries
+            .filter((entry) => entry.externalReference === null || entry.externalReference === sellerId)
+            .map((entry) => ({
+                phoneId: entry.phoneId,
+                displayPhoneMasked: entry.displayPhoneMasked,
+                verifiedName: entry.verifiedName,
+                qualityRating: entry.qualityRating,
+                senderProfileKey: entry.senderProfileKey,
+                status: entry.status,
+            }));
     } catch (exc) {
         logger.error(
             "whatsapp-integration",
@@ -219,8 +228,12 @@ export async function associateWhatsAppSenderProfile(
     // external_reference/sender_profile_key são sempre derivados do tenant
     // autenticado (route → session) + da vendedora alvo, nunca de entrada
     // externa -- garante isolamento entre tenants/vendedoras mesmo que o
-    // bippa-messaging aceitasse um valor arbitrário.
-    const externalReference = externalReferenceForSeller(tenant.id, sellerId);
+    // bippa-messaging aceitasse um valor arbitrário. sourceReference
+    // identifica a organização (= tenant, ver whatsappInstallationService.ts);
+    // externalReference identifica o sender profile dentro dela (=
+    // vendedora, sellerId puro).
+    const sourceReference = tenant.id;
+    const externalReference = sellerId;
     const senderProfileKey = senderProfileKeyForSeller(tenant.id, sellerId);
 
     // Log do valor exato de source_reference indo pro bippa-messaging --
@@ -236,7 +249,7 @@ export async function associateWhatsAppSenderProfile(
         tenantId: tenant.id,
         sellerId,
         phoneId: normalizedPhoneId,
-        sourceReference: externalReference,
+        sourceReference,
     });
 
     let association;
@@ -246,17 +259,16 @@ export async function associateWhatsAppSenderProfile(
             normalizedPhoneId,
             {
                 // source_reference precisa ser o MESMO valor usado em
-                // ensureWhatsAppInstallation (externalReferenceForSeller, ver
-                // whatsappInstallationService.ts) -- no nosso desenho cada
-                // vendedora tem sua própria "organização"/instalação no
-                // bippa-messaging, provisionada com a referência composta
-                // tenant:seller. Usar tenant.id sozinho aqui faz
-                // organizationForRequest não achar nenhuma linha em
-                // application_installations e devolver "Instalacao da aplicacao
-                // nao autorizada". external_reference continua distinto --
-                // sempre a vendedora (sellerId puro), nunca essa mesma composta.
-                sourceReference: externalReference,
-                externalReference: sellerId,
+                // ensureWhatsAppInstallation (tenant.id, ver
+                // whatsappInstallationService.ts) -- a organização é do
+                // tenant inteiro, não uma por vendedora. Usar uma referência
+                // diferente aqui faz organizationForRequest não achar
+                // nenhuma linha em application_installations e devolver
+                // "Instalacao da aplicacao nao autorizada".
+                // external_reference identifica o sender profile dentro da
+                // organização -- sempre a vendedora (sellerId puro).
+                sourceReference,
+                externalReference,
                 senderProfileKey,
                 // ATENÇÃO se implementar aprovação de Meta Payments no futuro:
                 // este PATCH é full-replace em sender_profiles (UPDATE SET
@@ -298,7 +310,7 @@ export async function associateWhatsAppSenderProfile(
     try {
         const connections = await bippaMessagingClient.listWhatsAppConnections(
             getApiKey(),
-            externalReference,
+            sourceReference,
         );
         phoneMeta =
             connections.find(
@@ -330,6 +342,14 @@ export async function associateWhatsAppSenderProfile(
                 verifiedName: phoneMeta?.verifiedName ?? null,
                 qualityRating: phoneMeta?.qualityRating ?? null,
                 status: association.status || "connected",
+                // Guardados para o fluxo de templates
+                // (whatsappTemplateService.ts): criar template exige o
+                // waba_id da conexão, e vincular o template ao sender
+                // profile exige o sender_profile_id -- nenhum dos dois
+                // aparecia em nenhuma resposta antes deste ponto.
+                wabaId: phoneMeta?.wabaId ?? null,
+                connectionId: phoneMeta?.connectionId ?? null,
+                senderProfileId: association.senderProfileId,
             },
         );
         // CONNECTED (não ACTIVATED): esta é a primeira vez que um telefone

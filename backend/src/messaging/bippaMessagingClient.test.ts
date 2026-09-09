@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
     associateSenderProfile,
-    createMessageTemplate,
+    bindTemplateToSenderProfile,
+    createWabaTemplate,
+    dispatchTemplateMessage,
     ensureApplicationInstallation,
     listWhatsAppConnections,
-    sendMessage,
     startOnboardingAttempt,
 } from "./bippaMessagingClient";
 import { BippaMessagingAuthError, BippaMessagingClientError } from "./errors";
@@ -114,6 +115,9 @@ test("listWhatsAppConnections manda source_reference como query param e mapeia s
                                     verified_name: "Loja Teste",
                                     quality_rating: "GREEN",
                                     active: true,
+                                    sender_profile_key: "seller:17",
+                                    external_reference: "seller-1",
+                                    capability_payments: false,
                                 },
                             ],
                         },
@@ -123,18 +127,22 @@ test("listWhatsAppConnections manda source_reference como query param e mapeia s
             );
         },
         async () => {
-            const result = await listWhatsAppConnections("bippa_key123_segredo", "tenant-1:seller-1");
+            const result = await listWhatsAppConnections("bippa_key123_segredo", "tenant-1");
             assert.deepEqual(result, [
                 {
                     phoneId: "phone-1",
                     displayPhoneMasked: "+55 11 99999-9999",
                     verifiedName: "Loja Teste",
                     qualityRating: "GREEN",
-                    senderProfileKey: null,
+                    senderProfileKey: "seller:17",
+                    externalReference: "seller-1",
+                    capabilityPayments: false,
+                    wabaId: "waba-1",
+                    connectionId: "connection-1",
                     status: "connected",
                 },
             ]);
-            assert.equal(calls[0].url, `${DEFAULT_BASE_URL}/v1/admin/whatsapp-connections?source_reference=tenant-1%3Aseller-1`);
+            assert.equal(calls[0].url, `${DEFAULT_BASE_URL}/v1/admin/whatsapp-connections?source_reference=tenant-1`);
         },
     );
 });
@@ -176,48 +184,45 @@ test("associateSenderProfile chama PATCH /v1/admin/phones/:phoneId/sender-profil
                 capability_payments: false,
             });
             assert.equal(result.phoneId, "phone-1");
+            assert.equal(result.senderProfileId, "sp-1");
+            assert.equal(result.connectionId, "conn-1");
             assert.equal(result.senderProfileKey, "catalogo:tenant-1");
             assert.equal(result.capabilityPayments, false);
         },
     );
 });
 
-test("createMessageTemplate envia somente a definição controlada para o WABA do telefone", async () => {
+test("createWabaTemplate cria o template na WABA (não no telefone)", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     await withFetch(
         async (input, init) => {
             calls.push({ url: String(input), init });
             return new Response(
-                JSON.stringify({ template: { id: "tpl-1", name: "bippa_order_confirmed_v1", status: "PENDING", category: "UTILITY", language: "pt_BR" } }),
+                JSON.stringify({ id: "tpl-1", name: "bippa_order_confirmed_v1", status: "PENDING", category: "UTILITY", language: "pt_BR" }),
                 { status: 201, headers: { "Content-Type": "application/json" } },
             );
         },
         async () => {
-            const result = await createMessageTemplate("bippa_key123_segredo", "phone/1", {
-                sourceReference: "tenant-1:seller-1",
-                senderProfile: "catalogo:tenant-1:seller-1",
+            const result = await createWabaTemplate("bippa_key123_segredo", "waba-1", {
+                sourceReference: "tenant-1",
                 name: "bippa_order_confirmed_v1",
                 category: "UTILITY",
                 languageCode: "pt_BR",
                 body: "Olá, {{1}}. Pedido {{2}}.",
                 bodyExamples: ["Maria", "1234"],
             });
-            assert.equal(calls[0].url, `${DEFAULT_BASE_URL}/v1/admin/phones/phone%2F1/message-templates`);
+            assert.equal(calls[0].url, `${DEFAULT_BASE_URL}/v1/admin/connections/waba-1/templates`);
             assert.equal(calls[0].init?.method, "POST");
             assert.deepEqual(JSON.parse(String(calls[0].init?.body)), {
-                source_reference: "tenant-1:seller-1",
-                sender_profile: "catalogo:tenant-1:seller-1",
-                template: {
-                    name: "bippa_order_confirmed_v1",
-                    category: "UTILITY",
-                    language: "pt_BR",
-                    allow_category_change: false,
-                    components: [{
-                        type: "BODY",
-                        text: "Olá, {{1}}. Pedido {{2}}.",
-                        example: { body_text: [["Maria", "1234"]] },
-                    }],
-                },
+                source_reference: "tenant-1",
+                name: "bippa_order_confirmed_v1",
+                language: "pt_BR",
+                category: "UTILITY",
+                components: [{
+                    type: "BODY",
+                    text: "Olá, {{1}}. Pedido {{2}}.",
+                    example: { body_text: [["Maria", "1234"]] },
+                }],
             });
             assert.deepEqual(result, {
                 id: "tpl-1",
@@ -230,29 +235,70 @@ test("createMessageTemplate envia somente a definição controlada para o WABA d
     );
 });
 
-test("sendMessage envia source_reference/sender_profile/to/template com a API key de serviço", async () => {
+test("bindTemplateToSenderProfile vincula um template já criado sob uma template_key", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     await withFetch(
         async (input, init) => {
             calls.push({ url: String(input), init });
-            return new Response(JSON.stringify({ id: "msg-1" }), { status: 200, headers: { "Content-Type": "application/json" } });
+            return new Response(
+                JSON.stringify({ id: "bind-1", sender_profile_id: "sp-1", template_id: "tpl-1", template_key: "order_confirmed", status: "APPROVED" }),
+                { status: 201, headers: { "Content-Type": "application/json" } },
+            );
         },
         async () => {
-            const result = await sendMessage("bippa_key123_segredo", {
+            const result = await bindTemplateToSenderProfile("bippa_key123_segredo", "sp-1", {
                 sourceReference: "tenant-1",
-                senderProfile: "catalogo:tenant-1",
-                to: "5511999999999",
-                template: { name: "order_confirmed", languageCode: "pt_BR", bodyParameters: ["Maria", "123"] },
+                templateId: "tpl-1",
+                templateKey: "order_confirmed",
             });
-            assert.equal(result.id, "msg-1");
-            assert.equal(calls[0].url, `${DEFAULT_BASE_URL}/v1/messages`);
+            assert.equal(calls[0].url, `${DEFAULT_BASE_URL}/v1/admin/sender-profiles/sp-1/template-bindings`);
+            assert.equal(calls[0].init?.method, "POST");
+            assert.deepEqual(JSON.parse(String(calls[0].init?.body)), {
+                source_reference: "tenant-1",
+                template_id: "tpl-1",
+                template_key: "order_confirmed",
+            });
+            assert.deepEqual(result, {
+                id: "bind-1",
+                senderProfileId: "sp-1",
+                templateId: "tpl-1",
+                templateKey: "order_confirmed",
+                status: "APPROVED",
+            });
+        },
+    );
+});
+
+test("dispatchTemplateMessage envia source_reference/seller_reference/idempotency_key/kind/payload para POST /v1/dispatches", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    await withFetch(
+        async (input, init) => {
+            calls.push({ url: String(input), init });
+            return new Response(
+                JSON.stringify({ dispatch: { id: "dispatch-1", status: "queued" }, duplicate: false }),
+                { status: 202, headers: { "Content-Type": "application/json" } },
+            );
+        },
+        async () => {
+            const result = await dispatchTemplateMessage("bippa_key123_segredo", {
+                sourceReference: "tenant-1",
+                sellerReference: "seller-1",
+                to: "5511999999999",
+                idempotencyKey: "bippa-catalogo:tenant-1:seller:seller-1:order:9081:confirmed",
+                templateKey: "order_confirmed",
+                params: { "1": "Maria", "2": "123" },
+            });
+            assert.deepEqual(result, { id: "dispatch-1", duplicate: false });
+            assert.equal(calls[0].url, `${DEFAULT_BASE_URL}/v1/dispatches`);
             assert.equal((calls[0].init?.headers as Record<string, string>)["X-Bippa-Api-Key"], "bippa_key123_segredo");
             const body = JSON.parse(String(calls[0].init?.body));
             assert.deepEqual(body, {
                 source_reference: "tenant-1",
-                sender_profile: "catalogo:tenant-1",
-                to: "5511999999999",
-                template: { name: "order_confirmed", languageCode: "pt_BR", bodyParameters: ["Maria", "123"] },
+                seller_reference: "seller-1",
+                recipient: "5511999999999",
+                kind: "template",
+                idempotency_key: "bippa-catalogo:tenant-1:seller:seller-1:order:9081:confirmed",
+                payload: { template_key: "order_confirmed", params: { "1": "Maria", "2": "123" } },
             });
         },
     );

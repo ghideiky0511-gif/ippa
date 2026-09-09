@@ -8,6 +8,17 @@ export const WHATSAPP_TEMPLATE_NAMES = {
     paymentLink: "bippa_payment_link_v1",
 } as const;
 
+// Chave de NEGÓCIO (não o nome real da template na Meta) -- é isso que
+// POST /v1/dispatches espera em payload.template_key, resolvido no servidor
+// do bippa-messaging via o vínculo criado por bindTemplateToSenderProfile
+// (ver whatsappTemplateService.ts). Mesmos valores de
+// StandardWhatsAppTemplate.key/WhatsAppTemplateKeySchema, só reexportados
+// com nomes legíveis para quem envia mensagem (whatsappNotificationService.ts).
+export const WHATSAPP_TEMPLATE_KEYS = {
+    orderConfirmed: "order_confirmed",
+    paymentLink: "payment_link",
+} as const satisfies Record<string, WhatsAppTemplateKey>;
+
 export interface StandardWhatsAppTemplate {
     key: WhatsAppTemplateKey;
     name: string;

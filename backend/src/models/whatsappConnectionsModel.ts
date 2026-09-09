@@ -14,6 +14,14 @@ export interface WhatsAppConnectionRow {
     phone_id: string | null;
     external_reference: string;
     sender_profile_key: string;
+    // Id do sender profile no bippa-messaging (sender_profiles.id) -- nulo
+    // até a primeira associação bem-sucedida. Necessário para
+    // bindTemplateToSenderProfile (ver whatsappTemplateService.ts).
+    sender_profile_id: string | null;
+    // WABA e conexão-pai do telefone associado -- nulos até a primeira
+    // associação. waba_id é necessário para createWabaTemplate.
+    waba_id: string | null;
+    connection_id: string | null;
     capability_payments: boolean;
     display_phone_masked: string | null;
     verified_name: string | null;
@@ -25,7 +33,7 @@ export interface WhatsAppConnectionRow {
 }
 
 const fields =
-    "id, tenant_id, seller_id, phone_id, external_reference, sender_profile_key, capability_payments, display_phone_masked, verified_name, quality_rating, status, last_synced_at, created_at, updated_at";
+    "id, tenant_id, seller_id, phone_id, external_reference, sender_profile_key, sender_profile_id, waba_id, connection_id, capability_payments, display_phone_masked, verified_name, quality_rating, status, last_synced_at, created_at, updated_at";
 
 export async function findWhatsAppConnectionBySeller(client: PoolClient, sellerId: string): Promise<WhatsAppConnectionRow | null> {
     const result = await client.query<WhatsAppConnectionRow>(
@@ -76,6 +84,9 @@ export interface UpdateWhatsAppConnectionAfterAssociationInput {
     externalReference: string;
     phoneId: string;
     senderProfileKey: string;
+    senderProfileId: string;
+    wabaId: string | null;
+    connectionId: string | null;
     capabilityPayments: boolean;
     displayPhoneMasked: string | null;
     verifiedName: string | null;
@@ -97,18 +108,22 @@ export async function updateWhatsAppConnectionAfterAssociation(
 ): Promise<WhatsAppConnectionRow> {
     const result = await client.query<WhatsAppConnectionRow>(
         `INSERT INTO whatsapp_connections
-            (tenant_id, seller_id, phone_id, external_reference, sender_profile_key, capability_payments,
-             display_phone_masked, verified_name, quality_rating, status, last_synced_at)
-         VALUES (app_tenant_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+            (tenant_id, seller_id, phone_id, external_reference, sender_profile_key, sender_profile_id,
+             waba_id, connection_id, capability_payments, display_phone_masked, verified_name,
+             quality_rating, status, last_synced_at)
+         VALUES (app_tenant_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
          ON CONFLICT (seller_id) DO UPDATE SET
             phone_id = $2,
             external_reference = $3,
             sender_profile_key = $4,
-            capability_payments = $5,
-            display_phone_masked = $6,
-            verified_name = $7,
-            quality_rating = $8,
-            status = $9,
+            sender_profile_id = $5,
+            waba_id = $6,
+            connection_id = $7,
+            capability_payments = $8,
+            display_phone_masked = $9,
+            verified_name = $10,
+            quality_rating = $11,
+            status = $12,
             last_synced_at = now(),
             updated_at = now()
          RETURNING ${fields}`,
@@ -117,6 +132,9 @@ export async function updateWhatsAppConnectionAfterAssociation(
             input.phoneId,
             input.externalReference,
             input.senderProfileKey,
+            input.senderProfileId,
+            input.wabaId,
+            input.connectionId,
             input.capabilityPayments,
             input.displayPhoneMasked,
             input.verifiedName,
