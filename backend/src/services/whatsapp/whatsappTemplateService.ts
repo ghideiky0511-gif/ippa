@@ -7,6 +7,7 @@ import { getApiKey } from "@/messaging/bippaAuthClient";
 import * as bippaMessagingClient from "@/messaging/bippaMessagingClient";
 import { findWhatsAppConnectionBySeller } from "@/models/whatsappConnectionsModel";
 import { recordAuditEvent, WHATSAPP_INTEGRATION_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
+import { orderDetailsLink, orderPaymentLink } from "@/services/notifications/emailNotificationService";
 import { requireSettingsAdministrator } from "@/services/settings/settingsAuthorization";
 import { ValidationError } from "@/services/shared/errors";
 import { hasActiveWhatsAppConnection } from "./whatsappNotificationService";
@@ -28,9 +29,25 @@ const SubmitTemplateSchema = z.object({
     examples: z.array(z.string().trim().min(1)).min(1),
 }).strict();
 
-export function listStandardWhatsAppTemplates(user: AuthUser) {
+// Sugestões de exemplo por parâmetro que dependem da loja (nunca de um
+// domínio fictício como "loja.exemplo.com") -- mesma origem/rota usada de
+// fato para enviar o pedido/link de pagamento à cliente (ver
+// emailNotificationService.ts), só com um número/token de exemplo.
+function resolveTemplateExample(tenant: Tenant, parameterKey: string, fallback: string): string {
+    if (parameterKey === "order_url") return orderDetailsLink(tenant, 1234);
+    if (parameterKey === "payment_url") return orderPaymentLink(tenant, "exemplo");
+    return fallback;
+}
+
+export function listStandardWhatsAppTemplates(tenant: Tenant, user: AuthUser) {
     requireSettingsAdministrator(user);
-    return STANDARD_WHATSAPP_TEMPLATES;
+    return STANDARD_WHATSAPP_TEMPLATES.map((template) => ({
+        ...template,
+        parameters: template.parameters.map((parameter) => ({
+            ...parameter,
+            example: resolveTemplateExample(tenant, parameter.key, parameter.example),
+        })),
+    }));
 }
 
 export async function submitStandardWhatsAppTemplate(

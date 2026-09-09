@@ -419,12 +419,18 @@ normalmente `PENDING`).
 (`{{1}}`, `{{2}}`, ...) precisa do campo `example` correspondente
 (`example.body_text` para `BODY`, `example.header_text` para `HEADER`) com um
 valor de amostra por variável — a Meta rejeita a criação do template sem isso.
-Este serviço valida isso **antes** de chamar a Meta: se o número de valores em
+Além disso, o texto de `BODY` **não pode começar nem terminar** com uma
+variável — sempre precisa de texto estático envolvendo `{{n}}` dos dois lados
+(ex.: `"Seu pedido {{1}} foi confirmado."` é válido, mas
+`"Olá {{1}}, acompanhe aqui: {{4}}"` com `{{4}}` colado ao fim é o padrão mais
+comum de erro aqui — um link como última variável do corpo). Este serviço
+valida os dois casos **antes** de chamar a Meta: se o número de valores em
 `example.body_text`/`example.header_text` não bater com o número de variáveis
-no texto, a requisição falha aqui mesmo com `400 invalid_template_components`
-(sem gastar uma chamada à Graph API). Todo o resto de `components` (tipos de
-botão, formato de header, limites de caracteres) continua sendo repassado como
-veio, sem validação própria — só a Meta valida.**
+no texto, ou se uma variável estiver na primeira/última posição do `BODY`, a
+requisição falha aqui mesmo com `400 invalid_template_components` (sem gastar
+uma chamada à Graph API). Todo o resto de `components` (tipos de botão,
+formato de header, limites de caracteres) continua sendo repassado como veio,
+sem validação própria — só a Meta valida.**
 
 **Erros comuns (`422 meta_graph_error`):** este é o código genérico deste
 serviço para "a Meta recusou `components`/`name`/`category` mesmo com o

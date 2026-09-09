@@ -26,7 +26,7 @@ async function authenticated(request: NextRequest, context: RouteContext) {
 export async function GET(request: NextRequest, context: RouteContext): Promise<Response> {
     const auth = await authenticated(request, context);
     if (!auth.ok) return auth.response;
-    return execute(() => Promise.resolve(whatsapp.listStandardWhatsAppTemplates(auth.session.user)));
+    return execute(() => Promise.resolve(whatsapp.listStandardWhatsAppTemplates(auth.route.tenant, auth.session.user)));
 }
 
 export async function POST(request: NextRequest, context: RouteContext): Promise<Response> {
