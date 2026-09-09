@@ -7,7 +7,6 @@ import { getApiKey } from "@/messaging/bippaAuthClient";
 import * as bippaMessagingClient from "@/messaging/bippaMessagingClient";
 import { findWhatsAppConnectionBySeller } from "@/models/whatsappConnectionsModel";
 import { recordAuditEvent, WHATSAPP_INTEGRATION_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
-import { orderDetailsLink, orderPaymentLink } from "@/services/notifications/emailNotificationService";
 import { requireSettingsAdministrator } from "@/services/settings/settingsAuthorization";
 import { ValidationError } from "@/services/shared/errors";
 import { hasActiveWhatsAppConnection } from "./whatsappNotificationService";
@@ -30,22 +29,27 @@ const SubmitTemplateSchema = z.object({
 }).strict();
 
 // Sugestões de exemplo por parâmetro que dependem da loja (nunca de um
-// domínio fictício como "loja.exemplo.com") -- mesma origem/rota usada de
-// fato para enviar o pedido/link de pagamento à cliente (ver
-// emailNotificationService.ts), só com um número/token de exemplo.
-function resolveTemplateExample(tenant: Tenant, parameterKey: string, fallback: string): string {
-    if (parameterKey === "order_url") return orderDetailsLink(tenant, 1234);
-    if (parameterKey === "payment_url") return orderPaymentLink(tenant, "exemplo");
+// domínio fictício como "loja.exemplo.com"). `origin` vem de
+// publicOrigin(request) (whatsapp/templates/route.ts) -- o host real que a
+// administradora está usando para acessar o admin nesta requisição --, não
+// de APP_URL/ADMIN_ORIGIN, que fica "localhost" em ambientes sem essas
+// variáveis configuradas (ver orderDetailsLink/orderPaymentLink em
+// emailNotificationService.ts, usadas nos e-mails reais de pedido/pagamento,
+// que rodam fora de uma requisição HTTP e por isso dependem do env).
+function resolveTemplateExample(origin: string, tenant: Tenant, parameterKey: string, fallback: string): string {
+    const slug = encodeURIComponent(tenant.slug);
+    if (parameterKey === "order_url") return `${origin}/${slug}/pedidos/1234`;
+    if (parameterKey === "payment_url") return `${origin}/${slug}/pagar/exemplo`;
     return fallback;
 }
 
-export function listStandardWhatsAppTemplates(tenant: Tenant, user: AuthUser) {
+export function listStandardWhatsAppTemplates(tenant: Tenant, user: AuthUser, origin: string) {
     requireSettingsAdministrator(user);
     return STANDARD_WHATSAPP_TEMPLATES.map((template) => ({
         ...template,
         parameters: template.parameters.map((parameter) => ({
             ...parameter,
-            example: resolveTemplateExample(tenant, parameter.key, parameter.example),
+            example: resolveTemplateExample(origin, tenant, parameter.key, parameter.example),
         })),
     }));
 }

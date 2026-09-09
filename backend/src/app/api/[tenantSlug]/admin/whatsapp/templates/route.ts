@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auditContext, execute, rateLimit, requestToken, tooManyRequests } from "@/lib/http/apiHelpers";
+import { auditContext, execute, publicOrigin, rateLimit, requestToken, tooManyRequests } from "@/lib/http/apiHelpers";
 import { isTenantRouteError, resolveTenantRoute } from "@/lib/http/tenantRoute";
 import * as authentication from "@/services/auth";
 import * as whatsapp from "@/services/whatsapp";
@@ -26,7 +26,9 @@ async function authenticated(request: NextRequest, context: RouteContext) {
 export async function GET(request: NextRequest, context: RouteContext): Promise<Response> {
     const auth = await authenticated(request, context);
     if (!auth.ok) return auth.response;
-    return execute(() => Promise.resolve(whatsapp.listStandardWhatsAppTemplates(auth.route.tenant, auth.session.user)));
+    return execute(() => Promise.resolve(
+        whatsapp.listStandardWhatsAppTemplates(auth.route.tenant, auth.session.user, publicOrigin(request)),
+    ));
 }
 
 export async function POST(request: NextRequest, context: RouteContext): Promise<Response> {
