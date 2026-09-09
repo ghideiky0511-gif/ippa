@@ -20,6 +20,12 @@ import {
 const SubmitTemplateSchema = z.object({
     sellerId: z.string().trim().min(1),
     templateKey: WhatsAppTemplateKeySchema,
+    // Valores de exemplo por variável do corpo do template, na mesma ordem
+    // de StandardWhatsAppTemplate.parameters -- a Meta exige um exemplo por
+    // variável (api-reference.md, seção Templates) e rejeita a criação sem
+    // isso. Quem preenche é a administradora, no momento do envio, para que
+    // o exemplo reflita um caso real em vez de um placeholder genérico.
+    examples: z.array(z.string().trim().min(1)).min(1),
 }).strict();
 
 export function listStandardWhatsAppTemplates(user: AuthUser) {
@@ -59,6 +65,13 @@ export async function submitStandardWhatsAppTemplate(
     }
 
     const definition = standardWhatsAppTemplate(parsed.data.templateKey);
+    if (parsed.data.examples.length !== definition.parameters.length) {
+        throw new ValidationError(
+            "INVALID_INPUT",
+            "Informe um exemplo para cada variável do template.",
+        );
+    }
+
     let submitted;
     try {
         // Fluxo real (backend/docs/mensageria/bippa-messaging/docs/
@@ -71,7 +84,7 @@ export async function submitStandardWhatsAppTemplate(
             category: definition.category,
             languageCode: definition.languageCode,
             body: definition.body,
-            bodyExamples: definition.parameters.map((parameter) => parameter.example),
+            bodyExamples: parsed.data.examples,
         });
         await bippaMessagingClient.bindTemplateToSenderProfile(getApiKey(), connection.sender_profile_id, {
             sourceReference: tenant.id,
@@ -84,6 +97,7 @@ export async function submitStandardWhatsAppTemplate(
             tenantId: tenant.id,
             sellerId: parsed.data.sellerId,
             templateKey: definition.key,
+            examples: parsed.data.examples,
             ...errorMeta(exc),
         });
         throw mapBippaMessagingError(
@@ -105,6 +119,7 @@ export async function submitStandardWhatsAppTemplate(
                 templateName: submitted.name,
                 templateId: submitted.id,
                 status: submitted.status,
+                examples: parsed.data.examples,
             },
         }),
     );

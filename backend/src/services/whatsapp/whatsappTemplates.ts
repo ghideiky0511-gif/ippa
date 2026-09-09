@@ -27,11 +27,18 @@ export interface StandardWhatsAppTemplate {
     category: "UTILITY";
     languageCode: "pt_BR";
     body: string;
+    // `example` aqui é só a SUGESTÃO pré-preenchida no formulário de envio
+    // (WhatsAppIntegrationApp.tsx) -- a administradora confirma ou digita
+    // outro valor no momento do envio, e é esse valor editado que vai para
+    // a Meta (submitStandardWhatsAppTemplate exige um `examples[]` do
+    // chamador, nunca usa este campo diretamente).
     parameters: Array<{ key: string; label: string; example: string }>;
 }
 
 // Catálogo fechado do MVP. O browser escolhe somente a chave lógica; nome,
-// texto, categoria, idioma e exemplos enviados à Meta sempre vêm daqui.
+// texto, categoria e idioma sempre vêm daqui. Os exemplos enviados à Meta
+// são preenchidos pela administradora no momento do envio (ver `example`
+// acima).
 export const STANDARD_WHATSAPP_TEMPLATES: readonly StandardWhatsAppTemplate[] = [
     {
         key: "order_confirmed",

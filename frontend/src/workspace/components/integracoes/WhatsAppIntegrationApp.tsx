@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "@/components/TenantLink";
 import { Button } from "@/components/ui/button";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Dialog, DialogCloseButton, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { HubHeader } from "@/workspace/components/shared/HubHeader";
 import { fetchUsers } from "@/workspace/lib/usersClient";
 import type { AdminUser } from "@/domain/clients/types";
@@ -110,6 +111,13 @@ export default function WhatsAppIntegrationApp() {
     const [templateSellerId, setTemplateSellerId] = useState("");
     const [templateToSubmit, setTemplateToSubmit] =
         useState<StandardWhatsAppTemplate | null>(null);
+    // Valores de exemplo por variável (chave do parâmetro -> texto), editados
+    // pela administradora antes do envio -- a Meta exige um exemplo real por
+    // variável do corpo do template, então pré-preenchemos com a sugestão de
+    // whatsappTemplates.ts e deixamos livre para confirmar ou digitar outro.
+    const [templateExampleValues, setTemplateExampleValues] = useState<
+        Record<string, string>
+    >({});
     const [submittingTemplateKey, setSubmittingTemplateKey] = useState<
         StandardWhatsAppTemplate["key"] | null
     >(null);
@@ -577,14 +585,31 @@ export default function WhatsAppIntegrationApp() {
         }
     }
 
+    function openTemplateSubmission(template: StandardWhatsAppTemplate) {
+        setTemplateExampleValues(
+            Object.fromEntries(
+                template.parameters.map((parameter) => [
+                    parameter.key,
+                    parameter.example,
+                ]),
+            ),
+        );
+        setTemplateToSubmit(template);
+    }
+
     async function submitTemplate(template: StandardWhatsAppTemplate) {
         if (!templateSellerId) return;
+        const examples = template.parameters.map(
+            (parameter) => (templateExampleValues[parameter.key] ?? "").trim(),
+        );
+        if (examples.some((example) => example.length === 0)) return;
         setSubmittingTemplateKey(template.key);
         setTemplateMessage(null);
         try {
             const result = await submitStandardWhatsAppTemplate(
                 templateSellerId,
                 template.key,
+                examples,
             );
             const normalizedStatus = result.status.toUpperCase();
             const statusText =
@@ -598,6 +623,7 @@ export default function WhatsAppIntegrationApp() {
                 text: `O template ${result.name} ${statusText}.`,
                 error: normalizedStatus === "REJECTED",
             });
+            setTemplateToSubmit(null);
         } catch (error) {
             setTemplateMessage({
                 key: template.key,
@@ -925,7 +951,7 @@ export default function WhatsAppIntegrationApp() {
                                                     template.key
                                                 }
                                                 onClick={() =>
-                                                    setTemplateToSubmit(
+                                                    openTemplateSubmission(
                                                         template,
                                                     )
                                                 }
@@ -994,18 +1020,101 @@ export default function WhatsAppIntegrationApp() {
                     </>
                 )}
             </main>
-            <ConfirmDialog
+            <Dialog
                 open={templateToSubmit !== null}
                 onOpenChange={(open) => !open && setTemplateToSubmit(null)}
-                title="Enviar template para a Meta?"
-                description={`O modelo ${templateToSubmit?.name ?? ""} será cadastrado no WABA da conta selecionada. O conteúdo é fixo nesta versão e ficará sujeito à análise da Meta.`}
-                confirmLabel="Enviar para análise"
-                onConfirm={() =>
-                    templateToSubmit
-                        ? submitTemplate(templateToSubmit)
-                        : undefined
-                }
-            />
+            >
+                <DialogContent className="max-h-[90dvh] overflow-y-auto">
+                    <DialogHeader>
+                        <div>
+                            <DialogTitle>
+                                Enviar template para a Meta?
+                            </DialogTitle>
+                            <DialogDescription>
+                                {`O modelo ${templateToSubmit?.name ?? ""} será cadastrado no WABA da conta selecionada. Confirme ou ajuste os exemplos abaixo -- a Meta exige um valor de amostra real por variável para aprovar o template.`}
+                            </DialogDescription>
+                        </div>
+                        <DialogCloseButton />
+                    </DialogHeader>
+                    {templateToSubmit && (
+                        <form
+                            className="grid gap-3"
+                            onSubmit={(event) => {
+                                event.preventDefault();
+                                void submitTemplate(templateToSubmit);
+                            }}
+                        >
+                            <div className="whitespace-pre-line rounded-control bg-brand-background p-3 text-sm leading-6 text-foreground">
+                                {templateToSubmit.body}
+                            </div>
+                            <div className="grid gap-3">
+                                {templateToSubmit.parameters.map(
+                                    (parameter, index) => (
+                                        <div key={parameter.key}>
+                                            <label
+                                                htmlFor={`whatsapp-template-example-${parameter.key}`}
+                                                className="text-sm font-semibold text-foreground"
+                                            >
+                                                {`{{${index + 1}}} ${parameter.label}`}
+                                            </label>
+                                            <Input
+                                                id={`whatsapp-template-example-${parameter.key}`}
+                                                className="mt-1"
+                                                value={
+                                                    templateExampleValues[
+                                                        parameter.key
+                                                    ] ?? ""
+                                                }
+                                                onChange={(event) =>
+                                                    setTemplateExampleValues(
+                                                        (current) => ({
+                                                            ...current,
+                                                            [parameter.key]:
+                                                                event.target
+                                                                    .value,
+                                                        }),
+                                                    )
+                                                }
+                                                required
+                                            />
+                                        </div>
+                                    ),
+                                )}
+                            </div>
+                            {templateMessage?.key === templateToSubmit.key &&
+                                templateMessage.error && (
+                                    <p
+                                        className="text-sm text-red-700"
+                                        role="status"
+                                    >
+                                        {templateMessage.text}
+                                    </p>
+                                )}
+                            <div className="flex justify-end gap-2">
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    onClick={() => setTemplateToSubmit(null)}
+                                    disabled={
+                                        submittingTemplateKey !== null
+                                    }
+                                >
+                                    Cancelar
+                                </Button>
+                                <Button
+                                    type="submit"
+                                    loading={
+                                        submittingTemplateKey ===
+                                        templateToSubmit.key
+                                    }
+                                >
+                                    Enviar para análise
+                                </Button>
+                            </div>
+                        </form>
+                    )}
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

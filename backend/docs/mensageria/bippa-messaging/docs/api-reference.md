@@ -387,6 +387,7 @@ Erro `409 connection_not_available` se a WABA não estiver `connected`.
 
 ### `POST /v1/admin/connections/:wabaId/templates`
 
+`:wabaId` é o `waba_id` (não o `connections.id`), mesma regra do `GET` acima.
 Cria o template na Meta e o espelha localmente.
 
 ```http
@@ -399,7 +400,13 @@ Content-Type: application/json
   "name": "pedido_confirmado",
   "language": "pt_BR",
   "category": "UTILITY",
-  "components": [ { "type": "BODY", "text": "Seu pedido {{1}} foi confirmado." } ]
+  "components": [
+    {
+      "type": "BODY",
+      "text": "Seu pedido {{1}} foi confirmado.",
+      "example": { "body_text": [ ["12345"] ] }
+    }
+  ]
 }
 ```
 
@@ -407,6 +414,37 @@ Regras: `name` só letras minúsculas/números/`_`; `language` no formato
 `pt`/`pt_BR`; `category` uma de `UTILITY`, `MARKETING`, `AUTHENTICATION`.
 Resposta `201` com o mesmo formato de item de `GET` acima (status inicial
 normalmente `PENDING`).
+
+**Todo componente (`BODY` ou `HEADER` do tipo texto) que usa variáveis
+(`{{1}}`, `{{2}}`, ...) precisa do campo `example` correspondente
+(`example.body_text` para `BODY`, `example.header_text` para `HEADER`) com um
+valor de amostra por variável — a Meta rejeita a criação do template sem isso.
+Este serviço valida isso **antes** de chamar a Meta: se o número de valores em
+`example.body_text`/`example.header_text` não bater com o número de variáveis
+no texto, a requisição falha aqui mesmo com `400 invalid_template_components`
+(sem gastar uma chamada à Graph API). Todo o resto de `components` (tipos de
+botão, formato de header, limites de caracteres) continua sendo repassado como
+veio, sem validação própria — só a Meta valida.**
+
+**Erros comuns (`422 meta_graph_error`):** este é o código genérico deste
+serviço para "a Meta recusou `components`/`name`/`category` mesmo com o
+formato básico correto" — a causa real vem anexada em `message` (texto
+original da Meta, ex.: *"Param components[0] is not a valid components..."*)
+e, quando disponível, em `meta_trace_id` (útil para localizar o evento nos
+logs deste serviço). As causas mais frequentes (depois de `example` já estar
+correto, que é bloqueado localmente):
+
+- `name` já existe para aquela combinação nome+idioma na WABA (a Meta não
+  permite reaproveitar nome+idioma de um template excluído recentemente —
+  costuma ser necessário esperar ou usar outro nome);
+- `category` incompatível com o conteúdo (ex.: texto promocional em
+  `UTILITY`);
+- tipo de botão (`BUTTONS`) com formato inválido (`QUICK_REPLY` não aceita
+  `url`/`phone_number`, `URL`/`PHONE_NUMBER` exigem esses campos).
+
+Um `409 connection_not_available` aqui quase sempre significa que `:wabaId`
+não é um `waba_id` reconhecido para esta organização (ex.: foi enviado um
+`phone_number_id` no lugar) — confira com `GET /v1/admin/connections`.
 
 ### `PATCH /v1/admin/templates/:templateId`
 
@@ -419,11 +457,21 @@ PATCH /v1/admin/templates/uuid-local
 X-Bippa-Api-Key: bippa_<key_id>_<segredo>
 Content-Type: application/json
 
-{ "source_reference": "tenant-123", "category": "MARKETING", "components": [ { "type": "BODY", "text": "Texto novo {{1}}." } ] }
+{
+  "source_reference": "tenant-123",
+  "category": "MARKETING",
+  "components": [
+    { "type": "BODY", "text": "Texto novo {{1}}.", "example": { "body_text": [ ["12345"] ] } }
+  ]
+}
 ```
 
 Resposta `200` no mesmo formato; status volta para `PENDING` até a Meta
-reaprovar. Erro `404 template_not_found`.
+reaprovar. Erro `404 template_not_found`. Mesma exigência de `example` para
+variáveis do `POST` acima, validada localmente com `400
+invalid_template_components` antes de chamar a Meta (e mesmo padrão de erro
+`422 meta_graph_error` com a razão da Meta anexada em `message` para o que
+passa da validação local).
 
 ### `DELETE /v1/admin/templates/:templateId`
 
@@ -556,6 +604,173 @@ que a própria Cloud API da Meta modela "desfazer reação", não existe um
 > aplicada no banco (adiciona `'reaction'` ao `CHECK` de `dispatches.kind`);
 > sem ela a Meta nunca chega a ser chamada, o insert falha antes.
 
+**`kind: "interactive"`** — botões de resposta rápida (até 3), lista de
+opções ou mensagem de catálogo/produto. Sujeita à mesma janela de 24h de
+`kind: "text"`. `payload.type` é `"button"`, `"list"`, `"product"` ou
+`"product_list"`; `header`/`footer` são opcionais (texto simples), exceto
+para `"product"` (nunca aceita `header`) e `"product_list"` (`header`
+obrigatório).
+
+Botões (`payload.buttons`: 1 a 3 itens, `title` até 20 caracteres, `id` só
+seu para identificar a escolha depois — nunca reaproveite o `title` para
+lógica de negócio):
+
+```json
+{
+  "source_reference": "tenant-123",
+  "seller_reference": "17",
+  "recipient": "5511999999999",
+  "kind": "interactive",
+  "idempotency_key": "minha-app:T-42:seller:17:order:9081:confirm",
+  "payload": {
+    "type": "button",
+    "body": "Confirma o recebimento do pedido 9081?",
+    "buttons": [ { "id": "order:9081:confirm", "title": "Confirmar" }, { "id": "order:9081:reject", "title": "Recusar" } ]
+  }
+}
+```
+
+Lista (`payload.button` é o rótulo do menu, até 20 caracteres;
+`payload.sections[].rows` soma no máximo 10 linhas entre todas as seções;
+`row.title` até 24 caracteres, `row.description` opcional até 72):
+
+```json
+{
+  "source_reference": "tenant-123",
+  "seller_reference": "17",
+  "recipient": "5511999999999",
+  "kind": "interactive",
+  "idempotency_key": "minha-app:T-42:seller:17:order:9081:pick-shipping",
+  "payload": {
+    "type": "list",
+    "body": "Escolha a forma de envio:",
+    "button": "Ver opções",
+    "sections": [ { "title": "Envio", "rows": [ { "id": "shipping:sedex", "title": "Sedex", "description": "2 dias úteis" }, { "id": "shipping:pac", "title": "PAC", "description": "5 dias úteis" } ] } ]
+  }
+}
+```
+
+Produto único (`payload.type: "product"`; exige um catálogo do Meta Commerce
+já vinculado à WABA e `product_retailer_id` cadastrado nesse catálogo):
+
+```json
+{
+  "source_reference": "tenant-123",
+  "seller_reference": "17",
+  "recipient": "5511999999999",
+  "kind": "interactive",
+  "idempotency_key": "minha-app:T-42:seller:17:product:SKU-1:share",
+  "payload": {
+    "type": "product",
+    "body": "Que tal esse aqui?",
+    "catalog_id": "1234567890",
+    "product_retailer_id": "SKU-1"
+  }
+}
+```
+
+Lista de produtos (`payload.type: "product_list"`; `header` é obrigatório
+neste tipo — é o único título mostrado acima das seções; até 10 seções e 30
+produtos somados entre todas elas):
+
+```json
+{
+  "source_reference": "tenant-123",
+  "seller_reference": "17",
+  "recipient": "5511999999999",
+  "kind": "interactive",
+  "idempotency_key": "minha-app:T-42:seller:17:catalog:vitrine",
+  "payload": {
+    "type": "product_list",
+    "header": "Nossos destaques",
+    "body": "Separamos alguns itens para você:",
+    "catalog_id": "1234567890",
+    "sections": [ { "title": "Promoções", "product_items": [ { "product_retailer_id": "SKU-1" }, { "product_retailer_id": "SKU-2" } ] } ]
+  }
+}
+```
+
+A resposta do destinatário chega como `type: "interactive"` em
+`GET /v1/conversations/:id/messages`, com `body` = título do botão/linha
+escolhida e `metadata.interactive_id` = o `id` que você definiu ao enviar
+(use este campo para lógica de negócio, nunca o `body`/título, que pode se
+repetir ou ser traduzido). Requer a migration
+`db/migrations/20260909010000_dispatches_allow_interactive_kind.sql`.
+
+> **Lacuna atual:** quando o contato finaliza um carrinho a partir de uma
+> mensagem de catálogo, a Meta entrega isso como `message.type: "order"`
+> (com `order.catalog_id` e `order.product_items`), não como
+> `interactive.list_reply`. Esse tipo inbound ainda não é capturado por
+> `ingestInbound` — hoje esse pedido simplesmente não aparece na conversa.
+
+**`kind: "location"`** — envia um ponto geográfico. Sujeita à mesma janela
+de 24h de `kind: "text"`. `latitude`/`longitude` são obrigatórios
+(-90..90 / -180..180); `name`/`address` são opcionais (texto livre):
+
+```json
+{
+  "source_reference": "tenant-123",
+  "seller_reference": "17",
+  "recipient": "5511999999999",
+  "kind": "location",
+  "idempotency_key": "minha-app:T-42:seller:17:order:9081:pickup-point",
+  "payload": { "latitude": -23.5614, "longitude": -46.6558, "name": "Loja Paulista", "address": "Av. Paulista, 1000" }
+}
+```
+
+Requer a migration
+`db/migrations/20260909020000_dispatches_allow_location_kind.sql`.
+
+**`kind: "contacts"`** — envia um ou mais cartões de contato. Sujeita à
+mesma janela de 24h de `kind: "text"`. `payload.contacts` exige pelo menos 1
+item; em cada contato só `name.formatted_name` é obrigatório —
+`phones`/`emails`/`urls`/`addresses`/`org`/`birthday` são opcionais e, se
+presentes, seguem o mesmo formato de campos da Meta (`phones[].phone`,
+`emails[].email`, `urls[].url`):
+
+```json
+{
+  "source_reference": "tenant-123",
+  "seller_reference": "17",
+  "recipient": "5511999999999",
+  "kind": "contacts",
+  "idempotency_key": "minha-app:T-42:seller:17:order:9081:share-contact",
+  "payload": {
+    "contacts": [
+      {
+        "name": { "formatted_name": "Suporte Minha Empresa", "first_name": "Suporte" },
+        "phones": [ { "phone": "+5511999999999", "type": "WORK" } ],
+        "emails": [ { "email": "suporte@exemplo.com", "type": "WORK" } ]
+      }
+    ]
+  }
+}
+```
+
+Requer a migration
+`db/migrations/20260909030000_dispatches_allow_contacts_kind.sql`.
+
+**`context.message_id`** — campo opcional, aceito junto com qualquer `kind`
+(exceto `"reaction"`, que já referencia a mensagem via `payload.message_id`),
+para responder "em cima" de uma mensagem específica da conversa (aparece na
+Meta como uma citação). `message_id` é o `provider_message_id` (wamid) da
+mensagem citada, inbound ou outbound:
+
+```json
+{
+  "source_reference": "tenant-123",
+  "seller_reference": "17",
+  "recipient": "5511999999999",
+  "kind": "text",
+  "idempotency_key": "minha-app:T-42:seller:17:conversation:abc:reply-2",
+  "context": { "message_id": "wamid.HBg..." },
+  "payload": { "text": "Sobre isso: já está a caminho." }
+}
+```
+
+Não requer migration (é armazenado dentro do `payload` cifrado, sem impacto
+no `CHECK` de `dispatches.kind`).
+
 Resposta `202` (ou `200` se `idempotency_key` já havia sido usada —
 `duplicate: true`, sem reenviar):
 
@@ -638,7 +853,18 @@ Ordenado por `updated_at desc`, limitado a 100 conversas.
 `body` já vem decifrado; após 90 dias o conteúdo é purgado e `body` volta
 vazio com `metadata: {"retained": true}`. Para `type: "reaction"`, `body` é
 o próprio emoji recebido e `metadata.reacted_to` traz o `provider_message_id`
-(wamid) da mensagem que foi reagida.
+(wamid) da mensagem que foi reagida. Para `type: "interactive"` (resposta a
+um `kind: "interactive"` enviado), `body` é o título do botão/linha
+escolhida e `metadata.interactive_id`/`metadata.interactive_type`
+(`button_reply` ou `list_reply`) trazem o `id` que você definiu ao enviar.
+Para `type: "location"`, `body` é o endereço/nome enviado pelo contato (se
+houver) e `metadata.latitude`/`metadata.longitude` trazem as coordenadas.
+Para `type: "contacts"`, `body` é o `formatted_name` do primeiro cartão
+recebido e `metadata.contact_count` traz quantos cartões vieram na mensagem
+(o conteúdo completo de cada cartão não é decomposto em `metadata`, só o
+resumo). Quando o contato responde citando uma mensagem específica (o
+"responder" do WhatsApp), `metadata.context_message_id` traz o
+`provider_message_id` (wamid) da mensagem citada, em qualquer `type`.
 
 Toda mensagem inbound recebe automaticamente, no worker, uma confirmação de
 leitura à Meta (equivalente ao "✓✓ azul") acompanhada de um indicador de

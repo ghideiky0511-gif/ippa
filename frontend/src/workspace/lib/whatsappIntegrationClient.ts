@@ -212,6 +212,7 @@ export function fetchStandardWhatsAppTemplates(): Promise<
 export function submitStandardWhatsAppTemplate(
     sellerId: string,
     templateKey: StandardWhatsAppTemplate["key"],
+    examples: string[],
 ): Promise<SubmittedWhatsAppTemplate> {
     return adminJson(
         "/api/admin/whatsapp/templates",
@@ -219,7 +220,7 @@ export function submitStandardWhatsAppTemplate(
         {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sellerId, templateKey }),
+            body: JSON.stringify({ sellerId, templateKey, examples }),
         },
         "Não foi possível enviar o template para aprovação da Meta.",
     );
