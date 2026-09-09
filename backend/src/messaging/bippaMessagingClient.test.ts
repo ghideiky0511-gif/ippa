@@ -283,7 +283,7 @@ test("createWabaTemplate adiciona um componente BUTTONS quando o template tem li
                                 type: "URL",
                                 text: "Ver pedido",
                                 url: "http://localhost:3015/{{1}}",
-                                example: ["loja/pedidos/1234"],
+                                example: ["http://localhost:3015/loja/pedidos/1234"],
                             },
                         ],
                     },

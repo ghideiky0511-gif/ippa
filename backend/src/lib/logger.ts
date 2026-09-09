@@ -7,11 +7,16 @@
 
 export type LogMeta = Record<string, unknown>;
 
+function formatMetaValue(value: unknown): string {
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value);
+}
+
 function serializeMeta(meta?: LogMeta): string {
     if (!meta) return "";
     return Object.entries(meta)
         .filter(([, value]) => value !== undefined && value !== null && value !== "")
-        .map(([key, value]) => `${key}=${String(value)}`)
+        .map(([key, value]) => `${key}=${formatMetaValue(value)}`)
         .join(" ");
 }
 

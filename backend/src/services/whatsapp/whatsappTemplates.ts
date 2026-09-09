@@ -5,10 +5,15 @@ import { z } from "zod";
 // a aplicação (multi-tenant por path, não por subdomínio), nunca por
 // tenant. Usado para embutir o domínio como texto ESTÁTICO no body dos
 // templates abaixo (ver motivo no comentário de STANDARD_WHATSAPP_TEMPLATES).
+// Fallback aponta pro domínio real de produção (serviço `ippa-frontend` no
+// render.yaml), não mais `localhost` -- `ADMIN_ORIGIN` é preenchido à mão no
+// painel do Render (`sync: false`) e, se esquecido lá, o botão do template
+// ia com um domínio local de verdade pra Meta (causa real de um 422
+// meta_graph_error subcode 2388024 em produção, 2026-09).
 const PUBLIC_ORIGIN = (
     process.env.APP_URL ||
     process.env.ADMIN_ORIGIN ||
-    "http://localhost:3015"
+    "https://ippa-frontend.onrender.com"
 ).replace(/\/+$/, "");
 
 export const WhatsAppTemplateKeySchema = z.enum([

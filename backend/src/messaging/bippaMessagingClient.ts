@@ -546,7 +546,19 @@ export function createWabaTemplate(
                                           type: "URL",
                                           text: input.button.text,
                                           url: input.button.urlTemplate,
-                                          example: [input.button.example],
+                                          // A Meta exige a URL COMPLETA de exemplo (com a
+                                          // variável já resolvida), não só o valor do
+                                          // parâmetro -- ex.: "https://loja.com/pedidos/1234",
+                                          // nunca "1234" solto. `urlTemplate` sempre termina em
+                                          // "{{1}}" (ver StandardWhatsAppTemplate.button em
+                                          // whatsappTemplates.ts), então basta substituir o
+                                          // sufixo pelo exemplo recebido.
+                                          example: [
+                                              input.button.urlTemplate.replace(
+                                                  /\{\{1\}\}$/,
+                                                  input.button.example,
+                                              ),
+                                          ],
                                       },
                                   ],
                               },

@@ -12,12 +12,12 @@ import {
 import { errorMeta, logger } from "@/lib/logger";
 
 export function orderDetailsLink(tenant: Tenant, orderNumber: number): string {
-    const origin = (process.env.APP_URL || process.env.ADMIN_ORIGIN || "http://localhost:3015").replace(/\/+$/, "");
+    const origin = (process.env.APP_URL || process.env.ADMIN_ORIGIN || "https://ippa-frontend.onrender.com").replace(/\/+$/, "");
     return `${origin}/${encodeURIComponent(tenant.slug)}/pedidos/${encodeURIComponent(String(orderNumber))}`;
 }
 
 export function orderPaymentLink(tenant: Tenant, token: string): string {
-    const origin = (process.env.APP_URL || process.env.ADMIN_ORIGIN || "http://localhost:3015").replace(/\/+$/, "");
+    const origin = (process.env.APP_URL || process.env.ADMIN_ORIGIN || "https://ippa-frontend.onrender.com").replace(/\/+$/, "");
     return `${origin}/${encodeURIComponent(tenant.slug)}/pagar/${encodeURIComponent(token)}`;
 }
 
