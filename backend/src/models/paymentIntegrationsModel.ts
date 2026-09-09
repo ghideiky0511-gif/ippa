@@ -223,6 +223,35 @@ export async function disconnectMercadoPagoAccountRow(client: PoolClient): Promi
     return result.rows[0] ? toRow(result.rows[0]) : null;
 }
 
+// Grava/atualiza só os campos de chave Pix usados pro payment_order nativo
+// do WhatsApp (ver whatsappNotificationService.ts::sendPaymentOrderWhatsAppNow)
+// -- merge via `||` em credentials_meta, nunca substitui a coluna inteira,
+// porque outros campos não-secretos podem existir ali no futuro (hoje é só
+// `{}`, ver migration 044). Retorna null se o provider ainda não tem linha
+// (credenciais nunca salvas) -- o service traduz isso em erro de validação,
+// mesmo padrão de activatePaymentIntegrationRow.
+export async function updatePaymentIntegrationPixSettingsRow(
+    client: PoolClient,
+    provider: string,
+    value: { pixMerchantName: string; pixKey: string; pixKeyType: string },
+): Promise<PaymentIntegrationRow | null> {
+    const result = await client.query<PaymentIntegrationRawRow>(
+        `UPDATE tenant_payment_integrations
+         SET credentials_meta = credentials_meta || $2::jsonb, updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND provider = $1
+         RETURNING ${integrationFields}`,
+        [
+            provider,
+            JSON.stringify({
+                pixMerchantName: value.pixMerchantName,
+                pixKey: value.pixKey,
+                pixKeyType: value.pixKeyType,
+            }),
+        ],
+    );
+    return result.rows[0] ? toRow(result.rows[0]) : null;
+}
+
 // Grava/atualiza o user_id e a public_key da conta Mercado Pago do tenant.
 // Diferente de upsertStripeAccountRow, sem COALESCE "nunca reatribui": a
 // troca de conta MP (reconexão explícita via novo onboarding) é um clique

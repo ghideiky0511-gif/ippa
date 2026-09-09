@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { ArrowLeft, Ban, CheckCircle2, CreditCard, MessageCircle, PackageCheck, PackagePlus, Printer, RefreshCw, Wrench } from 'lucide-react';
+import { ArrowLeft, Ban, CheckCircle2, CreditCard, MessageCircle, PackageCheck, PackagePlus, Printer, QrCode, RefreshCw, Wrench } from 'lucide-react';
 import type { Order, OrderSession } from '@/domain/orders/types';
 import type { ClientWithLogin } from '@/domain/clients/types';
 import type { ProviderOrderAttempt, ProviderOrderAttemptOutcome, ProviderOrderRow, ProviderOrderStatus } from '@/workspace/lib/erpIntegrationClient';
@@ -89,7 +89,7 @@ function StatusBadge({ status }: { status: ProviderOrderStatus }) {
   return <StatusChip label={PUSH_STATUS_LABELS[status]} tone={PUSH_STATUS_TONES[status]} />;
 }
 
-type ConfirmAction = 'mark-paid' | 'cancel' | 'confirm-separation' | 'send-whatsapp-order' | 'send-whatsapp-payment';
+type ConfirmAction = 'mark-paid' | 'cancel' | 'confirm-separation' | 'send-whatsapp-order' | 'send-whatsapp-payment' | 'send-whatsapp-payment-order';
 
 export default function OrderDetailApp({
   initialOrder,
@@ -140,7 +140,7 @@ export default function OrderDetailApp({
     void fetchWhatsAppAvailability(order.id).then((status) => {
       if (mounted) setWhatsappStatus(status);
     }).catch(() => {
-      if (mounted) setWhatsappStatus({ available: false, reason: 'Erro ao validar disponibilidade.' });
+      if (mounted) setWhatsappStatus({ available: false, reason: 'Erro ao validar disponibilidade.', paymentOrderAvailable: false });
     });
     return () => { mounted = false; };
   }, [order.id]);
@@ -193,6 +193,9 @@ export default function OrderDetailApp({
       } else if (confirmAction === 'send-whatsapp-payment') {
         const result = await sendOrderWhatsApp(order.id, 'payment_link');
         toast.success(`Link de pagamento enviado pelo WhatsApp para ${result.toMasked}.`);
+      } else if (confirmAction === 'send-whatsapp-payment-order') {
+        const result = await sendOrderWhatsApp(order.id, 'payment_order');
+        toast.success(`Cobrança Pix nativa enviada pelo WhatsApp para ${result.toMasked}.`);
       }
       setConfirmAction(null);
       setPaymentMethodInput('');
@@ -433,6 +436,29 @@ export default function OrderDetailApp({
                 </button>
               </DisabledActionHint>
             )}
+            {canManageOrder && order.status === 'separado' && order.paymentStatus !== 'paid' && (
+              <DisabledActionHint
+                reason={(whatsappStatus?.available ? whatsappStatus?.paymentOrderReason : whatsappStatus?.reason) || 'Validando...'}
+                side="bottom"
+              >
+                <button
+                  type="button"
+                  className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={actionPending || !whatsappStatus?.available || !whatsappStatus?.paymentOrderAvailable}
+                  onClick={() => {
+                    if (!whatsappStatus?.available && whatsappStatus?.reason?.toLowerCase().includes('whatsapp')) {
+                      window.location.href = '/workspace/integracoes/whatsapp';
+                    } else if (whatsappStatus?.available && whatsappStatus?.paymentOrderAvailable) {
+                      setFabOpen(false);
+                      setConfirmAction('send-whatsapp-payment-order');
+                    }
+                  }}
+                >
+                  <QrCode className="mr-2 size-3.5" aria-hidden="true" />
+                  Enviar cobrança Pix nativa pelo WhatsApp
+                </button>
+              </DisabledActionHint>
+            )}
             {canConfirmSeparation && (
               <button
                 type="button"
@@ -480,6 +506,7 @@ export default function OrderDetailApp({
               {confirmAction === 'confirm-separation' && 'Confirmar separação dos itens?'}
               {confirmAction === 'send-whatsapp-order' && 'Enviar este pedido pelo WhatsApp?'}
               {confirmAction === 'send-whatsapp-payment' && 'Enviar o link de pagamento pelo WhatsApp?'}
+              {confirmAction === 'send-whatsapp-payment-order' && 'Enviar cobrança Pix nativa pelo WhatsApp?'}
             </DialogTitle>
             <DialogCloseButton />
           </DialogHeader>
@@ -489,6 +516,7 @@ export default function OrderDetailApp({
             {confirmAction === 'confirm-separation' && 'Confirma que todas as peças deste pedido já foram separadas fisicamente. Necessário antes de qualquer cobrança real ser possível.'}
             {confirmAction === 'send-whatsapp-order' && 'O resumo do pedido será enviado para o telefone WhatsApp cadastrado da cliente.'}
             {confirmAction === 'send-whatsapp-payment' && 'Um novo link seguro de pagamento será gerado e enviado para o WhatsApp cadastrado da cliente. Links anteriores deixarão de funcionar.'}
+            {confirmAction === 'send-whatsapp-payment-order' && 'Um código Pix real será gerado e enviado num cartão de pedido pagável direto dentro do WhatsApp da cliente — sem sair do app.'}
           </DialogDescription>
           {confirmAction === 'mark-paid' && (
             <div className={`${adminUi.field} mt-3`}>

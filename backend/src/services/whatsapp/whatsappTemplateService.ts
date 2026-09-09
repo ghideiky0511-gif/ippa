@@ -39,9 +39,9 @@ const SubmitTemplateSchema = z
     .strict();
 
 // Sugestões de exemplo por parâmetro que dependem da loja. Só o CAMINHO
-// (sem domínio) -- o domínio já é texto estático no `body` do template
-// (ver PUBLIC_ORIGIN em whatsappTemplates.ts; a Meta rejeita URL completa
-// como valor de variável do BODY, subcode 2388024).
+// (sem domínio) -- o domínio já é texto estático na `url` do botão do
+// template (ver PUBLIC_ORIGIN em whatsappTemplates.ts; a Meta rejeita link
+// dinâmico fora de um componente BUTTONS dedicado, subcode 2388024).
 function resolveTemplateExample(
     tenant: Tenant,
     parameterKey: string,
@@ -110,6 +110,18 @@ export async function submitStandardWhatsAppTemplate(
             "Informe um exemplo para cada variável do template.",
         );
     }
+    // `examples` chega na mesma ordem de `definition.parameters` (a UI monta
+    // os dois juntos, ver WhatsAppIntegrationApp.tsx) -- separar aqui por
+    // `component` porque a Meta exige um `example` por componente
+    // (`body_text` no BODY, `example` próprio no botão URL), nunca um único
+    // array combinado.
+    const bodyExamples = definition.parameters
+        .map((parameter, index) => ({ parameter, example: parsed.data.examples[index] }))
+        .filter(({ parameter }) => parameter.component === "body")
+        .map(({ example }) => example);
+    const buttonExample = definition.parameters
+        .map((parameter, index) => ({ parameter, example: parsed.data.examples[index] }))
+        .find(({ parameter }) => parameter.component === "button")?.example;
 
     let submitted;
     // Fora do `try` para permanecer visível no `catch` -- é o diagnóstico
@@ -132,7 +144,10 @@ export async function submitStandardWhatsAppTemplate(
                 category: definition.category,
                 languageCode: definition.languageCode,
                 body: definition.body,
-                bodyExamples: parsed.data.examples,
+                bodyExamples,
+                button: definition.button && buttonExample
+                    ? { ...definition.button, example: buttonExample }
+                    : undefined,
             },
         );
         if (!created.id) {

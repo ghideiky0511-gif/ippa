@@ -140,16 +140,20 @@ const SendOrderWhatsAppResultSchema = z.object({
   toMasked: z.string(),
 });
 
-export type SendOrderWhatsAppKind = 'order' | 'payment_link';
+export type SendOrderWhatsAppKind = 'order' | 'payment_link' | 'payment_order';
 
 export interface WhatsAppAvailabilityStatus {
   available: boolean;
   reason?: string;
+  paymentOrderAvailable: boolean;
+  paymentOrderReason?: string;
 }
 
 const WhatsAppAvailabilitySchema = z.object({
   available: z.boolean(),
   reason: z.string().optional(),
+  paymentOrderAvailable: z.boolean(),
+  paymentOrderReason: z.string().optional(),
 });
 
 export function fetchWhatsAppAvailability(orderId: string): Promise<WhatsAppAvailabilityStatus> {

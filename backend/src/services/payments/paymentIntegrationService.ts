@@ -10,8 +10,10 @@ import {
 import {
     activatePaymentIntegrationRow,
     deactivatePaymentIntegrationRow,
+    findActivePaymentIntegrationRow,
     findPaymentIntegrationRowByProvider,
     listPaymentIntegrationRows,
+    updatePaymentIntegrationPixSettingsRow,
     upsertPaymentIntegrationCredentialsRow,
     type PaymentIntegrationRow,
 } from "@/models/paymentIntegrationsModel";
@@ -35,6 +37,12 @@ import { errorMeta, logger } from "@/lib/logger";
 //    "text"/"number" salvos para não obrigar redigitar tudo a cada edição.
 //    Aqui todo campo precisa ser redigitado a cada salvamento, por segurança.
 
+// Tipos de chave Pix aceitos pela Meta em payment.methods[].pix_dynamic_code
+// (ver api-reference.md, seção Orders/Pagamentos) -- EVP é o nome da Meta
+// pra chave aleatória.
+export const PIX_KEY_TYPES = ["CPF", "CNPJ", "EMAIL", "PHONE", "EVP"] as const;
+export type PixKeyType = (typeof PIX_KEY_TYPES)[number];
+
 export interface TenantPaymentIntegrationOption {
     provider: string;
     label: string;
@@ -53,6 +61,14 @@ export interface TenantPaymentIntegrationOption {
     // Espelha stripeAccountId: id do vendedor Mercado Pago, só exibição
     // (não é segredo, ver models/paymentIntegrationsModel.ts).
     mercadoPagoUserId?: string | null;
+    // Chave Pix da loja usada no payment_order nativo do WhatsApp (ver
+    // whatsappNotificationService.ts::sendPaymentOrderWhatsAppNow) -- ao
+    // contrário de `credentials`, não é segredo, então (diferente da nota no
+    // topo do arquivo) esses 3 campos SÃO devolvidos já preenchidos pra tela
+    // não obrigar redigitar a cada salvamento.
+    pixMerchantName?: string | null;
+    pixKey?: string | null;
+    pixKeyType?: PixKeyType | null;
     updatedAt: string | null;
 }
 
@@ -91,6 +107,9 @@ function toOption(
                 ? row?.stripe_api_version ?? null
                 : undefined,
         mercadoPagoUserId: entry.code === "mercadopago" ? row?.mercadopago_user_id ?? null : undefined,
+        pixMerchantName: (row?.credentials_meta?.pixMerchantName as string | undefined) ?? null,
+        pixKey: (row?.credentials_meta?.pixKey as string | undefined) ?? null,
+        pixKeyType: (row?.credentials_meta?.pixKeyType as PixKeyType | undefined) ?? null,
         updatedAt: row ? row.updated_at.toISOString() : null,
     };
 }
@@ -188,6 +207,75 @@ export async function saveTenantPaymentIntegrationCredentials(
             metadata: { provider },
         });
         return toOption(entry, row);
+    });
+}
+
+// Salva a chave Pix usada pro payment_order nativo do WhatsApp -- diferente
+// de saveTenantPaymentIntegrationCredentials, não é bloqueada por
+// onboardingType "redirect" (Stripe/Mercado Pago também guardam a chave
+// aqui, mesmo com credenciais geridas por onboarding hospedado) e não é
+// segredo, então o valor salvo é devolvido em toOption() (ver comentário no
+// topo do arquivo sobre a diferença de tratamento).
+export async function savePaymentIntegrationPixSettings(
+    tenant: Tenant,
+    user: AuthUser,
+    provider: string,
+    input: { pixMerchantName: string; pixKey: string; pixKeyType: string },
+    context: AuditRequestContext,
+): Promise<TenantPaymentIntegrationOption> {
+    requireSettingsAdministrator(user);
+    const entry = findVisibleCatalogEntry(provider);
+    const pixMerchantName = (input.pixMerchantName ?? "").trim();
+    const pixKey = (input.pixKey ?? "").trim();
+    const pixKeyType = (input.pixKeyType ?? "").trim().toUpperCase();
+    const errors: string[] = [];
+    if (!pixMerchantName) errors.push("Nome do recebedor é obrigatório.");
+    if (!pixKey) errors.push("Chave Pix é obrigatória.");
+    if (!PIX_KEY_TYPES.includes(pixKeyType as PixKeyType)) {
+        errors.push(`Tipo de chave Pix deve ser um de: ${PIX_KEY_TYPES.join(", ")}.`);
+    }
+    if (errors.length > 0) throw new ValidationError("INVALID_INPUT", errors.join(" "));
+
+    return withTenantTransaction(tenant, user, async (client) => {
+        const row = await updatePaymentIntegrationPixSettingsRow(client, provider, {
+            pixMerchantName,
+            pixKey,
+            pixKeyType,
+        });
+        if (!row) {
+            throw new ValidationError(
+                "PAYMENT_INTEGRATION_NOT_CONFIGURED",
+                "Configure este provider de pagamento antes de cadastrar a chave Pix.",
+            );
+        }
+        await recordAuditEvent(client, {
+            action: PAYMENT_INTEGRATION_AUDIT_ACTIONS.CONFIGURED,
+            entityId: row.id,
+            actor: user,
+            context,
+            metadata: { provider, field: "pix_settings" },
+        });
+        return toOption(entry, row);
+    });
+}
+
+// Leitura usada pelo envio de payment_order nativo do WhatsApp
+// (orderWhatsAppService.ts) -- devolve null se não houver integração ativa
+// ou se a chave Pix ainda não tiver sido configurada, deixando o chamador
+// decidir a mensagem de erro certa (mesmo padrão de
+// isPaymentIntegrationReadyToCharge em paymentChargeService.ts).
+export async function getActivePaymentIntegrationPixSettings(
+    tenant: Tenant,
+    actor: AuthUser,
+): Promise<{ pixMerchantName: string; pixKey: string; pixKeyType: PixKeyType } | null> {
+    return withTenantTransaction(tenant, actor, async (client) => {
+        const row = await findActivePaymentIntegrationRow(client);
+        if (!row) return null;
+        const pixMerchantName = row.credentials_meta?.pixMerchantName as string | undefined;
+        const pixKey = row.credentials_meta?.pixKey as string | undefined;
+        const pixKeyType = row.credentials_meta?.pixKeyType as PixKeyType | undefined;
+        if (!pixMerchantName || !pixKey || !pixKeyType) return null;
+        return { pixMerchantName, pixKey, pixKeyType };
     });
 }
 

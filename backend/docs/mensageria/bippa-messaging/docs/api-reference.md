@@ -512,19 +512,28 @@ formato básico correto" — a causa real vem anexada em `message` (texto
 original da Meta, ex.: _"Param components[0] is not a valid components..."_)
 e, quando disponíveis, em `meta_code`/`meta_subcode` (os códigos numéricos que
 a Meta retorna, ex.: `code: 100, subcode: 2388299` para variável colada na
-borda do `BODY`) e `meta_trace_id` (`fbtrace_id` da Meta, útil para abrir
-ticket no suporte deles). Os três campos vêm juntos no corpo da resposta de
-erro sempre que a Meta devolveu esses dados — o serviço que consome esta API
-deve logar/exibir `meta_code`+`meta_subcode` em vez de só `message`, já que
-`message` costuma ser um texto genérico ("Invalid parameter") enquanto o
-subcode identifica a regra exata violada. Internamente, toda falha da Graph
+borda do `BODY`), `meta_error_data_details` e `meta_trace_id` (`fbtrace_id`
+da Meta, útil para abrir ticket no suporte deles). Os campos vêm juntos no
+corpo da resposta de erro sempre que a Meta devolveu esses dados — o serviço
+que consome esta API deve logar/exibir `meta_code`+`meta_subcode` em vez de
+só `message`, já que `message` costuma ser um texto genérico ("Invalid
+parameter") enquanto o subcode identifica a regra exata violada.
+`meta_error_data_details` (de `error.error_data.details` na resposta da
+Meta) costuma trazer a explicação mais específica ainda — ex.: para um
+subcode não documentado publicamente, é frequentemente a única pista de
+qual campo exato foi rejeitado (ex.: "Body parameter at index 3 contains a
+URL", quando uma variável de `BODY` recebe um link completo como
+`example` — a Meta não permite URL como valor de variável de `BODY`, só em
+botão `URL` dedicado). Internamente, toda falha da Graph
 API também loga o `components`/`name`/`category` exato que foi enviado
 (`request_body`, truncado em 2000 caracteres) junto do `meta_trace_id` — se
 precisar confirmar se o que chegou na Meta é igual ao que foi enviado por
 quem consome esta API, procure pelo `meta_trace_id` nos logs deste serviço em
-vez de pedir o payload de volta pra equipe cliente. As causas mais frequentes (depois de
-`example` e do posicionamento de variável no `BODY`, já bloqueados
-localmente):
+vez de pedir o payload de volta pra equipe cliente. As causas mais frequentes
+(depois de `example` e do posicionamento de variável no `BODY`, já
+bloqueados localmente — URL como valor de variável de `BODY` **não** é
+bloqueado localmente hoje, só detectado pela Meta e refletido em
+`meta_error_data_details`):
 
 - `name` já existe para aquela combinação nome+idioma na WABA (a Meta não
   permite reaproveitar nome+idioma de um template excluído recentemente —
@@ -680,7 +689,20 @@ servidor:
 ```
 
 `params` vira, em ordem, os parâmetros do componente `body` do template;
-`media_url` (opcional) vira o componente `header` de imagem.
+`media_url` (opcional) vira o componente `header` de imagem. Esse atalho só
+monta componentes `body`/`header` — pra Payment Request CTA (botão
+`PAYMENT_REQUEST`) e Order Details Template (botão `ORDER_DETAILS`), que têm
+validação local dedicada, use `POST /v1/payment-requests` e
+`POST /v1/payment-orders` com `template`, documentados na seção **Orders /
+Pagamentos (Meta Payments)** abaixo — não construa esses componentes à mão
+aqui. Para qualquer outro componente de botão que a Meta venha a adicionar e
+que ainda não tenha rota dedicada, passe o objeto `template` já pronto, no
+formato exato que a Meta espera — ele é repassado sem transformação nenhuma
+(`payload.template` bruto é usado como veio em `worker.js`; `name`/`language`
+precisam bater com um template já `ACTIVE` na WABA, e o `index`/`sub_type` de
+cada componente de botão têm que corresponder à posição real do botão no
+template aprovado). Não há validação local desse formato — erro de estrutura
+aqui vira `422 meta_graph_error` vindo da Graph API, não um `400` local.
 
 **`kind: "media"`** — o objeto `media` segue o formato de mensagem da Meta
 Cloud API diretamente (`type` + `content` no formato que a Meta espera para
@@ -1020,6 +1042,31 @@ Visão humana das conversas, isolada por organização.
 
 Ordenado por `updated_at desc`, limitado a 100 conversas.
 
+### `GET /v1/service-window?source_reference=<tenant>&seller_reference=<id>&recipient=<telefone>`
+
+Consulta se a janela de atendimento de 24h da Meta está aberta pra um
+`recipient` específico, **antes** de tentar enviar — sem isso, a única forma
+de descobrir é reativa (o `422` de `kind: "text"`/`"location"`/etc. em
+`POST /v1/dispatches`, ver acima). Não existe checagem local equivalente
+para `payment_order`/`payment_status` (rotas de Orders) — a Meta valida a
+janela do lado dela para mensagens interativas, então enviar um
+`payment_order` fora da janela ainda resulta em erro vindo da Graph API, não
+deste endpoint.
+
+```json
+{
+    "recipient": "5511999999999",
+    "within_window": true,
+    "last_inbound_at": "2026-09-09T15:40:00.000Z",
+    "expires_at": "2026-09-10T15:40:00.000Z"
+}
+```
+
+`last_inbound_at`/`expires_at` vêm `null` quando o contato nunca mandou
+mensagem pra esse número (`within_window: false` nesse caso). `seller_reference`
+precisa resolver pra um perfil de envio existente na organização (`Perfil de
+envio indisponivel para esta organizacao.` caso contrário).
+
 ### `GET /v1/conversations/:id/messages?source_reference=<tenant>`
 
 ```json
@@ -1107,8 +1154,80 @@ rotas acima ou os webhooks assinados (próxima seção) para isso.
 
 ## Orders / Pagamentos (Meta Payments)
 
-Único caminho para `payment_order` e `payment_status` — `POST /v1/dispatches`
-recusa esses `kind`. Valores monetários são sempre inteiros em centavos.
+Único caminho para `payment_order`, `payment_status` e `payment_request` —
+`POST /v1/dispatches` recusa esses `kind`. Valores monetários são sempre
+inteiros em centavos.
+
+**A Payments API inteira é desligada por padrão neste serviço** — as duas
+rotas abaixo respondem `503 payments_disabled` até a env var
+`META_WHATSAPP_PAYMENTS_ENABLED=true` estar setada (além de `META_WHATSAPP_ENABLED`
+também precisar estar ativo). Confirme isso no ambiente antes de integrar;
+não é um erro de configuração do chamador, é uma feature flag deste serviço.
+
+**Fluxo, conforme a [Payments API da
+Meta](https://developers.facebook.com/documentation/business-messaging/whatsapp/payments/payments-br):**
+o negócio envia uma mensagem `order_details` (`POST /v1/payment-orders`,
+abaixo) com um `reference_id` **único** escolhido pelo próprio negócio; o
+comprador paga por fora do WhatsApp (Pix, link de pagamento, boleto — ver
+métodos suportados abaixo); o negócio então confirma o novo estado com
+`POST /v1/payment-orders/:referenceId/order-status`, gerando uma mensagem
+`order_status`. **A Meta não faz reconciliação de pagamento** — quem chama
+esta API é responsável por conciliar o pagamento com o PSP usando o
+`reference_id`, e por decidir quando chamar `order-status` (esta API não
+descobre isso sozinha; hoje o único disparo automático de mudança de status é
+o webhook de pagamento da Meta atualizando `payment_status`, não
+`order_status`, ver `paymentStatusFromWebhook`/`recordPaymentWebhookStatus`
+em `messaging_repository.js`).
+
+A Meta oferece 6 variantes de integração para a Payments API Brasil; **cobertura
+atual deste serviço**:
+
+| Variante Meta                                                                                                                                       | Status aqui                                                                                                                                                             |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Dynamic Pix Codes](https://developers.facebook.com/documentation/business-messaging/whatsapp/payments/payments-br/offsite-pix)                     | ✅ implementado (`payment.methods[].type: "pix_dynamic_code"`)                                                                                                          |
+| [Payment Links](https://developers.facebook.com/documentation/business-messaging/whatsapp/payments/payments-br/payment-links)                       | ✅ implementado (`"payment_link"`)                                                                                                                                      |
+| [Boleto](https://developers.facebook.com/documentation/business-messaging/whatsapp/payments/payments-br/boleto)                                     | ✅ implementado (`"boleto"`)                                                                                                                                            |
+| [One-click offsite card payment](https://developers.facebook.com/documentation/business-messaging/whatsapp/payments/payments-br/one-click-payments) | ✅ implementado (`"offsite_card_pay"`) — requer habilitação da WABA pela Meta/Solution Partner                                                                          |
+| [Order Details Template](https://developers.facebook.com/documentation/business-messaging/whatsapp/payments/payments-br/orderdetailstemplate)       | ✅ implementado nativamente — `POST /v1/payment-orders` com `template` (ver seção dedicada abaixo), validado e rastreado em `payment_orders` como qualquer outro pedido |
+| [Payment Request CTA Templates](https://developers.facebook.com/documentation/business-messaging/whatsapp/payments/payment-request-cta-templates)   | ✅ implementado nativamente — `POST /v1/payment-requests` (ver seção dedicada abaixo)                                                                                   |
+
+**One-Click Payments (`offsite_card_pay`)** — o negócio já guarda a credencial
+de cartão do comprador (tokenizada) junto ao seu PSP; nenhum dado de cartão
+passa por este serviço, só a referência opaca (`credential_id`) e os últimos 4
+dígitos exibidos ao comprador para confirmação:
+
+```json
+{
+    "payment": {
+        "methods": [
+            {
+                "type": "offsite_card_pay",
+                "offsite_card_pay": {
+                    "last_four_digits": "5235",
+                    "credential_id": "1234567"
+                }
+            }
+        ]
+    }
+}
+```
+
+`last_four_digits` precisa ter exatamente 4 dígitos; `credential_id` é
+obrigatório (`buildOffsiteCardPay`, `orders.js`). Depois de enviado, o
+comprador toca em "Revisar pagamento" no WhatsApp e aprova a cobrança — a Meta
+então manda uma mensagem inbound com `interactive.type: "payment_method"`
+(formato distinto do webhook de status `statuses[]`), que este serviço
+processa em `ingestInbound` (`messaging_repository.js`) e repassa como um novo
+evento de webhook assinado, **`payment.method_confirmed`** (ver tabela de
+eventos de saída abaixo) — é nesse evento que quem integra recebe o
+`credential_id` aprovado e deve efetivamente cobrar o cartão junto ao PSP.
+Como em qualquer variante desta API, a Meta não faz a cobrança nem a
+reconciliação — só confirma que o comprador aprovou; depois de cobrar, quem
+integra ainda precisa chamar `POST /v1/payment-orders/:referenceId/order-status`
+pra atualizar `payment_status`.
+
+> Feature ainda em rollout controlado pela Meta (exige habilitação da WABA via
+> Solution Partner) — confirme o acesso antes de usar em produção.
 
 ### `POST /v1/payment-orders`
 
@@ -1155,10 +1274,30 @@ requisição de pagamento — ele identifica o pedido, não a mensagem.
 payments_not_enabled_for_sender`. Com `items`, o Messaging calcula
 `subtotal` e exige `total_amount = subtotal + tax_amount + shipping_amount -
 discount_amount`; sem `items`, o pedido é simplificado e só `total_amount` é
-obrigatório (nesse caso um `header` de imagem é rejeitado). Métodos de
-pagamento aceitos: `pix_dynamic_code`, `payment_link`
+obrigatório (nesse caso um `header` de imagem é rejeitado — mesma regra da
+Meta: pedido simplificado não aceita header de imagem, ver
+[Orders API](https://developers.facebook.com/documentation/business-messaging/whatsapp/payments/payments-br/orders#full-api-reference)).
+Métodos de pagamento aceitos: `pix_dynamic_code`, `payment_link`
 (`payment_link.uri` HTTPS) e `boleto` (`boleto.digitable_line`) — nenhum
 dado de cartão é aceito.
+
+Campos opcionais além do exemplo acima (todos validados localmente antes de
+chamar a Meta, espelhando 1:1 o [Order
+Object](https://developers.facebook.com/documentation/business-messaging/whatsapp/payments/payments-br/orders#orderobject)
+da Meta):
+
+| Campo                                                                | Tipo                                                | Regra                                                                                                                                                                                                                                                                                                                                           |
+| -------------------------------------------------------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `header` (ou `header_image_url`)                                     | string (URL HTTPS)                                  | Vira o thumbnail do pedido. **Só permitido quando `items` está presente** — em pedido simplificado (sem `items`) é rejeitado com `400`.                                                                                                                                                                                                         |
+| `catalog_id`                                                         | string                                              | Id do catálogo Meta Commerce associado ao pedido (opcional; não valida existência do catálogo).                                                                                                                                                                                                                                                 |
+| `expiration.timestamp`                                               | epoch seconds                                       | Precisa estar pelo menos 300s no futuro; após expirar, o botão de pagamento fica desabilitado no WhatsApp do comprador.                                                                                                                                                                                                                         |
+| `expiration.description`                                             | string, até 120 chars                               | Obrigatório junto com `expiration.timestamp`.                                                                                                                                                                                                                                                                                                   |
+| `shipping_amount` / `shipping_description`                           | inteiro em centavos / string até 60 chars           | Entra no cálculo de `total_amount`; `shipping_description` é opcional.                                                                                                                                                                                                                                                                          |
+| `discount_amount` / `discount_description` / `discount_program_name` | inteiro em centavos / string até 60 / string até 60 | `discount_amount` é subtraído no cálculo de `total_amount`; os dois campos de texto são opcionais.                                                                                                                                                                                                                                              |
+| `tax_description`                                                    | string até 60 chars                                 | Texto opcional anexado ao `tax_amount` (que é sempre obrigatório, podendo ser `0`).                                                                                                                                                                                                                                                             |
+| `items[].sale_unit_amount` (ou `sale_amount`)                        | inteiro em centavos                                 | Preço promocional do item; precisa ser menor que `unit_amount`. Quando presente, é o valor usado no cálculo do `subtotal` (não o `unit_amount`).                                                                                                                                                                                                |
+| `goods_type` (ou `type`)                                             | `"physical-goods"` \| `"digital-goods"`             | Default `"physical-goods"` quando omitido.                                                                                                                                                                                                                                                                                                      |
+| `template.name` / `template.language`                                | string / string (locale, ex. `"pt_BR"`)             | Quando presente, muda o `order_details` de mensagem interativa (`body`/`footer`/`header` acima são ignorados) para o botão `ORDER_DETAILS` de um [Order Details Template](https://developers.facebook.com/documentation/business-messaging/whatsapp/payments/payments-br/orderdetailstemplate) já `ACTIVE` na WABA — ver seção dedicada abaixo. |
 
 Resposta `202` (ou `200` se `idempotency_key` repetida — `duplicate: true`):
 
@@ -1192,7 +1331,15 @@ com `idempotency_key` diferente.
 se enviados, precisam ser iguais aos do pedido original
 (`409` caso contrário). Um pedido em estado final (`completed`/`canceled`)
 não aceita nova transição de `order_status` (`409
-invalid_order_transition`).
+invalid_order_transition`) — essa é só a checagem feita **localmente**; a
+Meta valida outras transições do lado dela e pode recusar com `422
+meta_graph_error` e um dos códigos abaixo (ver `meta_code` na resposta):
+
+| `meta_code` | Significado                                                                                     |
+| ----------- | ----------------------------------------------------------------------------------------------- |
+| `2046`      | Transição de `order_status` inválida (além das já bloqueadas localmente).                       |
+| `2047`      | Falha ao cancelar — a Meta não cancela um pedido que já tem pagamento bem-sucedido ou pendente. |
+| `2040`      | Mensagem não suportada para este destinatário (ex.: destinatário bloqueou o número).            |
 
 Resposta `202`/`200`:
 
@@ -1210,21 +1357,169 @@ Resposta `202`/`200`:
 }
 ```
 
+### Variante: Order Details Template
+
+`POST /v1/payment-orders` sem `template` manda o `order_details` como
+mensagem interativa comum (`type: "interactive"`), o que exige a janela de
+24h de atendimento aberta (ver `GET /v1/service-window`) e não aceita anexar
+um PDF. A Meta também oferece uma variante de **template** para
+`order_details` — um template aprovado com um botão `ORDER_DETAILS`, que
+funciona fora da janela de 24h (é um template, como qualquer outro) e aceita
+header em `DOCUMENT` (PDF) além de `IMAGE`/`TEXT` — ver [Send order details
+template
+(Brazil)](https://developers.facebook.com/documentation/business-messaging/whatsapp/payments/payments-br/orderdetailstemplate).
+
+Depois de criar o template com um botão `ORDER_DETAILS` (via `POST
+/v1/admin/connections/:wabaId/templates`, `components` com `type: "BUTTONS"`
+e `buttons: [{ "type": "ORDER_DETAILS", "text": "..." }]`) e ele estar
+`ACTIVE` na WABA, basta chamar `POST /v1/payment-orders` normalmente
+adicionando `template.name`/`template.language`:
+
+```json
+{
+    "source_reference": "tenant-123",
+    "seller_reference": "17",
+    "recipient": "5511999999999",
+    "idempotency_key": "minha-app:T-42:order:9081:order-details-template",
+    "reference_id": "pedido-9081",
+    "template": { "name": "pedido_9081_fatura", "language": "pt_BR" },
+    "goods_type": "physical-goods",
+    "payment": {
+        "methods": [
+            {
+                "type": "pix_dynamic_code",
+                "pix_dynamic_code": {
+                    "code": "copia-e-cola-gerado-pelo-psp",
+                    "merchant_name": "Minha Empresa",
+                    "key": "chave-pix-do-recebedor",
+                    "key_type": "EVP"
+                }
+            }
+        ]
+    },
+    "items": [
+        {
+            "retailer_id": "SKU-1",
+            "name": "Produto",
+            "unit_amount": 5000,
+            "quantity": 1
+        }
+    ],
+    "tax_amount": 0,
+    "total_amount": 5000
+}
+```
+
+Quando `template` está presente, `body`/`footer`/`header` de nível raiz (que
+só existem na variante interativa) são ignorados; todo o resto —
+`reference_id` único, cálculo de `subtotal`/`total_amount`, `items`,
+`payment.methods`, `expiration`, `discount`/`shipping`, `goods_type` — segue
+**exatamente as mesmas regras e a mesma validação local** já documentadas
+acima para a variante interativa (`buildOrderDetails` em `orders.js` monta o
+botão `ORDER_DETAILS` em vez do `interactive.order_details`, mas reaproveita
+o mesmo cálculo). O pedido fica **registrado normalmente** em
+`bippa_messaging.payment_orders` — `POST
+/v1/payment-orders/:referenceId/order-status` funciona depois do mesmo jeito
+que para um pedido enviado como interativo. `name`/`language` precisam bater
+com um template `ACTIVE` na WABA que tenha o botão `ORDER_DETAILS` no índice
+`0`.
+
+Se o template aprovado tiver um header de mídia (`IMAGE` ou `DOCUMENT`/PDF),
+preencha `template.header` — vira um componente `header` extra no envio,
+antes do botão `ORDER_DETAILS`:
+
+```json
+"template": {
+    "name": "pedido_9081_fatura",
+    "language": "pt_BR",
+    "header": {
+        "document": { "link": "https://cdn.example.com/fatura-9081.pdf", "filename": "fatura-9081.pdf" }
+    }
+}
+```
+
+Use `template.header.image.link` em vez de `document` se o template usa
+header `IMAGE`. Sem `template.header`, nenhum componente `header` é enviado
+— use isso só se o template realmente tiver esse placeholder, senão a Graph
+API rejeita com `422 meta_graph_error`.
+
+### `POST /v1/payment-requests`
+
+Envia um [Payment Request CTA
+Template](https://developers.facebook.com/documentation/business-messaging/whatsapp/payments/payment-request-cta-templates)
+— até 3 botões `PAYMENT_REQUEST` num template aprovado, cada um embutindo
+diretamente um Pix, Boleto ou Payment Link, **sem precisar de Orders API**
+(sem `order`, sem `reference_id`, sem rastreamento em `payment_orders`). Útil
+pra cobrar um valor avulso sem itemizar um pedido, e funciona fora da janela
+de 24h por ser um template. Antes de usar, crie o template com botões
+`PAYMENT_REQUEST` (`POST /v1/admin/connections/:wabaId/templates`, um botão
+por método de pagamento desejado) e espere ficar `ACTIVE`.
+
+```json
+{
+    "source_reference": "tenant-123",
+    "seller_reference": "17",
+    "recipient": "5511999999999",
+    "idempotency_key": "minha-app:T-42:cobranca-avulsa:9081",
+    "template": { "name": "cobranca_padrao", "language": "pt_BR" },
+    "buttons": [
+        {
+            "type": "pix_dynamic_code",
+            "pix_dynamic_code": { "code": "copia-e-cola-gerado-pelo-psp" }
+        },
+        {
+            "type": "boleto",
+            "boleto": {
+                "digitable_line": "03399026944140000002628346101018898510000008848"
+            }
+        },
+        {
+            "type": "payment_link",
+            "payment_link": {
+                "uri": "https://minha-loja.example.com/pagar/9081"
+            }
+        }
+    ]
+}
+```
+
+`buttons` aceita de 1 a 3 entradas, `type` ∈ `pix_dynamic_code` \| `boleto` \|
+`payment_link` (mesmos objetos de método usados em `POST /v1/payment-orders`,
+sem o array `payment.methods` — aqui cada botão é um método). O `index` de
+cada botão é a posição no array (`0`, `1`, `2`...) e precisa corresponder à
+posição real do botão `PAYMENT_REQUEST` no template aprovado; passe
+`buttons[].index` explicitamente só se a ordem dos botões no template não
+bater com a ordem enviada. Requer `seller_reference` com
+`capability_payments: true`, igual às outras rotas de pagamento, e responde
+`503 payments_disabled` sob a mesma feature flag.
+
+Resposta `202` (ou `200` se `idempotency_key` repetida):
+
+```json
+{
+    "dispatch": {
+        "...": "mesmo formato de POST /v1/dispatches, kind: payment_request"
+    },
+    "duplicate": false
+}
+```
+
 ---
 
 ## Eventos de saída (webhooks assinados HMAC)
 
 O worker da outbox entrega eventos ao endpoint HTTP da aplicação cliente:
 
-| Tipo                      | Quando dispara                              | `data`                                                                                |
-| ------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `conversation.inbound`    | Mensagem recebida de um contato             | `{ conversation_id, message_id, sender_reference }`                                   |
-| `message.sent`            | Mensagem entregue à Meta com sucesso        | `{ dispatch_id, provider_message_id, sender_reference }`                              |
-| `message.delivered`       | Meta confirma entrega ao destinatário       | `{ dispatch_id, provider_message_id, sender_reference }`                              |
-| `message.read`            | Destinatário leu a mensagem                 | `{ dispatch_id, provider_message_id, sender_reference }`                              |
-| `message.failed`          | Envio falhou definitivamente                | `{ dispatch_id, sender_reference }`                                                   |
-| `payment.status_changed`  | Status de pagamento mudou (webhook da Meta) | `{ reference_id, order_status, payment_status, payment_timestamp, sender_reference }` |
-| `template.status_changed` | Meta aprovou/rejeitou/pausou um template    | `{ template_id, name, language, status, rejection_reason }`                           |
+| Tipo                       | Quando dispara                                    | `data`                                                                                                   |
+| -------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `conversation.inbound`     | Mensagem recebida de um contato                   | `{ conversation_id, message_id, sender_reference }`                                                      |
+| `message.sent`             | Mensagem entregue à Meta com sucesso              | `{ dispatch_id, provider_message_id, sender_reference }`                                                 |
+| `message.delivered`        | Meta confirma entrega ao destinatário             | `{ dispatch_id, provider_message_id, sender_reference }`                                                 |
+| `message.read`             | Destinatário leu a mensagem                       | `{ dispatch_id, provider_message_id, sender_reference }`                                                 |
+| `message.failed`           | Envio falhou definitivamente                      | `{ dispatch_id, sender_reference }`                                                                      |
+| `payment.status_changed`   | Status de pagamento mudou (webhook da Meta)       | `{ reference_id, order_status, payment_status, payment_timestamp, sender_reference }`                    |
+| `payment.method_confirmed` | Comprador aprovou cobrança via One-Click Payments | `{ reference_id, payment_method, credential_id, last_four_digits, payment_timestamp, sender_reference }` |
+| `template.status_changed`  | Meta aprovou/rejeitou/pausou um template          | `{ template_id, name, language, status, rejection_reason }`                                              |
 
 Corpo entregue (`POST` para o `callback_url` cadastrado):
 

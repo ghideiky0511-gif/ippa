@@ -4,7 +4,9 @@ import {
     associateSenderProfile,
     bindTemplateToSenderProfile,
     createWabaTemplate,
+    dispatchPaymentOrder,
     dispatchTemplateMessage,
+    dispatchTemplateWithUrlButton,
     ensureApplicationInstallation,
     listWhatsAppConnections,
     startOnboardingAttempt,
@@ -237,6 +239,60 @@ test("createWabaTemplate cria o template na WABA (não no telefone)", async () =
     );
 });
 
+test("createWabaTemplate adiciona um componente BUTTONS quando o template tem link dinâmico", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    await withFetch(
+        async (input, init) => {
+            calls.push({ url: String(input), init });
+            return new Response(
+                JSON.stringify({
+                    template: { id: "tpl-1", name: "bippa_order_confirmed_v2", status: "PENDING", category: "UTILITY", language: "pt_BR" },
+                }),
+                { status: 201, headers: { "Content-Type": "application/json" } },
+            );
+        },
+        async () => {
+            await createWabaTemplate("bippa_key123_segredo", "waba-1", {
+                sourceReference: "tenant-1",
+                name: "bippa_order_confirmed_v2",
+                category: "UTILITY",
+                languageCode: "pt_BR",
+                body: "Olá, {{1}}. Pedido {{2}}.",
+                bodyExamples: ["Maria", "1234"],
+                button: {
+                    text: "Ver pedido",
+                    urlTemplate: "http://localhost:3015/{{1}}",
+                    example: "loja/pedidos/1234",
+                },
+            });
+            assert.deepEqual(JSON.parse(String(calls[0].init?.body)), {
+                source_reference: "tenant-1",
+                name: "bippa_order_confirmed_v2",
+                language: "pt_BR",
+                category: "UTILITY",
+                components: [
+                    {
+                        type: "BODY",
+                        text: "Olá, {{1}}. Pedido {{2}}.",
+                        example: { body_text: [["Maria", "1234"]] },
+                    },
+                    {
+                        type: "BUTTONS",
+                        buttons: [
+                            {
+                                type: "URL",
+                                text: "Ver pedido",
+                                url: "http://localhost:3015/{{1}}",
+                                example: ["loja/pedidos/1234"],
+                            },
+                        ],
+                    },
+                ],
+            });
+        },
+    );
+});
+
 test("bindTemplateToSenderProfile vincula um template já criado sob uma template_key", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     await withFetch(
@@ -301,6 +357,119 @@ test("dispatchTemplateMessage envia source_reference/seller_reference/idempotenc
                 kind: "template",
                 idempotency_key: "bippa-catalogo:tenant-1:seller:seller-1:order:9081:confirmed",
                 payload: { template_key: "order_confirmed", params: { "1": "Maria", "2": "123" } },
+            });
+        },
+    );
+});
+
+test("dispatchTemplateWithUrlButton envia payload.template bruto com body e botão URL", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    await withFetch(
+        async (input, init) => {
+            calls.push({ url: String(input), init });
+            return new Response(
+                JSON.stringify({ dispatch: { id: "dispatch-1", status: "queued" }, duplicate: false }),
+                { status: 202, headers: { "Content-Type": "application/json" } },
+            );
+        },
+        async () => {
+            const result = await dispatchTemplateWithUrlButton("bippa_key123_segredo", {
+                sourceReference: "tenant-1",
+                sellerReference: "seller-1",
+                to: "5511999999999",
+                idempotencyKey: "bippa-catalogo:tenant-1:seller:seller-1:order:9081:confirmed",
+                templateName: "bippa_order_confirmed_v2",
+                languageCode: "pt_BR",
+                bodyParams: ["Maria", "1234"],
+                buttonParam: "loja/pedidos/1234",
+            });
+            assert.deepEqual(result, { id: "dispatch-1", duplicate: false });
+            assert.equal(calls[0].url, `${DEFAULT_BASE_URL}/v1/dispatches`);
+            const body = JSON.parse(String(calls[0].init?.body));
+            assert.deepEqual(body, {
+                source_reference: "tenant-1",
+                seller_reference: "seller-1",
+                recipient: "5511999999999",
+                kind: "template",
+                idempotency_key: "bippa-catalogo:tenant-1:seller:seller-1:order:9081:confirmed",
+                payload: {
+                    template: {
+                        name: "bippa_order_confirmed_v2",
+                        language: { code: "pt_BR" },
+                        components: [
+                            {
+                                type: "body",
+                                parameters: [
+                                    { type: "text", text: "Maria" },
+                                    { type: "text", text: "1234" },
+                                ],
+                            },
+                            {
+                                type: "button",
+                                sub_type: "url",
+                                index: "0",
+                                parameters: [{ type: "text", text: "loja/pedidos/1234" }],
+                            },
+                        ],
+                    },
+                },
+            });
+        },
+    );
+});
+
+test("dispatchPaymentOrder envia payment.methods.pix_dynamic_code e items para POST /v1/payment-orders", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    await withFetch(
+        async (input, init) => {
+            calls.push({ url: String(input), init });
+            return new Response(
+                JSON.stringify({
+                    payment_order: { reference_id: "order-1", total_amount: 5000 },
+                    dispatch: { id: "dispatch-1", status: "queued" },
+                    duplicate: false,
+                }),
+                { status: 202, headers: { "Content-Type": "application/json" } },
+            );
+        },
+        async () => {
+            const result = await dispatchPaymentOrder("bippa_key123_segredo", {
+                sourceReference: "tenant-1",
+                sellerReference: "seller-1",
+                to: "5511999999999",
+                idempotencyKey: "bippa-catalogo:tenant-1:seller:seller-1:order:order-1:payment-order:manual:uuid-1",
+                referenceId: "order-1",
+                items: [{ retailerId: "item-1", name: "Produto", unitAmount: 5000, quantity: 1 }],
+                taxAmount: 0,
+                totalAmount: 5000,
+                pix: { code: "copia-e-cola-gerado-pelo-psp", merchantName: "Minha Loja", key: "chave-pix", keyType: "EVP" },
+            });
+            assert.deepEqual(result, { id: "dispatch-1", duplicate: false });
+            assert.equal(calls[0].url, `${DEFAULT_BASE_URL}/v1/payment-orders`);
+            const body = JSON.parse(String(calls[0].init?.body));
+            assert.deepEqual(body, {
+                source_reference: "tenant-1",
+                seller_reference: "seller-1",
+                recipient: "5511999999999",
+                idempotency_key: "bippa-catalogo:tenant-1:seller:seller-1:order:order-1:payment-order:manual:uuid-1",
+                reference_id: "order-1",
+                goods_type: "physical-goods",
+                payment: {
+                    methods: [
+                        {
+                            type: "pix_dynamic_code",
+                            pix_dynamic_code: {
+                                code: "copia-e-cola-gerado-pelo-psp",
+                                merchant_name: "Minha Loja",
+                                key: "chave-pix",
+                                key_type: "EVP",
+                            },
+                        },
+                    ],
+                },
+                items: [{ retailer_id: "item-1", name: "Produto", unit_amount: 5000, quantity: 1 }],
+                tax_amount: 0,
+                total_amount: 5000,
             });
         },
     );

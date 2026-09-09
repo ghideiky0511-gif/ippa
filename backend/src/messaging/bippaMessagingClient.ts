@@ -482,6 +482,11 @@ export interface CreateWabaTemplateInput {
     category: "UTILITY";
     body: string;
     bodyExamples: string[];
+    // Botão URL dinâmico (ver whatsappTemplates.ts) -- `urlTemplate` já vem
+    // no formato que a Meta espera para `buttons[].url` (domínio estático +
+    // `{{1}}` no fim), `example` é o caminho de exemplo pro `{{1}}` (a Meta
+    // exige um `example` por botão dinâmico, igual ao `body_text` do BODY).
+    button?: { text: string; urlTemplate: string; example: string };
 }
 
 export interface CreateWabaTemplateResult {
@@ -532,6 +537,21 @@ export function createWabaTemplate(
                         text: input.body,
                         example: { body_text: [input.bodyExamples] },
                     },
+                    ...(input.button
+                        ? [
+                              {
+                                  type: "BUTTONS",
+                                  buttons: [
+                                      {
+                                          type: "URL",
+                                          text: input.button.text,
+                                          url: input.button.urlTemplate,
+                                          example: [input.button.example],
+                                      },
+                                  ],
+                              },
+                          ]
+                        : []),
                 ],
             },
             operation: "createWabaTemplate",
@@ -651,6 +671,175 @@ export function dispatchTemplateMessage(
                 },
             },
             operation: "dispatchTemplateMessage",
+            reporter,
+        },
+    ).then((response) => ({
+        id: response.dispatch.id,
+        duplicate: response.duplicate,
+    }));
+}
+
+// Variante para templates com um botão URL dinâmico (ver whatsappTemplates.ts
+// -- STANDARD_WHATSAPP_TEMPLATES não coloca mais link no BODY, só num botão
+// dedicado). `payload.template_key`/`payload.params` (dispatchTemplateMessage
+// acima) só preenchem os componentes BODY/HEADER do template
+// (api-reference.md, seção "Envio de mensagens": "Esse atalho só monta
+// componentes body/header"); o parâmetro do botão exige o `payload.template`
+// bruto documentado ali mesmo ("passe o objeto template já pronto... repassado
+// sem transformação nenhuma"), com `name`/`language` do template (não
+// `template_key`) e `index`/`sub_type` batendo com a posição real do botão
+// aprovado -- o botão URL é sempre o único e primeiro botão dos templates
+// deste catálogo, por isso `index: "0"` fixo aqui.
+export interface DispatchTemplateWithUrlButtonInput {
+    sourceReference: string;
+    sellerReference: string;
+    to: string;
+    idempotencyKey: string;
+    templateName: string;
+    languageCode: string;
+    bodyParams: string[];
+    buttonParam: string;
+    mediaUrl?: string;
+}
+
+export function dispatchTemplateWithUrlButton(
+    apiKey: string,
+    input: DispatchTemplateWithUrlButtonInput,
+    reporter?: ExternalApiCallReporter,
+): Promise<DispatchMessageResult> {
+    return bippaMessagingRequest<DispatchMessageResponse>(
+        "POST",
+        `${baseUrl()}/v1/dispatches`,
+        {
+            service: "bippa-messaging",
+            apiKey,
+            jsonBody: {
+                source_reference: input.sourceReference,
+                seller_reference: input.sellerReference,
+                recipient: input.to,
+                kind: "template",
+                idempotency_key: input.idempotencyKey,
+                payload: {
+                    template: {
+                        name: input.templateName,
+                        language: { code: input.languageCode },
+                        components: [
+                            ...(input.mediaUrl
+                                ? [
+                                      {
+                                          type: "header",
+                                          parameters: [
+                                              { type: "image", image: { link: input.mediaUrl } },
+                                          ],
+                                      },
+                                  ]
+                                : []),
+                            {
+                                type: "body",
+                                parameters: input.bodyParams.map((value) => ({
+                                    type: "text",
+                                    text: value,
+                                })),
+                            },
+                            {
+                                type: "button",
+                                sub_type: "url",
+                                index: "0",
+                                parameters: [{ type: "text", text: input.buttonParam }],
+                            },
+                        ],
+                    },
+                },
+            },
+            operation: "dispatchTemplateWithUrlButton",
+            reporter,
+        },
+    ).then((response) => ({
+        id: response.dispatch.id,
+        duplicate: response.duplicate,
+    }));
+}
+
+// POST /v1/payment-orders -- order_details nativo da Meta Payments API,
+// pagável DENTRO do WhatsApp (diferente de dispatchTemplateMessage/
+// dispatchTemplateWithUrlButton acima, que só levam a cliente pra fora do
+// WhatsApp via link). Único caminho ainda implementado aqui é PIX dinâmico
+// (ver whatsappNotificationService.ts::sendPaymentOrderWhatsAppNow) --
+// requer `seller_reference` com capability_payments: true, senão 422
+// payments_not_enabled_for_sender (ver api-reference.md, seção
+// "Orders / Pagamentos (Meta Payments)").
+export interface PaymentOrderItemInput {
+    retailerId: string;
+    name: string;
+    unitAmount: number;
+    quantity: number;
+}
+
+export interface DispatchPaymentOrderInput {
+    sourceReference: string;
+    sellerReference: string;
+    to: string;
+    idempotencyKey: string;
+    referenceId: string;
+    items: PaymentOrderItemInput[];
+    taxAmount: number;
+    totalAmount: number;
+    goodsType?: "physical-goods" | "digital-goods";
+    pix: { code: string; merchantName: string; key: string; keyType: string };
+}
+
+interface PaymentOrderResponse {
+    dispatch: { id: string };
+    payment_order: { reference_id: string; total_amount: number };
+    duplicate: boolean;
+}
+
+export interface PaymentOrderResult {
+    id: string;
+    duplicate: boolean;
+}
+
+export function dispatchPaymentOrder(
+    apiKey: string,
+    input: DispatchPaymentOrderInput,
+    reporter?: ExternalApiCallReporter,
+): Promise<PaymentOrderResult> {
+    return bippaMessagingRequest<PaymentOrderResponse>(
+        "POST",
+        `${baseUrl()}/v1/payment-orders`,
+        {
+            service: "bippa-messaging",
+            apiKey,
+            jsonBody: {
+                source_reference: input.sourceReference,
+                seller_reference: input.sellerReference,
+                recipient: input.to,
+                idempotency_key: input.idempotencyKey,
+                reference_id: input.referenceId,
+                goods_type: input.goodsType ?? "physical-goods",
+                payment: {
+                    methods: [
+                        {
+                            type: "pix_dynamic_code",
+                            pix_dynamic_code: {
+                                code: input.pix.code,
+                                merchant_name: input.pix.merchantName,
+                                key: input.pix.key,
+                                key_type: input.pix.keyType,
+                            },
+                        },
+                    ],
+                },
+                items: input.items.map((item) => ({
+                    retailer_id: item.retailerId,
+                    name: item.name,
+                    unit_amount: item.unitAmount,
+                    quantity: item.quantity,
+                })),
+                tax_amount: input.taxAmount,
+                total_amount: input.totalAmount,
+            },
+            operation: "dispatchPaymentOrder",
             reporter,
         },
     ).then((response) => ({

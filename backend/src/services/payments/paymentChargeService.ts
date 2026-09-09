@@ -41,7 +41,7 @@ import type { OrderPaymentCharge, PaymentChargeMethod, PaymentChargeStatus } fro
 // própria ativação (`active = true`) já implica "pronto", só falta um
 // access_token salvo. Mesmo padrão de ternário inline por provider já
 // usado em paymentIntegrationService.ts::toOption.
-function isPaymentIntegrationReadyToCharge(row: PaymentIntegrationRow): boolean {
+export function isPaymentIntegrationReadyToCharge(row: PaymentIntegrationRow): boolean {
     if (row.provider === "stripe") {
         return Boolean(row.stripe_account_id) && row.stripe_onboarding_status === "complete";
     }

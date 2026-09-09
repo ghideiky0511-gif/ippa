@@ -15,6 +15,7 @@ import {
 } from '@/workspace/lib/paymentIntegrationClient';
 import { useTenant } from '@/components/TenantProvider';
 import { IntegrationRulesCard } from './IntegrationRulesCard';
+import { PixNativePaymentSettingsForm } from './PixNativePaymentSettingsForm';
 
 type Status = 'not_started' | 'pending' | 'complete' | 'restricted';
 
@@ -212,6 +213,8 @@ export default function StripeIntegrationApp() {
               </div>
               {message && <p className="mt-3 text-sm text-muted-foreground" role="status">{message}</p>}
             </section>
+
+            <PixNativePaymentSettingsForm provider="stripe" option={option} onSaved={setOption} />
 
             <IntegrationRulesCard
               description="A ippa usa Stripe Connect: a conta pertence à loja e a verificação acontece na Stripe."

@@ -17,9 +17,14 @@ export const WhatsAppTemplateKeySchema = z.enum([
 ]);
 export type WhatsAppTemplateKey = z.infer<typeof WhatsAppTemplateKeySchema>;
 
+// _v2: a Meta não permite editar `components` de um template já submetido
+// sob o mesmo nome+idioma (ver comentário abaixo sobre subcode 2388024) --
+// bippa_order_confirmed_v1/bippa_payment_link_v1 já foram submetidos com o
+// link como variável solta no BODY e precisam ficar como "mortos" na WABA;
+// a correção (link em botão URL) vai como template novo.
 export const WHATSAPP_TEMPLATE_NAMES = {
-    orderConfirmed: "bippa_order_confirmed_v1",
-    paymentLink: "bippa_payment_link_v1",
+    orderConfirmed: "bippa_order_confirmed_v2",
+    paymentLink: "bippa_payment_link_v2",
 } as const;
 
 // Chave de NEGÓCIO (não o nome real da template na Meta) -- é isso que
@@ -41,6 +46,11 @@ export interface StandardWhatsAppTemplate {
     category: "UTILITY";
     languageCode: "pt_BR";
     body: string;
+    // Botão dinâmico do link (ver motivo no comentário de
+    // STANDARD_WHATSAPP_TEMPLATES abaixo) -- `urlTemplate` é o formato que a
+    // Meta exige para um botão URL com variável: domínio ESTÁTICO seguido de
+    // uma única `{{1}}` no final (só o caminho relativo é dinâmico).
+    button?: { text: string; urlTemplate: string };
     // `example` aqui é só a SUGESTÃO pré-preenchida no formulário de envio
     // (WhatsAppIntegrationApp.tsx) -- a administradora confirma ou digita
     // outro valor no momento do envio, e é esse valor editado que vai para
@@ -50,8 +60,16 @@ export interface StandardWhatsAppTemplate {
     // catálogo for lido sem tenant; listStandardWhatsAppTemplates
     // (whatsappTemplateService.ts) os substitui pelo caminho real da loja
     // -- NUNCA com domínio (ver PUBLIC_ORIGIN acima: o domínio já está
-    // embutido como texto estático no `body`).
-    parameters: Array<{ key: string; label: string; example: string }>;
+    // embutido como texto estático na `url` do botão, não mais no `body`).
+    // `component` diz para qual componente da Meta este exemplo vai --
+    // whatsappTemplateService.ts usa isso para separar `bodyExamples` do
+    // exemplo do botão ao montar o payload de criação do template.
+    parameters: Array<{
+        key: string;
+        label: string;
+        example: string;
+        component: "body" | "button";
+    }>;
 }
 
 // Catálogo fechado do MVP. O browser escolhe somente a chave lógica; nome,
@@ -69,16 +87,25 @@ export interface StandardWhatsAppTemplate {
 // palavras) depois da última variável, não só um ponto solto.
 //
 // Segunda regra da Meta, também confirmada em produção (422
-// meta_graph_error / subcode 2388024): o VALOR de uma variável do `body`
-// nunca pode ser uma URL completa -- a Meta só aceita link dinâmico via
-// botão dedicado (type: URL), não como texto solto no corpo. Em vez de
-// implementar botão dinâmico (mais uma chamada nova, ainda sem contrato
-// confirmado no bippa-messaging), o link fica simples: o domínio
-// (PUBLIC_ORIGIN) é texto ESTÁTICO no `body`, e a variável carrega só o
-// caminho relativo (ex.: "loja/pedidos/1234", sem "https://") --
-// whatsappNotificationService.ts extrai esse caminho de
-// orderDetailsLink()/orderPaymentLink() antes de montar os `params` do
-// dispatch.
+// meta_graph_error / subcode 2388024): a Meta rejeita QUALQUER link no
+// `body` cuja variável seja "colada" a um domínio estático (ex.:
+// "http://localhost:3015/{{4}}") -- a tentativa anterior de manter o
+// domínio como texto estático no `body` e só o caminho como variável
+// (bippa_order_confirmed_v1/bippa_payment_link_v1) ainda caiu nessa regra,
+// porque a Meta detecta o padrão de link mesmo com o domínio fora da
+// variável. Único formato aceito para link dinâmico: componente `BUTTONS`
+// dedicado, `type: "URL"`, com a URL base ESTÁTICA e só o sufixo como
+// `{{1}}` (numeração própria do botão, reinicia em 1 independente do
+// `body`) -- por isso os templates abaixo não têm mais link nenhum no
+// `body`, só no `button.urlTemplate`. whatsappTemplateService.ts monta o
+// componente `BUTTONS` a partir dele ao criar o template
+// (bippaMessagingClient.createWabaTemplate), e
+// whatsappNotificationService.ts extrai o caminho de
+// orderDetailsLink()/orderPaymentLink() para preencher o `{{1}}` do botão
+// no envio (bippaMessagingClient.dispatchTemplateWithUrlButton) -- ver
+// api-reference.md, seção "Envio de mensagens", sobre o `payload.template`
+// bruto usado para preencher parâmetro de botão (sem rota dedicada como
+// Order Details/Payment Request).
 export const STANDARD_WHATSAPP_TEMPLATES: readonly StandardWhatsAppTemplate[] =
     [
         {
@@ -89,27 +116,35 @@ export const STANDARD_WHATSAPP_TEMPLATES: readonly StandardWhatsAppTemplate[] =
                 "Confirma o pedido e leva a cliente para a página de detalhes.",
             category: "UTILITY",
             languageCode: "pt_BR",
-            body: `Olá, {{1}}!\n\nSeu pedido nº {{2}}, no valor de {{3}}, foi confirmado.\n\nAcompanhe os detalhes em ${PUBLIC_ORIGIN}/{{4}}. Obrigada pela preferência!`,
+            body: `Olá, {{1}}!\n\nSeu pedido nº {{2}}, no valor de {{3}}, foi confirmado. Acompanhe os detalhes no botão abaixo. Obrigada pela preferência!`,
+            button: {
+                text: "Ver pedido",
+                urlTemplate: `${PUBLIC_ORIGIN}/{{1}}`,
+            },
             parameters: [
                 {
                     key: "client_name",
                     label: "Nome da cliente",
                     example: "Maria",
+                    component: "body",
                 },
                 {
                     key: "order_number",
                     label: "Número do pedido",
                     example: "1234",
+                    component: "body",
                 },
                 {
                     key: "order_total",
                     label: "Valor do pedido",
                     example: "R$ 199,90",
+                    component: "body",
                 },
                 {
                     key: "order_url",
                     label: "Caminho do pedido (sem domínio)",
                     example: "loja-exemplo/pedidos/1234",
+                    component: "button",
                 },
             ],
         },
@@ -121,17 +156,23 @@ export const STANDARD_WHATSAPP_TEMPLATES: readonly StandardWhatsAppTemplate[] =
                 "Entrega à cliente o link seguro para pagamento do pedido.",
             category: "UTILITY",
             languageCode: "pt_BR",
-            body: `Olá, {{1}}!\n\nSeu link de pagamento está pronto. Pague com segurança em ${PUBLIC_ORIGIN}/{{2}}. Obrigada pela preferência!`,
+            body: `Olá, {{1}}!\n\nSeu link de pagamento está pronto. Pague com segurança pelo botão abaixo. Obrigada pela preferência!`,
+            button: {
+                text: "Pagar agora",
+                urlTemplate: `${PUBLIC_ORIGIN}/{{1}}`,
+            },
             parameters: [
                 {
                     key: "client_name",
                     label: "Nome da cliente",
                     example: "Maria",
+                    component: "body",
                 },
                 {
                     key: "payment_url",
                     label: "Caminho do link de pagamento (sem domínio)",
                     example: "loja-exemplo/pagar/exemplo",
+                    component: "button",
                 },
             ],
         },

@@ -15,6 +15,7 @@ import {
 } from '@/workspace/lib/paymentIntegrationClient';
 import { useTenant } from '@/components/TenantProvider';
 import { IntegrationRulesCard } from './IntegrationRulesCard';
+import { PixNativePaymentSettingsForm } from './PixNativePaymentSettingsForm';
 
 // Espelha StripeIntegrationApp.tsx, mas mais simples num ponto central: a
 // ativação do Mercado Pago é síncrona no callback OAuth (a troca do code JÁ
@@ -241,6 +242,8 @@ export default function MercadoPagoIntegrationApp() {
               </div>
               {message && <p className="mt-3 text-sm text-muted-foreground" role="status">{message}</p>}
             </section>
+
+            <PixNativePaymentSettingsForm provider="mercadopago" option={option} onSaved={setOption} />
 
             <IntegrationRulesCard
               description="A conexão é autorizada no ambiente do Mercado Pago e volta para esta loja ao terminar."

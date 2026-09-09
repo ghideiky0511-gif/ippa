@@ -22,6 +22,12 @@ export interface PaymentIntegrationOption {
   stripeApiVersion?: 'v2' | null;
   // Espelha stripeAccountId: id do vendedor Mercado Pago, só exibição.
   mercadoPagoUserId?: string | null;
+  // Chave Pix da loja, usada pro payment_order nativo do WhatsApp (ver
+  // PixNativePaymentSettingsForm.tsx). Não é segredo -- diferente de
+  // credentials, vem preenchida com o valor já salvo.
+  pixMerchantName?: string | null;
+  pixKey?: string | null;
+  pixKeyType?: 'CPF' | 'CNPJ' | 'EMAIL' | 'PHONE' | 'EVP' | null;
   updatedAt: string | null;
 }
 
@@ -52,6 +58,26 @@ export function savePaymentIntegrationCredentials(
       body: JSON.stringify({ provider, credentials }),
     },
     'Não foi possível salvar as credenciais.'
+  ) as Promise<PaymentIntegrationOption>;
+}
+
+// Chave Pix usada no envio nativo (payment_order) pelo WhatsApp -- rota
+// separada de savePaymentIntegrationCredentials porque não é segredo e não
+// é bloqueada pelo onboarding hospedado da Stripe/Mercado Pago (ver
+// backend/src/app/api/[tenantSlug]/payment-integration/pix-settings/route.ts).
+export function savePixSettings(
+  provider: string,
+  input: { pixMerchantName: string; pixKey: string; pixKeyType: string }
+): Promise<PaymentIntegrationOption> {
+  return adminJson(
+    '/api/payment-integration/pix-settings',
+    unknown,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider, ...input }),
+    },
+    'Não foi possível salvar a chave Pix.'
   ) as Promise<PaymentIntegrationOption>;
 }
 

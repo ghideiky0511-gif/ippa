@@ -11,7 +11,10 @@ import type { ClientRow } from "@/models/clientsModel";
 import { orderDetailsLink } from "@/services/notifications/emailNotificationService";
 import { ValidationError } from "@/services/shared/errors";
 import { mapBippaMessagingError } from "./whatsappServiceErrors";
-import { WHATSAPP_TEMPLATE_KEYS } from "./whatsappTemplates";
+import {
+    standardWhatsAppTemplate,
+    WHATSAPP_TEMPLATE_KEYS,
+} from "./whatsappTemplates";
 
 // Terceiro canal de notificação de pedido, ao lado de e-mail e push in-app
 // (emailNotificationService.ts) -- não é a fase de order_details/
@@ -77,22 +80,13 @@ export async function assertWhatsAppConnectionAvailable(tenant: Tenant, sellerId
     }
 }
 
-// `params` de um dispatch de template é um objeto indexado por posição
-// ("1", "2", ...), não mais o array `bodyParameters` do antigo (e nunca
-// validado) POST /v1/messages -- ver
-// backend/docs/mensageria/bippa-messaging/docs/api-reference.md, seção
-// "Envio de mensagens".
-function templateParams(values: string[]): Record<string, string> {
-    return Object.fromEntries(values.map((value, index) => [String(index + 1), value]));
-}
-
-// A Meta rejeita URL completa como valor de variável do BODY (422
+// A Meta rejeita link dinâmico fora de um botão URL dedicado (422
 // meta_graph_error / subcode 2388024, confirmado em produção) -- o domínio
-// já é texto estático no `body` dos templates (PUBLIC_ORIGIN em
+// já é texto estático na `url` do botão dos templates (PUBLIC_ORIGIN em
 // whatsappTemplates.ts), então só o caminho (sem "https://dominio") vai
-// como variável. `orderDetailsLink`/`orderPaymentLink` continuam devolvendo
-// a URL completa (usadas também nos e-mails), então extrai-se o caminho
-// aqui em vez de duplicar a lógica de montagem de URL.
+// como parâmetro do botão. `orderDetailsLink`/`orderPaymentLink` continuam
+// devolvendo a URL completa (usadas também nos e-mails), então extrai-se o
+// caminho aqui em vez de duplicar a lógica de montagem de URL.
 function pathOnly(url: string): string {
     return new URL(url).pathname.replace(/^\//, "");
 }
@@ -150,8 +144,9 @@ export function sendOrderConfirmedWhatsApp(
     order: { id: string; orderNumber: number; total: number },
 ): void {
     if (!recipient) return;
+    const definition = standardWhatsAppTemplate(WHATSAPP_TEMPLATE_KEYS.orderConfirmed);
     void deliver(tenant, recipient, "order-confirmed-whatsapp", async (row, apiKey) => {
-        const result = await bippaMessagingClient.dispatchTemplateMessage(apiKey, {
+        const result = await bippaMessagingClient.dispatchTemplateWithUrlButton(apiKey, {
             sourceReference: tenant.id,
             sellerReference: row.external_reference,
             to: toWaId(recipient.whatsappPhone),
@@ -160,13 +155,10 @@ export function sendOrderConfirmedWhatsApp(
             // acidental (ex.: reentrância do checkout) deve deduplicar no
             // bippa-messaging, não mandar a mensagem de novo.
             idempotencyKey: `bippa-catalogo:${tenant.id}:seller:${recipient.sellerId}:order:${order.id}:confirmed`,
-            templateKey: WHATSAPP_TEMPLATE_KEYS.orderConfirmed,
-            params: templateParams([
-                recipient.clientName,
-                String(order.orderNumber),
-                formatBRL(order.total),
-                pathOnly(orderDetailsLink(tenant, order.orderNumber)),
-            ]),
+            templateName: definition.name,
+            languageCode: definition.languageCode,
+            bodyParams: [recipient.clientName, String(order.orderNumber), formatBRL(order.total)],
+            buttonParam: pathOnly(orderDetailsLink(tenant, order.orderNumber)),
         });
         return result;
     });
@@ -179,14 +171,17 @@ export function sendPaymentLinkWhatsApp(
     referenceId: string,
 ): void {
     if (!recipient) return;
+    const definition = standardWhatsAppTemplate(WHATSAPP_TEMPLATE_KEYS.paymentLink);
     void deliver(tenant, recipient, "payment-link-whatsapp", async (row, apiKey) => {
-        const result = await bippaMessagingClient.dispatchTemplateMessage(apiKey, {
+        const result = await bippaMessagingClient.dispatchTemplateWithUrlButton(apiKey, {
             sourceReference: tenant.id,
             sellerReference: row.external_reference,
             to: toWaId(recipient.whatsappPhone),
             idempotencyKey: paymentLinkIdempotencyKey(tenant.id, recipient.sellerId, referenceId),
-            templateKey: WHATSAPP_TEMPLATE_KEYS.paymentLink,
-            params: templateParams([recipient.clientName, pathOnly(link)]),
+            templateName: definition.name,
+            languageCode: definition.languageCode,
+            bodyParams: [recipient.clientName],
+            buttonParam: pathOnly(link),
         });
         return result;
     });
@@ -207,8 +202,9 @@ export async function sendOrderConfirmedWhatsAppNow(
     recipient: WhatsAppOrderRecipient,
     order: { id: string; orderNumber: number; total: number },
 ): Promise<{ id: string }> {
+    const definition = standardWhatsAppTemplate(WHATSAPP_TEMPLATE_KEYS.orderConfirmed);
     const result = await sendRequired(tenant, recipient, (row, apiKey) =>
-        bippaMessagingClient.dispatchTemplateMessage(apiKey, {
+        bippaMessagingClient.dispatchTemplateWithUrlButton(apiKey, {
             sourceReference: tenant.id,
             sellerReference: row.external_reference,
             to: toWaId(recipient.whatsappPhone),
@@ -217,13 +213,10 @@ export async function sendOrderConfirmedWhatsAppNow(
             // mesmo pedido -- por isso um sufixo aleatório, ao contrário do
             // disparo automático acima.
             idempotencyKey: `bippa-catalogo:${tenant.id}:seller:${recipient.sellerId}:order:${order.id}:manual:${randomUUID()}`,
-            templateKey: WHATSAPP_TEMPLATE_KEYS.orderConfirmed,
-            params: templateParams([
-                recipient.clientName,
-                String(order.orderNumber),
-                formatBRL(order.total),
-                pathOnly(orderDetailsLink(tenant, order.orderNumber)),
-            ]),
+            templateName: definition.name,
+            languageCode: definition.languageCode,
+            bodyParams: [recipient.clientName, String(order.orderNumber), formatBRL(order.total)],
+            buttonParam: pathOnly(orderDetailsLink(tenant, order.orderNumber)),
         }),
     );
     logger.info("manual-order-whatsapp", "Pedido enviado manualmente pelo WhatsApp", {
@@ -235,19 +228,55 @@ export async function sendOrderConfirmedWhatsAppNow(
     return result;
 }
 
+// Envio nativo (payment_order / PIX) -- diferente de
+// sendPaymentLinkWhatsAppNow, não passa por um template do catálogo: monta
+// direto o order_details pagável DENTRO do WhatsApp (ver
+// bippaMessagingClient.ts::dispatchPaymentOrder). Toda a validação de
+// pré-requisitos (capability_payments, CPF da cliente, chave Pix
+// configurada) já aconteceu no chamador (orderWhatsAppService.ts) -- esta
+// função só envia.
+export async function sendPaymentOrderWhatsAppNow(
+    tenant: Tenant,
+    recipient: WhatsAppOrderRecipient,
+    order: { id: string },
+    referenceId: string,
+    items: Array<{ retailerId: string; name: string; unitAmount: number; quantity: number }>,
+    totalAmount: number,
+    taxAmount: number,
+    pix: { code: string; merchantName: string; key: string; keyType: string },
+): Promise<{ id: string }> {
+    const result = await sendRequired(tenant, recipient, (row, apiKey) =>
+        bippaMessagingClient.dispatchPaymentOrder(apiKey, {
+            sourceReference: tenant.id,
+            sellerReference: row.external_reference,
+            to: toWaId(recipient.whatsappPhone),
+            idempotencyKey: `bippa-catalogo:${tenant.id}:seller:${recipient.sellerId}:order:${order.id}:payment-order:manual:${randomUUID()}`,
+            referenceId,
+            items,
+            totalAmount,
+            taxAmount,
+            pix,
+        }),
+    );
+    return result;
+}
+
 export async function sendPaymentLinkWhatsAppNow(
     tenant: Tenant,
     recipient: WhatsAppOrderRecipient,
     link: string,
 ): Promise<{ id: string }> {
+    const definition = standardWhatsAppTemplate(WHATSAPP_TEMPLATE_KEYS.paymentLink);
     const result = await sendRequired(tenant, recipient, (row, apiKey) =>
-        bippaMessagingClient.dispatchTemplateMessage(apiKey, {
+        bippaMessagingClient.dispatchTemplateWithUrlButton(apiKey, {
             sourceReference: tenant.id,
             sellerReference: row.external_reference,
             to: toWaId(recipient.whatsappPhone),
             idempotencyKey: `bippa-catalogo:${tenant.id}:seller:${recipient.sellerId}:payment-link:manual:${randomUUID()}`,
-            templateKey: WHATSAPP_TEMPLATE_KEYS.paymentLink,
-            params: templateParams([recipient.clientName, pathOnly(link)]),
+            templateName: definition.name,
+            languageCode: definition.languageCode,
+            bodyParams: [recipient.clientName],
+            buttonParam: pathOnly(link),
         }),
     );
     logger.info("manual-payment-link-whatsapp", "Link de pagamento enviado manualmente pelo WhatsApp", {
