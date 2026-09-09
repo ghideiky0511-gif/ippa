@@ -255,6 +255,25 @@ migration's own diff against current `stage.sql` is purely additive.
      via `listWhatsAppConnections` em
      `whatsappIntegrationService.associateWhatsAppSenderProfile`, já que este
      PATCH não os devolve.
+
+     **Segunda rodada, confirmado em produção pelo próprio bippa-messaging
+     (2026-09-08):** depois do fix acima, o PATCH passou a chegar com
+     `phone_id` correto mas foi rejeitado com `400 "source_reference e
+     obrigatorio"`. Corrigido no código-fonte do bippa-messaging
+     (`onboarding.js` `assignPhone` + `messaging_service.js`
+     `organizationForRequest`): `source_reference` e `external_reference` são
+     DOIS campos distintos no corpo do PATCH, ambos obrigatórios --
+     `source_reference` resolve a organização (o installation desta
+     vendedora), `external_reference` vira `sender_profiles.external_reference`
+     (usado depois por `resolveSender()` pra achar o perfil de envio de um
+     pedido). Não é um caso de um nome errado pelo outro -- o fix anterior
+     trocou um pelo outro e teria gerado um novo 400 para
+     `external_reference`. Corrigido para mandar os dois, com o mesmo valor
+     (`externalReferenceForSeller(tenant.id, sellerId)`, já usado como
+     `sourceReference` em `ensureApplicationInstallation`/
+     `listWhatsAppConnections`/`getOnboardingAttempt`). `sender_profile_key`
+     tem fallback no bippa-messaging (`sender:${externalReference}` se
+     ausente) -- não obrigatório, não precisa mexer.
 3. **Stage.sql** -- ver seção acima, alteração manual necessária.
 4. **Sinal `bippa.meta.onboarding.ready` não confirmado.** O plano previa
    mandar `onboarding.start` "quando o popup sinalizar pronto -- ou, se não
