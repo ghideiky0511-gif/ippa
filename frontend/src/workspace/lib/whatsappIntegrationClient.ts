@@ -95,6 +95,10 @@ export interface WhatsAppOnboardingAttemptPhone {
     verifiedName: string | null;
     qualityRating: string | null;
     active: boolean;
+    nameStatus: string | null;
+    platformType: string | null;
+    codeVerificationStatus: string | null;
+    messagingLimitTier: string | null;
 }
 
 export type WhatsAppOnboardingAttemptStatusValue =
@@ -111,7 +115,22 @@ export interface WhatsAppOnboardingAttemptStatus {
     errorCode: string | null;
     errorMessage: string | null;
     expiresAt: string;
+    connection: WhatsAppOnboardingAttemptConnection | null;
     phones: WhatsAppOnboardingAttemptPhone[];
+}
+
+export interface WhatsAppOnboardingAttemptConnection {
+    id: string;
+    wabaId: string;
+    status: string;
+    expiresAt: string | null;
+    ownerBusinessId: string;
+    grantedScopes: string[];
+    healthCanSendMessage: string | null;
+    healthIssues: TenantWhatsAppHealthIssue[];
+    healthCheckedAt: string | null;
+    healthManageUrl: string | null;
+    healthPaymentSettingsUrl: string | null;
 }
 
 // Reconcilia uma tentativa pelo attemptId -- fonte de verdade do fluxo,
@@ -157,6 +176,21 @@ export interface TenantWhatsAppPhoneHealth {
     capabilityPayments: boolean;
     wabaId: string;
     connectionStatus: string;
+    healthCanSendMessage: string | null;
+    healthIssues: TenantWhatsAppHealthIssue[];
+    healthCheckedAt: string | null;
+    healthManageUrl: string | null;
+    healthPaymentSettingsUrl: string | null;
+}
+
+export interface TenantWhatsAppHealthIssue {
+    entityType: string | null;
+    canSendMessage: string | null;
+    errors: Array<{
+        code: number | string | null;
+        message: string | null;
+        possibleSolution: string | null;
+    }>;
 }
 
 export function fetchTenantWhatsAppPhoneHealth(sync = false): Promise<TenantWhatsAppPhoneHealth[]> {

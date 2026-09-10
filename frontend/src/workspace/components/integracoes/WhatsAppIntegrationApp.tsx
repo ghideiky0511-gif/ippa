@@ -3,8 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "@/components/TenantLink";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogCloseButton, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { HubHeader } from "@/workspace/components/shared/HubHeader";
 import { fetchUsers } from "@/workspace/lib/usersClient";
 import type { AdminUser } from "@/domain/clients/types";
@@ -12,16 +10,12 @@ import {
     associateWhatsAppSenderProfile,
     ensureWhatsAppInstallation,
     fetchTenantWhatsAppConnectionStatuses,
-    fetchStandardWhatsAppTemplates,
-    fetchStandardWhatsAppTemplatesForSeller,
     fetchTenantWhatsAppPhoneHealth,
     fetchWhatsAppConnections,
     fetchWhatsAppOnboardingAttemptStatus,
     isTrustedMessagingEvent,
     onboardingOriginFromConnectUrl,
     startWhatsAppOnboardingAttempt,
-    submitStandardWhatsAppTemplate,
-    type StandardWhatsAppTemplate,
     type TenantWhatsAppConnectionStatus,
     type TenantWhatsAppPhoneHealth,
     type WhatsAppConnectionOption,
@@ -97,21 +91,19 @@ function formatNameStatus(status: string | null): string {
     return status ? (labels[status] ?? status) : "Não informado";
 }
 
-const TEMPLATE_USAGE: Record<StandardWhatsAppTemplate["key"], string> = {
-    order_confirmed: "Usado automaticamente ao confirmar um pedido e na ação “Enviar pedido pelo WhatsApp” do pedido.",
-    payment_link: "Usado na ação “Enviar link de pagamento pelo WhatsApp” do pedido separado.",
-};
-
-function metaTemplateStatusLabel(status: string): string {
+function formatSendingHealth(status: string | null): string {
     const labels: Record<string, string> = {
-        APPROVED: "Aprovado",
-        ACTIVE: "Ativo",
-        PENDING: "Em análise",
-        REJECTED: "Reprovado",
-        PAUSED: "Pausado",
-        DISABLED: "Desativado",
+        AVAILABLE: "Pronto para enviar",
+        LIMITED: "Envio limitado",
+        BLOCKED: "Envio bloqueado",
     };
-    return labels[status] ?? status;
+    return status ? (labels[status] ?? status) : "Ainda não verificado";
+}
+
+function healthIssueText(phone: TenantWhatsAppPhoneHealth): string | null {
+    const error = phone.healthIssues.flatMap((issue) => issue.errors)[0];
+    if (!error) return null;
+    return error.possibleSolution ?? error.message;
 }
 
 export default function WhatsAppIntegrationApp() {
@@ -145,26 +137,6 @@ export default function WhatsAppIntegrationApp() {
     const [verifyingSellerId, setVerifyingSellerId] = useState<string | null>(
         null,
     );
-    const [templates, setTemplates] = useState<StandardWhatsAppTemplate[]>([]);
-    const [templateSellerId, setTemplateSellerId] = useState("");
-    const [refreshingTemplateStatus, setRefreshingTemplateStatus] = useState(false);
-    const [templateToSubmit, setTemplateToSubmit] =
-        useState<StandardWhatsAppTemplate | null>(null);
-    // Valores de exemplo por variável (chave do parâmetro -> texto), editados
-    // pela administradora antes do envio -- a Meta exige um exemplo real por
-    // variável do corpo do template, então pré-preenchemos com a sugestão de
-    // whatsappTemplates.ts e deixamos livre para confirmar ou digitar outro.
-    const [templateExampleValues, setTemplateExampleValues] = useState<
-        Record<string, string>
-    >({});
-    const [submittingTemplateKey, setSubmittingTemplateKey] = useState<
-        StandardWhatsAppTemplate["key"] | null
-    >(null);
-    const [templateMessage, setTemplateMessage] = useState<{
-        key: StandardWhatsAppTemplate["key"];
-        text: string;
-        error: boolean;
-    } | null>(null);
 
     function showMessage(
         sellerId: string,
@@ -191,29 +163,23 @@ export default function WhatsAppIntegrationApp() {
         setLoading(true);
         setLoadError(null);
         try {
-            const [users, statuses, standardTemplates, phoneHealth] = await Promise.all([
+            const [users, statuses, phoneHealth] = await Promise.all([
                 fetchUsers(),
                 fetchTenantWhatsAppConnectionStatuses(),
-                fetchStandardWhatsAppTemplates(),
-                fetchTenantWhatsAppPhoneHealth().catch(() => []),
+                fetchTenantWhatsAppPhoneHealth().catch((error) => {
+                    setPhoneHealthError(
+                        error instanceof Error
+                            ? error.message
+                            : "Não foi possível carregar os dados da Meta.",
+                    );
+                    return [];
+                }),
             ]);
             setSellers(users.filter((u) => u.role === "vendedora"));
             setConnectionsBySeller(
                 Object.fromEntries(statuses.map((s) => [s.sellerId, s])),
             );
-            setTemplates(standardTemplates);
             setPhones(phoneHealth);
-            const firstConnectedSellerId =
-                statuses.find((connection) => connection.connected)?.sellerId ??
-                "";
-            setTemplateSellerId((current) =>
-                statuses.some(
-                    (connection) =>
-                        connection.connected && connection.sellerId === current,
-                )
-                    ? current
-                    : firstConnectedSellerId,
-            );
             resumePendingAttempt(statuses);
         } catch (error) {
             setLoadError(
@@ -237,33 +203,6 @@ export default function WhatsAppIntegrationApp() {
             setRefreshingPhones(false);
         }
     }
-
-    async function loadTemplateCatalog(sellerId: string, sync = false) {
-        if (!sellerId) return;
-        setRefreshingTemplateStatus(true);
-        try {
-            setTemplates(await fetchStandardWhatsAppTemplatesForSeller(sellerId, sync));
-        } catch (error) {
-            setTemplateMessage({
-                key: "order_confirmed",
-                text: error instanceof Error ? error.message : "Não foi possível consultar os templates da Meta.",
-                error: true,
-            });
-        } finally {
-            setRefreshingTemplateStatus(false);
-        }
-    }
-
-    useEffect(() => {
-        if (!templateSellerId) return;
-        const timer = window.setTimeout(
-            () => void loadTemplateCatalog(templateSellerId),
-            0,
-        );
-        return () => window.clearTimeout(timer);
-        // A consulta deve reagir somente à WABA selecionada; a função também
-        // é usada nos botões de ação abaixo e, por isso, não é memoizada.
-    }, [templateSellerId]);
 
     // Depois de um refresh de página, o popup e o `connectUrl` da tentativa
     // anterior estão perdidos -- mas o `attempt_id` persistido no backend
@@ -665,60 +604,6 @@ export default function WhatsAppIntegrationApp() {
         }
     }
 
-    function openTemplateSubmission(template: StandardWhatsAppTemplate) {
-        setTemplateExampleValues(
-            Object.fromEntries(
-                template.parameters.map((parameter) => [
-                    parameter.key,
-                    parameter.example,
-                ]),
-            ),
-        );
-        setTemplateToSubmit(template);
-    }
-
-    async function submitTemplate(template: StandardWhatsAppTemplate) {
-        if (!templateSellerId) return;
-        const examples = template.parameters.map(
-            (parameter) => (templateExampleValues[parameter.key] ?? "").trim(),
-        );
-        if (examples.some((example) => example.length === 0)) return;
-        setSubmittingTemplateKey(template.key);
-        setTemplateMessage(null);
-        try {
-            const result = await submitStandardWhatsAppTemplate(
-                templateSellerId,
-                template.key,
-                examples,
-            );
-            const normalizedStatus = result.status.toUpperCase();
-            const statusText =
-                normalizedStatus === "APPROVED"
-                    ? "já está aprovado"
-                    : normalizedStatus === "REJECTED"
-                      ? "foi recebido, mas está rejeitado na Meta"
-                      : "foi enviado e está em análise pela Meta";
-            setTemplateMessage({
-                key: template.key,
-                text: `O template ${result.name} ${statusText}.`,
-                error: normalizedStatus === "REJECTED",
-            });
-            setTemplateToSubmit(null);
-            await loadTemplateCatalog(templateSellerId, true);
-        } catch (error) {
-            setTemplateMessage({
-                key: template.key,
-                text:
-                    error instanceof Error
-                        ? error.message
-                        : "Não foi possível enviar o template para aprovação da Meta.",
-                error: true,
-            });
-        } finally {
-            setSubmittingTemplateKey(null);
-        }
-    }
-
     const STATUS_LABEL: Record<Status, string> = {
         disconnected: "Não conectado",
         connecting: "Conectando…",
@@ -727,9 +612,13 @@ export default function WhatsAppIntegrationApp() {
         error: "Erro na conexão",
         expired: "Tentativa expirada",
     };
-    const connectedSellers = sellers.filter(
+    const connectedSellersCount = sellers.filter(
         (seller) => connectionsBySeller[seller.id]?.connected,
+    ).length;
+    const disconnectedSellers = sellers.filter(
+        (seller) => !connectionsBySeller[seller.id]?.connected,
     );
+    const unassignedPhones = phones.filter((phone) => !phone.sellerId);
 
     return (
         <div className="min-h-screen bg-brand-background">
@@ -746,7 +635,7 @@ export default function WhatsAppIntegrationApp() {
                 }
             />
 
-            <main className="mx-auto flex max-w-5xl flex-col gap-5 p-4 sm:p-6">
+            <main className="mx-auto flex max-w-6xl flex-col gap-5 p-4 sm:p-6">
                 {loading ? (
                     <p className="text-sm text-muted-foreground">
                         Carregando vendedoras…
@@ -763,46 +652,27 @@ export default function WhatsAppIntegrationApp() {
                         <section className="rounded-brand border border-border bg-surface p-5 shadow-card">
                             <div className="flex flex-wrap items-start justify-between gap-3">
                                 <div>
-                                    <p className="text-xs font-bold uppercase tracking-wide text-brand-primary">Saúde dos números</p>
-                                    <h2 className="mt-1 text-lg font-bold text-foreground">Números conectados</h2>
-                                    <p className="mt-1 text-sm leading-6 text-muted-foreground">Status sincronizado com a Meta: qualidade, nome de perfil, limite e disponibilidade de envio.</p>
+                                    <p className="text-xs font-bold uppercase tracking-wide text-brand-primary">Visão geral</p>
+                                    <h2 className="mt-1 text-lg font-bold text-foreground">Seu WhatsApp está {connectedSellersCount === sellers.length ? "pronto" : "em configuração"}</h2>
+                                    <p className="mt-1 text-sm leading-6 text-muted-foreground">{connectedSellersCount} de {sellers.length} vendedora{ sellers.length === 1 ? "" : "s" } com um número pronto para enviar mensagens.</p>
                                 </div>
-                                <Button type="button" variant="outline" size="sm" loading={refreshingPhones} onClick={() => void refreshPhoneHealth()}>
-                                    Atualizar status
-                                </Button>
+                                <Button asChild type="button" variant="outline" size="sm"><Link href="/workspace/integracoes/whatsapp/templates">Ver templates padrão</Link></Button>
                             </div>
-                            {phones.length === 0 ? (
-                                <p className="mt-4 rounded-control bg-brand-background p-3 text-sm text-muted-foreground">Nenhum número foi encontrado. Conecte um WhatsApp Business para visualizar a saúde dele aqui.</p>
-                            ) : (
-                                <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                                    {phones.map((phone) => {
-                                        const seller = phone.sellerId ? sellers.find((item) => item.id === phone.sellerId) : null;
-                                        return <article key={phone.phoneId} className="rounded-control border border-border p-4">
-                                            <div className="flex flex-wrap items-start justify-between gap-3">
-                                                <div className="min-w-0">
-                                                    <h3 className="font-bold text-foreground">{phone.verifiedName || phone.displayPhoneNumber || "Número sem nome"}</h3>
-                                                    <p className="mt-1 text-sm text-muted-foreground">{phone.displayPhoneNumber || phone.phoneNumberId || phone.phoneId}</p>
-                                                    <p className="mt-1 text-xs text-muted-foreground">{seller ? `Vendedora: ${seller.name}` : "Ainda não associado a uma vendedora"}</p>
-                                                </div>
-                                                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${phone.active && phone.connectionStatus === "connected" ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
-                                                    {phone.active && phone.connectionStatus === "connected" ? "Ativo (LIVE)" : "Requer atenção"}
-                                                </span>
-                                            </div>
-                                            <dl className="mt-4 grid grid-cols-2 gap-3 text-xs">
-                                                <div><dt className="text-muted-foreground">Limite</dt><dd className="mt-1 font-semibold text-foreground">{formatMessagingLimit(phone.messagingLimitTier)}</dd></div>
-                                                <div><dt className="text-muted-foreground">Qualidade</dt><dd className="mt-1 font-semibold text-foreground">{formatQuality(phone.qualityRating)}</dd></div>
-                                                <div><dt className="text-muted-foreground">Nome de perfil</dt><dd className="mt-1 font-semibold text-foreground">{formatNameStatus(phone.nameStatus)}</dd></div>
-                                                <div><dt className="text-muted-foreground">Verificação</dt><dd className="mt-1 font-semibold text-foreground">{phone.codeVerificationStatus === "VERIFIED" ? "Verificado" : phone.codeVerificationStatus || "Não informado"}</dd></div>
-                                            </dl>
-                                            <p className="mt-4 border-t border-border pt-3 text-xs text-muted-foreground">WABA: <code>{phone.wabaId}</code> · Plataforma: {phone.platformType || "Não informada"}</p>
-                                        </article>;
-                                    })}
-                                </div>
-                            )}
+                            <ol className="mt-5 grid gap-3 md:grid-cols-3">
+                                <li className="rounded-control border border-border p-3"><p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Concluído</p><p className="mt-1 text-sm font-semibold text-foreground">Vendedoras cadastradas</p><p className="mt-1 text-xs text-muted-foreground">{sellers.length} disponível{ sellers.length === 1 ? "" : "eis" } para configurar.</p></li>
+                                <li className="rounded-control border border-border p-3"><p className={`text-xs font-bold uppercase tracking-wide ${disconnectedSellers.length === 0 ? "text-emerald-700" : "text-amber-700"}`}>{disconnectedSellers.length === 0 ? "Concluído" : "Próximo passo"}</p><p className="mt-1 text-sm font-semibold text-foreground">Números por vendedora</p><p className="mt-1 text-xs text-muted-foreground">{disconnectedSellers.length === 0 ? "Todos os números foram conectados." : `${disconnectedSellers.length} vendedora${disconnectedSellers.length === 1 ? "" : "s"} ainda sem número.`}</p></li>
+                                <li className="rounded-control border border-border p-3"><p className="text-xs font-bold uppercase tracking-wide text-brand-primary">Configuração</p><p className="mt-1 text-sm font-semibold text-foreground">Templates padrão</p><p className="mt-1 text-xs text-muted-foreground">Confira o vínculo dos modelos fixos com a Meta.</p></li>
+                            </ol>
+                            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-control bg-brand-background p-3"><p className="text-sm text-muted-foreground">Os detalhes de saúde de cada número aparecem junto da respectiva vendedora.</p><Button type="button" variant="outline" size="sm" loading={refreshingPhones} onClick={() => void refreshPhoneHealth()}>Atualizar dados da Meta</Button></div>
                             {phoneHealthError && <p role="status" className="mt-3 text-sm text-red-700">{phoneHealthError}</p>}
                         </section>
+                        <section className="rounded-brand border border-border bg-surface p-5 shadow-card">
+                            <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wide text-brand-primary">Números e vendedoras</p><h2 className="mt-1 text-lg font-bold text-foreground">Configure um número por vendedora</h2><p className="mt-1 text-sm leading-6 text-muted-foreground">Conecte, confirme o telefone e acompanhe a disponibilidade de envio no mesmo lugar.</p></div><span className="rounded-full bg-brand-background px-3 py-1 text-sm font-semibold text-foreground">{connectedSellersCount}/{sellers.length} conectadas</span></div>
                         {sellers.map((seller) => {
                             const connection = connectionsBySeller[seller.id];
+                            const phone = phones.find(
+                                (item) => item.sellerId === seller.id || item.phoneId === connection?.phoneId,
+                            );
                             const isActive = activeSellerId === seller.id;
                             const sellerStatus: Status = isActive
                                 ? status
@@ -840,11 +710,11 @@ export default function WhatsAppIntegrationApp() {
                                     </div>
 
                                     {connection?.connected && (
-                                        <dl className="mt-3 grid grid-cols-1 gap-x-4 gap-y-1 text-xs text-muted-foreground sm:grid-cols-2">
+                                        <dl className="mt-4 grid grid-cols-2 gap-3 rounded-control bg-brand-background p-3 text-xs sm:grid-cols-5">
                                             {connection.displayPhoneMasked && (
                                                 <div>
-                                                    <dt>Telefone</dt>
-                                                    <dd>
+                                                    <dt className="text-muted-foreground">Telefone</dt>
+                                                    <dd className="mt-1 font-semibold text-foreground">
                                                         <code>
                                                             {
                                                                 connection.displayPhoneMasked
@@ -855,15 +725,35 @@ export default function WhatsAppIntegrationApp() {
                                             )}
                                             {connection.verifiedName && (
                                                 <div>
-                                                    <dt>Nome verificado</dt>
-                                                    <dd>
+                                                    <dt className="text-muted-foreground">Nome do perfil</dt>
+                                                    <dd className="mt-1 font-semibold text-foreground">
                                                         {
                                                             connection.verifiedName
                                                         }
                                                     </dd>
                                                 </div>
                                             )}
+                                            <div><dt className="text-muted-foreground">Limite</dt><dd className="mt-1 font-semibold text-foreground">{formatMessagingLimit(phone?.messagingLimitTier ?? null)}</dd></div>
+                                            <div><dt className="text-muted-foreground">Qualidade</dt><dd className="mt-1 font-semibold text-foreground">{formatQuality(phone?.qualityRating ?? connection.qualityRating)}</dd></div>
+                                            <div><dt className="text-muted-foreground">Envio pela Meta</dt><dd className="mt-1 font-semibold text-foreground">{formatSendingHealth(phone?.healthCanSendMessage ?? null)}</dd></div>
                                         </dl>
+                                    )}
+
+                                    {connection?.connected && phone && (
+                                        <p className="mt-3 text-xs text-muted-foreground">Perfil {formatNameStatus(phone.nameStatus)} · {phone.active ? "Número ativo (LIVE)" : "Número requer atenção"} · Verificação {phone.codeVerificationStatus === "VERIFIED" ? "concluída" : phone.codeVerificationStatus || "não informada"}</p>
+                                    )}
+
+                                    {connection?.connected && phone?.healthCanSendMessage && phone.healthCanSendMessage !== "AVAILABLE" && (
+                                        <div className="mt-3 rounded-control border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950" role="alert">
+                                            <p className="font-semibold">{formatSendingHealth(phone.healthCanSendMessage)} pela Meta</p>
+                                            <p className="mt-1 leading-5">{healthIssueText(phone) ?? "A Meta indicou uma pendência nesta conta. Resolva-a antes de iniciar novas conversas."}</p>
+                                            {(phone.healthManageUrl || phone.healthPaymentSettingsUrl) && (
+                                                <div className="mt-2 flex flex-wrap gap-3 text-sm font-semibold">
+                                                    {phone.healthManageUrl && <a href={phone.healthManageUrl} target="_blank" rel="noreferrer" className="text-brand-primary underline underline-offset-2">Abrir no Gerenciador do WhatsApp</a>}
+                                                    {phone.healthPaymentSettingsUrl && <a href={phone.healthPaymentSettingsUrl} target="_blank" rel="noreferrer" className="text-brand-primary underline underline-offset-2">Revisar forma de pagamento</a>}
+                                                </div>
+                                            )}
+                                        </div>
                                     )}
 
                                     {isActive && phoneOptions.length > 0 && (
@@ -985,191 +875,18 @@ export default function WhatsAppIntegrationApp() {
                                 </section>
                             );
                         })}
-
-                        <section className="rounded-brand border border-border bg-surface p-5 shadow-card">
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                                <div>
-                                    <p className="text-xs font-bold uppercase tracking-wide text-brand-primary">
-                                        Templates do catálogo
-                                    </p>
-                                    <h2 className="mt-1 text-lg font-bold text-foreground">
-                                        Envios fixos do app
-                                    </h2>
-                                    <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-                                        Estes modelos são definidos pelo catálogo e não podem ser editados nesta tela.
-                                        Abaixo está a correspondência entre cada uso no pedido e o template cadastrado na Meta para a conta selecionada.
-                                    </p>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                    <span
-                                        className="group relative inline-flex"
-                                        tabIndex={0}
-                                    >
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            disabled
-                                        >
-                                            Gerenciar templates personalizados
-                                        </Button>
-                                        <span
-                                            role="tooltip"
-                                            className="pointer-events-none absolute right-0 top-full z-10 mt-2 w-56 rounded-control bg-foreground px-3 py-2 text-center text-xs font-medium text-surface opacity-0 shadow-card transition-opacity group-hover:opacity-100 group-focus:opacity-100"
-                                        >
-                                            Em breve: será possível criar e alterar
-                                            templates personalizados.
-                                        </span>
-                                    </span>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        loading={refreshingTemplateStatus}
-                                        disabled={!templateSellerId}
-                                        onClick={() => void loadTemplateCatalog(templateSellerId, true)}
-                                    >
-                                        Atualizar status na Meta
-                                    </Button>
-                                </div>
-                            </div>
-
-                            <div className="mt-4">
-                                <label
-                                    htmlFor="whatsapp-template-connection"
-                                    className="text-sm font-semibold text-foreground"
-                                >
-                                    Conta de WhatsApp
-                                </label>
-                                {connectedSellers.length > 0 ? (
-                                    <select
-                                        id="whatsapp-template-connection"
-                                        value={templateSellerId}
-                                        onChange={(event) =>
-                                            setTemplateSellerId(
-                                                event.target.value,
-                                            )
-                                        }
-                                        className="mt-2 min-h-11 w-full rounded-control border border-border bg-surface px-3 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary"
-                                    >
-                                        {connectedSellers.map((seller) => {
-                                            const connection =
-                                                connectionsBySeller[seller.id];
-                                            return (
-                                                <option
-                                                    key={seller.id}
-                                                    value={seller.id}
-                                                >
-                                                    {seller.name} —{" "}
-                                                    {connection.displayPhoneMasked ??
-                                                        "telefone conectado"}
-                                                </option>
-                                            );
-                                        })}
-                                    </select>
-                                ) : (
-                                    <p className="mt-2 rounded-control bg-brand-background p-3 text-sm text-muted-foreground">
-                                        Conecte ao menos um número acima para
-                                        consultar o cadastro dos templates na Meta.
-                                    </p>
-                                )}
-                            </div>
-
-                            <div className="mt-5 grid gap-4">
-                                {templates.map((template) => (
-                                    <article
-                                        key={template.key}
-                                        className="rounded-control border border-border p-4"
-                                    >
-                                        <div className="flex flex-wrap items-start justify-between gap-3">
-                                            <div>
-                                                <h3 className="font-bold text-foreground">
-                                                    {template.title}
-                                                </h3>
-                                                <p className="mt-1 text-xs text-muted-foreground">
-                                                    Template do catálogo: <code>{template.name}</code>{" "}
-                                                    · Utilidade · Português
-                                                    (Brasil)
-                                                </p>
-                                            </div>
-                                            {template.metaTemplate ? (
-                                                <span className="rounded-full bg-brand-background px-2.5 py-1 text-xs font-semibold text-foreground">
-                                                    Meta: {metaTemplateStatusLabel(template.metaTemplate.status)}
-                                                </span>
-                                            ) : (
-                                                <Button
-                                                    type="button"
-                                                    size="sm"
-                                                    disabled={!templateSellerId || submittingTemplateKey !== null}
-                                                    loading={submittingTemplateKey === template.key}
-                                                    onClick={() => openTemplateSubmission(template)}
-                                                >
-                                                    Cadastrar na Meta
-                                                </Button>
-                                            )}
-                                        </div>
-                                        <p className="mt-3 text-sm text-muted-foreground">
-                                            {template.description}
-                                        </p>
-                                        <p className="mt-2 text-sm text-muted-foreground">
-                                            <span className="font-semibold text-foreground">Uso no app: </span>
-                                            {TEMPLATE_USAGE[template.key]}
-                                        </p>
-                                        <div className="mt-3 whitespace-pre-line rounded-control bg-brand-background p-3 text-sm leading-6 text-foreground">
-                                            {template.body}
-                                        </div>
-                                        <div className="mt-3 flex flex-wrap gap-1.5">
-                                            {template.parameters.map(
-                                                (parameter, index) => (
-                                                    <span
-                                                        key={parameter.key}
-                                                        className="rounded-full bg-brand-background px-2 py-1 text-xs text-muted-foreground"
-                                                    >
-                                                        {`{{${index + 1}}}`}{" "}
-                                                        {parameter.label}
-                                                    </span>
-                                                ),
-                                            )}
-                                        </div>
-                                        <div className="mt-3 rounded-control border border-border p-3 text-sm">
-                                            <p className="font-semibold text-foreground">Cadastro correspondente na Meta</p>
-                                            {template.metaTemplate ? (
-                                                <>
-                                                    <p className="mt-1 text-muted-foreground">
-                                                        <code>{template.metaTemplate.name}</code> · {metaTemplateStatusLabel(template.metaTemplate.status)}
-                                                        {template.metaTemplate.qualityScore ? ` · Qualidade: ${template.metaTemplate.qualityScore}` : ""}
-                                                    </p>
-                                                    {template.metaTemplate.rejectionReason && (
-                                                        <p className="mt-2 text-red-700">Motivo da rejeição: {template.metaTemplate.rejectionReason}</p>
-                                                    )}
-                                                </>
-                                            ) : (
-                                                <p className="mt-1 text-muted-foreground">Não encontrado nesta WABA. Cadastre exatamente o modelo fixo acima antes de usar esta ação no pedido.</p>
-                                            )}
-                                        </div>
-                                        {templateMessage?.key ===
-                                            template.key && (
-                                            <p
-                                                className={`mt-3 text-sm ${templateMessage.error ? "text-red-700" : "text-emerald-700"}`}
-                                                role="status"
-                                            >
-                                                {templateMessage.text}
-                                            </p>
-                                        )}
-                                    </article>
-                                ))}
-                                <article className="rounded-control border border-border p-4">
-                                    <div className="flex flex-wrap items-start justify-between gap-3">
-                                        <div>
-                                            <h3 className="font-bold text-foreground">Cobrança Pix nativa</h3>
-                                            <p className="mt-1 text-xs text-muted-foreground">Ação “Enviar cobrança Pix nativa pelo WhatsApp” do pedido</p>
-                                        </div>
-                                        <span className="rounded-full bg-brand-background px-2.5 py-1 text-xs font-semibold text-foreground">Não usa template</span>
-                                    </div>
-                                    <p className="mt-3 text-sm leading-6 text-muted-foreground">Envia um cartão de pedido pagável dentro do WhatsApp pela Orders API. Ele não corresponde a nenhum template da lista da Meta.</p>
-                                </article>
-                            </div>
                         </section>
+
+                        {unassignedPhones.length > 0 && (
+                            <section className="rounded-brand border border-amber-200 bg-surface p-5 shadow-card">
+                                <p className="text-xs font-bold uppercase tracking-wide text-amber-700">Atenção necessária</p>
+                                <h2 className="mt-1 text-lg font-bold text-foreground">Números ainda sem vendedora</h2>
+                                <p className="mt-1 text-sm leading-6 text-muted-foreground">Escolha uma vendedora no fluxo de conexão para concluir a associação destes números.</p>
+                                <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+                                    {unassignedPhones.map((phone) => <li key={phone.phoneId} className="rounded-control border border-border p-3 text-sm text-foreground"><p className="font-semibold">{phone.verifiedName || "Número sem nome"}</p><p className="mt-1 text-muted-foreground">{phone.displayPhoneNumber || phone.phoneNumberId || phone.phoneId}</p></li>)}
+                                </ul>
+                            </section>
+                        )}
 
                         <IntegrationRulesCard
                             description="A conexão é autorizada num popup hospedado pelo bippa-messaging e volta para esta tela ao terminar."
@@ -1199,101 +916,6 @@ export default function WhatsAppIntegrationApp() {
                     </>
                 )}
             </main>
-            <Dialog
-                open={templateToSubmit !== null}
-                onOpenChange={(open) => !open && setTemplateToSubmit(null)}
-            >
-                <DialogContent className="max-h-[90dvh] overflow-y-auto">
-                    <DialogHeader>
-                        <div>
-                            <DialogTitle>
-                                Enviar template para a Meta?
-                            </DialogTitle>
-                            <DialogDescription>
-                                {`O modelo ${templateToSubmit?.name ?? ""} será cadastrado no WABA da conta selecionada. Confirme ou ajuste os exemplos abaixo -- a Meta exige um valor de amostra real por variável para aprovar o template.`}
-                            </DialogDescription>
-                        </div>
-                        <DialogCloseButton />
-                    </DialogHeader>
-                    {templateToSubmit && (
-                        <form
-                            className="grid gap-3"
-                            onSubmit={(event) => {
-                                event.preventDefault();
-                                void submitTemplate(templateToSubmit);
-                            }}
-                        >
-                            <div className="whitespace-pre-line rounded-control bg-brand-background p-3 text-sm leading-6 text-foreground">
-                                {templateToSubmit.body}
-                            </div>
-                            <div className="grid gap-3">
-                                {templateToSubmit.parameters.map(
-                                    (parameter, index) => (
-                                        <div key={parameter.key}>
-                                            <label
-                                                htmlFor={`whatsapp-template-example-${parameter.key}`}
-                                                className="text-sm font-semibold text-foreground"
-                                            >
-                                                {`{{${index + 1}}} ${parameter.label}`}
-                                            </label>
-                                            <Input
-                                                id={`whatsapp-template-example-${parameter.key}`}
-                                                className="mt-1"
-                                                value={
-                                                    templateExampleValues[
-                                                        parameter.key
-                                                    ] ?? ""
-                                                }
-                                                onChange={(event) =>
-                                                    setTemplateExampleValues(
-                                                        (current) => ({
-                                                            ...current,
-                                                            [parameter.key]:
-                                                                event.target
-                                                                    .value,
-                                                        }),
-                                                    )
-                                                }
-                                                required
-                                            />
-                                        </div>
-                                    ),
-                                )}
-                            </div>
-                            {templateMessage?.key === templateToSubmit.key &&
-                                templateMessage.error && (
-                                    <p
-                                        className="text-sm text-red-700"
-                                        role="status"
-                                    >
-                                        {templateMessage.text}
-                                    </p>
-                                )}
-                            <div className="flex justify-end gap-2">
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    onClick={() => setTemplateToSubmit(null)}
-                                    disabled={
-                                        submittingTemplateKey !== null
-                                    }
-                                >
-                                    Cancelar
-                                </Button>
-                                <Button
-                                    type="submit"
-                                    loading={
-                                        submittingTemplateKey ===
-                                        templateToSubmit.key
-                                    }
-                                >
-                                    Enviar para análise
-                                </Button>
-                            </div>
-                        </form>
-                    )}
-                </DialogContent>
-            </Dialog>
         </div>
     );
 }

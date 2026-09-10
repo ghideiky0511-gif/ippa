@@ -203,7 +203,7 @@ Resposta `201`:
         "sdk": {
             "app_id": "...",
             "config_id": "...",
-            "graph_api_version": "v23.0",
+            "graph_api_version": "v26.0",
             "extras": {}
         }
     }
@@ -270,7 +270,12 @@ Resposta `200`:
                 "business_management",
                 "whatsapp_business_management",
                 "whatsapp_business_messaging"
-            ]
+            ],
+            "health_can_send_message": null,
+            "health_issues": [],
+            "health_checked_at": null,
+            "health_manage_url": "https://business.facebook.com/wa/manage/home/?waba_id=...",
+            "health_payment_settings_url": "https://business.facebook.com/settings/payment-methods?business_id=..."
         },
         "phones": [
             {
@@ -289,6 +294,11 @@ Resposta `200`:
     }
 }
 ```
+
+`connection` é o mesmo objeto de `GET /v1/admin/whatsapp-connections` (veja
+os campos `health_*` abaixo); logo após o onboarding eles vêm `null`/`[]`
+porque a Meta ainda não foi consultada — só populam com `?sync=true` num
+`GET` seguinte.
 
 Erros comuns: `409 invalid_onboarding_attempt` (state expirado/já usado),
 `422 invalid_meta_token`, `422 missing_meta_scopes`,
@@ -319,9 +329,32 @@ Resposta `202` sem corpo. Eventos aceitos: `popup_context_received`,
 Lista todas as WABAs e números da organização. Com `sync=true` (default
 `false`), o Messaging antes consulta a Meta Cloud API para atualizar
 `quality_rating`, `name_status`, `platform_type`, `code_verification_status`
-e `messaging_limit_tier` de cada número — best-effort: uma conexão cuja
-credencial não pode ser usada é pulada (e marcada `reauth_required`) sem
-falhar a listagem inteira; sem `sync`, os dados vêm só do último valor salvo.
+e `messaging_limit_tier` de cada número, e também o `health_status`
+(`health_can_send_message`/`health_issues`) de cada WABA — best-effort: uma
+conexão cuja credencial não pode ser usada é pulada (e marcada
+`reauth_required`) sem falhar a listagem inteira; sem `sync`, os dados vêm só
+do último valor salvo.
+
+`health_can_send_message` é o resumo que a Meta devolve para a WABA
+(`AVAILABLE`, `LIMITED` ou `BLOCKED`); `health_issues` traz o detalhe por
+entidade que não está `AVAILABLE` — por exemplo, uma WABA `BLOCKED` pelo erro
+`#141006` (método de pagamento inválido), que bloqueia a entrega/cobrança de
+conversas iniciadas pela empresa (qualquer `dispatch` de template) mesmo a
+Graph API aceitando o envio e devolvendo um `wamid` normalmente. Um app
+integrado deve tratar `health_can_send_message !== "AVAILABLE"` como sinal
+para avisar o lojista ou bloquear novos disparos até o problema ser resolvido
+direto no WhatsApp Manager da Meta — o Messaging não consegue corrigir
+configuração de pagamento/conta por API.
+
+`health_manage_url` e `health_payment_settings_url` são o caminho pronto para
+o lojista resolver isso: o primeiro abre o WhatsApp Manager já na WABA em
+questão (`https://business.facebook.com/wa/manage/home/?waba_id=<waba_id>`),
+o segundo abre a tela de métodos de pagamento do Business Manager dono da
+WABA (`https://business.facebook.com/settings/payment-methods?business_id=<owner_business_id>`,
+`null` se a conexão não tiver `owner_business_id` registrado — onboardings
+antigos, por exemplo). Um app integrado deve exibir esses links diretamente
+no aviso/bloqueio em vez de apenas citar o texto do erro, já que a correção
+em si só acontece manualmente nos painéis da Meta.
 
 ```http
 GET /v1/admin/whatsapp-connections?source_reference=tenant-123&sync=true
@@ -344,6 +377,23 @@ Resposta `200`:
                 "whatsapp_business_management",
                 "whatsapp_business_messaging"
             ],
+            "health_can_send_message": "BLOCKED",
+            "health_issues": [
+                {
+                    "entity_type": "WABA",
+                    "can_send_message": "BLOCKED",
+                    "errors": [
+                        {
+                            "code": 141006,
+                            "message": "There is an error with the payment method.",
+                            "possible_solution": "Add a valid payment method to your WhatsApp Business Account."
+                        }
+                    ]
+                }
+            ],
+            "health_checked_at": "2026-09-10T16:00:00.000Z",
+            "health_manage_url": "https://business.facebook.com/wa/manage/home/?waba_id=1321057561091154",
+            "health_payment_settings_url": "https://business.facebook.com/settings/payment-methods?business_id=987654321",
             "phones": [
                 {
                     "id": "uuid-do-telefone",
@@ -1147,6 +1197,10 @@ Content-Type: application/json
 
 Resposta `202`: `{ "dispatch": { "...": "mesmo formato de POST /v1/dispatches" } }`.
 
+Se a organização tiver mais de um número, `seller_reference` precisa resolver
+para o mesmo número dono da conversa; caso contrário a resposta é `409
+conversation_sender_mismatch` (evita responder pelo número errado).
+
 ### `POST /v1/conversations/:id/assign`
 
 ```json
@@ -1596,4 +1650,4 @@ nenhuma aplicação cliente deve chamá-las.
 
 - `GET /health` — liveness check, sem autenticação.
 - `POST /internal/jobs/run` — chamado só pelo Cloudflare Cron Worker via
-  segredo interno (`INTERNAL_JOBS_SECRET`), processa a outbox/retenção.
+  segredo interno (`BIPPA_INTERNAL_JOB_SECRET`), processa a outbox/retenção.

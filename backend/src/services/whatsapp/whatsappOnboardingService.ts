@@ -134,6 +134,7 @@ export interface WhatsAppOnboardingAttemptStatus {
     errorCode: string | null;
     errorMessage: string | null;
     expiresAt: string;
+    connection: bippaMessagingClient.OnboardingAttemptConnection | null;
     phones: bippaMessagingClient.OnboardingAttemptPhone[];
 }
 
@@ -145,6 +146,33 @@ function toAttemptStatus(row: WhatsAppOnboardingAttemptRow): WhatsAppOnboardingA
         errorCode: row.error_code,
         errorMessage: row.error_message,
         expiresAt: row.expires_at.toISOString(),
+        connection: row.result
+            ? {
+                  id: row.result.connection.id,
+                  wabaId: row.result.connection.waba_id,
+                  status: row.result.connection.status,
+                  expiresAt: row.result.connection.expires_at,
+                  ownerBusinessId: row.result.connection.owner_business_id,
+                  grantedScopes: row.result.connection.granted_scopes,
+                  healthCanSendMessage:
+                      row.result.connection.health_can_send_message,
+                  healthIssues: row.result.connection.health_issues.map(
+                      (issue) => ({
+                          entityType: issue.entity_type,
+                          canSendMessage: issue.can_send_message,
+                          errors: issue.errors.map((error) => ({
+                              code: error.code,
+                              message: error.message,
+                              possibleSolution: error.possible_solution,
+                          })),
+                      }),
+                  ),
+                  healthCheckedAt: row.result.connection.health_checked_at,
+                  healthManageUrl: row.result.connection.health_manage_url,
+                  healthPaymentSettingsUrl:
+                      row.result.connection.health_payment_settings_url,
+              }
+            : null,
         phones: row.result?.phones.map((phone) => ({
             id: phone.id,
             phoneNumberId: phone.phone_number_id,
@@ -152,6 +180,10 @@ function toAttemptStatus(row: WhatsAppOnboardingAttemptRow): WhatsAppOnboardingA
             verifiedName: phone.verified_name,
             qualityRating: phone.quality_rating,
             active: phone.active,
+            nameStatus: phone.name_status,
+            platformType: phone.platform_type,
+            codeVerificationStatus: phone.code_verification_status,
+            messagingLimitTier: phone.messaging_limit_tier,
         })) ?? [],
     };
 }
@@ -236,6 +268,28 @@ export async function reconcileWhatsAppOnboardingAttempt(
                           expires_at: remote.result.connection.expiresAt,
                           owner_business_id: remote.result.connection.ownerBusinessId,
                           granted_scopes: remote.result.connection.grantedScopes,
+                          health_can_send_message:
+                              remote.result.connection.healthCanSendMessage,
+                          health_issues:
+                              remote.result.connection.healthIssues.map(
+                                  (issue) => ({
+                                      entity_type: issue.entityType,
+                                      can_send_message: issue.canSendMessage,
+                                      errors: issue.errors.map((error) => ({
+                                          code: error.code,
+                                          message: error.message,
+                                          possible_solution:
+                                              error.possibleSolution,
+                                      })),
+                                  }),
+                              ),
+                          health_checked_at:
+                              remote.result.connection.healthCheckedAt,
+                          health_manage_url:
+                              remote.result.connection.healthManageUrl,
+                          health_payment_settings_url:
+                              remote.result.connection
+                                  .healthPaymentSettingsUrl,
                       },
                       phones: remote.result.phones.map((phone) => ({
                           id: phone.id,
@@ -244,6 +298,11 @@ export async function reconcileWhatsAppOnboardingAttempt(
                           verified_name: phone.verifiedName,
                           quality_rating: phone.qualityRating,
                           active: phone.active,
+                          name_status: phone.nameStatus,
+                          platform_type: phone.platformType,
+                          code_verification_status:
+                              phone.codeVerificationStatus,
+                          messaging_limit_tier: phone.messagingLimitTier,
                       })),
                   }
                 : null,

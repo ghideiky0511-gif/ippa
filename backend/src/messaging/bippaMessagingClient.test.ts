@@ -111,6 +111,19 @@ test("listWhatsAppConnections manda source_reference como query param e mapeia s
                             id: "connection-1",
                             waba_id: "waba-1",
                             status: "connected",
+                            health_can_send_message: "LIMITED",
+                            health_issues: [{
+                                entity_type: "WABA",
+                                can_send_message: "LIMITED",
+                                errors: [{
+                                    code: 141006,
+                                    message: "There is an error with the payment method.",
+                                    possible_solution: "Add a valid payment method.",
+                                }],
+                            }],
+                            health_checked_at: "2026-09-10T16:00:00.000Z",
+                            health_manage_url: "https://business.facebook.com/wa/manage/home/?waba_id=waba-1",
+                            health_payment_settings_url: "https://business.facebook.com/settings/payment-methods?business_id=business-1",
                             phones: [
                                 {
                                     id: "phone-1",
@@ -155,6 +168,19 @@ test("listWhatsAppConnections manda source_reference como query param e mapeia s
                     connectionId: "connection-1",
                     status: "connected",
                     connectionStatus: "connected",
+                    healthCanSendMessage: "LIMITED",
+                    healthIssues: [{
+                        entityType: "WABA",
+                        canSendMessage: "LIMITED",
+                        errors: [{
+                            code: 141006,
+                            message: "There is an error with the payment method.",
+                            possibleSolution: "Add a valid payment method.",
+                        }],
+                    }],
+                    healthCheckedAt: "2026-09-10T16:00:00.000Z",
+                    healthManageUrl: "https://business.facebook.com/wa/manage/home/?waba_id=waba-1",
+                    healthPaymentSettingsUrl: "https://business.facebook.com/settings/payment-methods?business_id=business-1",
                 },
             ]);
             assert.equal(calls[0].url, `${DEFAULT_BASE_URL}/v1/admin/whatsapp-connections?source_reference=tenant-1`);

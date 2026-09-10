@@ -14,6 +14,19 @@ export interface WhatsAppOnboardingAttemptResult {
         expires_at: string | null;
         owner_business_id: string;
         granted_scopes: string[];
+        health_can_send_message: string | null;
+        health_issues: Array<{
+            entity_type: string | null;
+            can_send_message: string | null;
+            errors: Array<{
+                code: number | string | null;
+                message: string | null;
+                possible_solution: string | null;
+            }>;
+        }>;
+        health_checked_at: string | null;
+        health_manage_url: string | null;
+        health_payment_settings_url: string | null;
     };
     phones: Array<{
         id: string;
@@ -22,6 +35,10 @@ export interface WhatsAppOnboardingAttemptResult {
         verified_name: string | null;
         quality_rating: string | null;
         active: boolean;
+        name_status: string | null;
+        platform_type: string | null;
+        code_verification_status: string | null;
+        messaging_limit_tier: string | null;
     }>;
 }
 

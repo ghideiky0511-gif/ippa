@@ -159,6 +159,11 @@ export interface OnboardingAttemptConnection {
     expiresAt: string | null;
     ownerBusinessId: string;
     grantedScopes: string[];
+    healthCanSendMessage: string | null;
+    healthIssues: WhatsAppHealthIssue[];
+    healthCheckedAt: string | null;
+    healthManageUrl: string | null;
+    healthPaymentSettingsUrl: string | null;
 }
 
 export interface OnboardingAttemptPhone {
@@ -168,6 +173,10 @@ export interface OnboardingAttemptPhone {
     verifiedName: string | null;
     qualityRating: string | null;
     active: boolean;
+    nameStatus: string | null;
+    platformType: string | null;
+    codeVerificationStatus: string | null;
+    messagingLimitTier: string | null;
 }
 
 export interface OnboardingAttemptResult {
@@ -201,6 +210,11 @@ interface GetOnboardingAttemptResponse {
                 expires_at: string | null;
                 owner_business_id: string;
                 granted_scopes: string[];
+                health_can_send_message?: string | null;
+                health_issues?: WhatsAppHealthIssueResponse[];
+                health_checked_at?: string | null;
+                health_manage_url?: string | null;
+                health_payment_settings_url?: string | null;
             };
             phones: Array<{
                 id: string;
@@ -209,6 +223,10 @@ interface GetOnboardingAttemptResponse {
                 verified_name: string | null;
                 quality_rating: string | null;
                 active: boolean;
+                name_status?: string | null;
+                platform_type?: string | null;
+                code_verification_status?: string | null;
+                messaging_limit_tier?: string | null;
             }>;
         } | null;
         error_code: string | null;
@@ -261,6 +279,21 @@ export function getOnboardingAttempt(
                               .owner_business_id,
                       grantedScopes:
                           response.onboarding.result.connection.granted_scopes,
+                      healthCanSendMessage:
+                          response.onboarding.result.connection
+                              .health_can_send_message ?? null,
+                      healthIssues: mapWhatsAppHealthIssues(
+                          response.onboarding.result.connection.health_issues,
+                      ),
+                      healthCheckedAt:
+                          response.onboarding.result.connection
+                              .health_checked_at ?? null,
+                      healthManageUrl:
+                          response.onboarding.result.connection
+                              .health_manage_url ?? null,
+                      healthPaymentSettingsUrl:
+                          response.onboarding.result.connection
+                              .health_payment_settings_url ?? null,
                   },
                   phones: response.onboarding.result.phones.map((phone) => ({
                       id: phone.id,
@@ -269,6 +302,12 @@ export function getOnboardingAttempt(
                       verifiedName: phone.verified_name,
                       qualityRating: phone.quality_rating,
                       active: phone.active,
+                      nameStatus: phone.name_status ?? null,
+                      platformType: phone.platform_type ?? null,
+                      codeVerificationStatus:
+                          phone.code_verification_status ?? null,
+                      messagingLimitTier:
+                          phone.messaging_limit_tier ?? null,
                   })),
               }
             : null,
@@ -310,6 +349,50 @@ export interface WhatsAppConnectionEntry {
     connectionId: string;
     status: string;
     connectionStatus: string;
+    // Saude da WABA fornecida pela Meta. Esses campos pertencem a conexao,
+    // mas sao repetidos em cada telefone ao achatar `connections[].phones`
+    // para que a tela consiga mostrar o aviso ao lado da vendedora certa.
+    healthCanSendMessage: string | null;
+    healthIssues: WhatsAppHealthIssue[];
+    healthCheckedAt: string | null;
+    healthManageUrl: string | null;
+    healthPaymentSettingsUrl: string | null;
+}
+
+export interface WhatsAppHealthIssueError {
+    code: number | string | null;
+    message: string | null;
+    possibleSolution: string | null;
+}
+
+export interface WhatsAppHealthIssue {
+    entityType: string | null;
+    canSendMessage: string | null;
+    errors: WhatsAppHealthIssueError[];
+}
+
+interface WhatsAppHealthIssueResponse {
+    entity_type?: string | null;
+    can_send_message?: string | null;
+    errors?: Array<{
+        code?: number | string | null;
+        message?: string | null;
+        possible_solution?: string | null;
+    }>;
+}
+
+function mapWhatsAppHealthIssues(
+    issues: WhatsAppHealthIssueResponse[] | undefined,
+): WhatsAppHealthIssue[] {
+    return (issues ?? []).map((issue) => ({
+        entityType: issue.entity_type ?? null,
+        canSendMessage: issue.can_send_message ?? null,
+        errors: (issue.errors ?? []).map((error) => ({
+            code: error.code ?? null,
+            message: error.message ?? null,
+            possibleSolution: error.possible_solution ?? null,
+        })),
+    }));
 }
 
 // Formato confirmado na doc oficial
@@ -345,6 +428,11 @@ interface WhatsAppConnectionResponse {
     id: string; // id da CONEXÃO/WABA -- nunca usar como phoneId, ver acima.
     waba_id: string;
     status?: string;
+    health_can_send_message?: string | null;
+    health_issues?: WhatsAppHealthIssueResponse[];
+    health_checked_at?: string | null;
+    health_manage_url?: string | null;
+    health_payment_settings_url?: string | null;
     phones?: WhatsAppConnectionPhoneResponse[];
 }
 
@@ -398,6 +486,15 @@ export function listWhatsAppConnections(
                 connectionId: connection.id,
                 status: phone.active ? "connected" : "not_connected",
                 connectionStatus: connection.status ?? "unknown",
+                healthCanSendMessage:
+                    connection.health_can_send_message ?? null,
+                healthIssues: mapWhatsAppHealthIssues(
+                    connection.health_issues,
+                ),
+                healthCheckedAt: connection.health_checked_at ?? null,
+                healthManageUrl: connection.health_manage_url ?? null,
+                healthPaymentSettingsUrl:
+                    connection.health_payment_settings_url ?? null,
             })),
         ),
     );

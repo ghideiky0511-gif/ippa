@@ -148,6 +148,11 @@ export interface TenantWhatsAppPhoneHealth {
     capabilityPayments: boolean;
     wabaId: string;
     connectionStatus: string;
+    healthCanSendMessage: string | null;
+    healthIssues: bippaMessagingClient.WhatsAppHealthIssue[];
+    healthCheckedAt: string | null;
+    healthManageUrl: string | null;
+    healthPaymentSettingsUrl: string | null;
 }
 
 export async function listTenantWhatsAppPhoneHealth(
@@ -177,6 +182,11 @@ export async function listTenantWhatsAppPhoneHealth(
             capabilityPayments: entry.capabilityPayments,
             wabaId: entry.wabaId,
             connectionStatus: entry.connectionStatus,
+            healthCanSendMessage: entry.healthCanSendMessage,
+            healthIssues: entry.healthIssues,
+            healthCheckedAt: entry.healthCheckedAt,
+            healthManageUrl: entry.healthManageUrl,
+            healthPaymentSettingsUrl: entry.healthPaymentSettingsUrl,
         }));
     } catch (exc) {
         logger.error("whatsapp-integration", "Falha ao consultar a saúde dos números de WhatsApp", {
