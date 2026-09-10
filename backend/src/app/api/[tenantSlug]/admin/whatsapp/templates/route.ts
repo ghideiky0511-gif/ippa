@@ -26,8 +26,11 @@ async function authenticated(request: NextRequest, context: RouteContext) {
 export async function GET(request: NextRequest, context: RouteContext): Promise<Response> {
     const auth = await authenticated(request, context);
     if (!auth.ok) return auth.response;
-    return execute(() => Promise.resolve(
-        whatsapp.listStandardWhatsAppTemplates(auth.route.tenant, auth.session.user),
+    return execute(() => whatsapp.listStandardWhatsAppTemplates(
+        auth.route.tenant,
+        auth.session.user,
+        request.nextUrl.searchParams.get("sellerId") ?? undefined,
+        request.nextUrl.searchParams.get("sync") === "true",
     ));
 }
 

@@ -13,6 +13,7 @@ import {
     ensureWhatsAppInstallation,
     fetchTenantWhatsAppConnectionStatuses,
     fetchStandardWhatsAppTemplates,
+    fetchStandardWhatsAppTemplatesForSeller,
     fetchTenantWhatsAppPhoneHealth,
     fetchWhatsAppConnections,
     fetchWhatsAppOnboardingAttemptStatus,
@@ -96,6 +97,23 @@ function formatNameStatus(status: string | null): string {
     return status ? (labels[status] ?? status) : "Não informado";
 }
 
+const TEMPLATE_USAGE: Record<StandardWhatsAppTemplate["key"], string> = {
+    order_confirmed: "Usado automaticamente ao confirmar um pedido e na ação “Enviar pedido pelo WhatsApp” do pedido.",
+    payment_link: "Usado na ação “Enviar link de pagamento pelo WhatsApp” do pedido separado.",
+};
+
+function metaTemplateStatusLabel(status: string): string {
+    const labels: Record<string, string> = {
+        APPROVED: "Aprovado",
+        ACTIVE: "Ativo",
+        PENDING: "Em análise",
+        REJECTED: "Reprovado",
+        PAUSED: "Pausado",
+        DISABLED: "Desativado",
+    };
+    return labels[status] ?? status;
+}
+
 export default function WhatsAppIntegrationApp() {
     const [sellers, setSellers] = useState<AdminUser[]>([]);
     const [connectionsBySeller, setConnectionsBySeller] = useState<
@@ -129,6 +147,7 @@ export default function WhatsAppIntegrationApp() {
     );
     const [templates, setTemplates] = useState<StandardWhatsAppTemplate[]>([]);
     const [templateSellerId, setTemplateSellerId] = useState("");
+    const [refreshingTemplateStatus, setRefreshingTemplateStatus] = useState(false);
     const [templateToSubmit, setTemplateToSubmit] =
         useState<StandardWhatsAppTemplate | null>(null);
     // Valores de exemplo por variável (chave do parâmetro -> texto), editados
@@ -218,6 +237,33 @@ export default function WhatsAppIntegrationApp() {
             setRefreshingPhones(false);
         }
     }
+
+    async function loadTemplateCatalog(sellerId: string, sync = false) {
+        if (!sellerId) return;
+        setRefreshingTemplateStatus(true);
+        try {
+            setTemplates(await fetchStandardWhatsAppTemplatesForSeller(sellerId, sync));
+        } catch (error) {
+            setTemplateMessage({
+                key: "order_confirmed",
+                text: error instanceof Error ? error.message : "Não foi possível consultar os templates da Meta.",
+                error: true,
+            });
+        } finally {
+            setRefreshingTemplateStatus(false);
+        }
+    }
+
+    useEffect(() => {
+        if (!templateSellerId) return;
+        const timer = window.setTimeout(
+            () => void loadTemplateCatalog(templateSellerId),
+            0,
+        );
+        return () => window.clearTimeout(timer);
+        // A consulta deve reagir somente à WABA selecionada; a função também
+        // é usada nos botões de ação abaixo e, por isso, não é memoizada.
+    }, [templateSellerId]);
 
     // Depois de um refresh de página, o popup e o `connectUrl` da tentativa
     // anterior estão perdidos -- mas o `attempt_id` persistido no backend
@@ -658,6 +704,7 @@ export default function WhatsAppIntegrationApp() {
                 error: normalizedStatus === "REJECTED",
             });
             setTemplateToSubmit(null);
+            await loadTemplateCatalog(templateSellerId, true);
         } catch (error) {
             setTemplateMessage({
                 key: template.key,
@@ -942,22 +989,49 @@ export default function WhatsAppIntegrationApp() {
                         <section className="rounded-brand border border-border bg-surface p-5 shadow-card">
                             <div className="flex flex-wrap items-start justify-between gap-3">
                                 <div>
-                                <p className="text-xs font-bold uppercase tracking-wide text-brand-primary">
-                                    Templates
-                                </p>
-                                <h2 className="mt-1 text-lg font-bold text-foreground">
-                                    Modelos recomendados
-                                </h2>
-                                <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                                    No MVP, o conteúdo é padronizado pela Bippa.
-                                    Você pode revisar cada modelo e enviá-lo
-                                    para cadastro no WABA conectado; a Meta fará
-                                    a análise antes de liberar o uso.
-                                </p>
+                                    <p className="text-xs font-bold uppercase tracking-wide text-brand-primary">
+                                        Templates do catálogo
+                                    </p>
+                                    <h2 className="mt-1 text-lg font-bold text-foreground">
+                                        Envios fixos do app
+                                    </h2>
+                                    <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+                                        Estes modelos são definidos pelo catálogo e não podem ser editados nesta tela.
+                                        Abaixo está a correspondência entre cada uso no pedido e o template cadastrado na Meta para a conta selecionada.
+                                    </p>
                                 </div>
-                                <Button asChild type="button" variant="outline" size="sm">
-                                    <Link href="/workspace/integracoes/whatsapp/templates">Gerenciar templates</Link>
-                                </Button>
+                                <div className="flex flex-wrap gap-2">
+                                    <span
+                                        className="group relative inline-flex"
+                                        tabIndex={0}
+                                    >
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            disabled
+                                        >
+                                            Gerenciar templates personalizados
+                                        </Button>
+                                        <span
+                                            role="tooltip"
+                                            className="pointer-events-none absolute right-0 top-full z-10 mt-2 w-56 rounded-control bg-foreground px-3 py-2 text-center text-xs font-medium text-surface opacity-0 shadow-card transition-opacity group-hover:opacity-100 group-focus:opacity-100"
+                                        >
+                                            Em breve: será possível criar e alterar
+                                            templates personalizados.
+                                        </span>
+                                    </span>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        loading={refreshingTemplateStatus}
+                                        disabled={!templateSellerId}
+                                        onClick={() => void loadTemplateCatalog(templateSellerId, true)}
+                                    >
+                                        Atualizar status na Meta
+                                    </Button>
+                                </div>
                             </div>
 
                             <div className="mt-4">
@@ -996,7 +1070,7 @@ export default function WhatsAppIntegrationApp() {
                                 ) : (
                                     <p className="mt-2 rounded-control bg-brand-background p-3 text-sm text-muted-foreground">
                                         Conecte ao menos um número acima para
-                                        enviar os templates à Meta.
+                                        consultar o cadastro dos templates na Meta.
                                     </p>
                                 )}
                             </div>
@@ -1013,34 +1087,33 @@ export default function WhatsAppIntegrationApp() {
                                                     {template.title}
                                                 </h3>
                                                 <p className="mt-1 text-xs text-muted-foreground">
-                                                    <code>{template.name}</code>{" "}
+                                                    Template do catálogo: <code>{template.name}</code>{" "}
                                                     · Utilidade · Português
                                                     (Brasil)
                                                 </p>
                                             </div>
-                                            <Button
-                                                type="button"
-                                                size="sm"
-                                                disabled={
-                                                    !templateSellerId ||
-                                                    submittingTemplateKey !==
-                                                        null
-                                                }
-                                                loading={
-                                                    submittingTemplateKey ===
-                                                    template.key
-                                                }
-                                                onClick={() =>
-                                                    openTemplateSubmission(
-                                                        template,
-                                                    )
-                                                }
-                                            >
-                                                Enviar para a Meta
-                                            </Button>
+                                            {template.metaTemplate ? (
+                                                <span className="rounded-full bg-brand-background px-2.5 py-1 text-xs font-semibold text-foreground">
+                                                    Meta: {metaTemplateStatusLabel(template.metaTemplate.status)}
+                                                </span>
+                                            ) : (
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    disabled={!templateSellerId || submittingTemplateKey !== null}
+                                                    loading={submittingTemplateKey === template.key}
+                                                    onClick={() => openTemplateSubmission(template)}
+                                                >
+                                                    Cadastrar na Meta
+                                                </Button>
+                                            )}
                                         </div>
                                         <p className="mt-3 text-sm text-muted-foreground">
                                             {template.description}
+                                        </p>
+                                        <p className="mt-2 text-sm text-muted-foreground">
+                                            <span className="font-semibold text-foreground">Uso no app: </span>
+                                            {TEMPLATE_USAGE[template.key]}
                                         </p>
                                         <div className="mt-3 whitespace-pre-line rounded-control bg-brand-background p-3 text-sm leading-6 text-foreground">
                                             {template.body}
@@ -1058,6 +1131,22 @@ export default function WhatsAppIntegrationApp() {
                                                 ),
                                             )}
                                         </div>
+                                        <div className="mt-3 rounded-control border border-border p-3 text-sm">
+                                            <p className="font-semibold text-foreground">Cadastro correspondente na Meta</p>
+                                            {template.metaTemplate ? (
+                                                <>
+                                                    <p className="mt-1 text-muted-foreground">
+                                                        <code>{template.metaTemplate.name}</code> · {metaTemplateStatusLabel(template.metaTemplate.status)}
+                                                        {template.metaTemplate.qualityScore ? ` · Qualidade: ${template.metaTemplate.qualityScore}` : ""}
+                                                    </p>
+                                                    {template.metaTemplate.rejectionReason && (
+                                                        <p className="mt-2 text-red-700">Motivo da rejeição: {template.metaTemplate.rejectionReason}</p>
+                                                    )}
+                                                </>
+                                            ) : (
+                                                <p className="mt-1 text-muted-foreground">Não encontrado nesta WABA. Cadastre exatamente o modelo fixo acima antes de usar esta ação no pedido.</p>
+                                            )}
+                                        </div>
                                         {templateMessage?.key ===
                                             template.key && (
                                             <p
@@ -1069,6 +1158,16 @@ export default function WhatsAppIntegrationApp() {
                                         )}
                                     </article>
                                 ))}
+                                <article className="rounded-control border border-border p-4">
+                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                        <div>
+                                            <h3 className="font-bold text-foreground">Cobrança Pix nativa</h3>
+                                            <p className="mt-1 text-xs text-muted-foreground">Ação “Enviar cobrança Pix nativa pelo WhatsApp” do pedido</p>
+                                        </div>
+                                        <span className="rounded-full bg-brand-background px-2.5 py-1 text-xs font-semibold text-foreground">Não usa template</span>
+                                    </div>
+                                    <p className="mt-3 text-sm leading-6 text-muted-foreground">Envia um cartão de pedido pagável dentro do WhatsApp pela Orders API. Ele não corresponde a nenhum template da lista da Meta.</p>
+                                </article>
                             </div>
                         </section>
 

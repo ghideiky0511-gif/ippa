@@ -53,9 +53,28 @@ function resolveTemplateExample(
     return fallback;
 }
 
-export function listStandardWhatsAppTemplates(tenant: Tenant, user: AuthUser) {
+export interface StandardWhatsAppTemplateMetaStatus {
+    id: string;
+    metaTemplateId: string | null;
+    name: string;
+    status: string;
+    qualityScore: string | null;
+    rejectionReason: string | null;
+    lastSyncedAt: string | null;
+}
+
+// O catálogo é imutável e pertence ao produto. A única informação que vem da
+// Meta é se o template de mesmo nome+idioma já existe na WABA selecionada e
+// qual é o seu estado atual. Isso evita que a tela de configuração vire um
+// editor de templates livres que o fluxo de pedidos não usa.
+export async function listStandardWhatsAppTemplates(
+    tenant: Tenant,
+    user: AuthUser,
+    sellerId?: string,
+    sync = false,
+) {
     requireSettingsAdministrator(user);
-    return STANDARD_WHATSAPP_TEMPLATES.map((template) => ({
+    const templates = STANDARD_WHATSAPP_TEMPLATES.map((template) => ({
         ...template,
         parameters: template.parameters.map((parameter) => ({
             ...parameter,
@@ -65,7 +84,60 @@ export function listStandardWhatsAppTemplates(tenant: Tenant, user: AuthUser) {
                 parameter.example,
             ),
         })),
+        metaTemplate: null as StandardWhatsAppTemplateMetaStatus | null,
     }));
+
+    if (!sellerId) return templates;
+
+    const connection = await withTenantTransaction(tenant, user, (client) =>
+        findWhatsAppConnectionBySeller(client, sellerId),
+    );
+    if (!hasActiveWhatsAppConnection(connection) || !connection.waba_id) {
+        return templates;
+    }
+
+    try {
+        const metaTemplates = await bippaMessagingClient.listWabaTemplates(
+            getApiKey(),
+            connection.waba_id,
+            tenant.id,
+            sync,
+        );
+        return templates.map((template) => {
+            const found = metaTemplates.find(
+                (item) =>
+                    item.name === template.name &&
+                    item.language === template.languageCode,
+            );
+            if (!found) return template;
+            return {
+                ...template,
+                metaTemplate: {
+                    id: found.id,
+                    metaTemplateId: found.metaTemplateId,
+                    name: found.name,
+                    status: found.status,
+                    qualityScore: found.qualityScore,
+                    rejectionReason: found.rejectionReason,
+                    lastSyncedAt: found.lastSyncedAt,
+                },
+            };
+        });
+    } catch (exc) {
+        logger.error("whatsapp-template", "Falha ao consultar status dos templates fixos", {
+            tenantId: tenant.id,
+            sellerId,
+            sync,
+            ...errorMeta(exc),
+            ...metaGraphErrorMeta(exc),
+            ...rawBippaMessagingPayload(exc),
+        });
+        throw mapBippaMessagingError(
+            exc,
+            "WHATSAPP_TEMPLATES_UNAVAILABLE",
+            "Não foi possível consultar os templates da Meta.",
+        );
+    }
 }
 
 export async function submitStandardWhatsAppTemplate(

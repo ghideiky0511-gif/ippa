@@ -213,6 +213,15 @@ const whatsappTemplateSchema = z.object({
     parameters: z.array(
         z.object({ key: z.string(), label: z.string(), example: z.string() }),
     ),
+    metaTemplate: z.object({
+        id: z.string(),
+        metaTemplateId: z.string().nullable(),
+        name: z.string(),
+        status: z.string(),
+        qualityScore: z.string().nullable(),
+        rejectionReason: z.string().nullable(),
+        lastSyncedAt: z.string().nullable(),
+    }).nullable(),
 });
 
 export type StandardWhatsAppTemplate = z.infer<typeof whatsappTemplateSchema>;
@@ -231,8 +240,19 @@ export type SubmittedWhatsAppTemplate = z.infer<typeof submittedTemplateSchema>;
 export function fetchStandardWhatsAppTemplates(): Promise<
     StandardWhatsAppTemplate[]
 > {
+    return fetchStandardWhatsAppTemplatesForSeller();
+}
+
+export function fetchStandardWhatsAppTemplatesForSeller(
+    sellerId?: string,
+    sync = false,
+): Promise<StandardWhatsAppTemplate[]> {
+    const params = new URLSearchParams();
+    if (sellerId) params.set("sellerId", sellerId);
+    if (sync) params.set("sync", "true");
+    const query = params.size > 0 ? `?${params.toString()}` : "";
     return adminJson(
-        "/api/admin/whatsapp/templates",
+        `/api/admin/whatsapp/templates${query}`,
         z.array(whatsappTemplateSchema),
         {},
         "Não foi possível carregar os templates de WhatsApp.",
@@ -254,66 +274,6 @@ export function submitStandardWhatsAppTemplate(
         },
         "Não foi possível enviar o template para aprovação da Meta.",
     );
-}
-
-export interface WhatsAppTemplateEntry {
-    id: string;
-    organizationId: string | null;
-    wabaId: string;
-    metaTemplateId: string | null;
-    name: string;
-    language: string;
-    category: string;
-    status: string;
-    qualityScore: string | null;
-    rejectionReason: string | null;
-    components: Array<Record<string, unknown>>;
-    lastSyncedAt: string | null;
-}
-
-export interface CreateWhatsAppTemplateInput {
-    sellerId: string;
-    name: string;
-    language: string;
-    category: "UTILITY" | "MARKETING" | "AUTHENTICATION";
-    body: string;
-    examples: string[];
-}
-
-export function fetchWhatsAppTemplateLibrary(sellerId: string, sync = true): Promise<WhatsAppTemplateEntry[]> {
-    return adminJson(
-        `/api/admin/whatsapp/template-library?sellerId=${encodeURIComponent(sellerId)}&sync=${sync ? "true" : "false"}`,
-        unknown,
-        {},
-        "Não foi possível carregar os templates da Meta.",
-    ) as Promise<WhatsAppTemplateEntry[]>;
-}
-
-export function createWhatsAppTemplate(input: CreateWhatsAppTemplateInput): Promise<WhatsAppTemplateEntry> {
-    return adminJson(
-        "/api/admin/whatsapp/template-library",
-        unknown,
-        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) },
-        "Não foi possível enviar o template para análise da Meta.",
-    ) as Promise<WhatsAppTemplateEntry>;
-}
-
-export function inspectWhatsAppTemplate(sellerId: string, templateId: string): Promise<WhatsAppTemplateEntry> {
-    return adminJson(
-        `/api/admin/whatsapp/template-library/${encodeURIComponent(templateId)}?sellerId=${encodeURIComponent(sellerId)}`,
-        unknown,
-        {},
-        "Não foi possível atualizar a análise do template.",
-    ) as Promise<WhatsAppTemplateEntry>;
-}
-
-export function deleteWhatsAppTemplate(sellerId: string, templateId: string): Promise<void> {
-    return adminJson(
-        `/api/admin/whatsapp/template-library/${encodeURIComponent(templateId)}?sellerId=${encodeURIComponent(sellerId)}`,
-        unknown,
-        { method: "DELETE" },
-        "Não foi possível excluir o template.",
-    ) as Promise<void>;
 }
 
 // Estado local (whatsapp_connections) de CADA vendedora deste tenant -- usado

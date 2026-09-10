@@ -57,7 +57,6 @@ export const AUDIT_ENTITY_BY_ACTION = {
   [WHATSAPP_INTEGRATION_AUDIT_ACTIONS.DEACTIVATED]: 'whatsapp_integration',
   [WHATSAPP_INTEGRATION_AUDIT_ACTIONS.DISCONNECTED]: 'whatsapp_integration',
   [WHATSAPP_INTEGRATION_AUDIT_ACTIONS.TEMPLATE_SUBMITTED]: 'whatsapp_integration',
-  [WHATSAPP_INTEGRATION_AUDIT_ACTIONS.TEMPLATE_DELETED]: 'whatsapp_integration',
 } as const satisfies Record<AuditAction, AuditEntityType>;
 
 export type EntityForAuditAction<A extends AuditAction> = (typeof AUDIT_ENTITY_BY_ACTION)[A];

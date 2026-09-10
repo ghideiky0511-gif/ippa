@@ -8,6 +8,7 @@ import {
     dispatchTemplateMessage,
     dispatchTemplateWithUrlButton,
     ensureApplicationInstallation,
+    listWabaTemplates,
     listWhatsAppConnections,
     startOnboardingAttempt,
 } from "./bippaMessagingClient";
@@ -157,6 +158,55 @@ test("listWhatsAppConnections manda source_reference como query param e mapeia s
                 },
             ]);
             assert.equal(calls[0].url, `${DEFAULT_BASE_URL}/v1/admin/whatsapp-connections?source_reference=tenant-1`);
+        },
+    );
+});
+
+test("listWabaTemplates consulta a WABA selecionada e preserva o status da Meta", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    await withFetch(
+        async (input, init) => {
+            calls.push({ url: String(input), init });
+            return new Response(
+                JSON.stringify({
+                    data: [{
+                        id: "template-local-1",
+                        organization_id: "org-1",
+                        waba_id: "waba-1",
+                        meta_template_id: "meta-template-1",
+                        name: "bippa_order_confirmed_v3",
+                        language: "pt_BR",
+                        category: "UTILITY",
+                        status: "APPROVED",
+                        quality_score: "GREEN",
+                        rejection_reason: null,
+                        components: [{ type: "BODY", text: "Olá {{1}}" }],
+                        last_synced_at: "2026-09-10T12:00:00.000Z",
+                    }],
+                }),
+                { status: 200, headers: { "Content-Type": "application/json" } },
+            );
+        },
+        async () => {
+            const result = await listWabaTemplates("bippa_key123_segredo", "waba-1", "tenant-1", true);
+            assert.deepEqual(result, [{
+                id: "template-local-1",
+                organizationId: "org-1",
+                wabaId: "waba-1",
+                metaTemplateId: "meta-template-1",
+                name: "bippa_order_confirmed_v3",
+                language: "pt_BR",
+                category: "UTILITY",
+                status: "APPROVED",
+                qualityScore: "GREEN",
+                rejectionReason: null,
+                components: [{ type: "BODY", text: "Olá {{1}}" }],
+                lastSyncedAt: "2026-09-10T12:00:00.000Z",
+            }]);
+            assert.equal(
+                calls[0].url,
+                `${DEFAULT_BASE_URL}/v1/admin/connections/waba-1/templates?source_reference=tenant-1&sync=true`,
+            );
         },
     );
 });

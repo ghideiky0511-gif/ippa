@@ -599,10 +599,9 @@ export function createWabaTemplate(
     }));
 }
 
-// Administração de templates exibidos no painel. Ao contrário de
-// createWabaTemplate, estas operações preservam os componentes devolvidos pela
-// API para que o produto não tente reinterpretar botões, headers ou formatos
-// que pertencem à Meta.
+// Leitura dos templates cadastrados na WABA. O produto só compara esta lista
+// com o catálogo fechado de templates de pedidos; não expõe criação, edição
+// ou exclusão de templates livres.
 export interface WhatsAppTemplateEntry {
     id: string;
     organizationId: string | null;
@@ -650,12 +649,6 @@ function toWhatsAppTemplateEntry(template: WhatsAppTemplateResponse): WhatsAppTe
     };
 }
 
-function unwrapWhatsAppTemplate(
-    response: WhatsAppTemplateResponse | { template: WhatsAppTemplateResponse },
-): WhatsAppTemplateResponse {
-    return "template" in response ? response.template : response;
-}
-
 export function listWabaTemplates(
     apiKey: string,
     wabaId: string,
@@ -674,77 +667,6 @@ export function listWabaTemplates(
             reporter,
         },
     ).then((response) => (response.data ?? []).map(toWhatsAppTemplateEntry));
-}
-
-export interface CreateWhatsAppTemplateInput {
-    sourceReference: string;
-    name: string;
-    language: string;
-    category: "UTILITY" | "MARKETING" | "AUTHENTICATION";
-    components: Array<Record<string, unknown>>;
-}
-
-export function createWhatsAppTemplate(
-    apiKey: string,
-    wabaId: string,
-    input: CreateWhatsAppTemplateInput,
-    reporter?: ExternalApiCallReporter,
-): Promise<WhatsAppTemplateEntry> {
-    return bippaMessagingRequest<WhatsAppTemplateResponse | { template: WhatsAppTemplateResponse }>(
-        "POST",
-        `${baseUrl()}/v1/admin/connections/${encodeURIComponent(wabaId)}/templates`,
-        {
-            service: "bippa-messaging",
-            apiKey,
-            jsonBody: {
-                source_reference: input.sourceReference,
-                name: input.name,
-                language: input.language,
-                category: input.category,
-                components: input.components,
-            },
-            operation: "createWhatsAppTemplate",
-            reporter,
-        },
-    ).then((response) => toWhatsAppTemplateEntry(unwrapWhatsAppTemplate(response)));
-}
-
-export function getWhatsAppTemplate(
-    apiKey: string,
-    templateId: string,
-    sourceReference: string,
-    reporter?: ExternalApiCallReporter,
-): Promise<WhatsAppTemplateEntry> {
-    return bippaMessagingRequest<WhatsAppTemplateResponse | { template: WhatsAppTemplateResponse }>(
-        "GET",
-        `${baseUrl()}/v1/admin/templates/${encodeURIComponent(templateId)}`,
-        {
-            service: "bippa-messaging",
-            apiKey,
-            params: { source_reference: sourceReference },
-            operation: "getWhatsAppTemplate",
-            reporter,
-        },
-    ).then((response) => toWhatsAppTemplateEntry(unwrapWhatsAppTemplate(response)));
-}
-
-export function deleteWhatsAppTemplate(
-    apiKey: string,
-    templateId: string,
-    sourceReference: string,
-    reporter?: ExternalApiCallReporter,
-): Promise<void> {
-    return bippaMessagingRequest(
-        "DELETE",
-        `${baseUrl()}/v1/admin/templates/${encodeURIComponent(templateId)}`,
-        {
-            service: "bippa-messaging",
-            apiKey,
-            jsonBody: { source_reference: sourceReference },
-            operation: "deleteWhatsAppTemplate",
-            reporter,
-        },
-    ).then(() => undefined);
 }
 
 // Vincula um template já criado na WABA (createWabaTemplate) a um sender
