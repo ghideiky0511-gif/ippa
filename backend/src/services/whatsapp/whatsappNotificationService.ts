@@ -96,21 +96,49 @@ function pathOnly(url: string): string {
     return new URL(url).pathname.replace(/^\//, "");
 }
 
+interface ManualWhatsAppSendLogContext {
+    scope: "manual-order-whatsapp" | "manual-payment-order-whatsapp" | "manual-payment-link-whatsapp";
+    kind: "order_template" | "order_details" | "payment_link_template";
+    orderId: string;
+}
+
+// Os envios manuais precisam ser rastreáveis no stdout da aplicação, além do
+// histórico remoto do bippa-messaging. Nunca entram aqui telefone, nome da
+// cliente, link, token ou código Pix: os identificadores internos bastam para
+// correlacionar uma tentativa com o pedido sem registrar dados sensíveis.
 async function sendRequired(
     tenant: Tenant,
     recipient: WhatsAppOrderRecipient,
     send: (row: WhatsAppConnectionRow, apiKey: string) => Promise<{ id: string }>,
+    logContext: ManualWhatsAppSendLogContext,
 ): Promise<{ id: string }> {
-    const row = await resolveActiveIntegration(tenant, recipient.sellerId);
-    if (!hasActiveWhatsAppConnection(row)) {
-        throw new ValidationError(
-            "WHATSAPP_NOT_CONNECTED",
-            "A vendedora deste pedido ainda não tem um WhatsApp conectado.",
-        );
-    }
+    const logMeta = {
+        tenantId: tenant.id,
+        sellerId: recipient.sellerId,
+        orderId: logContext.orderId,
+        kind: logContext.kind,
+    };
+    logger.info(logContext.scope, "Tentativa manual de envio pelo WhatsApp", logMeta);
     try {
-        return await send(row, getApiKey());
+        const row = await resolveActiveIntegration(tenant, recipient.sellerId);
+        if (!hasActiveWhatsAppConnection(row)) {
+            logger.warn(logContext.scope, "Envio manual não realizado: WhatsApp da vendedora indisponível", logMeta);
+            throw new ValidationError(
+                "WHATSAPP_NOT_CONNECTED",
+                "A vendedora deste pedido ainda não tem um WhatsApp conectado.",
+            );
+        }
+        const result = await send(row, getApiKey());
+        logger.info(logContext.scope, "Mensagem manual enviada pelo WhatsApp", {
+            ...logMeta,
+            messageId: result.id,
+        });
+        return result;
     } catch (exc) {
+        logger.error(logContext.scope, "Falha no envio manual pelo WhatsApp", {
+            ...logMeta,
+            ...errorMeta(exc),
+        });
         throw mapBippaMessagingError(
             exc,
             "WHATSAPP_SEND_FAILED",
@@ -125,19 +153,25 @@ async function deliver(
     logScope: string,
     send: (row: WhatsAppConnectionRow, apiKey: string) => Promise<{ id: string }>,
 ): Promise<void> {
+    const logMeta = {
+        tenantId: tenant.id,
+        sellerId: recipient.sellerId,
+    };
+    logger.info(logScope, "Tentativa automática de envio pelo WhatsApp", logMeta);
     try {
         const row = await resolveActiveIntegration(tenant, recipient.sellerId);
-        if (!hasActiveWhatsAppConnection(row)) return; // vendedora sem WhatsApp conectado -- e-mail/push já cobrem
+        if (!hasActiveWhatsAppConnection(row)) {
+            logger.warn(logScope, "Envio automático não realizado: WhatsApp da vendedora indisponível", logMeta);
+            return; // vendedora sem WhatsApp conectado -- e-mail/push já cobrem
+        }
         const result = await send(row, getApiKey());
         logger.info(logScope, "Mensagem de WhatsApp enviada", {
-            tenantId: tenant.id,
-            sellerId: recipient.sellerId,
+            ...logMeta,
             messageId: result.id,
         });
     } catch (exc) {
         logger.error(logScope, "Falha ao enviar mensagem de WhatsApp", {
-            tenantId: tenant.id,
-            sellerId: recipient.sellerId,
+            ...logMeta,
             ...errorMeta(exc),
         });
     }
@@ -240,12 +274,10 @@ export async function sendOrderConfirmedWhatsAppNow(
         if (dispatch.duplicate) await discardOrderAccessToken(tenant, access.token);
         else await revokePreviousOrderAccessTokens(tenant, order.id, access.token);
         return dispatch;
-    });
-    logger.info("manual-order-whatsapp", "Pedido enviado manualmente pelo WhatsApp", {
-        tenantId: tenant.id,
-        sellerId: recipient.sellerId,
+    }, {
+        scope: "manual-order-whatsapp",
+        kind: "order_template",
         orderId: order.id,
-        messageId: result.id,
     });
     return result;
 }
@@ -278,8 +310,11 @@ export async function sendPaymentOrderWhatsAppNow(
             totalAmount,
             taxAmount,
             pix,
-        }),
-    );
+        }), {
+        scope: "manual-payment-order-whatsapp",
+        kind: "order_details",
+        orderId: order.id,
+    });
     return result;
 }
 
@@ -287,6 +322,7 @@ export async function sendPaymentLinkWhatsAppNow(
     tenant: Tenant,
     recipient: WhatsAppOrderRecipient,
     link: string,
+    orderId: string,
 ): Promise<{ id: string }> {
     const definition = standardWhatsAppTemplate(WHATSAPP_TEMPLATE_KEYS.paymentLink);
     const result = await sendRequired(tenant, recipient, (row, apiKey) =>
@@ -299,12 +335,10 @@ export async function sendPaymentLinkWhatsAppNow(
             languageCode: definition.languageCode,
             bodyParams: [recipient.clientName],
             buttonParam: pathOnly(link),
-        }),
-    );
-    logger.info("manual-payment-link-whatsapp", "Link de pagamento enviado manualmente pelo WhatsApp", {
-        tenantId: tenant.id,
-        sellerId: recipient.sellerId,
-        messageId: result.id,
+        }), {
+        scope: "manual-payment-link-whatsapp",
+        kind: "payment_link_template",
+        orderId,
     });
     return result;
 }

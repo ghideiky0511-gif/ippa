@@ -43,6 +43,11 @@ permitir que um cliente escolha WABA, numero ou credenciais.
 - `GET /v1/admin/whatsapp-connections` e
   `PATCH /v1/admin/phones/:id/sender-profile`: inventario de numeros e
   roteamento de cada numero para uma referencia externa definida pela aplicacao.
+- `PATCH /v1/admin/sender-profiles/:senderProfileId/payments-capability`: liga/desliga
+  `capability_payments` de um perfil de envio. Deliberadamente separada da rota
+  acima para que uma reassociacao rotineira de numero nunca resete essa flag —
+  so deve ser chamada apos confirmar manualmente com a Meta que a WABA foi
+  aprovada para Orders/Payments.
 
 ## Onboarding centralizado da Meta
 
@@ -54,8 +59,18 @@ tenant ou dominio de cada produto.
 ```text
 Servico Bippa -> cria tentativa autenticada -> portal connect (origem unica)
   -> Meta Embedded Signup -> POST /v1/admin/onboarding/complete
-  -> Messaging valida e cifra token, sincroniza WABA/numeros e assina webhooks
+  -> Messaging valida e cifra token, sincroniza WABA/numeros, registra cada
+     numero na Cloud API (evita erro Meta #133010 "Account not registered")
+     e assina webhooks
 ```
+
+Uma WABA pode ter varios numeros; cada um e registrado e persistido
+individualmente assim que a chamada `/register` retorna, em vez de esperar
+todos os numeros da lista para so entao gravar - uma falha no meio da lista
+nao descarta o progresso dos numeros ja registrados. Uma nova tentativa para
+um numero ja registrado reusa o PIN de verificacao em duas etapas gravado
+anteriormente (nunca gera um PIN novo para um numero que a Meta ja tem
+registrado, o que arriscaria uma rejeicao por PIN divergente).
 
 Uma tentativa contem uma `state` aleatoria, com validade de dez minutos,
 associada a organizacao, usuario e instalacao do produto. `destination_key` e

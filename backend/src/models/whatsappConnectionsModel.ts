@@ -145,6 +145,21 @@ export async function updateWhatsAppConnectionAfterAssociation(
     return result.rows[0];
 }
 
+export async function updateWhatsAppConnectionPaymentsCapability(
+    client: PoolClient,
+    sellerId: string,
+    capabilityPayments: boolean,
+): Promise<WhatsAppConnectionRow | null> {
+    const result = await client.query<WhatsAppConnectionRow>(
+        `UPDATE whatsapp_connections
+         SET capability_payments = $2, last_synced_at = now(), updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND seller_id = $1
+         RETURNING ${fields}`,
+        [sellerId, capabilityPayments],
+    );
+    return result.rows[0] ?? null;
+}
+
 // Desconecta localmente (mantém a linha para o histórico de
 // sender_profile_key, só limpa o vínculo de telefone) -- usado se/quando
 // existir um fluxo de desconexão explícito na UI.

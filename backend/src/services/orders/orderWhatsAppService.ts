@@ -205,6 +205,7 @@ export async function sendOrderWhatsApp(
             tenant,
             prepared.recipient,
             orderPaymentLink(tenant, token),
+            prepared.order.id,
         );
     } else if (parsed.data.kind === "payment_order") {
         // A cobrança PIX real é criada aqui (fora da transação acima, mesmo

@@ -6,7 +6,9 @@ import * as bippaMessagingClient from "@/messaging/bippaMessagingClient";
 import { findUserRowById } from "@/models/usersModel";
 import {
     listWhatsAppConnectionsByTenant,
+    findWhatsAppConnectionBySeller,
     updateWhatsAppConnectionAfterAssociation,
+    updateWhatsAppConnectionPaymentsCapability,
     type WhatsAppConnectionRow,
 } from "@/models/whatsappConnectionsModel";
 import { listPendingWhatsAppOnboardingAttemptsByTenant } from "@/models/whatsappOnboardingAttemptsModel";
@@ -289,10 +291,9 @@ export async function listTenantWhatsAppConnectionStatuses(
 }
 
 // Vincula um telefone (já conectado à organização no bippa-messaging) ao
-// sender profile desta vendedora -- capability_payments sempre false aqui
-// (disponível só depois de aprovação Meta Payments, fora de escopo). A UI só
-// pode mostrar "conectado" a partir do retorno confirmado desta função,
-// nunca de forma otimista.
+// sender profile desta vendedora. Esta rota não aceita nem muda
+// capability_payments: reassociações preservam a decisão administrativa
+// registrada separadamente em setWhatsAppPaymentsCapability.
 export async function associateWhatsAppSenderProfile(
     tenant: Tenant,
     user: AuthUser,
@@ -351,16 +352,6 @@ export async function associateWhatsAppSenderProfile(
                 sourceReference,
                 externalReference,
                 senderProfileKey,
-                // ATENÇÃO se implementar aprovação de Meta Payments no futuro:
-                // este PATCH é full-replace em sender_profiles (UPDATE SET
-                // capability_payments=EXCLUDED.capability_payments no upsert
-                // por external_reference, bippa-messaging), não merge. Uma
-                // troca de telefone (reassociação) chamando este mesmo
-                // endpoint com capabilityPayments: false vai resetar
-                // silenciosamente uma aprovação já concedida -- nesse dia,
-                // essa chamada precisa ler o valor atual antes de decidir o
-                // que enviar aqui, em vez de hardcodar false.
-                capabilityPayments: false,
             },
         );
     } catch (exc) {
@@ -418,7 +409,15 @@ export async function associateWhatsAppSenderProfile(
                 externalReference,
                 phoneId: association.phoneId,
                 senderProfileKey: association.senderProfileKey,
-                capabilityPayments: association.capabilityPayments,
+                // A resposta nova da associação não inclui capability;
+                // a lista recém-sincronizada é a fonte de verdade. Se ela
+                // falhar, preservamos o valor local em vez de apagá-lo.
+                capabilityPayments:
+                    phoneMeta?.capabilityPayments ??
+                    association.capabilityPayments ??
+                    (await findWhatsAppConnectionBySeller(client, sellerId))
+                        ?.capability_payments ??
+                    false,
                 displayPhoneMasked: phoneMeta?.displayPhoneMasked ?? null,
                 verifiedName: phoneMeta?.verifiedName ?? null,
                 qualityRating: phoneMeta?.qualityRating ?? null,
@@ -445,6 +444,76 @@ export async function associateWhatsAppSenderProfile(
             actor: user,
             context,
             metadata: { sellerId, phoneId: row.phone_id },
+        });
+        return toStatus(sellerId, row);
+    });
+}
+
+export async function enableWhatsAppPaymentsCapability(
+    tenant: Tenant,
+    user: AuthUser,
+    sellerId: string,
+    rawReason: unknown,
+    context: AuditRequestContext,
+): Promise<TenantWhatsAppConnectionStatus> {
+    requireSettingsAdministrator(user);
+    await requireSellerInTenant(tenant, user, sellerId);
+    const reason = typeof rawReason === "string" ? rawReason.trim() : "";
+    if (!reason || reason.length > 240) {
+        throw new ValidationError(
+            "INVALID_INPUT",
+            "Informe a confirmação manual da aprovação da Meta (máximo de 240 caracteres).",
+        );
+    }
+
+    const connection = await withTenantTransaction(tenant, user, (client) =>
+        findWhatsAppConnectionBySeller(client, sellerId),
+    );
+    if (!connection?.sender_profile_id || !connection.phone_id || connection.status !== "connected") {
+        throw new ValidationError(
+            "WHATSAPP_NOT_CONNECTED",
+            "Conecte um número de WhatsApp para esta vendedora antes de habilitar pagamentos nativos.",
+        );
+    }
+
+    let result: { capabilityPayments: boolean };
+    try {
+        result = await bippaMessagingClient.setPaymentsCapability(
+            getApiKey(),
+            connection.sender_profile_id,
+            {
+                sourceReference: tenant.id,
+                capabilityPayments: true,
+                reason,
+                actorReference: user.id,
+            },
+        );
+    } catch (exc) {
+        throw mapBippaMessagingError(
+            exc,
+            "WHATSAPP_PAYMENTS_CAPABILITY_FAILED",
+            "Não foi possível habilitar pagamentos nativos no WhatsApp.",
+        );
+    }
+
+    return withTenantTransaction(tenant, user, async (client) => {
+        const row = await updateWhatsAppConnectionPaymentsCapability(
+            client,
+            sellerId,
+            result.capabilityPayments,
+        );
+        if (!row) {
+            throw new ValidationError(
+                "WHATSAPP_NOT_CONNECTED",
+                "A conexão do WhatsApp não está mais disponível.",
+            );
+        }
+        await recordAuditEvent(client, {
+            action: WHATSAPP_INTEGRATION_AUDIT_ACTIONS.PAYMENTS_CAPABILITY_ENABLED,
+            entityId: row.id,
+            actor: user,
+            context,
+            metadata: { sellerId, senderProfileId: connection.sender_profile_id, reason },
         });
         return toStatus(sellerId, row);
     });

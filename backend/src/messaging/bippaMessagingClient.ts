@@ -510,7 +510,6 @@ export interface AssociateSenderProfileInput {
     // sender_profiles.external_reference, usado depois por resolveSender().
     externalReference: string;
     senderProfileKey: string;
-    capabilityPayments: boolean;
 }
 
 export interface SenderProfileAssociation {
@@ -520,7 +519,10 @@ export interface SenderProfileAssociation {
     senderProfileId: string;
     connectionId: string;
     senderProfileKey: string;
-    capabilityPayments: boolean;
+    // A associação não altera esta permissão. O campo pode não vir na
+    // resposta das versões novas do bippa-messaging; a sincronização do
+    // telefone logo em seguida é a fonte de verdade.
+    capabilityPayments: boolean | null;
     displayPhoneMasked: string | null;
     verifiedName: string | null;
     qualityRating: string | null;
@@ -540,7 +542,7 @@ interface SenderProfileAssociationResponse {
         phone_id: string;
         key: string;
         external_reference: string;
-        capability_payments: boolean;
+        capability_payments?: boolean;
         connection_id: string;
     };
 }
@@ -564,7 +566,6 @@ export function associateSenderProfile(
                 source_reference: input.sourceReference,
                 external_reference: input.externalReference,
                 sender_profile_key: input.senderProfileKey,
-                capability_payments: input.capabilityPayments,
             },
             operation: "associateSenderProfile",
             reporter,
@@ -574,7 +575,7 @@ export function associateSenderProfile(
         senderProfileId: response.sender_profile.id,
         connectionId: response.sender_profile.connection_id,
         senderProfileKey: response.sender_profile.key,
-        capabilityPayments: response.sender_profile.capability_payments,
+        capabilityPayments: response.sender_profile.capability_payments ?? null,
         // sender_profiles não guarda esses três -- pertencem a phone_numbers
         // (já obtidos antes, em listWhatsAppConnections). Este PATCH só
         // confirma o vínculo, não devolve metadados do telefone.
@@ -693,6 +694,53 @@ export function createWabaTemplate(
         status: response.template.status,
         category: response.template.category,
         languageCode: response.template.language,
+    }));
+}
+
+export interface SetPaymentsCapabilityInput {
+    sourceReference: string;
+    capabilityPayments: boolean;
+    reason: string;
+    actorReference: string;
+}
+
+interface SetPaymentsCapabilityResponse {
+    sender_profile: {
+        id: string;
+        phone_id: string;
+        connection_id: string;
+        key: string;
+        external_reference: string;
+        capability_payments: boolean;
+    };
+}
+
+// Esta é deliberadamente uma operação diferente da associação de
+// telefone. A Meta não expõe uma verificação programática da aprovação;
+// portanto, só o fluxo administrativo explícito deve chamá-la.
+export function setPaymentsCapability(
+    apiKey: string,
+    senderProfileId: string,
+    input: SetPaymentsCapabilityInput,
+    reporter?: ExternalApiCallReporter,
+): Promise<{ capabilityPayments: boolean }> {
+    return bippaMessagingRequest<SetPaymentsCapabilityResponse>(
+        "PATCH",
+        `${baseUrl()}/v1/admin/sender-profiles/${encodeURIComponent(senderProfileId)}/payments-capability`,
+        {
+            service: "bippa-messaging",
+            apiKey,
+            jsonBody: {
+                source_reference: input.sourceReference,
+                capability_payments: input.capabilityPayments,
+                reason: input.reason,
+                actor_reference: input.actorReference,
+            },
+            operation: "setPaymentsCapability",
+            reporter,
+        },
+    ).then((response) => ({
+        capabilityPayments: response.sender_profile.capability_payments,
     }));
 }
 

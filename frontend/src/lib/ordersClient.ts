@@ -140,7 +140,7 @@ export function requestOrderPaymentLink(orderId: string): Promise<{ token: strin
 
 const SendOrderWhatsAppResultSchema = z.object({
   messageId: z.string(),
-  kind: z.enum(['order', 'payment_link']),
+  kind: z.enum(['order', 'payment_link', 'payment_order']),
   toMasked: z.string(),
 });
 

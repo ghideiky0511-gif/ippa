@@ -325,10 +325,10 @@ export function fetchTenantWhatsAppConnectionStatuses(): Promise<
     ) as Promise<TenantWhatsAppConnectionStatus[]>;
 }
 
-// Vincula um telefone ao sender profile da vendedora `sellerId` --
-// capability_payments sempre false (não há toggle na UI, ver nota em
-// WhatsAppIntegrationApp.tsx). Só depois desta chamada confirmar é que a UI
-// pode mostrar "conectado".
+// Vincula um telefone ao sender profile da vendedora `sellerId`. Esta chamada
+// não envia nem altera capability_payments; a permissão já confirmada é
+// preservada pelo bippa-messaging. Só depois desta chamada confirmar é que
+// a UI pode mostrar "conectado".
 export function associateWhatsAppSenderProfile(
     sellerId: string,
     phoneId: string,
@@ -342,5 +342,23 @@ export function associateWhatsAppSenderProfile(
             body: JSON.stringify({ sellerId }),
         },
         "Não foi possível associar este telefone à vendedora.",
+    ) as Promise<TenantWhatsAppConnectionStatus>;
+}
+
+// Ação administrativa deliberada: só habilita, nunca é disparada pelo
+// onboarding ou por uma reassociação de telefone.
+export function enableWhatsAppPaymentsCapability(
+    sellerId: string,
+    reason: string,
+): Promise<TenantWhatsAppConnectionStatus> {
+    return adminJson(
+        `/api/admin/whatsapp/sellers/${encodeURIComponent(sellerId)}/payments-capability`,
+        unknown,
+        {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reason }),
+        },
+        "Não foi possível habilitar pagamentos nativos no WhatsApp.",
     ) as Promise<TenantWhatsAppConnectionStatus>;
 }

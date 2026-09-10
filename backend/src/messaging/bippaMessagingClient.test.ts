@@ -10,6 +10,7 @@ import {
     ensureApplicationInstallation,
     listWabaTemplates,
     listWhatsAppConnections,
+    setPaymentsCapability,
     startOnboardingAttempt,
 } from "./bippaMessagingClient";
 import { BippaMessagingAuthError, BippaMessagingClientError } from "./errors";
@@ -250,7 +251,6 @@ test("associateSenderProfile chama PATCH /v1/admin/phones/:phoneId/sender-profil
                         phone_id: "phone-1",
                         key: "catalogo:tenant-1",
                         external_reference: "seller-1",
-                        capability_payments: false,
                         connection_id: "conn-1",
                     },
                 }),
@@ -262,7 +262,6 @@ test("associateSenderProfile chama PATCH /v1/admin/phones/:phoneId/sender-profil
                 sourceReference: "tenant-1",
                 externalReference: "seller-1",
                 senderProfileKey: "catalogo:tenant-1",
-                capabilityPayments: false,
             });
             assert.equal(calls[0].url, `${DEFAULT_BASE_URL}/v1/admin/phones/phone-1/sender-profile`);
             assert.equal(calls[0].init?.method, "PATCH");
@@ -271,13 +270,41 @@ test("associateSenderProfile chama PATCH /v1/admin/phones/:phoneId/sender-profil
                 source_reference: "tenant-1",
                 external_reference: "seller-1",
                 sender_profile_key: "catalogo:tenant-1",
-                capability_payments: false,
             });
             assert.equal(result.phoneId, "phone-1");
             assert.equal(result.senderProfileId, "sp-1");
             assert.equal(result.connectionId, "conn-1");
             assert.equal(result.senderProfileKey, "catalogo:tenant-1");
-            assert.equal(result.capabilityPayments, false);
+            assert.equal(result.capabilityPayments, null);
+        },
+    );
+});
+
+test("setPaymentsCapability chama a rota dedicada", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    await withFetch(
+        async (input, init) => {
+            calls.push({ url: String(input), init });
+            return new Response(JSON.stringify({ sender_profile: { capability_payments: true } }), {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+            });
+        },
+        async () => {
+            const result = await setPaymentsCapability("bippa_key123_segredo", "sp-1", {
+                sourceReference: "tenant-1",
+                capabilityPayments: true,
+                reason: "Meta aprovou Orders/Payments em 2026-09-10",
+                actorReference: "admin-1",
+            });
+            assert.equal(calls[0].url, `${DEFAULT_BASE_URL}/v1/admin/sender-profiles/sp-1/payments-capability`);
+            assert.deepEqual(JSON.parse(String(calls[0].init?.body)), {
+                source_reference: "tenant-1",
+                capability_payments: true,
+                reason: "Meta aprovou Orders/Payments em 2026-09-10",
+                actor_reference: "admin-1",
+            });
+            assert.equal(result.capabilityPayments, true);
         },
     );
 });

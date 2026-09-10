@@ -39,6 +39,18 @@ test("mapBippaMessagingError nunca deixa o erro original vazar sem virar Validat
     assert.equal(mapped.status, 400);
 });
 
+test("mapBippaMessagingError explica a feature flag de pagamentos desabilitada", () => {
+    const mapped = mapBippaMessagingError(
+        new BippaMessagingClientError("payments_disabled", {
+            statusCode: 503,
+            payload: { error: "payments_disabled" },
+        }),
+        "WHATSAPP_PAYMENTS_CAPABILITY_FAILED",
+        "fallback",
+    );
+    assert.match(mapped.message, /META_WHATSAPP_PAYMENTS_ENABLED/);
+});
+
 test("metaGraphErrorMeta extrai meta_code/meta_subcode/meta_trace_id/meta_error_data_details/meta_error_user_title/meta_error_user_msg do payload do bippa-messaging", () => {
     const upstream = new BippaMessagingClientError("A Meta recusou a operacao solicitada. Invalid parameter", {
         statusCode: 422,

@@ -65,10 +65,10 @@ POST /v1/admin/onboarding/attempts
 
 ```json
 {
-  "application_code": "bippa-catalogo",
-  "source_reference": "<tenant-id-canonico>",
-  "actor_reference": "<usuario-admin-id>",
-  "destination_key": "whatsapp-settings"
+    "application_code": "bippa-catalogo",
+    "source_reference": "<tenant-id-canonico>",
+    "actor_reference": "<usuario-admin-id>",
+    "destination_key": "whatsapp-settings"
 }
 ```
 
@@ -76,14 +76,19 @@ Resposta `201`:
 
 ```json
 {
-  "onboarding": {
-    "attempt_id": "<uuid>",
-    "state": "<token-opaco-de-uso-unico>",
-    "expires_at": "<timestamp>",
-    "connect_url": "https://bippa-messaging.onrender.com/meta/embedded-signup",
-    "callback_url": "https://bippa-messaging.onrender.com/meta/oauth/callback",
-    "sdk": { "app_id": "...", "config_id": "...", "graph_api_version": "...", "extras": {} }
-  }
+    "onboarding": {
+        "attempt_id": "<uuid>",
+        "state": "<token-opaco-de-uso-unico>",
+        "expires_at": "<timestamp>",
+        "connect_url": "https://bippa-messaging.onrender.com/meta/embedded-signup",
+        "callback_url": "https://bippa-messaging.onrender.com/meta/oauth/callback",
+        "sdk": {
+            "app_id": "...",
+            "config_id": "...",
+            "graph_api_version": "...",
+            "extras": {}
+        }
+    }
 }
 ```
 
@@ -126,18 +131,18 @@ Resposta `200`:
 
 ```json
 {
-  "onboarding": {
-    "id": "<uuid>",
-    "destination_key": "whatsapp-settings",
-    "status": "pending|processing|completed|failed|expired",
-    "result": null,
-    "error_code": null,
-    "error_message": null,
-    "expires_at": "<timestamp>",
-    "consumed_at": null,
-    "completed_at": null,
-    "created_at": "<timestamp>"
-  }
+    "onboarding": {
+        "id": "<uuid>",
+        "destination_key": "whatsapp-settings",
+        "status": "pending|processing|completed|failed|expired",
+        "result": null,
+        "error_code": null,
+        "error_message": null,
+        "expires_at": "<timestamp>",
+        "consumed_at": null,
+        "completed_at": null,
+        "created_at": "<timestamp>"
+    }
 }
 ```
 
@@ -145,29 +150,29 @@ Em `completed`, `result` contem:
 
 ```json
 {
-  "destination_key": "whatsapp-settings",
-  "connection": {
-    "id": "<uuid>",
-    "waba_id": "<meta-waba-id>",
-    "status": "connected",
-    "expires_at": null,
-    "owner_business_id": "<meta-business-id>",
-    "granted_scopes": []
-  },
-  "phones": [
-    {
-      "id": "<uuid>",
-      "phone_number_id": "<meta-phone-number-id>",
-      "display_phone_number": "+55...",
-      "verified_name": "...",
-      "quality_rating": "GREEN|YELLOW|RED|UNKNOWN",
-      "name_status": "APPROVED|...",
-      "platform_type": "CLOUD_API|ON_PREMISE",
-      "code_verification_status": "VERIFIED|NOT_VERIFIED",
-      "messaging_limit_tier": "TIER_50|TIER_1K|TIER_10K|TIER_100K|UNLIMITED",
-      "active": true
-    }
-  ]
+    "destination_key": "whatsapp-settings",
+    "connection": {
+        "id": "<uuid>",
+        "waba_id": "<meta-waba-id>",
+        "status": "connected",
+        "expires_at": null,
+        "owner_business_id": "<meta-business-id>",
+        "granted_scopes": []
+    },
+    "phones": [
+        {
+            "id": "<uuid>",
+            "phone_number_id": "<meta-phone-number-id>",
+            "display_phone_number": "+55...",
+            "verified_name": "...",
+            "quality_rating": "GREEN|YELLOW|RED|UNKNOWN",
+            "name_status": "APPROVED|...",
+            "platform_type": "CLOUD_API|ON_PREMISE",
+            "code_verification_status": "VERIFIED|NOT_VERIFIED",
+            "messaging_limit_tier": "TIER_50|TIER_1K|TIER_10K|TIER_100K|UNLIMITED",
+            "active": true
+        }
+    ]
 }
 ```
 
@@ -175,7 +180,12 @@ Em `completed`, `result` contem:
 `messaging_limit_tier` sao os campos que a Meta expoe por numero de telefone.
 Pagamento nao e um dado da Meta por numero: o `capability_payments` retornado
 pela rota de listagem (item 4 abaixo) e uma flag propria do Messaging, setada
-via `PATCH /v1/admin/phones/:id/sender-profile`.
+via `PATCH /v1/admin/sender-profiles/:senderProfileId/payments-capability` —
+uma acao administrativa deliberada e separada da associacao rotineira de
+numero (`PATCH /v1/admin/phones/:id/sender-profile`, que nao aceita mais este
+campo), porque so deve ser chamada depois de confirmar manualmente com a Meta
+que a WABA foi aprovada para Orders/Payments. Ver "Orders / Pagamentos" no
+`api-reference.md` para o fluxo completo de `order_details`.
 
 ### 4. Listar as conexoes do tenant
 
@@ -195,8 +205,8 @@ referencia contiver `:`:
 ```js
 const query = new URLSearchParams({ source_reference: sourceReference });
 const response = await fetch(
-  `${BIPPA_MESSAGING_BASE_URL}/v1/admin/whatsapp-connections?${query}`,
-  { headers: { "X-Bippa-Api-Key": BIPPA_MESSAGING_API_KEY } },
+    `${BIPPA_MESSAGING_BASE_URL}/v1/admin/whatsapp-connections?${query}`,
+    { headers: { "X-Bippa-Api-Key": BIPPA_MESSAGING_API_KEY } },
 );
 ```
 
@@ -244,26 +254,30 @@ const messagingOrigin = new URL(onboarding.connect_url).origin;
 let popup;
 
 function onMessagingEvent(event) {
-  if (event.origin !== messagingOrigin || event.source !== popup) return;
+    if (event.origin !== messagingOrigin || event.source !== popup) return;
 
-  if (event.data?.type === "bippa.meta.onboarding.loaded") {
-    popup.postMessage(
-      { type: "bippa.meta.onboarding.start", state: onboarding.state },
-      messagingOrigin
-    );
-  }
+    if (event.data?.type === "bippa.meta.onboarding.loaded") {
+        popup.postMessage(
+            { type: "bippa.meta.onboarding.start", state: onboarding.state },
+            messagingOrigin,
+        );
+    }
 
-  if (["bippa.meta.onboarding.completed", "bippa.meta.onboarding.failed"]
-      .includes(event.data?.type)) {
-    void refreshAttempt(onboarding.attempt_id);
-  }
+    if (
+        [
+            "bippa.meta.onboarding.completed",
+            "bippa.meta.onboarding.failed",
+        ].includes(event.data?.type)
+    ) {
+        void refreshAttempt(onboarding.attempt_id);
+    }
 }
 
 window.addEventListener("message", onMessagingEvent);
 popup = window.open(
-  onboarding.connect_url,
-  "bippa-meta-signup",
-  "popup,width=620,height=760"
+    onboarding.connect_url,
+    "bippa-meta-signup",
+    "popup,width=620,height=760",
 );
 ```
 

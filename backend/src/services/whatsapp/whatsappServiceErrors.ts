@@ -112,8 +112,16 @@ export function mapBippaMessagingError(
     code: string,
     fallbackMessage: string,
 ): ValidationError {
+    const paymentsDisabled =
+        exc instanceof BippaMessagingClientError &&
+        exc.statusCode === 503 &&
+        exc.payload &&
+        typeof exc.payload === "object" &&
+        (exc.payload as Record<string, unknown>).error === "payments_disabled";
     const message =
-        exc instanceof BippaMessagingAuthError
+        paymentsDisabled
+            ? "Os pagamentos nativos ainda não foram liberados no bippa-messaging. Confirme com o suporte se META_WHATSAPP_PAYMENTS_ENABLED está habilitada neste ambiente."
+            : exc instanceof BippaMessagingAuthError
             ? AUTH_ERROR_MESSAGE
             : exc instanceof BippaMessagingClientError
               ? exc.message
