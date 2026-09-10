@@ -4,6 +4,7 @@ export * from "./orderBookService";
 export * from "./sellerAssignmentService";
 export * from "./paymentLinkService";
 export * from "./orderPaymentLinkService";
+export * from "./orderAccessService";
 export * from "./orderWhatsAppService";
 export * from "./paymentService";
 export * from "./deliveryService";

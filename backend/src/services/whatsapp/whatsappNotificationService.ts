@@ -8,7 +8,12 @@ import * as bippaMessagingClient from "@/messaging/bippaMessagingClient";
 import { toWaId } from "@/messaging/payloadBuilders";
 import { findWhatsAppConnectionBySeller, type WhatsAppConnectionRow } from "@/models/whatsappConnectionsModel";
 import type { ClientRow } from "@/models/clientsModel";
-import { orderDetailsLink } from "@/services/notifications/emailNotificationService";
+import { orderAccessLink } from "@/services/notifications/emailNotificationService";
+import {
+    createOrderAccessToken,
+    discardOrderAccessToken,
+    revokePreviousOrderAccessTokens,
+} from "@/services/orders/orderAccessService";
 import { ValidationError } from "@/services/shared/errors";
 import { mapBippaMessagingError } from "./whatsappServiceErrors";
 import {
@@ -146,6 +151,7 @@ export function sendOrderConfirmedWhatsApp(
     if (!recipient) return;
     const definition = standardWhatsAppTemplate(WHATSAPP_TEMPLATE_KEYS.orderConfirmed);
     void deliver(tenant, recipient, "order-confirmed-whatsapp", async (row, apiKey) => {
+        const access = await createOrderAccessToken(tenant, order.id);
         const result = await bippaMessagingClient.dispatchTemplateWithUrlButton(apiKey, {
             sourceReference: tenant.id,
             sellerReference: row.external_reference,
@@ -158,8 +164,15 @@ export function sendOrderConfirmedWhatsApp(
             templateName: definition.name,
             languageCode: definition.languageCode,
             bodyParams: [recipient.clientName, String(order.orderNumber), formatBRL(order.total)],
-            buttonParam: pathOnly(orderDetailsLink(tenant, order.orderNumber)),
+            buttonParam: pathOnly(
+                orderAccessLink(
+                    tenant,
+                    access.token,
+                ),
+            ),
         });
+        if (result.duplicate) await discardOrderAccessToken(tenant, access.token);
+        else await revokePreviousOrderAccessTokens(tenant, order.id, access.token);
         return result;
     });
 }
@@ -203,8 +216,9 @@ export async function sendOrderConfirmedWhatsAppNow(
     order: { id: string; orderNumber: number; total: number },
 ): Promise<{ id: string }> {
     const definition = standardWhatsAppTemplate(WHATSAPP_TEMPLATE_KEYS.orderConfirmed);
-    const result = await sendRequired(tenant, recipient, (row, apiKey) =>
-        bippaMessagingClient.dispatchTemplateWithUrlButton(apiKey, {
+    const result = await sendRequired(tenant, recipient, async (row, apiKey) => {
+        const access = await createOrderAccessToken(tenant, order.id);
+        const dispatch = await bippaMessagingClient.dispatchTemplateWithUrlButton(apiKey, {
             sourceReference: tenant.id,
             sellerReference: row.external_reference,
             to: toWaId(recipient.whatsappPhone),
@@ -216,9 +230,17 @@ export async function sendOrderConfirmedWhatsAppNow(
             templateName: definition.name,
             languageCode: definition.languageCode,
             bodyParams: [recipient.clientName, String(order.orderNumber), formatBRL(order.total)],
-            buttonParam: pathOnly(orderDetailsLink(tenant, order.orderNumber)),
-        }),
-    );
+            buttonParam: pathOnly(
+                orderAccessLink(
+                    tenant,
+                    access.token,
+                ),
+            ),
+        });
+        if (dispatch.duplicate) await discardOrderAccessToken(tenant, access.token);
+        else await revokePreviousOrderAccessTokens(tenant, order.id, access.token);
+        return dispatch;
+    });
     logger.info("manual-order-whatsapp", "Pedido enviado manualmente pelo WhatsApp", {
         tenantId: tenant.id,
         sellerId: recipient.sellerId,

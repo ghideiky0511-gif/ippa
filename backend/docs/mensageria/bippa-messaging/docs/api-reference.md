@@ -437,7 +437,6 @@ Content-Type: application/json
 {
   "source_reference": "tenant-123",
   "external_reference": "17",
-  "capability_payments": false,
   "actor_reference": "user-42"
 }
 ```
@@ -446,6 +445,66 @@ Content-Type: application/json
 a chave interna de roteamento, nunca deve ser enviada de volta pelo produto
 em chamadas futuras. Um telefone tem no máximo um perfil de envio; um
 `external_reference` é único por organização (upsert por esse par).
+
+**Esta rota não aceita mais `capability_payments`.** Antes, um `capability_payments`
+enviado aqui era sobrescrito a cada chamada — como toda troca/reassociação de
+número reenvia o valor default (`false`), qualquer habilitação de pagamentos
+já concedida acabava sendo silenciosamente resetada na próxima reassociação
+rotineira. Agora esta rota só toca em `external_reference`/`key`; o valor de
+`capability_payments` já existente é sempre preservado. Para ler ou mudar
+`capability_payments`, use o campo no objeto retornado por
+`GET /v1/admin/whatsapp-connections` (dentro de cada `phones[]`) e a rota
+dedicada abaixo.
+
+Resposta `200`:
+
+```json
+{
+    "sender_profile": {
+        "id": "...",
+        "organization_id": "...",
+        "phone_id": "...",
+        "connection_id": "...",
+        "key": "seller:17",
+        "external_reference": "17"
+    }
+}
+```
+
+Erro `404 phone_not_found` se o telefone não existir nesta organização.
+
+### `PATCH /v1/admin/sender-profiles/:senderProfileId/payments-capability`
+
+Liga ou desliga `capability_payments` para um perfil de envio já existente.
+`:senderProfileId` é o `id` do perfil (não o `phone_id`) — vem de
+`sender_profile_key`/o próprio perfil retornado pela rota acima, ou da lista
+de `phones[]` em `GET /v1/admin/whatsapp-connections`.
+
+**Esta é uma ação deliberada, separada da associação rotineira de telefone
+acima de propósito.** `capability_payments: true` afirma que a Meta já
+aprovou Orders/Payments para a WABA daquele número — coisa que o
+bippa-messaging não tem como verificar automaticamente (a Graph API não
+expõe um campo equivalente a `health_status` para isso). Chame esta rota
+**só depois de confirmar manualmente com a Meta/parceiro de solução** que a
+WABA está aprovada; nunca como parte de um fluxo automático de
+onboarding/reassociação de número.
+
+```http
+PATCH /v1/admin/sender-profiles/uuid-do-perfil/payments-capability
+X-Bippa-Api-Key: bippa_<key_id>_<segredo>
+Content-Type: application/json
+
+{
+  "source_reference": "tenant-123",
+  "capability_payments": true,
+  "reason": "WABA aprovada pela Meta para Orders/Payments em 2026-09-10",
+  "actor_reference": "user-42"
+}
+```
+
+`reason` é opcional (até 240 chars) e só vai para o audit log
+(`sender_profile_payments_capability_changed`) — não é validado nem afeta o
+comportamento, mas ajuda a rastrear quem confirmou a aprovação e quando.
 
 Resposta `200`:
 
@@ -458,12 +517,12 @@ Resposta `200`:
         "connection_id": "...",
         "key": "seller:17",
         "external_reference": "17",
-        "capability_payments": false
+        "capability_payments": true
     }
 }
 ```
 
-Erro `404 phone_not_found` se o telefone não existir nesta organização.
+Erro `404 sender_profile_not_found` se o perfil não existir nesta organização.
 
 ---
 
@@ -1346,8 +1405,9 @@ pra atualizar `payment_status`.
 Regras: `reference_id` até 60 caracteres (`[A-Za-z0-9_.-]`), único por
 requisição de pagamento — ele identifica o pedido, não a mensagem.
 `seller_reference` precisa ter `capability_payments: true` (definido via
-`PATCH /v1/admin/phones/:id/sender-profile`), senão `422
-payments_not_enabled_for_sender`. Com `items`, o Messaging calcula
+`PATCH /v1/admin/sender-profiles/:senderProfileId/payments-capability`, ver
+seção "Contas e telefones" acima — só depois de confirmar manualmente a
+aprovação da Meta), senão `422 payments_not_enabled_for_sender`. Com `items`, o Messaging calcula
 `subtotal` e exige `total_amount = subtotal + tax_amount + shipping_amount -
 discount_amount`; sem `items`, o pedido é simplificado e só `total_amount` é
 obrigatório (nesse caso um `header` de imagem é rejeitado — mesma regra da

@@ -41,6 +41,10 @@ export function fetchCustomerOrder(orderNumber: number): Promise<Order> {
   return adminJson(`/api/orders/${encodeURIComponent(String(orderNumber))}`, OrderSchema, {}, 'NÃ£o foi possÃ­vel carregar o pedido.');
 }
 
+export function fetchOrderWithTemporaryAccess(orderNumber: number): Promise<Order> {
+  return adminJson(`/api/order-access/orders/${encodeURIComponent(String(orderNumber))}`, OrderSchema, {}, 'Não foi possível carregar este pedido.');
+}
+
 export function fetchOrderSessions(): Promise<OrderSession[]> {
   return adminJson('/api/sessions', OrderSessionSchema.array(), {}, 'Não foi possível carregar os talões.');
 }

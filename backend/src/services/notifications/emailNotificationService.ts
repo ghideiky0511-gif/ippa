@@ -16,6 +16,11 @@ export function orderDetailsLink(tenant: Tenant, orderNumber: number): string {
     return `${origin}/${encodeURIComponent(tenant.slug)}/pedidos/${encodeURIComponent(String(orderNumber))}`;
 }
 
+export function orderAccessLink(tenant: Tenant, token: string): string {
+    const origin = (process.env.APP_URL || process.env.ADMIN_ORIGIN || "https://ippa-frontend.onrender.com").replace(/\/+$/, "");
+    return `${origin}/${encodeURIComponent(tenant.slug)}/acesso/pedido/${encodeURIComponent(token)}`;
+}
+
 export function orderPaymentLink(tenant: Tenant, token: string): string {
     const origin = (process.env.APP_URL || process.env.ADMIN_ORIGIN || "https://ippa-frontend.onrender.com").replace(/\/+$/, "");
     return `${origin}/${encodeURIComponent(tenant.slug)}/pagar/${encodeURIComponent(token)}`;

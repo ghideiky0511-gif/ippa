@@ -15,7 +15,7 @@ import { StatusChip, type StatusChipTone } from '@/components/StatusChip';
 import PaymentMethodIndicator from '@/components/payments/PaymentMethodIndicator';
 import type { Order } from '@/domain/orders/types';
 import { formatBRL } from '@/lib/format';
-import { fetchCustomerOrder } from '@/lib/ordersClient';
+import { fetchCustomerOrder, fetchOrderWithTemporaryAccess } from '@/lib/ordersClient';
 import { publicUi } from '@/lib/ui';
 
 const STATUS_LABELS: Record<Order['status'], string> = {
@@ -72,29 +72,50 @@ export default function PedidoDetalhePage() {
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [temporaryAccessChecked, setTemporaryAccessChecked] = useState(false);
+  const [hasTemporaryAccess, setHasTemporaryAccess] = useState(false);
 
   useEffect(() => {
-    if (!authUser || !Number.isSafeInteger(orderNumber)) {
-      setLoading(false);
-      return;
-    }
     let active = true;
-    setLoading(true);
-    setNotFound(false);
-    void fetchCustomerOrder(orderNumber)
-      .then((nextOrder) => {
-        if (active) setOrder(nextOrder);
-      })
-      .catch(() => {
-        if (active) setNotFound(true);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => { active = false; };
+    const timer = window.setTimeout(() => {
+      if (!Number.isSafeInteger(orderNumber)) {
+        setLoading(false);
+        setTemporaryAccessChecked(true);
+        return;
+      }
+      setLoading(true);
+      setNotFound(false);
+      setTemporaryAccessChecked(Boolean(authUser));
+      setHasTemporaryAccess(false);
+      const loadOrder = authUser ? fetchCustomerOrder : fetchOrderWithTemporaryAccess;
+      void loadOrder(orderNumber)
+        .then((nextOrder) => {
+          if (active) {
+            setOrder(nextOrder);
+            setHasTemporaryAccess(!authUser);
+          }
+        })
+        .catch(() => {
+          if (active) setNotFound(true);
+        })
+        .finally(() => {
+          if (active) {
+            setLoading(false);
+            setTemporaryAccessChecked(true);
+          }
+        });
+    }, 0);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
   }, [authUser, orderNumber]);
 
-  if (!authUser) {
+  if (!authUser && !temporaryAccessChecked) {
+    return <main className={`${publicUi.container} py-8 sm:py-10`}><OrderDetailSkeleton /></main>;
+  }
+
+  if (!authUser && !hasTemporaryAccess) {
     return (
       <main className={`${publicUi.container} py-8 sm:py-10`}>
         <h1 className="mb-5 text-2xl font-bold tracking-[-0.03em] text-foreground sm:text-3xl">Detalhes do pedido</h1>
@@ -123,9 +144,9 @@ export default function PedidoDetalhePage() {
 
   return (
     <main className={`${publicUi.container} py-8 pb-14 sm:py-10`}>
-      <Button asChild variant="ghost" size="sm" className="mb-5">
+      {authUser && <Button asChild variant="ghost" size="sm" className="mb-5">
         <Link href="/pedidos"><ArrowLeft className="size-4" aria-hidden="true" />Meus pedidos</Link>
-      </Button>
+      </Button>}
 
       {loading || !order ? <OrderDetailSkeleton /> : (
         <div className="flex flex-col gap-4">
@@ -164,10 +185,10 @@ export default function PedidoDetalhePage() {
                       label={PAYMENT_STATUS_LABELS[order.paymentStatus ?? 'unpaid']}
                       tone={PAYMENT_STATUS_TONES[order.paymentStatus ?? 'unpaid']}
                     />
-                    <PaymentMethodIndicator orderId={order.id} />
-                    <Link href={`/pedidos/${order.orderNumber}/pagamento`} className="text-xs font-semibold text-brand-primary underline">
+                    {authUser && <PaymentMethodIndicator orderId={order.id} />}
+                    {authUser && <Link href={`/pedidos/${order.orderNumber}/pagamento`} className="text-xs font-semibold text-brand-primary underline">
                       Ver detalhes
-                    </Link>
+                    </Link>}
                   </div>
                 </div>
                 {order.freight && <div><p className="text-muted-foreground">Frete</p><p className="mt-0.5 font-semibold text-foreground">{order.freight.label} · {formatBRL(order.freight.price)}</p></div>}

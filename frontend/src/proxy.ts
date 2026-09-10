@@ -4,7 +4,7 @@ import type { AuthUser } from '@/domain/clients/types';
 import { forwardClientIpHeaders } from '@/lib/forwarded-client';
 
 const BACKEND_URL = getBackendUrl();
-const CUSTOMER_PUBLIC_PREFIXES = ['/login', '/cadastro', '/confirmar-conta', '/pagar', '/em-construcao'];
+const CUSTOMER_PUBLIC_PREFIXES = ['/login', '/cadastro', '/confirmar-conta', '/pagar', '/acesso', '/em-construcao'];
 
 function catalogAreaForPath(pathname: string): 'talao' | 'pedidos' {
   return pathname.startsWith('/pedidos') ? 'pedidos' : 'talao';
@@ -104,6 +104,8 @@ export async function proxy(request: NextRequest) {
 
   // Chamadas do navegador continuam usando /api por compatibilidade; o slug
   // vem da página de origem e é convertido antes de alcançar o backend.
+  if (pathname === '/api/order-access/exchange') return NextResponse.next();
+
   if (pathname.startsWith('/api/')) {
     if (pathname.startsWith('/api/workspace-session/')) return NextResponse.next();
     const tenantSlug = tenantFromReferer(request);
