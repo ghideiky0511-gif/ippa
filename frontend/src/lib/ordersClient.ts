@@ -172,6 +172,34 @@ export function sendOrderWhatsApp(orderId: string, kind: SendOrderWhatsAppKind) 
   }, 'Não foi possível enviar pelo WhatsApp.');
 }
 
+export type OrderWhatsAppAttemptOutcome = 'sent' | 'failed';
+
+// Uma linha por tentativa de envio pelo WhatsApp (order_whatsapp_send_attempts)
+// -- log append-only, quem mandou o quê e se deu certo. Mesma forma "crua"
+// (snake_case, sem normalização) de ProviderOrderAttempt em erpIntegrationClient.ts.
+export interface OrderWhatsAppAttempt {
+  id: string;
+  order_id: string;
+  kind: SendOrderWhatsAppKind;
+  outcome: OrderWhatsAppAttemptOutcome;
+  actor_id: string;
+  actor_role: string;
+  actor_name: string;
+  to_masked: string;
+  message_id: string | null;
+  error: string | null;
+  created_at: string;
+}
+
+export function fetchOrderWhatsAppHistory(orderId: string): Promise<OrderWhatsAppAttempt[]> {
+  return adminJson(
+    `/api/admin/orders/${encodeURIComponent(orderId)}/whatsapp/history`,
+    z.unknown(),
+    {},
+    'Não foi possível carregar o histórico de envio pelo WhatsApp.',
+  ) as Promise<OrderWhatsAppAttempt[]>;
+}
+
 // Histórico de cobrança do pedido (redigido: sem PAN, só os dados de
 // exibição já mascarados/normalizados pelo backend -- ver
 // orderPaymentDetailsService.ts::toOrderPaymentCharge). Mesma checagem de

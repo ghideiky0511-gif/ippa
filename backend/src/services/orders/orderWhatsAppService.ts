@@ -3,8 +3,16 @@ import type { PoolClient } from "pg";
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser } from "@/lib/types";
+import { errorMeta, logger } from "@/lib/logger";
 import { findClientRow, type ClientRow } from "@/models/clientsModel";
+import { findOrderFreightRowByOrderId } from "@/models/orderFreightsModel";
 import { findOrderRowById, listOrderItemRowsByOrder } from "@/models/ordersModel";
+import {
+    insertOrderWhatsAppAttemptRow,
+    listOrderWhatsAppAttemptRowsByOrderId,
+    type OrderWhatsAppAttemptOutcome,
+    type OrderWhatsAppAttemptRow,
+} from "@/models/orderWhatsAppAttemptsModel";
 import { findActivePaymentIntegrationRow } from "@/models/paymentIntegrationsModel";
 import { findWhatsAppConnectionBySeller } from "@/models/whatsappConnectionsModel";
 import { orderPaymentLink } from "@/services/notifications";
@@ -81,6 +89,52 @@ async function assessPaymentOrderAvailability(
     return { available: true };
 }
 
+// Registro best-effort do histórico (order_whatsapp_send_attempts, migration
+// 071) -- nunca deixa uma falha ao GRAVAR o histórico mascarar o resultado
+// real do envio (sucesso vira erro pra quem clicou, ou o erro original de
+// falha no envio é substituído por um erro de log): loga e segue.
+async function recordOrderWhatsAppAttempt(
+    tenant: Tenant,
+    actor: AuthUser,
+    value: {
+        orderId: string;
+        kind: SendOrderWhatsAppKind;
+        outcome: OrderWhatsAppAttemptOutcome;
+        toMasked: string;
+        messageId: string | null;
+        error: string | null;
+    },
+): Promise<void> {
+    try {
+        await withTenantTransaction(tenant, actor, (client) =>
+            insertOrderWhatsAppAttemptRow(client, {
+                orderId: value.orderId,
+                kind: value.kind,
+                outcome: value.outcome,
+                actorId: actor.id,
+                actorRole: actor.role,
+                actorName: actor.name,
+                toMasked: value.toMasked,
+                messageId: value.messageId,
+                error: value.error,
+            }),
+        );
+    } catch (err) {
+        logger.warn("order-whatsapp", "Falha ao registrar tentativa de envio no histórico", errorMeta(err));
+    }
+}
+
+// Histórico de tentativas de envio deste pedido pelo WhatsApp, mais recente
+// primeiro -- usado pela página de detalhe do pedido (quem mandou o quê,
+// quando, e deu certo). Mesma forma de orderPushService.listOrderPushHistory.
+export async function listOrderWhatsAppHistory(
+    tenant: Tenant,
+    actor: AuthUser,
+    orderId: string,
+): Promise<OrderWhatsAppAttemptRow[]> {
+    return withTenantTransaction(tenant, actor, (client) => listOrderWhatsAppAttemptRowsByOrderId(client, orderId));
+}
+
 export async function validateWhatsAppAvailability(
     tenant: Tenant,
     orderId: string,
@@ -144,6 +198,8 @@ export async function sendOrderWhatsApp(
 
         let pix: { code: string; merchantName: string; key: string; keyType: string } | undefined;
         let items: Array<{ retailerId: string; name: string; unitAmount: number; quantity: number }> | undefined;
+        let shipping: { amount: number; description?: string } | undefined;
+        let discount: { amount: number; description?: string } | undefined;
         if (parsed.data.kind === "payment_order") {
             const paymentOrderStatus = await assessPaymentOrderAvailability(client, registration);
             if (!paymentOrderStatus.available) {
@@ -166,6 +222,29 @@ export async function sendOrderWhatsApp(
                 unitAmount: Math.round(row.snapshot.price * 100),
                 quantity: row.snapshot.qty,
             }));
+            // items[].unit_amount de 0 é rejeitado pelo Messaging
+            // (allowZero: false, ver api-reference.md) -- diferente de
+            // tax_amount/shipping_amount, que aceitam 0. Um item promocional
+            // ou brinde a custo zero passa em qualquer outro fluxo de pedido,
+            // mas não pode ir no payment_order nativo.
+            if (items.some((item) => item.unitAmount <= 0)) {
+                throw new ValidationError(
+                    "PAYMENT_ORDER_ZERO_PRICE_ITEM",
+                    "Este pedido tem um item com valor zero, que o pagamento nativo do WhatsApp não aceita. Use o link de pagamento.",
+                );
+            }
+            // O Messaging exige total_amount = soma(items) + tax_amount +
+            // shipping_amount - discount_amount (ver api-reference.md);
+            // order.total já embute frete e desconto (orderService.ts), então
+            // sem repassar os dois aqui a conta do provider nunca fecha e o
+            // envio cai com 400 invalid_order_payload.
+            const freightRow = await findOrderFreightRowByOrderId(client, orderId);
+            if (freightRow && Number(freightRow.price) > 0) {
+                shipping = { amount: Math.round(Number(freightRow.price) * 100), description: freightRow.label };
+            }
+            if (order.discount && order.discount.amount > 0) {
+                discount = { amount: Math.round(order.discount.amount * 100), description: order.discount.label };
+            }
         }
 
         const recipient: WhatsAppOrderRecipient = {
@@ -184,6 +263,8 @@ export async function sendOrderWhatsApp(
             email: registration.email ?? "",
             pix,
             items,
+            shipping,
+            discount,
         };
     });
 
@@ -191,46 +272,70 @@ export async function sendOrderWhatsApp(
     // so a state change between preparation and the external call is safe.
     await assertWhatsAppConnectionAvailable(tenant, prepared.recipient.sellerId);
 
+    const toMasked = maskWhatsAppPhone(prepared.recipient.whatsappPhone);
     let delivery: { id: string };
-    if (parsed.data.kind === "payment_link") {
-        const { token } = await createOrderPaymentLink(tenant, actor, orderId);
-        delivery = await sendPaymentLinkWhatsAppNow(
-            tenant,
-            prepared.recipient,
-            orderPaymentLink(tenant, token),
-            prepared.order.id,
-        );
-    } else if (parsed.data.kind === "payment_order") {
-        // A cobrança PIX real é criada aqui (fora da transação acima, mesmo
-        // raciocínio de orderPaymentLinkService.ts -- createOrderCharge abre
-        // suas próprias transações e chama o provider) só pra obter o
-        // copia-e-cola gerado pelo PSP ativo; merchant_name/key/key_type
-        // (não gerados por cobrança nenhuma) já vieram da configuração da
-        // loja acima.
-        const charge = await createOrderCharge(tenant, actor, orderId, {
-            method: "pix",
-            customer: { name: prepared.recipient.clientName, document: prepared.document, email: prepared.email },
-        });
-        if (charge.method !== "pix") {
-            throw new ValidationError("PAYMENT_CHARGE_FAILED", "Não foi possível gerar o código Pix.");
+    try {
+        if (parsed.data.kind === "payment_link") {
+            const { token } = await createOrderPaymentLink(tenant, actor, orderId);
+            delivery = await sendPaymentLinkWhatsAppNow(
+                tenant,
+                prepared.recipient,
+                orderPaymentLink(tenant, token),
+                prepared.order.id,
+            );
+        } else if (parsed.data.kind === "payment_order") {
+            // A cobrança PIX real é criada aqui (fora da transação acima, mesmo
+            // raciocínio de orderPaymentLinkService.ts -- createOrderCharge abre
+            // suas próprias transações e chama o provider) só pra obter o
+            // copia-e-cola gerado pelo PSP ativo; merchant_name/key/key_type
+            // (não gerados por cobrança nenhuma) já vieram da configuração da
+            // loja acima.
+            const charge = await createOrderCharge(tenant, actor, orderId, {
+                method: "pix",
+                customer: { name: prepared.recipient.clientName, document: prepared.document, email: prepared.email },
+            });
+            if (charge.method !== "pix") {
+                throw new ValidationError("PAYMENT_CHARGE_FAILED", "Não foi possível gerar o código Pix.");
+            }
+            delivery = await sendPaymentOrderWhatsAppNow(
+                tenant,
+                prepared.recipient,
+                prepared.order,
+                prepared.order.id,
+                prepared.items ?? [],
+                Math.round(prepared.order.total * 100),
+                0,
+                { ...prepared.pix!, code: charge.copyPaste },
+                prepared.shipping,
+                prepared.discount,
+            );
+        } else {
+            delivery = await sendOrderConfirmedWhatsAppNow(tenant, prepared.recipient, prepared.order);
         }
-        delivery = await sendPaymentOrderWhatsAppNow(
-            tenant,
-            prepared.recipient,
-            prepared.order,
-            prepared.order.id,
-            prepared.items ?? [],
-            Math.round(prepared.order.total * 100),
-            0,
-            { ...prepared.pix!, code: charge.copyPaste },
-        );
-    } else {
-        delivery = await sendOrderConfirmedWhatsAppNow(tenant, prepared.recipient, prepared.order);
+    } catch (err) {
+        await recordOrderWhatsAppAttempt(tenant, actor, {
+            orderId,
+            kind: parsed.data.kind,
+            outcome: "failed",
+            toMasked,
+            messageId: null,
+            error: err instanceof Error ? err.message : "Erro desconhecido.",
+        });
+        throw err;
     }
+
+    await recordOrderWhatsAppAttempt(tenant, actor, {
+        orderId,
+        kind: parsed.data.kind,
+        outcome: "sent",
+        toMasked,
+        messageId: delivery.id,
+        error: null,
+    });
 
     return {
         messageId: delivery.id,
         kind: parsed.data.kind,
-        toMasked: maskWhatsAppPhone(prepared.recipient.whatsappPhone),
+        toMasked,
     };
 }

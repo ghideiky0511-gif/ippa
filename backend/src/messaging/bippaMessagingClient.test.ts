@@ -590,6 +590,46 @@ test("dispatchPaymentOrder envia payment.methods.pix_dynamic_code e items para P
     );
 });
 
+test("dispatchPaymentOrder envia shipping_amount e discount_amount quando o pedido tem frete/desconto", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    await withFetch(
+        async (input, init) => {
+            calls.push({ url: String(input), init });
+            return new Response(
+                JSON.stringify({
+                    payment_order: { reference_id: "order-1", total_amount: 5500 },
+                    dispatch: { id: "dispatch-1", status: "queued" },
+                    duplicate: false,
+                }),
+                { status: 202, headers: { "Content-Type": "application/json" } },
+            );
+        },
+        async () => {
+            await dispatchPaymentOrder("bippa_key123_segredo", {
+                sourceReference: "tenant-1",
+                sellerReference: "seller-1",
+                to: "5511999999999",
+                idempotencyKey: "bippa-catalogo:tenant-1:seller:seller-1:order:order-1:payment-order:manual:uuid-1",
+                referenceId: "order-1",
+                items: [{ retailerId: "item-1", name: "Produto", unitAmount: 5000, quantity: 1 }],
+                taxAmount: 0,
+                totalAmount: 5500,
+                shippingAmount: 1000,
+                shippingDescription: "Entrega padrão",
+                discountAmount: 500,
+                discountDescription: "Cupom",
+                pix: { code: "copia-e-cola-gerado-pelo-psp", merchantName: "Minha Loja", key: "chave-pix", keyType: "EVP" },
+            });
+            const body = JSON.parse(String(calls[0].init?.body));
+            assert.equal(body.shipping_amount, 1000);
+            assert.equal(body.shipping_description, "Entrega padrão");
+            assert.equal(body.discount_amount, 500);
+            assert.equal(body.discount_description, "Cupom");
+            assert.equal(body.total_amount, 5500);
+        },
+    );
+});
+
 test("HTTP 401 vira BippaMessagingAuthError", async () => {
     await withFetch(
         async () =>

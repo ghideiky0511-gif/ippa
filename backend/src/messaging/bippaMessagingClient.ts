@@ -1012,10 +1012,14 @@ export function dispatchTemplateWithUrlButton(
 // pagável DENTRO do WhatsApp (diferente de dispatchTemplateMessage/
 // dispatchTemplateWithUrlButton acima, que só levam a cliente pra fora do
 // WhatsApp via link). Único caminho ainda implementado aqui é PIX dinâmico
-// (ver whatsappNotificationService.ts::sendPaymentOrderWhatsAppNow) --
-// requer `seller_reference` com capability_payments: true, senão 422
-// payments_not_enabled_for_sender (ver api-reference.md, seção
-// "Orders / Pagamentos (Meta Payments)").
+// (ver whatsappNotificationService.ts::sendPaymentOrderWhatsAppNow).
+// `capability_payments` não bloqueia mais nada aqui (ver api-reference.md,
+// seção "Orders / Pagamentos (Meta Payments)") -- um 400 nesta rota vem de
+// validação local de payload (campo/limite errado em items[]/payment.methods[]
+// ou total_amount não batendo com soma(items) + tax - discount + shipping),
+// sempre com `error: "invalid_order_payload"` (ou um código mais específico)
+// e o motivo exato só em `message` -- ver rawBippaMessagingPayload() em
+// whatsappServiceErrors.ts para logar esse campo.
 export interface PaymentOrderItemInput {
     retailerId: string;
     name: string;
@@ -1033,6 +1037,15 @@ export interface DispatchPaymentOrderInput {
     taxAmount: number;
     totalAmount: number;
     goodsType?: "physical-goods" | "digital-goods";
+    // O Messaging calcula subtotal = soma(items) e exige total_amount =
+    // subtotal + tax_amount + shipping_amount - discount_amount -- sem
+    // repassar frete/desconto aqui, um pedido com qualquer um dos dois
+    // sempre reprova essa conta (`invalid_order_payload`, ver
+    // api-reference.md seção "POST /v1/payment-orders").
+    shippingAmount?: number;
+    shippingDescription?: string;
+    discountAmount?: number;
+    discountDescription?: string;
     pix: { code: string; merchantName: string; key: string; keyType: string };
 }
 
@@ -1086,6 +1099,10 @@ export function dispatchPaymentOrder(
                 })),
                 tax_amount: input.taxAmount,
                 total_amount: input.totalAmount,
+                ...(input.shippingAmount ? { shipping_amount: input.shippingAmount } : {}),
+                ...(input.shippingDescription ? { shipping_description: input.shippingDescription } : {}),
+                ...(input.discountAmount ? { discount_amount: input.discountAmount } : {}),
+                ...(input.discountDescription ? { discount_description: input.discountDescription } : {}),
             },
             operation: "dispatchPaymentOrder",
             reporter,

@@ -15,7 +15,7 @@ import {
     revokePreviousOrderAccessTokens,
 } from "@/services/orders/orderAccessService";
 import { ValidationError } from "@/services/shared/errors";
-import { mapBippaMessagingError } from "./whatsappServiceErrors";
+import { mapBippaMessagingError, metaGraphErrorMeta, rawBippaMessagingPayload } from "./whatsappServiceErrors";
 import {
     standardWhatsAppTemplate,
     WHATSAPP_TEMPLATE_KEYS,
@@ -135,9 +135,16 @@ async function sendRequired(
         });
         return result;
     } catch (exc) {
+        // errorMeta() só extrai o primeiro de error/error_description/message
+        // do corpo -- num 400 de payment-orders isso vira só
+        // "invalid_order_payload", sem dizer qual campo falhou. O motivo
+        // específico só está em rawBippaMessagingPayload() (ver
+        // whatsappServiceErrors.ts, mesmo padrão de whatsappTemplateService.ts).
         logger.error(logContext.scope, "Falha no envio manual pelo WhatsApp", {
             ...logMeta,
             ...errorMeta(exc),
+            ...metaGraphErrorMeta(exc),
+            ...rawBippaMessagingPayload(exc),
         });
         throw mapBippaMessagingError(
             exc,
@@ -173,6 +180,8 @@ async function deliver(
         logger.error(logScope, "Falha ao enviar mensagem de WhatsApp", {
             ...logMeta,
             ...errorMeta(exc),
+            ...metaGraphErrorMeta(exc),
+            ...rawBippaMessagingPayload(exc),
         });
     }
 }
@@ -298,6 +307,8 @@ export async function sendPaymentOrderWhatsAppNow(
     totalAmount: number,
     taxAmount: number,
     pix: { code: string; merchantName: string; key: string; keyType: string },
+    shipping?: { amount: number; description?: string },
+    discount?: { amount: number; description?: string },
 ): Promise<{ id: string }> {
     const result = await sendRequired(tenant, recipient, (row, apiKey) =>
         bippaMessagingClient.dispatchPaymentOrder(apiKey, {
@@ -309,6 +320,10 @@ export async function sendPaymentOrderWhatsAppNow(
             items,
             totalAmount,
             taxAmount,
+            shippingAmount: shipping?.amount,
+            shippingDescription: shipping?.description,
+            discountAmount: discount?.amount,
+            discountDescription: discount?.description,
             pix,
         }), {
         scope: "manual-payment-order-whatsapp",

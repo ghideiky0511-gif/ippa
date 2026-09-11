@@ -1378,6 +1378,10 @@ pra atualizar `payment_status`.
 
 ### `POST /v1/payment-orders`
 
+`body` é obrigatório (string, até 1024 chars); `footer` é opcional (string,
+até 60 chars). Ambos são ignorados quando `template` está presente (ver
+variante de template abaixo).
+
 ```json
 {
     "source_reference": "tenant-123",
@@ -1424,27 +1428,50 @@ discount_amount`; sem `items`, o pedido é simplificado e só `total_amount` é
 obrigatório (nesse caso um `header` de imagem é rejeitado — mesma regra da
 Meta: pedido simplificado não aceita header de imagem, ver
 [Orders API](https://developers.facebook.com/documentation/business-messaging/whatsapp/payments/payments-br/orders#full-api-reference)).
-Métodos de pagamento aceitos: `pix_dynamic_code`, `payment_link`
-(`payment_link.uri` HTTPS) e `boleto` (`boleto.digitable_line`) — nenhum
-dado de cartão é aceito.
+**Erros de validação local (400) sempre vêm com `error: "invalid_order_payload"`
+(ou um dos códigos mais específicos listados abaixo), e o motivo exato — qual
+campo e por quê — só está em `message`, nunca no `error`.** Um payload com
+`payment.pix_dynamic_code.merchant_name` de 30 caracteres, por exemplo, falha
+com `error: "invalid_order_payload"` e
+`message: "payment.pix_dynamic_code.merchant_name e obrigatorio e deve ter no
+maximo 25 caracteres."` — logue sempre `message` junto com `error`, senão a
+causa real fica invisível (ver formato geral de erro no topo do documento).
+Códigos mais específicos que este endpoint pode devolver em vez do genérico:
+`invalid_reference_id` (`reference_id` fora do formato), `invalid_order_items`
+(qualquer campo de `items[]`), `invalid_order_total` (`total_amount` não bate
+com o cálculo) e `invalid_payment_configuration` (qualquer campo de
+`payment.methods[]`).
+
+`payment.methods` aceita de 1 a 3 entradas; `type` é obrigatório em cada uma
+e decide quais campos abaixo são exigidos — **nenhum campo de cartão (PAN,
+CVV, validade) é aceito em nenhum tipo**:
+
+| `type`             | Campos obrigatórios dentro do objeto do mesmo nome                                                                                                                                                                                                                                                       |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pix_dynamic_code` | `code` (string, até 4096 chars — o "copia e cola" gerado pelo PSP); `merchant_name` (string, **até 25 chars** — limite curto, é o campo que mais estoura); `key` (string, até 160 chars); `key_type` (um de `CPF`, `CNPJ`, `EMAIL`, `PHONE`, `EVP` — maiúsculo ou minúsculo, normalizado para maiúsculo) |
+| `payment_link`     | `uri` (string, URL **HTTPS** válida, até 2048 chars — HTTP ou URL com usuário/senha embutido é rejeitada)                                                                                                                                                                                                |
+| `boleto`           | `digitable_line` (string, até 100 chars — a linha digitável do boleto)                                                                                                                                                                                                                                   |
+| `offsite_card_pay` | `last_four_digits` (string, **exatamente 4 dígitos**); `credential_id` (string, até 100 chars — referência opaca do PSP, nunca um dado de cartão) — ver seção One-Click Payments acima                                                                                                                   |
 
 Campos opcionais além do exemplo acima (todos validados localmente antes de
 chamar a Meta, espelhando 1:1 o [Order
 Object](https://developers.facebook.com/documentation/business-messaging/whatsapp/payments/payments-br/orders#orderobject)
 da Meta):
 
-| Campo                                                                | Tipo                                                | Regra                                                                                                                                                                                                                                                                                                                                           |
-| -------------------------------------------------------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `header` (ou `header_image_url`)                                     | string (URL HTTPS)                                  | Vira o thumbnail do pedido. **Só permitido quando `items` está presente** — em pedido simplificado (sem `items`) é rejeitado com `400`.                                                                                                                                                                                                         |
-| `catalog_id`                                                         | string                                              | Id do catálogo Meta Commerce associado ao pedido (opcional; não valida existência do catálogo).                                                                                                                                                                                                                                                 |
-| `expiration.timestamp`                                               | epoch seconds                                       | Precisa estar pelo menos 300s no futuro; após expirar, o botão de pagamento fica desabilitado no WhatsApp do comprador.                                                                                                                                                                                                                         |
-| `expiration.description`                                             | string, até 120 chars                               | Obrigatório junto com `expiration.timestamp`.                                                                                                                                                                                                                                                                                                   |
-| `shipping_amount` / `shipping_description`                           | inteiro em centavos / string até 60 chars           | Entra no cálculo de `total_amount`; `shipping_description` é opcional.                                                                                                                                                                                                                                                                          |
-| `discount_amount` / `discount_description` / `discount_program_name` | inteiro em centavos / string até 60 / string até 60 | `discount_amount` é subtraído no cálculo de `total_amount`; os dois campos de texto são opcionais.                                                                                                                                                                                                                                              |
-| `tax_description`                                                    | string até 60 chars                                 | Texto opcional anexado ao `tax_amount` (que é sempre obrigatório, podendo ser `0`).                                                                                                                                                                                                                                                             |
-| `items[].sale_unit_amount` (ou `sale_amount`)                        | inteiro em centavos                                 | Preço promocional do item; precisa ser menor que `unit_amount`. Quando presente, é o valor usado no cálculo do `subtotal` (não o `unit_amount`).                                                                                                                                                                                                |
-| `goods_type` (ou `type`)                                             | `"physical-goods"` \| `"digital-goods"`             | Default `"physical-goods"` quando omitido.                                                                                                                                                                                                                                                                                                      |
-| `template.name` / `template.language`                                | string / string (locale, ex. `"pt_BR"`)             | Quando presente, muda o `order_details` de mensagem interativa (`body`/`footer`/`header` acima são ignorados) para o botão `ORDER_DETAILS` de um [Order Details Template](https://developers.facebook.com/documentation/business-messaging/whatsapp/payments/payments-br/orderdetailstemplate) já `ACTIVE` na WABA — ver seção dedicada abaixo. |
+| Campo                                                                | Tipo                                                 | Regra                                                                                                                                                                                                                                                                                                                                           |
+| -------------------------------------------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `header` (ou `header_image_url`)                                     | string (URL HTTPS)                                   | Vira o thumbnail do pedido. **Só permitido quando `items` está presente** — em pedido simplificado (sem `items`) é rejeitado com `400`.                                                                                                                                                                                                         |
+| `catalog_id`                                                         | string                                               | Id do catálogo Meta Commerce associado ao pedido (opcional; não valida existência do catálogo).                                                                                                                                                                                                                                                 |
+| `expiration.timestamp`                                               | epoch seconds                                        | Precisa estar pelo menos 300s no futuro; após expirar, o botão de pagamento fica desabilitado no WhatsApp do comprador.                                                                                                                                                                                                                         |
+| `expiration.description`                                             | string, até 120 chars                                | Obrigatório junto com `expiration.timestamp`.                                                                                                                                                                                                                                                                                                   |
+| `shipping_amount` / `shipping_description`                           | inteiro em centavos / string até 60 chars            | Entra no cálculo de `total_amount`; `shipping_description` é opcional.                                                                                                                                                                                                                                                                          |
+| `discount_amount` / `discount_description` / `discount_program_name` | inteiro em centavos / string até 60 / string até 60  | `discount_amount` é subtraído no cálculo de `total_amount`; os dois campos de texto são opcionais.                                                                                                                                                                                                                                              |
+| `tax_description`                                                    | string até 60 chars                                  | Texto opcional anexado ao `tax_amount` (que é sempre obrigatório, podendo ser `0`).                                                                                                                                                                                                                                                             |
+| `items[].retailer_id` / `items[].name`                               | string até 100 chars / string até 60 chars           | Ambos **obrigatórios** quando `items` está presente (não confundir com os limites de `payment.methods[]` acima). `name` é o que o comprador vê na lista de itens.                                                                                                                                                                               |
+| `items[].unit_amount` (ou `amount`) / `items[].quantity`             | inteiro em centavos, **mínimo 1** / inteiro, 1 a 999 | `unit_amount` de `0` é rejeitado (`allowZero: false`) — diferente de `tax_amount`/`shipping_amount`, que aceitam `0`. Até 30 itens por pedido.                                                                                                                                                                                                  |
+| `items[].sale_unit_amount` (ou `sale_amount`)                        | inteiro em centavos                                  | Preço promocional do item; precisa ser menor que `unit_amount`. Quando presente, é o valor usado no cálculo do `subtotal` (não o `unit_amount`).                                                                                                                                                                                                |
+| `goods_type` (ou `type`)                                             | `"physical-goods"` \| `"digital-goods"`              | Default `"physical-goods"` quando omitido.                                                                                                                                                                                                                                                                                                      |
+| `template.name` / `template.language`                                | string / string (locale, ex. `"pt_BR"`)              | Quando presente, muda o `order_details` de mensagem interativa (`body`/`footer`/`header` acima são ignorados) para o botão `ORDER_DETAILS` de um [Order Details Template](https://developers.facebook.com/documentation/business-messaging/whatsapp/payments/payments-br/orderdetailstemplate) já `ACTIVE` na WABA — ver seção dedicada abaixo. |
 
 Resposta `202` (ou `200` se `idempotency_key` repetida — `duplicate: true`):
 
@@ -1472,6 +1499,9 @@ com `idempotency_key` diferente.
 }
 ```
 
+`body` é obrigatório (string, até 1024 chars); `footer` é opcional (até 60
+chars); `description` é opcional (até 120 chars, some junto do `order_status`
+na tela do comprador — útil para explicar um cancelamento).
 `order_status` ∈ `pending`, `processing`, `partially_shipped`, `shipped`,
 `completed`, `canceled`; `payment_status` ∈ `pending`, `captured`, `failed`
 — pelo menos um dos dois é obrigatório. `recipient` e `seller_reference`,
@@ -1631,10 +1661,19 @@ por método de pagamento desejado) e espere ficar `ACTIVE`.
 ```
 
 `buttons` aceita de 1 a 3 entradas, `type` ∈ `pix_dynamic_code` \| `boleto` \|
-`payment_link` (mesmos objetos de método usados em `POST /v1/payment-orders`,
-sem o array `payment.methods` — aqui cada botão é um método). O `index` de
-cada botão é a posição no array (`0`, `1`, `2`...) e precisa corresponder à
-posição real do botão `PAYMENT_REQUEST` no template aprovado; passe
+`payment_link` — não confundir com o objeto `payment.methods[]` de
+`POST /v1/payment-orders`: aqui os campos exigidos por `type` são **um
+subconjunto menor**, porque não existe um "corpo da mensagem" pra explicar o
+pagamento — o texto do botão já vem fixo do template aprovado:
+
+| `type`             | Campos obrigatórios (dentro do objeto do mesmo nome)                          |
+| ------------------ | ----------------------------------------------------------------------------- |
+| `pix_dynamic_code` | só `code` (string, até 4096 chars) — **sem** `merchant_name`/`key`/`key_type` |
+| `boleto`           | `digitable_line` (string, até 100 chars) — igual a `payment-orders`           |
+| `payment_link`     | `uri` (string, URL HTTPS válida, até 2048 chars) — igual a `payment-orders`   |
+
+O `index` de cada botão é a posição no array (`0`, `1`, `2`...) e precisa
+corresponder à posição real do botão `PAYMENT_REQUEST` no template aprovado; passe
 `buttons[].index` explicitamente só se a ordem dos botões no template não
 bater com a ordem enviada. `seller_reference` só precisa ser um perfil de
 envio válido, igual às outras rotas de pagamento (sem checagem de

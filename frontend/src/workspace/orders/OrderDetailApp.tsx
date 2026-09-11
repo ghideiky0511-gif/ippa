@@ -17,7 +17,11 @@ import { requestOrderPushResend } from '@/workspace/lib/erpIntegrationClient';
 import { useWorkspaceAuth } from '@/workspace/components/WorkspaceAuthProvider';
 import { Sheet, SheetContent, SheetHeader, SheetTrigger } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogCloseButton, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { markOrderPaid, cancelOrder, confirmOrderSeparation, reassignOrderSeller, sendOrderWhatsApp, updateOrderSession, fetchWhatsAppAvailability, type WhatsAppAvailabilityStatus } from '@/lib/ordersClient';
+import {
+  markOrderPaid, cancelOrder, confirmOrderSeparation, reassignOrderSeller, sendOrderWhatsApp, updateOrderSession,
+  fetchWhatsAppAvailability, fetchOrderWhatsAppHistory,
+  type WhatsAppAvailabilityStatus, type OrderWhatsAppAttempt, type OrderWhatsAppAttemptOutcome,
+} from '@/lib/ordersClient';
 import { StatusChip, type StatusChipTone } from '@/components/StatusChip';
 import PaymentMethodIndicator from '@/components/payments/PaymentMethodIndicator';
 import { DisabledActionHint } from '@/components/DisabledActionHint';
@@ -86,6 +90,22 @@ const ATTEMPT_OUTCOME_TONES: Record<ProviderOrderAttemptOutcome, StatusChipTone>
   retry_cancelling: 'neutral',
 };
 
+const WHATSAPP_ATTEMPT_KIND_LABELS: Record<OrderWhatsAppAttempt['kind'], string> = {
+  order: 'Pedido (template)',
+  payment_link: 'Link de pagamento',
+  payment_order: 'Pedido + pagamento nativo',
+};
+
+const WHATSAPP_ATTEMPT_OUTCOME_LABELS: Record<OrderWhatsAppAttemptOutcome, string> = {
+  sent: 'Enviado',
+  failed: 'Falhou',
+};
+
+const WHATSAPP_ATTEMPT_OUTCOME_TONES: Record<OrderWhatsAppAttemptOutcome, StatusChipTone> = {
+  sent: 'brand',
+  failed: 'danger',
+};
+
 function StatusBadge({ status }: { status: ProviderOrderStatus }) {
   return <StatusChip label={PUSH_STATUS_LABELS[status]} tone={PUSH_STATUS_TONES[status]} />;
 }
@@ -97,6 +117,7 @@ export default function OrderDetailApp({
   initialClient,
   initialPushStatus,
   initialPushHistory,
+  initialWhatsAppHistory,
   initialSession,
   initialUsers,
 }: {
@@ -104,6 +125,7 @@ export default function OrderDetailApp({
   initialClient: ClientWithLogin | null;
   initialPushStatus: ProviderOrderRow | null;
   initialPushHistory: ProviderOrderAttempt[];
+  initialWhatsAppHistory: OrderWhatsAppAttempt[];
   initialSession: OrderSession | null;
   initialUsers: AdminUser[];
 }) {
@@ -111,6 +133,7 @@ export default function OrderDetailApp({
   const [client] = useState(initialClient);
   const [pushStatus, setPushStatus] = useState(initialPushStatus);
   const [pushHistory] = useState(initialPushHistory);
+  const [whatsappHistory, setWhatsappHistory] = useState(initialWhatsAppHistory);
   const [session] = useState(initialSession);
   const [users] = useState(initialUsers);
   const [resending, setResending] = useState(false);
@@ -231,6 +254,12 @@ export default function OrderDetailApp({
       toast.error(err instanceof Error ? err.message : 'Não foi possível concluir a ação.');
     } finally {
       setActionPending(false);
+      // Sucesso ou falha, o backend já registrou a tentativa (ver
+      // orderWhatsAppService.recordOrderWhatsAppAttempt) -- recarrega pra
+      // refletir na tabela sem exigir um reload da página.
+      if (confirmAction?.startsWith('send-whatsapp')) {
+        void fetchOrderWhatsAppHistory(order.id).then(setWhatsappHistory).catch(() => {});
+      }
     }
   }
 
@@ -388,6 +417,37 @@ export default function OrderDetailApp({
                       <span className="shrink-0"><StatusChip label={ATTEMPT_OUTCOME_LABELS[attempt.outcome]} tone={ATTEMPT_OUTCOME_TONES[attempt.outcome]} /></span>
                     </div>
                     {attempt.external_id && <p className="mt-2 text-sm text-muted-foreground">ID no ERP: {attempt.external_id}</p>}
+                    {attempt.error && <p className="mt-2 text-sm text-[#b00020]">{attempt.error}</p>}
+                  </div>
+                )}
+              />
+            </div>
+          </section>
+
+          <section className="rounded-brand border border-border bg-surface p-4">
+            <h2 className="font-bold">Histórico de envio pelo WhatsApp</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Cada tentativa de envio deste pedido pelo WhatsApp, quem enviou e se deu certo.</p>
+
+            <div className="mt-4">
+              <ResponsiveDataTable
+                rows={whatsappHistory}
+                rowKey={(attempt) => attempt.id}
+                emptyMessage="Nenhum envio pelo WhatsApp registrado."
+                columns={[
+                  { key: 'created_at', header: 'Data', cell: (attempt) => new Date(attempt.created_at).toLocaleString('pt-BR') },
+                  { key: 'kind', header: 'Tipo', cell: (attempt) => WHATSAPP_ATTEMPT_KIND_LABELS[attempt.kind] },
+                  { key: 'actor_name', header: 'Enviado por', cell: (attempt) => attempt.actor_name },
+                  { key: 'to_masked', header: 'Destinatário', cell: (attempt) => attempt.to_masked },
+                  { key: 'outcome', header: 'Resultado', cell: (attempt) => <StatusChip label={WHATSAPP_ATTEMPT_OUTCOME_LABELS[attempt.outcome]} tone={WHATSAPP_ATTEMPT_OUTCOME_TONES[attempt.outcome]} /> },
+                  { key: 'error', header: 'Erro', cell: (attempt) => attempt.error || '—' },
+                ]}
+                mobileCard={(attempt) => (
+                  <div className="rounded-brand border border-border bg-surface p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-xs text-muted-foreground">{new Date(attempt.created_at).toLocaleString('pt-BR')} · {WHATSAPP_ATTEMPT_KIND_LABELS[attempt.kind]}</p>
+                      <span className="shrink-0"><StatusChip label={WHATSAPP_ATTEMPT_OUTCOME_LABELS[attempt.outcome]} tone={WHATSAPP_ATTEMPT_OUTCOME_TONES[attempt.outcome]} /></span>
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">Enviado por {attempt.actor_name} para {attempt.to_masked}</p>
                     {attempt.error && <p className="mt-2 text-sm text-[#b00020]">{attempt.error}</p>}
                   </div>
                 )}

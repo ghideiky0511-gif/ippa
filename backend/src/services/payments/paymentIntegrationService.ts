@@ -230,7 +230,13 @@ export async function savePaymentIntegrationPixSettings(
     const pixKeyType = (input.pixKeyType ?? "").trim().toUpperCase();
     const errors: string[] = [];
     if (!pixMerchantName) errors.push("Nome do recebedor é obrigatório.");
+    // Limite da Meta pra payment.pix_dynamic_code.merchant_name (ver
+    // api-reference.md, seção Orders/Pagamentos) -- validar aqui, na
+    // configuração, evita descobrir o estouro só quando um pedido de verdade
+    // falha no envio (400 invalid_order_payload).
+    else if (pixMerchantName.length > 25) errors.push("Nome do recebedor deve ter no máximo 25 caracteres.");
     if (!pixKey) errors.push("Chave Pix é obrigatória.");
+    else if (pixKey.length > 160) errors.push("Chave Pix deve ter no máximo 160 caracteres.");
     if (!PIX_KEY_TYPES.includes(pixKeyType as PixKeyType)) {
         errors.push(`Tipo de chave Pix deve ser um de: ${PIX_KEY_TYPES.join(", ")}.`);
     }
