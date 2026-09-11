@@ -1,696 +1,1311 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { toast } from 'sonner';
-import { ArrowLeft, Ban, CheckCircle2, ChevronDown, CreditCard, MessageCircle, PackageCheck, PackagePlus, Printer, QrCode, RefreshCw, Wrench } from 'lucide-react';
-import type { Order, OrderSession } from '@/domain/orders/types';
-import type { AdminUser, ClientWithLogin } from '@/domain/clients/types';
-import type { ProviderOrderAttempt, ProviderOrderAttemptOutcome, ProviderOrderRow, ProviderOrderStatus } from '@/workspace/lib/erpIntegrationClient';
-import Link from '@/components/TenantLink';
-import { useTenant } from '@/components/TenantProvider';
-import { adminUi } from '@/workspace/lib/ui';
-import { HubHeader } from '@/workspace/components/shared/HubHeader';
-import { ResponsiveDataTable } from '@/workspace/components/shared/ResponsiveDataTable';
-import { requestOrderPushResend } from '@/workspace/lib/erpIntegrationClient';
-import { useWorkspaceAuth } from '@/workspace/components/WorkspaceAuthProvider';
-import { Sheet, SheetContent, SheetHeader, SheetTrigger } from '@/components/ui/sheet';
-import { Dialog, DialogContent, DialogCloseButton, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { toast } from "sonner";
 import {
-  markOrderPaid, cancelOrder, confirmOrderSeparation, reassignOrderSeller, sendOrderWhatsApp, updateOrderSession,
-  fetchWhatsAppAvailability, fetchOrderWhatsAppHistory,
-  type WhatsAppAvailabilityStatus, type OrderWhatsAppAttempt, type OrderWhatsAppAttemptOutcome,
-} from '@/lib/ordersClient';
-import { StatusChip, type StatusChipTone } from '@/components/StatusChip';
-import PaymentMethodIndicator from '@/components/payments/PaymentMethodIndicator';
-import { DisabledActionHint } from '@/components/DisabledActionHint';
-import { ORDER_STATUS_LABELS, OrderStatusChip } from './orderStatus';
+    ArrowLeft,
+    Ban,
+    CheckCircle2,
+    ChevronDown,
+    CreditCard,
+    MessageCircle,
+    PackageCheck,
+    PackagePlus,
+    Printer,
+    QrCode,
+    RefreshCw,
+    Wrench,
+} from "lucide-react";
+import type { Order, OrderSession } from "@/domain/orders/types";
+import type { AdminUser, ClientWithLogin } from "@/domain/clients/types";
+import type {
+    ProviderOrderAttempt,
+    ProviderOrderAttemptOutcome,
+    ProviderOrderRow,
+    ProviderOrderStatus,
+} from "@/workspace/lib/erpIntegrationClient";
+import Link from "@/components/TenantLink";
+import { useTenant } from "@/components/TenantProvider";
+import { adminUi } from "@/workspace/lib/ui";
+import { HubHeader } from "@/workspace/components/shared/HubHeader";
+import { ResponsiveDataTable } from "@/workspace/components/shared/ResponsiveDataTable";
+import { requestOrderPushResend } from "@/workspace/lib/erpIntegrationClient";
+import { useWorkspaceAuth } from "@/workspace/components/WorkspaceAuthProvider";
+import {
+    Sheet,
+    SheetContent,
+    SheetHeader,
+    SheetTrigger,
+} from "@/components/ui/sheet";
+import {
+    Dialog,
+    DialogContent,
+    DialogCloseButton,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import {
+    markOrderPaid,
+    cancelOrder,
+    confirmOrderSeparation,
+    reassignOrderSeller,
+    sendOrderWhatsApp,
+    updateOrderSession,
+    fetchWhatsAppAvailability,
+    fetchOrderWhatsAppHistory,
+    type WhatsAppAvailabilityStatus,
+    type OrderWhatsAppAttempt,
+    type OrderWhatsAppAttemptOutcome,
+} from "@/lib/ordersClient";
+import { StatusChip, type StatusChipTone } from "@/components/StatusChip";
+import PaymentMethodIndicator from "@/components/payments/PaymentMethodIndicator";
+import { DisabledActionHint } from "@/components/DisabledActionHint";
+import { ORDER_STATUS_LABELS, OrderStatusChip } from "./orderStatus";
 
-const PAYMENT_STATUS_LABELS: Record<NonNullable<Order['paymentStatus']>, string> = {
-  unpaid: 'Não cobrado',
-  awaiting_confirmation: 'Aguardando confirmação',
-  paid: 'Pago',
-  payment_failed: 'Falhou',
+const PAYMENT_STATUS_LABELS: Record<
+    NonNullable<Order["paymentStatus"]>,
+    string
+> = {
+    unpaid: "Não cobrado",
+    awaiting_confirmation: "Aguardando confirmação",
+    paid: "Pago",
+    payment_failed: "Falhou",
 };
 
-const PAYMENT_STATUS_TONES: Record<NonNullable<Order['paymentStatus']>, StatusChipTone> = {
-  unpaid: 'neutral',
-  awaiting_confirmation: 'neutral',
-  paid: 'brand',
-  payment_failed: 'danger',
+const PAYMENT_STATUS_TONES: Record<
+    NonNullable<Order["paymentStatus"]>,
+    StatusChipTone
+> = {
+    unpaid: "neutral",
+    awaiting_confirmation: "neutral",
+    paid: "brand",
+    payment_failed: "danger",
 };
 
 function formatCurrency(value: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+    return new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+    }).format(value);
 }
 
-function itemCount(items: Order['items']) {
-  return items.reduce((sum, item) => sum + item.qty, 0);
+function itemCount(items: Order["items"]) {
+    return items.reduce((sum, item) => sum + item.qty, 0);
 }
 
 function InfoField({ label, value }: { label: string; value?: string }) {
-  return (
-    <div>
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-0.5 text-sm text-foreground">{value?.trim() || <span className="text-muted-foreground">Não informado</span>}</p>
-    </div>
-  );
+    return (
+        <div>
+            <p className="text-xs text-muted-foreground">{label}</p>
+            <p className="mt-0.5 text-sm text-foreground">
+                {value?.trim() || (
+                    <span className="text-muted-foreground">Não informado</span>
+                )}
+            </p>
+        </div>
+    );
 }
 
 const PUSH_STATUS_LABELS: Record<ProviderOrderStatus, string> = {
-  pending: 'Aguardando envio',
-  processing: 'Enviando agora',
-  cancelling: 'Cancelando no ERP',
-  sent: 'Enviado',
-  failed: 'Falhou',
-  cancelled: 'Cancelado no ERP',
+    pending: "Aguardando envio",
+    processing: "Enviando agora",
+    cancelling: "Cancelando no ERP",
+    sent: "Enviado",
+    failed: "Falhou",
+    cancelled: "Cancelado no ERP",
 };
 
 const PUSH_STATUS_TONES: Record<ProviderOrderStatus, StatusChipTone> = {
-  pending: 'neutral',
-  processing: 'neutral',
-  cancelling: 'neutral',
-  sent: 'brand',
-  failed: 'danger',
-  cancelled: 'neutral',
+    pending: "neutral",
+    processing: "neutral",
+    cancelling: "neutral",
+    sent: "brand",
+    failed: "danger",
+    cancelled: "neutral",
 };
 
 const ATTEMPT_OUTCOME_LABELS: Record<ProviderOrderAttemptOutcome, string> = {
-  sent: 'Enviado',
-  failed: 'Falhou',
-  retry_pending: 'Nova tentativa agendada',
-  retry_cancelling: 'Cancelamento agendado',
+    sent: "Enviado",
+    failed: "Falhou",
+    retry_pending: "Nova tentativa agendada",
+    retry_cancelling: "Cancelamento agendado",
 };
 
-const ATTEMPT_OUTCOME_TONES: Record<ProviderOrderAttemptOutcome, StatusChipTone> = {
-  sent: 'brand',
-  failed: 'danger',
-  retry_pending: 'neutral',
-  retry_cancelling: 'neutral',
+const ATTEMPT_OUTCOME_TONES: Record<
+    ProviderOrderAttemptOutcome,
+    StatusChipTone
+> = {
+    sent: "brand",
+    failed: "danger",
+    retry_pending: "neutral",
+    retry_cancelling: "neutral",
 };
 
-const WHATSAPP_ATTEMPT_KIND_LABELS: Record<OrderWhatsAppAttempt['kind'], string> = {
-  order: 'Pedido (template)',
-  payment_link: 'Link de pagamento',
-  payment_order: 'Pedido + pagamento nativo',
+const WHATSAPP_ATTEMPT_KIND_LABELS: Record<
+    OrderWhatsAppAttempt["kind"],
+    string
+> = {
+    order: "Pedido (template)",
+    payment_link: "Link de pagamento",
+    payment_order: "Pedido + pagamento nativo",
 };
 
-const WHATSAPP_ATTEMPT_OUTCOME_LABELS: Record<OrderWhatsAppAttemptOutcome, string> = {
-  sent: 'Enviado',
-  failed: 'Falhou',
+const WHATSAPP_ATTEMPT_OUTCOME_LABELS: Record<
+    OrderWhatsAppAttemptOutcome,
+    string
+> = {
+    sent: "Enviado",
+    failed: "Falhou",
 };
 
-const WHATSAPP_ATTEMPT_OUTCOME_TONES: Record<OrderWhatsAppAttemptOutcome, StatusChipTone> = {
-  sent: 'brand',
-  failed: 'danger',
+const WHATSAPP_ATTEMPT_OUTCOME_TONES: Record<
+    OrderWhatsAppAttemptOutcome,
+    StatusChipTone
+> = {
+    sent: "brand",
+    failed: "danger",
 };
 
 function StatusBadge({ status }: { status: ProviderOrderStatus }) {
-  return <StatusChip label={PUSH_STATUS_LABELS[status]} tone={PUSH_STATUS_TONES[status]} />;
+    return (
+        <StatusChip
+            label={PUSH_STATUS_LABELS[status]}
+            tone={PUSH_STATUS_TONES[status]}
+        />
+    );
 }
 
-type ConfirmAction = 'mark-paid' | 'cancel' | 'confirm-separation' | 'send-whatsapp-order' | 'send-whatsapp-payment' | 'send-whatsapp-payment-order';
+type ConfirmAction =
+    | "mark-paid"
+    | "cancel"
+    | "confirm-separation"
+    | "send-whatsapp-order"
+    | "send-whatsapp-payment"
+    | "send-whatsapp-payment-order";
 
 export default function OrderDetailApp({
-  initialOrder,
-  initialClient,
-  initialPushStatus,
-  initialPushHistory,
-  initialWhatsAppHistory,
-  initialSession,
-  initialUsers,
+    initialOrder,
+    initialClient,
+    initialPushStatus,
+    initialPushHistory,
+    initialWhatsAppHistory,
+    initialSession,
+    initialUsers,
 }: {
-  initialOrder: Order;
-  initialClient: ClientWithLogin | null;
-  initialPushStatus: ProviderOrderRow | null;
-  initialPushHistory: ProviderOrderAttempt[];
-  initialWhatsAppHistory: OrderWhatsAppAttempt[];
-  initialSession: OrderSession | null;
-  initialUsers: AdminUser[];
+    initialOrder: Order;
+    initialClient: ClientWithLogin | null;
+    initialPushStatus: ProviderOrderRow | null;
+    initialPushHistory: ProviderOrderAttempt[];
+    initialWhatsAppHistory: OrderWhatsAppAttempt[];
+    initialSession: OrderSession | null;
+    initialUsers: AdminUser[];
 }) {
-  const [order, setOrder] = useState(initialOrder);
-  const [client] = useState(initialClient);
-  const [pushStatus, setPushStatus] = useState(initialPushStatus);
-  const [pushHistory] = useState(initialPushHistory);
-  const [whatsappHistory, setWhatsappHistory] = useState(initialWhatsAppHistory);
-  const [session] = useState(initialSession);
-  const [users] = useState(initialUsers);
-  const [resending, setResending] = useState(false);
-  const [fabOpen, setFabOpen] = useState(false);
-  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
-  const [paymentMethodInput, setPaymentMethodInput] = useState('');
-  const [actionPending, setActionPending] = useState(false);
-  const [upsellPending, setUpsellPending] = useState(false);
-  const [sellerPending, setSellerPending] = useState(false);
-  const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppAvailabilityStatus | null>(null);
+    const [order, setOrder] = useState(initialOrder);
+    const [client] = useState(initialClient);
+    const [pushStatus, setPushStatus] = useState(initialPushStatus);
+    const [pushHistory] = useState(initialPushHistory);
+    const [whatsappHistory, setWhatsappHistory] = useState(
+        initialWhatsAppHistory,
+    );
+    const [session] = useState(initialSession);
+    const [users] = useState(initialUsers);
+    const [resending, setResending] = useState(false);
+    const [fabOpen, setFabOpen] = useState(false);
+    const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(
+        null,
+    );
+    const [paymentMethodInput, setPaymentMethodInput] = useState("");
+    const [actionPending, setActionPending] = useState(false);
+    const [upsellPending, setUpsellPending] = useState(false);
+    const [sellerPending, setSellerPending] = useState(false);
+    const [whatsappStatus, setWhatsappStatus] =
+        useState<WhatsAppAvailabilityStatus | null>(null);
 
-  const router = useRouter();
-  const { href } = useTenant();
-  const shouldReduceMotion = useReducedMotion();
-  const { workspaceUser } = useWorkspaceAuth();
-  const canManageOrder = Boolean(workspaceUser) && workspaceUser?.role !== 'cliente';
-  // Reatribuir vendedor é uma decisão comercial (afeta a carteira/comissão),
-  // não uma operação qualquer do pedido -- mesmo critério exigido pelo
-  // backend em orderService.reassignOrderSeller, que também bloqueia pedido
-  // pago/cancelado (a comissão já foi atribuída no momento da venda).
-  const canManageSeller = workspaceUser?.role === 'administrador' && workspaceUser?.permissions?.adminAccess === true
-    && order.status !== 'pago' && order.status !== 'cancelado';
-  const sellers = users.filter((candidate) => candidate.role === 'vendedora');
-  const currentSeller = users.find((candidate) => candidate.id === order.sellerId);
-  const canMarkPaid = order.status !== 'aberto' && order.status !== 'pago' && order.status !== 'cancelado';
-  const canCancel = order.status !== 'pago' && order.status !== 'cancelado';
-  // Pré-requisito manual pra cobrança real (Stripe) funcionar -- ver
-  // orderService.confirmOrderItemsSeparation. Só a partir de 'novo' (carrinho
-  // já fechado); pedidos 'separado'/'pago' não precisam confirmar de novo.
-  const canConfirmSeparation = canManageOrder && order.status === 'novo';
-  // Upsell: reabre o atendimento que originou este pedido e leva pro
-  // catálogo -- mesmo fluxo de sempre pra adicionar peça (websocket na
-  // sessão ativa), só que numa sessão que já tinha fechado ao finalizar. O
-  // backend só recusa mutação em pedido cancelado (canMutateLinkedOrder em
-  // orderSessionService.ts), então não há necessidade de checar o status do
-  // pedido além disso.
-  const canUpsell = canManageOrder && Boolean(session) && order.status !== 'cancelado';
+    const router = useRouter();
+    const { href } = useTenant();
+    const shouldReduceMotion = useReducedMotion();
+    const { workspaceUser } = useWorkspaceAuth();
+    const canManageOrder =
+        Boolean(workspaceUser) && workspaceUser?.role !== "cliente";
+    // Reatribuir vendedor é uma decisão comercial (afeta a carteira/comissão),
+    // não uma operação qualquer do pedido -- mesmo critério exigido pelo
+    // backend em orderService.reassignOrderSeller, que também bloqueia pedido
+    // pago/cancelado (a comissão já foi atribuída no momento da venda).
+    const canManageSeller =
+        workspaceUser?.role === "administrador" &&
+        workspaceUser?.permissions?.adminAccess === true &&
+        order.status !== "pago" &&
+        order.status !== "cancelado";
+    const sellers = users.filter((candidate) => candidate.role === "vendedora");
+    const currentSeller = users.find(
+        (candidate) => candidate.id === order.sellerId,
+    );
+    const canMarkPaid =
+        order.status !== "aberto" &&
+        order.status !== "pago" &&
+        order.status !== "cancelado";
+    const canCancel = order.status !== "pago" && order.status !== "cancelado";
+    // Pré-requisito manual pra cobrança real (Stripe) funcionar -- ver
+    // orderService.confirmOrderItemsSeparation. Só a partir de 'novo' (carrinho
+    // já fechado); pedidos 'separado'/'pago' não precisam confirmar de novo.
+    const canConfirmSeparation = canManageOrder && order.status === "novo";
+    // Upsell: reabre o atendimento que originou este pedido e leva pro
+    // catálogo -- mesmo fluxo de sempre pra adicionar peça (websocket na
+    // sessão ativa), só que numa sessão que já tinha fechado ao finalizar. O
+    // backend só recusa mutação em pedido cancelado (canMutateLinkedOrder em
+    // orderSessionService.ts), então não há necessidade de checar o status do
+    // pedido além disso.
+    const canUpsell =
+        canManageOrder && Boolean(session) && order.status !== "cancelado";
 
-  useEffect(() => {
-    let mounted = true;
-    void fetchWhatsAppAvailability(order.id).then((status) => {
-      if (mounted) setWhatsappStatus(status);
-    }).catch(() => {
-      if (mounted) setWhatsappStatus({ available: false, reason: 'Erro ao validar disponibilidade.', paymentOrderAvailable: false });
-    });
-    return () => { mounted = false; };
-  }, [order.id]);
+    useEffect(() => {
+        let mounted = true;
+        void fetchWhatsAppAvailability(order.id)
+            .then((status) => {
+                if (mounted) setWhatsappStatus(status);
+            })
+            .catch(() => {
+                if (mounted)
+                    setWhatsappStatus({
+                        available: false,
+                        reason: "Erro ao validar disponibilidade.",
+                        paymentOrderAvailable: false,
+                    });
+            });
+        return () => {
+            mounted = false;
+        };
+    }, [order.id]);
 
-  async function startUpsell() {
-    if (!session) return;
-    setUpsellPending(true);
-    try {
-      if (session.status !== 'aberto') await updateOrderSession(session.id, { status: 'aberto' });
-      router.push(href(`/catalogo?session=${encodeURIComponent(session.id)}`));
-    } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : 'Não foi possível reabrir o atendimento.');
-      setUpsellPending(false);
+    async function startUpsell() {
+        if (!session) return;
+        setUpsellPending(true);
+        try {
+            if (session.status !== "aberto")
+                await updateOrderSession(session.id, { status: "aberto" });
+            router.push(
+                href(`/catalogo?session=${encodeURIComponent(session.id)}`),
+            );
+        } catch (cause) {
+            toast.error(
+                cause instanceof Error
+                    ? cause.message
+                    : "Não foi possível reabrir o atendimento.",
+            );
+            setUpsellPending(false);
+        }
     }
-  }
 
-  async function handleSellerChange(sellerId: string) {
-    if (!sellerId || sellerId === order.sellerId) return;
-    setSellerPending(true);
-    try {
-      const updated = await reassignOrderSeller(order.id, sellerId);
-      setOrder(updated);
-      toast.success('Vendedor do pedido atualizado.');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Não foi possível trocar o vendedor.');
-    } finally {
-      setSellerPending(false);
+    async function handleSellerChange(sellerId: string) {
+        if (!sellerId || sellerId === order.sellerId) return;
+        setSellerPending(true);
+        try {
+            const updated = await reassignOrderSeller(order.id, sellerId);
+            setOrder(updated);
+            toast.success("Vendedor do pedido atualizado.");
+        } catch (err) {
+            toast.error(
+                err instanceof Error
+                    ? err.message
+                    : "Não foi possível trocar o vendedor.",
+            );
+        } finally {
+            setSellerPending(false);
+        }
     }
-  }
 
-  async function handleResend() {
-    setResending(true);
-    try {
-      const updated = await requestOrderPushResend(order.id);
-      setPushStatus(updated);
-      toast.success('Reenvio solicitado — acompanhe o histórico abaixo.');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Não foi possível reenviar o pedido ao ERP.');
-    } finally {
-      setResending(false);
+    async function handleResend() {
+        setResending(true);
+        try {
+            const updated = await requestOrderPushResend(order.id);
+            setPushStatus(updated);
+            toast.success("Reenvio solicitado — acompanhe o histórico abaixo.");
+        } catch (err) {
+            toast.error(
+                err instanceof Error
+                    ? err.message
+                    : "Não foi possível reenviar o pedido ao ERP.",
+            );
+        } finally {
+            setResending(false);
+        }
     }
-  }
 
-  async function runConfirmedAction() {
-    setActionPending(true);
-    try {
-      if (confirmAction === 'mark-paid') {
-        const updated = await markOrderPaid(order.id, paymentMethodInput || undefined);
-        setOrder(updated);
-        toast.success('Pedido marcado como pago.');
-      } else if (confirmAction === 'cancel') {
-        const { order: updated, erpWarning, pushStatus: updatedPushStatus } = await cancelOrder(order.id);
-        setOrder(updated);
-        if (updatedPushStatus !== undefined) setPushStatus(updatedPushStatus as ProviderOrderRow | null);
-        toast.success('Pedido cancelado.');
-        if (erpWarning) toast.error(`Cancelado localmente, mas houve um problema ao cancelar no ERP: ${erpWarning}`);
-      } else if (confirmAction === 'confirm-separation') {
-        const updated = await confirmOrderSeparation(order.id);
-        setOrder(updated);
-        toast.success('Separação confirmada.');
-      } else if (confirmAction === 'send-whatsapp-order') {
-        const result = await sendOrderWhatsApp(order.id, 'order');
-        toast.success(`Pedido enviado pelo WhatsApp para ${result.toMasked}.`);
-      } else if (confirmAction === 'send-whatsapp-payment') {
-        const result = await sendOrderWhatsApp(order.id, 'payment_link');
-        toast.success(`Link de pagamento enviado pelo WhatsApp para ${result.toMasked}.`);
-      } else if (confirmAction === 'send-whatsapp-payment-order') {
-        const result = await sendOrderWhatsApp(order.id, 'payment_order');
-        toast.success(`Pedido com itens e pagamento enviado pelo WhatsApp para ${result.toMasked}.`);
-      }
-      setConfirmAction(null);
-      setPaymentMethodInput('');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Não foi possível concluir a ação.');
-    } finally {
-      setActionPending(false);
-      // Sucesso ou falha, o backend já registrou a tentativa (ver
-      // orderWhatsAppService.recordOrderWhatsAppAttempt) -- recarrega pra
-      // refletir na tabela sem exigir um reload da página.
-      if (confirmAction?.startsWith('send-whatsapp')) {
-        void fetchOrderWhatsAppHistory(order.id).then(setWhatsappHistory).catch(() => {});
-      }
+    async function runConfirmedAction() {
+        setActionPending(true);
+        try {
+            if (confirmAction === "mark-paid") {
+                const updated = await markOrderPaid(
+                    order.id,
+                    paymentMethodInput || undefined,
+                );
+                setOrder(updated);
+                toast.success("Pedido marcado como pago.");
+            } else if (confirmAction === "cancel") {
+                const {
+                    order: updated,
+                    erpWarning,
+                    pushStatus: updatedPushStatus,
+                } = await cancelOrder(order.id);
+                setOrder(updated);
+                if (updatedPushStatus !== undefined)
+                    setPushStatus(updatedPushStatus as ProviderOrderRow | null);
+                toast.success("Pedido cancelado.");
+                if (erpWarning)
+                    toast.error(
+                        `Cancelado localmente, mas houve um problema ao cancelar no ERP: ${erpWarning}`,
+                    );
+            } else if (confirmAction === "confirm-separation") {
+                const updated = await confirmOrderSeparation(order.id);
+                setOrder(updated);
+                toast.success("Separação confirmada.");
+            } else if (confirmAction === "send-whatsapp-order") {
+                const result = await sendOrderWhatsApp(order.id, "order");
+                toast.success(
+                    `Pedido enviado pelo WhatsApp para ${result.toMasked}.`,
+                );
+            } else if (confirmAction === "send-whatsapp-payment") {
+                const result = await sendOrderWhatsApp(
+                    order.id,
+                    "payment_link",
+                );
+                toast.success(
+                    `Link de pagamento enviado pelo WhatsApp para ${result.toMasked}.`,
+                );
+            } else if (confirmAction === "send-whatsapp-payment-order") {
+                const result = await sendOrderWhatsApp(
+                    order.id,
+                    "payment_order",
+                );
+                toast.success(
+                    `Pedido com itens e pagamento enviado pelo WhatsApp para ${result.toMasked}.`,
+                );
+            }
+            setConfirmAction(null);
+            setPaymentMethodInput("");
+        } catch (err) {
+            toast.error(
+                err instanceof Error
+                    ? err.message
+                    : "Não foi possível concluir a ação.",
+            );
+        } finally {
+            setActionPending(false);
+            // Sucesso ou falha, o backend já registrou a tentativa (ver
+            // orderWhatsAppService.recordOrderWhatsAppAttempt) -- recarrega pra
+            // refletir na tabela sem exigir um reload da página.
+            if (confirmAction?.startsWith("send-whatsapp")) {
+                void fetchOrderWhatsAppHistory(order.id)
+                    .then(setWhatsappHistory)
+                    .catch(() => {});
+            }
+        }
     }
-  }
 
-  const missingDocument = client !== null && !client.cpfCnpj?.trim();
+    const missingDocument = client !== null && !client.cpfCnpj?.trim();
 
-  return (
-    <div>
-      <div className="print:hidden">
-        <HubHeader
-          title={`Pedido nº ${order.orderNumber}${order.clientName ? ` · ${order.clientName}` : ''}`}
-          description={`Pedido de ${new Date(order.date).toLocaleString('pt-BR')} · ${formatCurrency(order.total)}`}
-          secondaryActions={
-            <Link href="/workspace/pedidos" className={adminUi.button}>
-              <ArrowLeft className="mr-1.5 inline size-3.5" aria-hidden="true" />Voltar
-            </Link>
-          }
-        />
+    return (
+        <div>
+            <div className="print:hidden">
+                <HubHeader
+                    title={`Pedido nº ${order.orderNumber}${order.clientName ? ` · ${order.clientName}` : ""}`}
+                    description={`Pedido de ${new Date(order.date).toLocaleString("pt-BR")} · ${formatCurrency(order.total)}`}
+                    secondaryActions={
+                        <Link
+                            href="/workspace/pedidos"
+                            className={adminUi.button}
+                        >
+                            <ArrowLeft
+                                className="mr-1.5 inline size-3.5"
+                                aria-hidden="true"
+                            />
+                            Voltar
+                        </Link>
+                    }
+                />
 
-        <main className={`${adminUi.productsEditor} flex flex-col gap-6`}>
-          <section className="rounded-brand border border-border bg-surface p-4">
-            <h2 className="font-bold">Pedido</h2>
-            <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <InfoField label="Número do pedido" value={String(order.orderNumber)} />
-              <InfoField label="Data" value={new Date(order.date).toLocaleString('pt-BR')} />
-              <div>
-                <p className="text-xs text-muted-foreground">Status</p>
-                <div className="mt-0.5"><OrderStatusChip status={order.status} /></div>
-              </div>
-              <InfoField label="Canal" value={order.channel} />
-              <div>
-                <p className="text-xs text-muted-foreground">Pagamento</p>
-                <div className="mt-0.5 flex items-center gap-2">
-                  <StatusChip
-                    label={PAYMENT_STATUS_LABELS[order.paymentStatus ?? 'unpaid']}
-                    tone={PAYMENT_STATUS_TONES[order.paymentStatus ?? 'unpaid']}
-                  />
-                  <PaymentMethodIndicator orderId={order.id} />
-                  <Link href={`/workspace/pedidos/${order.id}/pagamento`} className="text-xs font-semibold text-brand-primary underline">
-                    Ver detalhes
-                  </Link>
-                </div>
-              </div>
-              <InfoField
-                label="Frete"
-                value={order.freight ? `${order.freight.deliveryTypeName || order.freight.label} · ${formatCurrency(order.freight.price)}` : undefined}
-              />
-              <InfoField label="Peças" value={String(itemCount(order.items))} />
-              <InfoField label="Total" value={formatCurrency(order.total)} />
-            </div>
-            <div className="mt-4">
-              <p className="text-xs text-muted-foreground">Itens</p>
-              <ul className="mt-1 flex flex-col gap-1 text-sm text-foreground">
-                {order.items.map((item) => (
-                  <li key={item.key}>{item.qty}× {item.name}{item.color ? ` · ${item.color}` : ''}{item.size ? ` · ${item.size}` : ''}</li>
-                ))}
-              </ul>
-            </div>
-          </section>
+                <main
+                    className={`${adminUi.productsEditor} flex flex-col gap-6`}
+                >
+                    <section className="rounded-brand border border-border bg-surface p-4">
+                        <h2 className="font-bold">Pedido</h2>
+                        <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            <InfoField
+                                label="Número do pedido"
+                                value={String(order.orderNumber)}
+                            />
+                            <InfoField
+                                label="Data"
+                                value={new Date(order.date).toLocaleString(
+                                    "pt-BR",
+                                )}
+                            />
+                            <div>
+                                <p className="text-xs text-muted-foreground">
+                                    Status
+                                </p>
+                                <div className="mt-0.5">
+                                    <OrderStatusChip status={order.status} />
+                                </div>
+                            </div>
+                            <InfoField label="Canal" value={order.channel} />
+                            <div>
+                                <p className="text-xs text-muted-foreground">
+                                    Pagamento
+                                </p>
+                                <div className="mt-0.5 flex items-center gap-2">
+                                    <StatusChip
+                                        label={
+                                            PAYMENT_STATUS_LABELS[
+                                                order.paymentStatus ?? "unpaid"
+                                            ]
+                                        }
+                                        tone={
+                                            PAYMENT_STATUS_TONES[
+                                                order.paymentStatus ?? "unpaid"
+                                            ]
+                                        }
+                                    />
+                                    <PaymentMethodIndicator
+                                        orderId={order.id}
+                                    />
+                                    <Link
+                                        href={`/workspace/pedidos/${order.id}/pagamento`}
+                                        className="text-xs font-semibold text-brand-primary underline"
+                                    >
+                                        Ver detalhes
+                                    </Link>
+                                </div>
+                            </div>
+                            <InfoField
+                                label="Frete"
+                                value={
+                                    order.freight
+                                        ? `${order.freight.deliveryTypeName || order.freight.label} · ${formatCurrency(order.freight.price)}`
+                                        : undefined
+                                }
+                            />
+                            <InfoField
+                                label="Peças"
+                                value={String(itemCount(order.items))}
+                            />
+                            <InfoField
+                                label="Total"
+                                value={formatCurrency(order.total)}
+                            />
+                        </div>
+                        <div className="mt-4">
+                            <p className="text-xs text-muted-foreground">
+                                Itens
+                            </p>
+                            <ul className="mt-1 flex flex-col gap-1 text-sm text-foreground">
+                                {order.items.map((item) => (
+                                    <li key={item.key}>
+                                        {item.qty}× {item.name}
+                                        {item.color ? ` · ${item.color}` : ""}
+                                        {item.size ? ` · ${item.size}` : ""}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    </section>
 
-          <section className="rounded-brand border border-border bg-surface p-4">
-            <h2 className="font-bold">Cliente</h2>
-            {client ? (
-              <>
-                <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  <InfoField label="Nome" value={client.name} />
-                  <InfoField label="CPF/CNPJ" value={client.cpfCnpj} />
-                  <InfoField label="E-mail" value={client.email} />
-                </div>
-                {missingDocument && (
-                  <p className="mt-3 rounded-brand border border-[#dba0a0] bg-[#fff1f1] p-3 text-sm text-[#b00020]">
-                    Cliente sem CPF/CNPJ cadastrado — obrigatório para envio ao TOTVS Moda.{' '}
-                    <Link href={`/workspace/clientes/${client.id}`} className="font-semibold underline">Completar cadastro</Link>
-                  </p>
-                )}
-              </>
-            ) : (
-              <p className="mt-3 text-sm text-muted-foreground">{order.clientName || 'Pedido sem cliente vinculado.'}</p>
-            )}
-          </section>
+                    <section className="rounded-brand border border-border bg-surface p-4">
+                        <h2 className="font-bold">Cliente</h2>
+                        {client ? (
+                            <>
+                                <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                    <InfoField
+                                        label="Nome"
+                                        value={client.name}
+                                    />
+                                    <InfoField
+                                        label="CPF/CNPJ"
+                                        value={client.cpfCnpj}
+                                    />
+                                    <InfoField
+                                        label="E-mail"
+                                        value={client.email}
+                                    />
+                                </div>
+                                {missingDocument && (
+                                    <p className="mt-3 rounded-brand border border-[#dba0a0] bg-[#fff1f1] p-3 text-sm text-[#b00020]">
+                                        Cliente sem CPF/CNPJ cadastrado —
+                                        obrigatório para envio ao TOTVS Moda.{" "}
+                                        <Link
+                                            href={`/workspace/clientes/${client.id}`}
+                                            className="font-semibold underline"
+                                        >
+                                            Completar cadastro
+                                        </Link>
+                                    </p>
+                                )}
+                            </>
+                        ) : (
+                            <p className="mt-3 text-sm text-muted-foreground">
+                                {order.clientName ||
+                                    "Pedido sem cliente vinculado."}
+                            </p>
+                        )}
+                    </section>
 
-          <section className="rounded-brand border border-border bg-surface p-4">
-            <h2 className="font-bold">Vendedor</h2>
-            {/* Crossfade na confirmação da troca -- mesmo padrão de transição de
+                    <section className="rounded-brand border border-border bg-surface p-4">
+                        <h2 className="font-bold">Vendedor</h2>
+                        {/* Crossfade na confirmação da troca -- mesmo padrão de transição de
                 valor usado no carrossel de imagens (ProductDetailContent.tsx). */}
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.div
-                key={order.sellerId ?? 'none'}
-                initial={shouldReduceMotion ? false : { opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={shouldReduceMotion ? undefined : { opacity: 0 }}
-                transition={{ duration: shouldReduceMotion ? 0 : 0.3, ease: 'easeInOut' }}
-              >
-                {canManageSeller ? (
-                  <div className={`${adminUi.field} mt-3 max-w-xs`}>
-                    <label>Vendedor responsável</label>
-                    <select
-                      value={order.sellerId ?? ''}
-                      disabled={sellerPending}
-                      onChange={(event) => void handleSellerChange(event.target.value)}
-                    >
-                      <option value="" disabled>Sem vendedor</option>
-                      {currentSeller && currentSeller.role !== 'vendedora' && (
-                        <option value={currentSeller.id}>{currentSeller.name}</option>
-                      )}
-                      {sellers.map((seller) => (
-                        <option key={seller.id} value={seller.id}>{seller.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                ) : (
-                  <div className="mt-3">
-                    <InfoField label="Vendedor responsável" value={currentSeller?.name} />
-                  </div>
-                )}
-              </motion.div>
-            </AnimatePresence>
-          </section>
+                        <AnimatePresence mode="wait" initial={false}>
+                            <motion.div
+                                key={order.sellerId ?? "none"}
+                                initial={
+                                    shouldReduceMotion ? false : { opacity: 0 }
+                                }
+                                animate={{ opacity: 1 }}
+                                exit={
+                                    shouldReduceMotion
+                                        ? undefined
+                                        : { opacity: 0 }
+                                }
+                                transition={{
+                                    duration: shouldReduceMotion ? 0 : 0.3,
+                                    ease: "easeInOut",
+                                }}
+                            >
+                                {canManageSeller ? (
+                                    <div
+                                        className={`${adminUi.field} mt-3 max-w-xs`}
+                                    >
+                                        <label>Vendedor responsável</label>
+                                        <select
+                                            value={order.sellerId ?? ""}
+                                            disabled={sellerPending}
+                                            onChange={(event) =>
+                                                void handleSellerChange(
+                                                    event.target.value,
+                                                )
+                                            }
+                                        >
+                                            <option value="" disabled>
+                                                Sem vendedor
+                                            </option>
+                                            {currentSeller &&
+                                                currentSeller.role !==
+                                                    "vendedora" && (
+                                                    <option
+                                                        value={currentSeller.id}
+                                                    >
+                                                        {currentSeller.name}
+                                                    </option>
+                                                )}
+                                            {sellers.map((seller) => (
+                                                <option
+                                                    key={seller.id}
+                                                    value={seller.id}
+                                                >
+                                                    {seller.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                ) : (
+                                    <div className="mt-3">
+                                        <InfoField
+                                            label="Vendedor responsável"
+                                            value={currentSeller?.name}
+                                        />
+                                    </div>
+                                )}
+                            </motion.div>
+                        </AnimatePresence>
+                    </section>
 
-          <section className="rounded-brand border border-border bg-surface p-4">
-            <h2 className="font-bold">Integração com ERP</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Status do envio deste pedido ao ERP do tenant e histórico de tentativas.</p>
+                    <section className="rounded-brand border border-border bg-surface p-4">
+                        <h2 className="font-bold">Integração com ERP</h2>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            Status do envio deste pedido ao ERP do tenant e
+                            histórico de tentativas.
+                        </p>
 
-            <div className="mt-3 flex flex-wrap items-center gap-3">
-              {pushStatus ? (
-                <>
-                  <StatusBadge status={pushStatus.status} />
-                  <span className="text-sm text-muted-foreground">{pushStatus.attempts} tentativa(s)</span>
-                  {pushStatus.external_id && <span className="text-sm text-muted-foreground">ID no ERP: {pushStatus.external_id}</span>}
-                </>
-              ) : (
-                <span className="text-sm text-muted-foreground">Este pedido nunca foi enfileirado para envio ao ERP.</span>
-              )}
+                        <div className="mt-3 flex flex-wrap items-center gap-3">
+                            {pushStatus ? (
+                                <>
+                                    <StatusBadge status={pushStatus.status} />
+                                    <span className="text-sm text-muted-foreground">
+                                        {pushStatus.attempts} tentativa(s)
+                                    </span>
+                                    {pushStatus.external_id && (
+                                        <span className="text-sm text-muted-foreground">
+                                            ID no ERP: {pushStatus.external_id}
+                                        </span>
+                                    )}
+                                </>
+                            ) : (
+                                <span className="text-sm text-muted-foreground">
+                                    Este pedido nunca foi enfileirado para envio
+                                    ao ERP.
+                                </span>
+                            )}
+                        </div>
+                        {pushStatus?.status === "failed" &&
+                            pushStatus.last_error && (
+                                <p className="mt-3 rounded-brand border border-[#dba0a0] bg-[#fff1f1] p-3 text-sm text-[#b00020]">
+                                    {pushStatus.last_error}
+                                </p>
+                            )}
+
+                        <div className="mt-4">
+                            <h3 className="text-sm font-semibold text-foreground">
+                                Histórico de tentativas
+                            </h3>
+                            <ResponsiveDataTable
+                                rows={pushHistory}
+                                rowKey={(attempt) => attempt.id}
+                                emptyMessage="Nenhuma tentativa de envio registrada."
+                                columns={[
+                                    {
+                                        key: "created_at",
+                                        header: "Data",
+                                        cell: (attempt) =>
+                                            new Date(
+                                                attempt.created_at,
+                                            ).toLocaleString("pt-BR"),
+                                    },
+                                    {
+                                        key: "attempt_number",
+                                        header: "Tentativa",
+                                        cell: (attempt) =>
+                                            `#${attempt.attempt_number}`,
+                                    },
+                                    {
+                                        key: "outcome",
+                                        header: "Resultado",
+                                        cell: (attempt) => (
+                                            <StatusChip
+                                                label={
+                                                    ATTEMPT_OUTCOME_LABELS[
+                                                        attempt.outcome
+                                                    ]
+                                                }
+                                                tone={
+                                                    ATTEMPT_OUTCOME_TONES[
+                                                        attempt.outcome
+                                                    ]
+                                                }
+                                            />
+                                        ),
+                                    },
+                                    {
+                                        key: "external_id",
+                                        header: "ID no ERP",
+                                        cell: (attempt) =>
+                                            attempt.external_id || "—",
+                                    },
+                                    {
+                                        key: "error",
+                                        header: "Erro",
+                                        cell: (attempt) => attempt.error || "—",
+                                    },
+                                ]}
+                                mobileCard={(attempt) => (
+                                    <div className="rounded-brand border border-border bg-surface p-4">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <p className="text-xs text-muted-foreground">
+                                                {new Date(
+                                                    attempt.created_at,
+                                                ).toLocaleString("pt-BR")}{" "}
+                                                · tentativa #
+                                                {attempt.attempt_number}
+                                            </p>
+                                            <span className="shrink-0">
+                                                <StatusChip
+                                                    label={
+                                                        ATTEMPT_OUTCOME_LABELS[
+                                                            attempt.outcome
+                                                        ]
+                                                    }
+                                                    tone={
+                                                        ATTEMPT_OUTCOME_TONES[
+                                                            attempt.outcome
+                                                        ]
+                                                    }
+                                                />
+                                            </span>
+                                        </div>
+                                        {attempt.external_id && (
+                                            <p className="mt-2 text-sm text-muted-foreground">
+                                                ID no ERP: {attempt.external_id}
+                                            </p>
+                                        )}
+                                        {attempt.error && (
+                                            <p className="mt-2 text-sm text-[#b00020]">
+                                                {attempt.error}
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            />
+                        </div>
+                    </section>
+
+                    <section className="rounded-brand border border-border bg-surface p-4">
+                        <h2 className="font-bold">
+                            Histórico de envio pelo WhatsApp
+                        </h2>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            Cada tentativa de envio deste pedido pelo WhatsApp,
+                            quem enviou e se deu certo.
+                        </p>
+
+                        <div className="mt-4">
+                            <ResponsiveDataTable
+                                rows={whatsappHistory}
+                                rowKey={(attempt) => attempt.id}
+                                emptyMessage="Nenhum envio pelo WhatsApp registrado."
+                                columns={[
+                                    {
+                                        key: "created_at",
+                                        header: "Data",
+                                        cell: (attempt) =>
+                                            new Date(
+                                                attempt.created_at,
+                                            ).toLocaleString("pt-BR"),
+                                    },
+                                    {
+                                        key: "kind",
+                                        header: "Tipo",
+                                        cell: (attempt) =>
+                                            WHATSAPP_ATTEMPT_KIND_LABELS[
+                                                attempt.kind
+                                            ],
+                                    },
+                                    {
+                                        key: "actor_name",
+                                        header: "Enviado por",
+                                        cell: (attempt) => attempt.actor_name,
+                                    },
+                                    {
+                                        key: "to_masked",
+                                        header: "Destinatário",
+                                        cell: (attempt) => attempt.to_masked,
+                                    },
+                                    {
+                                        key: "outcome",
+                                        header: "Resultado",
+                                        cell: (attempt) => (
+                                            <StatusChip
+                                                label={
+                                                    WHATSAPP_ATTEMPT_OUTCOME_LABELS[
+                                                        attempt.outcome
+                                                    ]
+                                                }
+                                                tone={
+                                                    WHATSAPP_ATTEMPT_OUTCOME_TONES[
+                                                        attempt.outcome
+                                                    ]
+                                                }
+                                            />
+                                        ),
+                                    },
+                                    {
+                                        key: "error",
+                                        header: "Erro",
+                                        cell: (attempt) => attempt.error || "—",
+                                    },
+                                ]}
+                                mobileCard={(attempt) => (
+                                    <div className="rounded-brand border border-border bg-surface p-4">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <p className="text-xs text-muted-foreground">
+                                                {new Date(
+                                                    attempt.created_at,
+                                                ).toLocaleString("pt-BR")}{" "}
+                                                ·{" "}
+                                                {
+                                                    WHATSAPP_ATTEMPT_KIND_LABELS[
+                                                        attempt.kind
+                                                    ]
+                                                }
+                                            </p>
+                                            <span className="shrink-0">
+                                                <StatusChip
+                                                    label={
+                                                        WHATSAPP_ATTEMPT_OUTCOME_LABELS[
+                                                            attempt.outcome
+                                                        ]
+                                                    }
+                                                    tone={
+                                                        WHATSAPP_ATTEMPT_OUTCOME_TONES[
+                                                            attempt.outcome
+                                                        ]
+                                                    }
+                                                />
+                                            </span>
+                                        </div>
+                                        <p className="mt-2 text-sm text-muted-foreground">
+                                            Enviado por {attempt.actor_name}{" "}
+                                            para {attempt.to_masked}
+                                        </p>
+                                        {attempt.error && (
+                                            <p className="mt-2 text-sm text-[#b00020]">
+                                                {attempt.error}
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            />
+                        </div>
+                    </section>
+                </main>
             </div>
-            {pushStatus?.status === 'failed' && pushStatus.last_error && (
-              <p className="mt-3 rounded-brand border border-[#dba0a0] bg-[#fff1f1] p-3 text-sm text-[#b00020]">{pushStatus.last_error}</p>
-            )}
 
-            <div className="mt-4">
-              <h3 className="text-sm font-semibold text-foreground">Histórico de tentativas</h3>
-              <ResponsiveDataTable
-                rows={pushHistory}
-                rowKey={(attempt) => attempt.id}
-                emptyMessage="Nenhuma tentativa de envio registrada."
-                columns={[
-                  { key: 'created_at', header: 'Data', cell: (attempt) => new Date(attempt.created_at).toLocaleString('pt-BR') },
-                  { key: 'attempt_number', header: 'Tentativa', cell: (attempt) => `#${attempt.attempt_number}` },
-                  { key: 'outcome', header: 'Resultado', cell: (attempt) => <StatusChip label={ATTEMPT_OUTCOME_LABELS[attempt.outcome]} tone={ATTEMPT_OUTCOME_TONES[attempt.outcome]} /> },
-                  { key: 'external_id', header: 'ID no ERP', cell: (attempt) => attempt.external_id || '—' },
-                  { key: 'error', header: 'Erro', cell: (attempt) => attempt.error || '—' },
-                ]}
-                mobileCard={(attempt) => (
-                  <div className="rounded-brand border border-border bg-surface p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-xs text-muted-foreground">{new Date(attempt.created_at).toLocaleString('pt-BR')} · tentativa #{attempt.attempt_number}</p>
-                      <span className="shrink-0"><StatusChip label={ATTEMPT_OUTCOME_LABELS[attempt.outcome]} tone={ATTEMPT_OUTCOME_TONES[attempt.outcome]} /></span>
-                    </div>
-                    {attempt.external_id && <p className="mt-2 text-sm text-muted-foreground">ID no ERP: {attempt.external_id}</p>}
-                    {attempt.error && <p className="mt-2 text-sm text-[#b00020]">{attempt.error}</p>}
-                  </div>
+            {/* Comprovante -- só visível na impressão (ver print:hidden acima e hidden/print:block aqui). */}
+            <div className="hidden p-8 print:block">
+                <h1 className="text-lg font-bold">Comprovante de pedido</h1>
+                <p className="mt-1 text-sm">
+                    Cliente: {client?.name ?? order.clientName ?? "—"}
+                    {client?.cpfCnpj ? ` · ${client.cpfCnpj}` : ""}
+                </p>
+                <p className="text-sm">
+                    Data: {new Date(order.date).toLocaleString("pt-BR")}
+                </p>
+                <p className="text-sm">
+                    Status: {ORDER_STATUS_LABELS[order.status]}
+                </p>
+                <table className="mt-4 w-full text-sm">
+                    <thead>
+                        <tr>
+                            <th className="text-left">Item</th>
+                            <th className="text-right">Qtd</th>
+                            <th className="text-right">Preço</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {order.items.map((item) => (
+                            <tr key={item.key}>
+                                <td>
+                                    {item.name}
+                                    {item.color ? ` · ${item.color}` : ""}
+                                    {item.size ? ` · ${item.size}` : ""}
+                                </td>
+                                <td className="text-right">{item.qty}</td>
+                                <td className="text-right">
+                                    {formatCurrency(item.price)}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+                {order.discount && (
+                    <p className="mt-2 text-sm">
+                        Desconto ({order.discount.label}): -
+                        {formatCurrency(order.discount.amount)}
+                    </p>
                 )}
-              />
-            </div>
-          </section>
-
-          <section className="rounded-brand border border-border bg-surface p-4">
-            <h2 className="font-bold">Histórico de envio pelo WhatsApp</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Cada tentativa de envio deste pedido pelo WhatsApp, quem enviou e se deu certo.</p>
-
-            <div className="mt-4">
-              <ResponsiveDataTable
-                rows={whatsappHistory}
-                rowKey={(attempt) => attempt.id}
-                emptyMessage="Nenhum envio pelo WhatsApp registrado."
-                columns={[
-                  { key: 'created_at', header: 'Data', cell: (attempt) => new Date(attempt.created_at).toLocaleString('pt-BR') },
-                  { key: 'kind', header: 'Tipo', cell: (attempt) => WHATSAPP_ATTEMPT_KIND_LABELS[attempt.kind] },
-                  { key: 'actor_name', header: 'Enviado por', cell: (attempt) => attempt.actor_name },
-                  { key: 'to_masked', header: 'Destinatário', cell: (attempt) => attempt.to_masked },
-                  { key: 'outcome', header: 'Resultado', cell: (attempt) => <StatusChip label={WHATSAPP_ATTEMPT_OUTCOME_LABELS[attempt.outcome]} tone={WHATSAPP_ATTEMPT_OUTCOME_TONES[attempt.outcome]} /> },
-                  { key: 'error', header: 'Erro', cell: (attempt) => attempt.error || '—' },
-                ]}
-                mobileCard={(attempt) => (
-                  <div className="rounded-brand border border-border bg-surface p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-xs text-muted-foreground">{new Date(attempt.created_at).toLocaleString('pt-BR')} · {WHATSAPP_ATTEMPT_KIND_LABELS[attempt.kind]}</p>
-                      <span className="shrink-0"><StatusChip label={WHATSAPP_ATTEMPT_OUTCOME_LABELS[attempt.outcome]} tone={WHATSAPP_ATTEMPT_OUTCOME_TONES[attempt.outcome]} /></span>
-                    </div>
-                    <p className="mt-2 text-sm text-muted-foreground">Enviado por {attempt.actor_name} para {attempt.to_masked}</p>
-                    {attempt.error && <p className="mt-2 text-sm text-[#b00020]">{attempt.error}</p>}
-                  </div>
+                {order.freight && (
+                    <p className="text-sm">
+                        Frete: {formatCurrency(order.freight.price)}
+                    </p>
                 )}
-              />
+                <p className="mt-2 text-base font-bold">
+                    Total: {formatCurrency(order.total)}
+                </p>
+                <p className="text-sm">
+                    Forma de pagamento: {order.paymentMethod || "—"}
+                </p>
             </div>
-          </section>
-        </main>
-      </div>
 
-      {/* Comprovante -- só visível na impressão (ver print:hidden acima e hidden/print:block aqui). */}
-      <div className="hidden p-8 print:block">
-        <h1 className="text-lg font-bold">Comprovante de pedido</h1>
-        <p className="mt-1 text-sm">Cliente: {client?.name ?? order.clientName ?? '—'}{client?.cpfCnpj ? ` · ${client.cpfCnpj}` : ''}</p>
-        <p className="text-sm">Data: {new Date(order.date).toLocaleString('pt-BR')}</p>
-        <p className="text-sm">Status: {ORDER_STATUS_LABELS[order.status]}</p>
-        <table className="mt-4 w-full text-sm">
-          <thead>
-            <tr><th className="text-left">Item</th><th className="text-right">Qtd</th><th className="text-right">Preço</th></tr>
-          </thead>
-          <tbody>
-            {order.items.map((item) => (
-              <tr key={item.key}>
-                <td>{item.name}{item.color ? ` · ${item.color}` : ''}{item.size ? ` · ${item.size}` : ''}</td>
-                <td className="text-right">{item.qty}</td>
-                <td className="text-right">{formatCurrency(item.price)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {order.discount && <p className="mt-2 text-sm">Desconto ({order.discount.label}): -{formatCurrency(order.discount.amount)}</p>}
-        {order.freight && <p className="text-sm">Frete: {formatCurrency(order.freight.price)}</p>}
-        <p className="mt-2 text-base font-bold">Total: {formatCurrency(order.total)}</p>
-        <p className="text-sm">Forma de pagamento: {order.paymentMethod || '—'}</p>
-      </div>
-
-      <Sheet open={fabOpen} onOpenChange={setFabOpen}>
-        <SheetTrigger asChild>
-          <button
-            type="button"
-            aria-label="Ferramentas do pedido"
-            className="fixed right-6 bottom-6 z-40 flex size-14 cursor-pointer items-center justify-center rounded-full border-0 bg-brand-primary text-white shadow-float transition-transform hover:bg-brand-primary-dark active:scale-95 print:hidden"
-          >
-            <Wrench className="size-6" aria-hidden="true" />
-          </button>
-        </SheetTrigger>
-        <SheetContent mobileSide="bottom" className="w-[min(24rem,90vw)]">
-          <SheetHeader><span className="text-sm font-extrabold text-foreground">Ferramentas do pedido</span></SheetHeader>
-          <div className="flex flex-col gap-0.5 p-3">
-            <button
-              type="button"
-              className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={resending || pushStatus?.status === 'processing' || order.status === 'cancelado'}
-              onClick={() => { setFabOpen(false); void handleResend(); }}
-            >
-              <RefreshCw className={`mr-2 size-3.5 ${resending ? 'animate-spin' : ''}`} aria-hidden="true" />
-              {resending ? 'Reenviando...' : 'Reenviar ao ERP'}
-            </button>
-            {canUpsell && (
-              <button
-                type="button"
-                className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={upsellPending}
-                onClick={() => { setFabOpen(false); void startUpsell(); }}
-              >
-                <PackagePlus className="mr-2 size-3.5" aria-hidden="true" />
-                {upsellPending ? 'Abrindo...' : 'Adicionar peças'}
-              </button>
-            )}
-            {canManageOrder && (
-              <details className="group rounded-md border border-border/70 bg-muted/20">
-                <summary className="flex cursor-pointer list-none items-center rounded-md px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background [&::-webkit-details-marker]:hidden">
-                  <MessageCircle className="mr-2 size-3.5 text-[#25D366]" aria-hidden="true" />
-                  <span className="flex-1">Enviar pelo WhatsApp</span>
-                  <ChevronDown className="size-4 transition-transform group-open:rotate-180" aria-hidden="true" />
-                </summary>
-                <div className="space-y-1 border-t border-border/70 p-1.5">
-                  {order.status === 'separado' && order.paymentStatus !== 'paid' && (
-                    <DisabledActionHint
-                      reason={(whatsappStatus?.available ? whatsappStatus?.paymentOrderReason : whatsappStatus?.reason) || 'Validando...'}
-                      side="bottom"
-                    >
-                      <button
+            <Sheet open={fabOpen} onOpenChange={setFabOpen}>
+                <SheetTrigger asChild>
+                    <button
                         type="button"
-                        className="flex w-full cursor-pointer items-center rounded-md bg-brand-primary px-2.5 py-2.5 text-left text-sm font-semibold text-white hover:bg-brand-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={actionPending || !whatsappStatus?.available || !whatsappStatus?.paymentOrderAvailable}
-                        onClick={() => {
-                          if (!whatsappStatus?.available && whatsappStatus?.reason?.toLowerCase().includes('whatsapp')) {
-                            window.location.href = '/workspace/integracoes/whatsapp';
-                          } else if (whatsappStatus?.available && whatsappStatus?.paymentOrderAvailable) {
-                            setFabOpen(false);
-                            setConfirmAction('send-whatsapp-payment-order');
-                          }
-                        }}
-                      >
-                        <QrCode className="mr-2 size-3.5" aria-hidden="true" />
-                        <span className="flex-1">
-                          <span className="block">Enviar pedido + pagamento</span>
-                          <span className="block text-xs font-medium text-white/80">Itens, total e pagamento no WhatsApp</span>
+                        aria-label="Ferramentas do pedido"
+                        className="fixed right-6 bottom-6 z-40 flex size-14 cursor-pointer items-center justify-center rounded-full border-0 bg-brand-primary text-white shadow-float transition-transform hover:bg-brand-primary-dark active:scale-95 print:hidden"
+                    >
+                        <Wrench className="size-6" aria-hidden="true" />
+                    </button>
+                </SheetTrigger>
+                <SheetContent
+                    mobileSide="bottom"
+                    className="w-[min(24rem,90vw)]"
+                >
+                    <SheetHeader>
+                        <span className="text-sm font-extrabold text-foreground">
+                            Ferramentas do pedido
                         </span>
-                        <span className="rounded bg-white/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide">Padrão</span>
-                      </button>
-                    </DisabledActionHint>
-                  )}
-
-                  <details className="group/template rounded-md">
-                    <summary className="flex cursor-pointer list-none items-center rounded-md px-2.5 py-2 text-sm font-semibold text-muted-foreground hover:bg-brand-background [&::-webkit-details-marker]:hidden">
-                      <span className="flex-1">Via template</span>
-                      <ChevronDown className="size-3.5 transition-transform group-open/template:rotate-180" aria-hidden="true" />
-                    </summary>
-                    <div className="space-y-1 border-l border-border/70 pl-2">
-                      <DisabledActionHint
-                        reason={whatsappStatus?.reason || 'Validando...'}
-                        side="bottom"
-                      >
+                    </SheetHeader>
+                    <div className="flex flex-col gap-0.5 p-3">
                         <button
-                          type="button"
-                          className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background disabled:cursor-not-allowed disabled:opacity-50"
-                          disabled={actionPending || !whatsappStatus?.available || order.status === 'cancelado'}
-                          onClick={() => {
-                            if (!whatsappStatus?.available && whatsappStatus?.reason?.toLowerCase().includes('whatsapp')) {
-                              window.location.href = '/workspace/integracoes/whatsapp';
-                            } else if (whatsappStatus?.available) {
-                              setFabOpen(false);
-                              setConfirmAction('send-whatsapp-order');
-                            }
-                          }}
-                        >
-                          <MessageCircle className="mr-2 size-3.5" aria-hidden="true" />
-                          Enviar pedido
-                        </button>
-                      </DisabledActionHint>
-                      {order.status === 'separado' && order.paymentStatus !== 'paid' && (
-                        <DisabledActionHint
-                          reason={whatsappStatus?.reason || 'Validando...'}
-                          side="bottom"
-                        >
-                          <button
                             type="button"
                             className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background disabled:cursor-not-allowed disabled:opacity-50"
-                            disabled={actionPending || !whatsappStatus?.available}
+                            disabled={
+                                resending ||
+                                pushStatus?.status === "processing" ||
+                                order.status === "cancelado"
+                            }
                             onClick={() => {
-                              if (!whatsappStatus?.available && whatsappStatus?.reason?.toLowerCase().includes('whatsapp')) {
-                                window.location.href = '/workspace/integracoes/whatsapp';
-                              } else if (whatsappStatus?.available) {
                                 setFabOpen(false);
-                                setConfirmAction('send-whatsapp-payment');
-                              }
+                                void handleResend();
                             }}
-                          >
-                            <CreditCard className="mr-2 size-3.5" aria-hidden="true" />
-                            Enviar link de pagamento
-                          </button>
-                        </DisabledActionHint>
-                      )}
-                    </div>
-                  </details>
-                </div>
-              </details>
-            )}
-            {canConfirmSeparation && (
-              <button
-                type="button"
-                className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background"
-                onClick={() => { setFabOpen(false); setConfirmAction('confirm-separation'); }}
-              >
-                <PackageCheck className="mr-2 size-3.5" aria-hidden="true" />Confirmar separação
-              </button>
-            )}
-            {canManageOrder && canMarkPaid && (
-              <button
-                type="button"
-                className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background"
-                onClick={() => { setFabOpen(false); setConfirmAction('mark-paid'); }}
-              >
-                <CheckCircle2 className="mr-2 size-3.5" aria-hidden="true" />Marcar como pago
-              </button>
-            )}
-            {canManageOrder && canCancel && (
-              <button
-                type="button"
-                className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-[#b00020] hover:bg-[#fff1f1]"
-                onClick={() => { setFabOpen(false); setConfirmAction('cancel'); }}
-              >
-                <Ban className="mr-2 size-3.5" aria-hidden="true" />Cancelar pedido
-              </button>
-            )}
-            <button
-              type="button"
-              className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background"
-              onClick={() => { setFabOpen(false); window.print(); }}
-            >
-              <Printer className="mr-2 size-3.5" aria-hidden="true" />Imprimir comprovante
-            </button>
-          </div>
-        </SheetContent>
-      </Sheet>
+                        >
+                            <RefreshCw
+                                className={`mr-2 size-3.5 ${resending ? "animate-spin" : ""}`}
+                                aria-hidden="true"
+                            />
+                            {resending ? "Reenviando..." : "Reenviar ao ERP"}
+                        </button>
+                        {canUpsell && (
+                            <button
+                                type="button"
+                                className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background disabled:cursor-not-allowed disabled:opacity-50"
+                                disabled={upsellPending}
+                                onClick={() => {
+                                    setFabOpen(false);
+                                    void startUpsell();
+                                }}
+                            >
+                                <PackagePlus
+                                    className="mr-2 size-3.5"
+                                    aria-hidden="true"
+                                />
+                                {upsellPending
+                                    ? "Abrindo..."
+                                    : "Adicionar peças"}
+                            </button>
+                        )}
+                        {canManageOrder && (
+                            <details className="group rounded-md border border-border/70 bg-muted/20">
+                                <summary className="flex cursor-pointer list-none items-center rounded-md px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background [&::-webkit-details-marker]:hidden">
+                                    <MessageCircle
+                                        className="mr-2 size-3.5 text-[#25D366]"
+                                        aria-hidden="true"
+                                    />
+                                    <span className="flex-1">
+                                        Enviar pelo WhatsApp
+                                    </span>
+                                    <ChevronDown
+                                        className="size-4 transition-transform group-open:rotate-180"
+                                        aria-hidden="true"
+                                    />
+                                </summary>
+                                <div className="space-y-1 border-t border-border/70 p-1.5">
+                                    {order.status === "separado" &&
+                                        order.paymentStatus !== "paid" && (
+                                            <DisabledActionHint
+                                                reason={
+                                                    whatsappStatus?.available
+                                                        ? whatsappStatus?.paymentOrderReason
+                                                        : whatsappStatus?.reason
+                                                }
+                                                side="bottom"
+                                            >
+                                                <button
+                                                    type="button"
+                                                    className="flex w-full cursor-pointer items-center rounded-md bg-brand-primary px-2.5 py-2.5 text-left text-sm font-semibold text-white hover:bg-brand-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
+                                                    disabled={
+                                                        actionPending ||
+                                                        !whatsappStatus?.available ||
+                                                        !whatsappStatus?.paymentOrderAvailable
+                                                    }
+                                                    onClick={() => {
+                                                        if (
+                                                            !whatsappStatus?.available &&
+                                                            whatsappStatus?.reason
+                                                                ?.toLowerCase()
+                                                                .includes(
+                                                                    "whatsapp",
+                                                                )
+                                                        ) {
+                                                            window.location.href =
+                                                                "/workspace/integracoes/whatsapp";
+                                                        } else if (
+                                                            whatsappStatus?.available &&
+                                                            whatsappStatus?.paymentOrderAvailable
+                                                        ) {
+                                                            setFabOpen(false);
+                                                            setConfirmAction(
+                                                                "send-whatsapp-payment-order",
+                                                            );
+                                                        }
+                                                    }}
+                                                >
+                                                    <QrCode
+                                                        className="mr-2 size-3.5"
+                                                        aria-hidden="true"
+                                                    />
+                                                    <span className="flex-1">
+                                                        <span className="block">
+                                                            Enviar pedido +
+                                                            pagamento
+                                                        </span>
+                                                        <span className="block text-xs font-medium text-white/80">
+                                                            Itens, total e
+                                                            pagamento no
+                                                            WhatsApp
+                                                        </span>
+                                                    </span>
+                                                    <span className="rounded bg-white/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                                                        Padrão
+                                                    </span>
+                                                </button>
+                                            </DisabledActionHint>
+                                        )}
 
-      <Dialog open={confirmAction !== null} onOpenChange={(open) => { if (!open) { setConfirmAction(null); setPaymentMethodInput(''); } }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {confirmAction === 'mark-paid' && 'Marcar pedido como pago?'}
-              {confirmAction === 'cancel' && 'Cancelar pedido?'}
-              {confirmAction === 'confirm-separation' && 'Confirmar separação dos itens?'}
-              {confirmAction === 'send-whatsapp-order' && 'Enviar pedido via template?'}
-              {confirmAction === 'send-whatsapp-payment' && 'Enviar o link de pagamento pelo WhatsApp?'}
-              {confirmAction === 'send-whatsapp-payment-order' && 'Enviar pedido + pagamento pelo WhatsApp?'}
-            </DialogTitle>
-            <DialogCloseButton />
-          </DialogHeader>
-          <DialogDescription>
-            {confirmAction === 'mark-paid' && 'Registra este pedido como pago manualmente (dinheiro, Pix direto etc.) — não passa por nenhum gateway de pagamento real.'}
-            {confirmAction === 'cancel' && 'Cancela o pedido e as sessões/talão abertos vinculados a ele. Se o pedido já foi enviado ao ERP, o cancelamento também será tentado lá.'}
-            {confirmAction === 'confirm-separation' && 'Confirma que todas as peças deste pedido já foram separadas fisicamente. Necessário antes de qualquer cobrança real ser possível.'}
-            {confirmAction === 'send-whatsapp-order' && 'O resumo do pedido será enviado em uma mensagem de template para o WhatsApp cadastrado da cliente.'}
-            {confirmAction === 'send-whatsapp-payment' && 'Um novo link seguro de pagamento será gerado e enviado para o WhatsApp cadastrado da cliente. Links anteriores deixarão de funcionar.'}
-            {confirmAction === 'send-whatsapp-payment-order' && 'Envia um pedido com itens, quantidades, total e Pix para pagamento direto dentro do WhatsApp da cliente — sem sair do app.'}
-          </DialogDescription>
-          {confirmAction === 'mark-paid' && (
-            <div className={`${adminUi.field} mt-3`}>
-              <label>Forma de pagamento (opcional)</label>
-              <select value={paymentMethodInput} onChange={(event) => setPaymentMethodInput(event.target.value)}>
-                <option value="">Não informar</option>
-                <option value="Dinheiro">Dinheiro</option>
-                <option value="Pix">Pix</option>
-                <option value="Cartão">Cartão</option>
-                <option value="Outro">Outro</option>
-              </select>
-            </div>
-          )}
-          <div className="mt-4 flex justify-end gap-2">
-            <button type="button" className={adminUi.button} onClick={() => { setConfirmAction(null); setPaymentMethodInput(''); }}>Voltar</button>
-            <button
-              type="button"
-              className={confirmAction === 'cancel' ? adminUi.dangerButton : adminUi.primaryButton}
-              disabled={actionPending}
-              onClick={() => void runConfirmedAction()}
+                                    <details className="group/template rounded-md">
+                                        <summary className="flex cursor-pointer list-none items-center rounded-md px-2.5 py-2 text-sm font-semibold text-muted-foreground hover:bg-brand-background [&::-webkit-details-marker]:hidden">
+                                            <span className="flex-1">
+                                                Via template
+                                            </span>
+                                            <ChevronDown
+                                                className="size-3.5 transition-transform group-open/template:rotate-180"
+                                                aria-hidden="true"
+                                            />
+                                        </summary>
+                                        <div className="space-y-1 border-l border-border/70 pl-2">
+                                            <DisabledActionHint
+                                                reason={whatsappStatus?.reason}
+                                                side="bottom"
+                                            >
+                                                <button
+                                                    type="button"
+                                                    className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background disabled:cursor-not-allowed disabled:opacity-50"
+                                                    disabled={
+                                                        actionPending ||
+                                                        !whatsappStatus?.available ||
+                                                        order.status ===
+                                                            "cancelado"
+                                                    }
+                                                    onClick={() => {
+                                                        if (
+                                                            !whatsappStatus?.available &&
+                                                            whatsappStatus?.reason
+                                                                ?.toLowerCase()
+                                                                .includes(
+                                                                    "whatsapp",
+                                                                )
+                                                        ) {
+                                                            window.location.href =
+                                                                "/workspace/integracoes/whatsapp";
+                                                        } else if (
+                                                            whatsappStatus?.available
+                                                        ) {
+                                                            setFabOpen(false);
+                                                            setConfirmAction(
+                                                                "send-whatsapp-order",
+                                                            );
+                                                        }
+                                                    }}
+                                                >
+                                                    <MessageCircle
+                                                        className="mr-2 size-3.5"
+                                                        aria-hidden="true"
+                                                    />
+                                                    Enviar pedido
+                                                </button>
+                                            </DisabledActionHint>
+                                            {order.status === "separado" &&
+                                                order.paymentStatus !==
+                                                    "paid" && (
+                                                    <DisabledActionHint
+                                                        reason={
+                                                            whatsappStatus?.reason
+                                                        }
+                                                        side="bottom"
+                                                    >
+                                                        <button
+                                                            type="button"
+                                                            className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background disabled:cursor-not-allowed disabled:opacity-50"
+                                                            disabled={
+                                                                actionPending ||
+                                                                !whatsappStatus?.available
+                                                            }
+                                                            onClick={() => {
+                                                                if (
+                                                                    !whatsappStatus?.available &&
+                                                                    whatsappStatus?.reason
+                                                                        ?.toLowerCase()
+                                                                        .includes(
+                                                                            "whatsapp",
+                                                                        )
+                                                                ) {
+                                                                    window.location.href =
+                                                                        "/workspace/integracoes/whatsapp";
+                                                                } else if (
+                                                                    whatsappStatus?.available
+                                                                ) {
+                                                                    setFabOpen(
+                                                                        false,
+                                                                    );
+                                                                    setConfirmAction(
+                                                                        "send-whatsapp-payment",
+                                                                    );
+                                                                }
+                                                            }}
+                                                        >
+                                                            <CreditCard
+                                                                className="mr-2 size-3.5"
+                                                                aria-hidden="true"
+                                                            />
+                                                            Enviar link de
+                                                            pagamento
+                                                        </button>
+                                                    </DisabledActionHint>
+                                                )}
+                                        </div>
+                                    </details>
+                                </div>
+                            </details>
+                        )}
+                        {canConfirmSeparation && (
+                            <button
+                                type="button"
+                                className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background"
+                                onClick={() => {
+                                    setFabOpen(false);
+                                    setConfirmAction("confirm-separation");
+                                }}
+                            >
+                                <PackageCheck
+                                    className="mr-2 size-3.5"
+                                    aria-hidden="true"
+                                />
+                                Confirmar separação
+                            </button>
+                        )}
+                        {canManageOrder && canMarkPaid && (
+                            <button
+                                type="button"
+                                className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background"
+                                onClick={() => {
+                                    setFabOpen(false);
+                                    setConfirmAction("mark-paid");
+                                }}
+                            >
+                                <CheckCircle2
+                                    className="mr-2 size-3.5"
+                                    aria-hidden="true"
+                                />
+                                Marcar como pago
+                            </button>
+                        )}
+                        {canManageOrder && canCancel && (
+                            <button
+                                type="button"
+                                className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-[#b00020] hover:bg-[#fff1f1]"
+                                onClick={() => {
+                                    setFabOpen(false);
+                                    setConfirmAction("cancel");
+                                }}
+                            >
+                                <Ban
+                                    className="mr-2 size-3.5"
+                                    aria-hidden="true"
+                                />
+                                Cancelar pedido
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            className="flex w-full cursor-pointer items-center rounded-md bg-transparent px-2.5 py-2.5 text-left text-sm font-semibold text-foreground hover:bg-brand-background"
+                            onClick={() => {
+                                setFabOpen(false);
+                                window.print();
+                            }}
+                        >
+                            <Printer
+                                className="mr-2 size-3.5"
+                                aria-hidden="true"
+                            />
+                            Imprimir comprovante
+                        </button>
+                    </div>
+                </SheetContent>
+            </Sheet>
+
+            <Dialog
+                open={confirmAction !== null}
+                onOpenChange={(open) => {
+                    if (!open) {
+                        setConfirmAction(null);
+                        setPaymentMethodInput("");
+                    }
+                }}
             >
-              {actionPending ? 'Processando...' : 'Confirmar'}
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>
+                            {confirmAction === "mark-paid" &&
+                                "Marcar pedido como pago?"}
+                            {confirmAction === "cancel" && "Cancelar pedido?"}
+                            {confirmAction === "confirm-separation" &&
+                                "Confirmar separação dos itens?"}
+                            {confirmAction === "send-whatsapp-order" &&
+                                "Enviar pedido via template?"}
+                            {confirmAction === "send-whatsapp-payment" &&
+                                "Enviar o link de pagamento pelo WhatsApp?"}
+                            {confirmAction === "send-whatsapp-payment-order" &&
+                                "Enviar pedido + pagamento pelo WhatsApp?"}
+                        </DialogTitle>
+                        <DialogCloseButton />
+                    </DialogHeader>
+                    <DialogDescription>
+                        {confirmAction === "mark-paid" &&
+                            "Registra este pedido como pago manualmente (dinheiro, Pix direto etc.) — não passa por nenhum gateway de pagamento real."}
+                        {confirmAction === "cancel" &&
+                            "Cancela o pedido e as sessões/talão abertos vinculados a ele. Se o pedido já foi enviado ao ERP, o cancelamento também será tentado lá."}
+                        {confirmAction === "confirm-separation" &&
+                            "Confirma que todas as peças deste pedido já foram separadas fisicamente. Necessário antes de qualquer cobrança real ser possível."}
+                        {confirmAction === "send-whatsapp-order" &&
+                            "O resumo do pedido será enviado em uma mensagem de template para o WhatsApp cadastrado da cliente."}
+                        {confirmAction === "send-whatsapp-payment" &&
+                            "Um novo link seguro de pagamento será gerado e enviado para o WhatsApp cadastrado da cliente. Links anteriores deixarão de funcionar."}
+                        {confirmAction === "send-whatsapp-payment-order" &&
+                            "Envia um pedido com itens, quantidades, total e Pix para pagamento direto dentro do WhatsApp da cliente — sem sair do app."}
+                    </DialogDescription>
+                    {confirmAction === "mark-paid" && (
+                        <div className={`${adminUi.field} mt-3`}>
+                            <label>Forma de pagamento (opcional)</label>
+                            <select
+                                value={paymentMethodInput}
+                                onChange={(event) =>
+                                    setPaymentMethodInput(event.target.value)
+                                }
+                            >
+                                <option value="">Não informar</option>
+                                <option value="Dinheiro">Dinheiro</option>
+                                <option value="Pix">Pix</option>
+                                <option value="Cartão">Cartão</option>
+                                <option value="Outro">Outro</option>
+                            </select>
+                        </div>
+                    )}
+                    <div className="mt-4 flex justify-end gap-2">
+                        <button
+                            type="button"
+                            className={adminUi.button}
+                            onClick={() => {
+                                setConfirmAction(null);
+                                setPaymentMethodInput("");
+                            }}
+                        >
+                            Voltar
+                        </button>
+                        <button
+                            type="button"
+                            className={
+                                confirmAction === "cancel"
+                                    ? adminUi.dangerButton
+                                    : adminUi.primaryButton
+                            }
+                            disabled={actionPending}
+                            onClick={() => void runConfirmedAction()}
+                        >
+                            {actionPending ? "Processando..." : "Confirmar"}
+                        </button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+        </div>
+    );
 }
