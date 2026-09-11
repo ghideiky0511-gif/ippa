@@ -6,7 +6,7 @@ import type { AuthUser } from "@/lib/types";
 import { findClientRow, type ClientRow } from "@/models/clientsModel";
 import { findOrderRowById, listOrderItemRowsByOrder } from "@/models/ordersModel";
 import { findActivePaymentIntegrationRow } from "@/models/paymentIntegrationsModel";
-import { findWhatsAppConnectionBySeller, type WhatsAppConnectionRow } from "@/models/whatsappConnectionsModel";
+import { findWhatsAppConnectionBySeller } from "@/models/whatsappConnectionsModel";
 import { orderPaymentLink } from "@/services/notifications";
 import { createOrderCharge, isPaymentIntegrationReadyToCharge } from "@/services/payments/paymentChargeService";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
@@ -43,9 +43,8 @@ export interface WhatsAppAvailabilityStatus {
     reason?: string;
     // Disponibilidade da variante nativa (payment_order/PIX, pagável DENTRO
     // do WhatsApp) -- distinta de `available` acima porque tem
-    // pré-requisitos próprios (capability_payments da Meta, documento da
-    // cliente, chave Pix configurada) que não bloqueiam as outras duas
-    // variantes (order/payment_link).
+    // pré-requisitos próprios (documento da cliente, chave Pix configurada)
+    // que não bloqueiam as outras duas variantes (order/payment_link).
     paymentOrderAvailable: boolean;
     paymentOrderReason?: string;
 }
@@ -57,20 +56,15 @@ function isAdministrator(user: AuthUser): boolean {
 // Checagem compartilhada entre validateWhatsAppAvailability (GET, prévia
 // pra UI) e sendOrderWhatsApp (POST, defesa contra mudança de estado entre
 // as duas chamadas -- mesmo raciocínio já usado aqui pra
-// assertWhatsAppConnectionAvailable). `capability_payments` só existe na
-// vendedora (whatsapp_connections), não no pedido -- por isso recebe a
-// conexão já resolvida em vez de buscar de novo.
+// assertWhatsAppConnectionAvailable). Não checa mais `capability_payments`:
+// o bippa-messaging não usa mais esse campo pra bloquear
+// payment-orders/payment-requests (virou só registro de auditoria de quem
+// confirmou a aprovação da Meta, ver PATCH .../payments-capability), então
+// bloquear aqui no lado do produto ficaria redundante e sem efeito real.
 async function assessPaymentOrderAvailability(
     client: PoolClient,
-    connection: WhatsAppConnectionRow | null,
     registration: ClientRow,
 ): Promise<{ available: boolean; reason?: string }> {
-    if (!connection?.capability_payments) {
-        return {
-            available: false,
-            reason: "Pagamento nativo no WhatsApp ainda não foi habilitado pela Meta para esta vendedora.",
-        };
-    }
     if (!registration.cpf_cnpj?.trim() || !registration.email?.trim()) {
         return { available: false, reason: "Cadastre o CPF/CNPJ e o e-mail da cliente antes de enviar." };
     }
@@ -113,7 +107,7 @@ export async function validateWhatsAppAvailability(
                 };
             }
 
-            const paymentOrder = await assessPaymentOrderAvailability(client, connection, registration);
+            const paymentOrder = await assessPaymentOrderAvailability(client, registration);
             return { available: true, paymentOrderAvailable: paymentOrder.available, paymentOrderReason: paymentOrder.reason };
         });
     } catch {
@@ -151,8 +145,7 @@ export async function sendOrderWhatsApp(
         let pix: { code: string; merchantName: string; key: string; keyType: string } | undefined;
         let items: Array<{ retailerId: string; name: string; unitAmount: number; quantity: number }> | undefined;
         if (parsed.data.kind === "payment_order") {
-            const connection = await findWhatsAppConnectionBySeller(client, order.seller_id);
-            const paymentOrderStatus = await assessPaymentOrderAvailability(client, connection, registration);
+            const paymentOrderStatus = await assessPaymentOrderAvailability(client, registration);
             if (!paymentOrderStatus.available) {
                 throw new ValidationError("PAYMENT_ORDER_NOT_AVAILABLE", paymentOrderStatus.reason ?? "Envio nativo de pagamento indisponível.");
             }

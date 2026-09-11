@@ -621,11 +621,11 @@ export default function WhatsAppIntegrationApp() {
             setConnectionsBySeller((previous) => ({ ...previous, [sellerId]: connection }));
             setEnablingPaymentsSellerId(null);
             setPaymentCapabilityReason("");
-            showMessage(sellerId, "Pagamentos nativos habilitados para esta vendedora.");
+            showMessage(sellerId, "Aprovação da Meta registrada para esta vendedora.");
         } catch (error) {
             showMessage(
                 sellerId,
-                error instanceof Error ? error.message : "Não foi possível habilitar pagamentos nativos no WhatsApp.",
+                error instanceof Error ? error.message : "Não foi possível registrar a aprovação de pagamentos nativos.",
                 true,
             );
         } finally {
@@ -789,12 +789,12 @@ export default function WhatsAppIntegrationApp() {
                                         <div className="mt-4 rounded-control border border-border p-3">
                                             <p className="text-sm font-semibold text-foreground">Pagamentos nativos (Meta Payments)</p>
                                             {connection.capabilityPayments ? (
-                                                <p className="mt-1 text-sm text-emerald-700">Habilitados após confirmação manual da aprovação da Meta.</p>
+                                                <p className="mt-1 text-sm text-emerald-700">Aprovação da Meta registrada para este número.</p>
                                             ) : enablingPaymentsSellerId === seller.id ? (
                                                 <div className="mt-3 space-y-3">
-                                                    <p className="text-xs leading-5 text-amber-800">Confirme apenas se a Meta/parceiro aprovou Orders/Payments para a WABA deste número. Esta decisão não pode ser verificada automaticamente.</p>
+                                                    <p className="text-xs leading-5 text-muted-foreground">Registre quando a Meta/parceiro aprovou Orders/Payments para a WABA deste número. Fica como histórico de quem confirmou.</p>
                                                     <label className="block text-xs font-semibold text-foreground">
-                                                        Confirmação manual da Meta
+                                                        Registro da aprovação
                                                         <input
                                                             className="mt-1 w-full rounded-control border border-border bg-surface px-3 py-2 text-sm font-normal"
                                                             value={paymentCapabilityReason}
@@ -804,14 +804,14 @@ export default function WhatsAppIntegrationApp() {
                                                         />
                                                     </label>
                                                     <div className="flex flex-wrap gap-2">
-                                                        <Button type="button" size="sm" loading={savingPaymentsCapability} onClick={() => void confirmPaymentsCapability(seller.id)}>Confirmar e habilitar</Button>
+                                                        <Button type="button" size="sm" loading={savingPaymentsCapability} onClick={() => void confirmPaymentsCapability(seller.id)}>Registrar aprovação</Button>
                                                         <Button type="button" size="sm" variant="outline" disabled={savingPaymentsCapability} onClick={() => { setEnablingPaymentsSellerId(null); setPaymentCapabilityReason(""); }}>Cancelar</Button>
                                                     </div>
                                                 </div>
                                             ) : (
                                                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                                                    <p className="text-xs leading-5 text-muted-foreground">Desabilitados. Habilite somente depois de uma confirmação humana da Meta.</p>
-                                                    <Button type="button" size="sm" variant="outline" onClick={() => { setEnablingPaymentsSellerId(seller.id); setPaymentCapabilityReason(""); }}>Habilitar pagamentos nativos</Button>
+                                                    <p className="text-xs leading-5 text-muted-foreground">Nenhuma aprovação da Meta registrada ainda para este número.</p>
+                                                    <Button type="button" size="sm" variant="outline" onClick={() => { setEnablingPaymentsSellerId(seller.id); setPaymentCapabilityReason(""); }}>Registrar aprovação da Meta</Button>
                                                 </div>
                                             )}
                                         </div>
