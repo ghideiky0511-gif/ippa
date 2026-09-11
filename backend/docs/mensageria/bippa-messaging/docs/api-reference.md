@@ -1419,7 +1419,40 @@ variante de template abaixo).
 ```
 
 Regras: `reference_id` até 60 caracteres (`[A-Za-z0-9_.-]`), único por
-requisição de pagamento — ele identifica o pedido, não a mensagem.
+**payment order registrado nesta organização**. Ele não é um identificador de
+idempotência da mensagem: fica associado permanentemente ao primeiro
+`idempotency_key` que o criou. Em outras palavras, nesta API ele identifica a
+instância de cobrança/pedido em `payment_orders`, e não deve ser tratado como o
+`order.id` canônico do integrador quando esse pedido puder gerar mais de um
+cartão de pagamento.
+
+#### Reenviar um cartão de pagamento (lembrete)
+
+Ainda não há uma operação de _resend_ para enviar novamente um
+`order_details` com o mesmo `reference_id`:
+
+| Chamada posterior                                  | Resultado                                                                                                                       | Cria nova mensagem? |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| mesmo `reference_id` e mesmo `idempotency_key`     | `200`, `duplicate: true`, com o dispatch original (ou `409 idempotency_processing` enquanto a primeira chamada ainda o reserva) | Não                 |
+| mesmo `reference_id` e `idempotency_key` diferente | `409 reference_conflict`                                                                                                        | Não                 |
+| `reference_id` e `idempotency_key` novos           | `202`                                                                                                                           | Sim                 |
+
+Portanto, para um lembrete que precisa renderizar um novo cartão no WhatsApp,
+faça outro `POST /v1/payment-orders` com uma `idempotency_key` nova e um
+`reference_id` novo por tentativa — por exemplo,
+`pedido-9081.reminder-01` ou `pedido-9081.<uuid-da-tentativa>`, sempre dentro
+do limite de 60 caracteres. Reenvie também todos os dados do cartão, inclusive
+um código Pix/link que ainda esteja válido. `POST /v1/payment-orders/:referenceId/order-status` não é um atalho para isso: ele
+envia uma mensagem `order_status` para a referência já existente.
+
+Cada tentativa passa a ter seu próprio registro em `payment_orders`, dispatch,
+`provider_message_id` e eventos de entrega/falha. Não há quota por organização
+imposta por este serviço para esse padrão; continuam valendo os limites e as
+políticas de envio da Meta. O integrador deve guardar o vínculo entre cada
+`reference_id` de tentativa e seu `order.id` canônico: `message.failed` e
+`payment.status_changed` reportam a referência da tentativa, e qualquer
+`order-status` futuro deve usar essa mesma referência. Não existe hoje um
+agrupamento, reconciliação ou histórico de lembretes pelo `order.id` externo.
 `seller_reference` só precisa ser um perfil de envio válido da organização
 (mesma regra de `POST /v1/dispatches`) — **não há mais checagem de
 `capability_payments`** (ver "Contas e telefones" acima). Com `items`, o Messaging calcula
@@ -1445,7 +1478,18 @@ com o cálculo) e `invalid_payment_configuration` (qualquer campo de
 
 `payment.methods` aceita de 1 a 3 entradas; `type` é obrigatório em cada uma
 e decide quais campos abaixo são exigidos — **nenhum campo de cartão (PAN,
-CVV, validade) é aceito em nenhum tipo**:
+CVV, validade) é aceito em nenhum tipo**. O limite de 3 é uma suposição
+nossa, não documentada pela Meta para `order_details` — a tabela oficial
+"Payment settings" do [Orders
+API](https://developers.facebook.com/documentation/business-messaging/whatsapp/payments/payments-br/orders#paymentsettingsobject)
+só lista `type` (obrigatório) e o objeto correspondente (obrigatório), sem
+limite de quantidade; herdamos o "até 3" por analogia com os [Payment Request
+CTA Templates](https://developers.facebook.com/documentation/business-messaging/whatsapp/payments/payments-br/payment-request-cta),
+onde a Meta **de fato** documenta esse limite (lá é um limite de botões, um
+recurso diferente e sem Orders API). Não achamos evidência de que a Meta
+rejeite `order_details` com mais de 3 `payment_settings` nem de que aceite
+— é uma lacuna real de verificação, só teórica até alguém precisar de um
+4º método de pagamento no mesmo pedido:
 
 | `type`             | Campos obrigatórios dentro do objeto do mesmo nome                                                                                                                                                                                                                                                       |
 | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1459,10 +1503,43 @@ chamar a Meta, espelhando 1:1 o [Order
 Object](https://developers.facebook.com/documentation/business-messaging/whatsapp/payments/payments-br/orders#orderobject)
 da Meta):
 
+**Nem todo campo abaixo é validado por nós — alguns só a Meta valida, no
+momento do envio (assíncrono, depois do `202`), e o erro típico nesse caso é
+genérico: `error_code: "131009"` no evento `message.failed`/`payload.error`
+do worker (_"One or more parameter values are invalid"_, conforme a doc
+oficial de [Error
+Codes](https://developers.facebook.com/documentation/business-messaging/whatsapp/support/error-codes)
+da Meta — não aponta qual campo).** A causa mais provável, com respaldo direto
+na doc da Meta:
+
+**`payment.methods[].type: "offsite_card_pay"` numa WABA sem One-Click
+Payments habilitado** — a própria Meta marca essa funcionalidade como "not
+publicly available yet... contact your Solution Partner" (ver seção One-Click
+Payments acima); não existe hoje nenhuma checagem, local ou via Graph API,
+que confirme se uma WABA específica tem essa capability antes do envio (o
+mesmo tipo de lacuna que existia com `capability_payments`, só que sem
+equivalente manual — ver `PATCH
+/v1/admin/sender-profiles/:senderProfileId/payments-capability`).
+
+> Hipótese descartada por falta de evidência: cogitamos que `catalog_id`
+> e/ou `items[].retailer_id` sem corresponder a um catálogo Meta Commerce
+> conectado à WABA também pudesse gerar `131009` (a doc da Meta descreve
+> `retailer_id` só como "Content ID for an item in the order **from your
+> catalog**"). Reler a doc não trouxe nenhuma indicação de que a Meta valide
+> isso contra um catálogo sincronizado, e não temos repro nem confirmação da
+> Meta/suporte — não listamos mais como causa provável. Se surgir evidência
+> concreta (um `131009` que sumiu ao trocar `retailer_id`, por exemplo),
+> voltamos a documentar.
+
+Essa causa não fica visível no `error_code` bruto — só no texto de
+`error_message` do evento `message.failed` (ver seção "Eventos de saída" mais
+abaixo), então sempre logue `error_message` (não só `error_code`) ao
+investigar um `131009`.
+
 | Campo                                                                | Tipo                                                 | Regra                                                                                                                                                                                                                                                                                                                                           |
 | -------------------------------------------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `header` (ou `header_image_url`)                                     | string (URL HTTPS)                                   | Vira o thumbnail do pedido. **Só permitido quando `items` está presente** — em pedido simplificado (sem `items`) é rejeitado com `400`.                                                                                                                                                                                                         |
-| `catalog_id`                                                         | string                                               | Id do catálogo Meta Commerce associado ao pedido (opcional; não valida existência do catálogo).                                                                                                                                                                                                                                                 |
+| `catalog_id`                                                         | string                                               | Id do catálogo Meta Commerce associado ao pedido (opcional; não validamos localmente se o catálogo existe — a doc da Meta não indica que isso seja validado no envio do `order_details`, então não é uma causa confirmada de rejeição).                                                                                                         |
 | `expiration.timestamp`                                               | epoch seconds                                        | Precisa estar pelo menos 300s no futuro; após expirar, o botão de pagamento fica desabilitado no WhatsApp do comprador.                                                                                                                                                                                                                         |
 | `expiration.description`                                             | string, até 120 chars                                | Obrigatório junto com `expiration.timestamp`.                                                                                                                                                                                                                                                                                                   |
 | `shipping_amount` / `shipping_description`                           | inteiro em centavos / string até 60 chars            | Entra no cálculo de `total_amount`; `shipping_description` é opcional.                                                                                                                                                                                                                                                                          |
@@ -1487,7 +1564,9 @@ Resposta `202` (ou `200` se `idempotency_key` repetida — `duplicate: true`):
 ```
 
 Erro `409 reference_conflict` se `reference_id` já pertence a outro pedido
-com `idempotency_key` diferente.
+com `idempotency_key` diferente. Isso também vale se o primeiro dispatch já
+falhou: a referência não é liberada para uma nova tentativa. Para criar um
+lembrete, siga o padrão de nova referência descrito acima.
 
 **O `202` acima só confirma que o pedido foi aceito e enfileirado — não que a
 Meta já recebeu/aceitou o envio.** O envio real acontece depois, de forma
@@ -1725,6 +1804,11 @@ O worker da outbox entrega eventos ao endpoint HTTP da aplicação cliente:
 | `payment.method_confirmed` | Comprador aprovou cobrança via One-Click Payments | `{ reference_id, payment_method, credential_id, last_four_digits, payment_timestamp, sender_reference }`                                                                                                                                                                                                                                                                                                                                                                  |
 | `template.status_changed`  | Meta aprovou/rejeitou/pausou um template          | `{ template_id, name, language, status, rejection_reason }`                                                                                                                                                                                                                                                                                                                                                                                                               |
 
+Para dispatches de pagamento, `message.sent` e `message.delivered` ainda não
+incluem `reference_id`; correlacione-os pelo `dispatch_id` com o `dispatch.id`
+da resposta que aceitou o `POST /v1/payment-orders`. Já `message.failed` inclui
+o `reference_id` da tentativa que falhou.
+
 Corpo entregue (`POST` para o `callback_url` cadastrado):
 
 ```json
@@ -1746,11 +1830,22 @@ assinatura, deduplicar pelo `id` do evento e responder `2xx` rapidamente —
 uma resposta não-`2xx` faz o worker tentar de novo com backoff exponencial
 (até 8 tentativas, depois marca `failed`).
 
-> **Lacuna atual:** não existe ainda uma rota administrativa para a própria
-> aplicação cliente cadastrar seu `callback_url`/`signing_secret`
-> (`bippa_messaging.event_subscriptions`) — hoje isso é feito manualmente no
-> banco. Uma API `POST /v1/admin/event-subscriptions` (ou equivalente) fica
-> como pendência antes de liberar novos consumidores em produção.
+> **Cadastro e escopo atuais:** não existe ainda uma rota administrativa para a
+> própria aplicação cliente cadastrar seu `callback_url`/`signing_secret`
+> (`bippa_messaging.event_subscriptions`) — hoje o cadastro é manual no banco,
+> após o consumidor informar a URL HTTPS final, a organização/`source_reference`
+> e o `application_code`. O secret deve ser gerado pelo operador e entregue
+> somente por um canal seguro; nunca deve constar nesta documentação ou em logs.
+>
+> A subscription atual é **tudo-ou-nada por organização**: não há coluna nem
+> parâmetro de `event_types`, e cada subscription ativa recebe todos os eventos
+> da tabela acima. Assim, um consumidor que só precisa de `message.failed` (ou
+> também de `message.sent`/`message.delivered`) deve validar a assinatura,
+> deduplicar pelo `id` e ignorar localmente os demais `type`s. `application_code`
+> é registrado como metadado do cadastro, mas não filtra a entrega. Uma API
+> `POST /v1/admin/event-subscriptions` (ou equivalente), com filtro de tipos,
+> continua pendente; não há data de disponibilidade comprometida. Esta seção
+> será atualizada quando existir uma data e um contrato aprovados.
 >
 > `conversation.inbound` dispara tanto o webhook assinado acima (para
 > subscribers cadastrados) quanto, internamente no worker, a confirmação de
