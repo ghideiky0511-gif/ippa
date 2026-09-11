@@ -480,14 +480,26 @@ Liga ou desliga `capability_payments` para um perfil de envio já existente.
 `sender_profile_key`/o próprio perfil retornado pela rota acima, ou da lista
 de `phones[]` em `GET /v1/admin/whatsapp-connections`.
 
-**Esta é uma ação deliberada, separada da associação rotineira de telefone
-acima de propósito.** `capability_payments: true` afirma que a Meta já
-aprovou Orders/Payments para a WABA daquele número — coisa que o
-bippa-messaging não tem como verificar automaticamente (a Graph API não
-expõe um campo equivalente a `health_status` para isso). Chame esta rota
-**só depois de confirmar manualmente com a Meta/parceiro de solução** que a
-WABA está aprovada; nunca como parte de um fluxo automático de
-onboarding/reassociação de número.
+**`capability_payments` não bloqueia mais nada.** Até 2026-09, esta rota era
+o único jeito de destravar `POST /v1/payment-orders`,
+`POST /v1/payment-orders/:referenceId/order-status` e
+`POST /v1/payment-requests` — as três exigiam `capability_payments: true` no
+perfil de envio, checado em código (`paymentSender` em
+`messaging_service.js`). Essa checagem foi removida: nenhuma rota de
+pagamento lê mais este campo. O motivo original — `capability_payments: true`
+afirmar que a Meta já aprovou Orders/Payments para a WABA, sem o
+bippa-messaging ter como verificar isso automaticamente (a Graph API não
+expõe um campo equivalente a `health_status` para Payments) — continua
+verdadeiro; o que mudou foi a decisão de não depender de uma confirmação
+manual prévia para permitir o envio. Quem integra (ex.: bippa-catalogo) pode
+chamar as rotas de Orders/Payments diretamente, sem passar por esta rota
+antes.
+
+A coluna e esta rota continuam existindo (histórico/auditoria de quem marcou
+uma WABA como aprovada), mas são **informativas, não uma trava** — chamar
+`POST /v1/payment-orders` para uma WABA que a Meta ainda não aprovou para
+Payments não é mais barrado pelo bippa-messaging; o erro, se houver, vem da
+própria Graph API na hora do envio.
 
 ```http
 PATCH /v1/admin/sender-profiles/uuid-do-perfil/payments-capability
@@ -1404,10 +1416,9 @@ pra atualizar `payment_status`.
 
 Regras: `reference_id` até 60 caracteres (`[A-Za-z0-9_.-]`), único por
 requisição de pagamento — ele identifica o pedido, não a mensagem.
-`seller_reference` precisa ter `capability_payments: true` (definido via
-`PATCH /v1/admin/sender-profiles/:senderProfileId/payments-capability`, ver
-seção "Contas e telefones" acima — só depois de confirmar manualmente a
-aprovação da Meta), senão `422 payments_not_enabled_for_sender`. Com `items`, o Messaging calcula
+`seller_reference` só precisa ser um perfil de envio válido da organização
+(mesma regra de `POST /v1/dispatches`) — **não há mais checagem de
+`capability_payments`** (ver "Contas e telefones" acima). Com `items`, o Messaging calcula
 `subtotal` e exige `total_amount = subtotal + tax_amount + shipping_amount -
 discount_amount`; sem `items`, o pedido é simplificado e só `total_amount` é
 obrigatório (nesse caso um `header` de imagem é rejeitado — mesma regra da
@@ -1625,9 +1636,10 @@ sem o array `payment.methods` — aqui cada botão é um método). O `index` de
 cada botão é a posição no array (`0`, `1`, `2`...) e precisa corresponder à
 posição real do botão `PAYMENT_REQUEST` no template aprovado; passe
 `buttons[].index` explicitamente só se a ordem dos botões no template não
-bater com a ordem enviada. Requer `seller_reference` com
-`capability_payments: true`, igual às outras rotas de pagamento, e responde
-`503 payments_disabled` sob a mesma feature flag.
+bater com a ordem enviada. `seller_reference` só precisa ser um perfil de
+envio válido, igual às outras rotas de pagamento (sem checagem de
+`capability_payments`), e responde `503 payments_disabled` sob a mesma
+feature flag.
 
 Resposta `202` (ou `200` se `idempotency_key` repetida):
 

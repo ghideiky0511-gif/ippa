@@ -8,7 +8,6 @@ import { fetchUsers } from "@/workspace/lib/usersClient";
 import type { AdminUser } from "@/domain/clients/types";
 import {
     associateWhatsAppSenderProfile,
-    enableWhatsAppPaymentsCapability,
     ensureWhatsAppInstallation,
     fetchTenantWhatsAppConnectionStatuses,
     fetchTenantWhatsAppPhoneHealth,
@@ -138,10 +137,6 @@ export default function WhatsAppIntegrationApp() {
     const [verifyingSellerId, setVerifyingSellerId] = useState<string | null>(
         null,
     );
-    const [enablingPaymentsSellerId, setEnablingPaymentsSellerId] = useState<string | null>(null);
-    const [paymentCapabilityReason, setPaymentCapabilityReason] = useState("");
-    const [savingPaymentsCapability, setSavingPaymentsCapability] = useState(false);
-
     function showMessage(
         sellerId: string,
         text: string | null,
@@ -608,31 +603,6 @@ export default function WhatsAppIntegrationApp() {
         }
     }
 
-    async function confirmPaymentsCapability(sellerId: string) {
-        const reason = paymentCapabilityReason.trim();
-        if (!reason) {
-            showMessage(sellerId, "Registre como a aprovação de Orders/Payments foi confirmada com a Meta.", true);
-            return;
-        }
-        setSavingPaymentsCapability(true);
-        showMessage(sellerId, null);
-        try {
-            const connection = await enableWhatsAppPaymentsCapability(sellerId, reason);
-            setConnectionsBySeller((previous) => ({ ...previous, [sellerId]: connection }));
-            setEnablingPaymentsSellerId(null);
-            setPaymentCapabilityReason("");
-            showMessage(sellerId, "Aprovação da Meta registrada para esta vendedora.");
-        } catch (error) {
-            showMessage(
-                sellerId,
-                error instanceof Error ? error.message : "Não foi possível registrar a aprovação de pagamentos nativos.",
-                true,
-            );
-        } finally {
-            setSavingPaymentsCapability(false);
-        }
-    }
-
     const STATUS_LABEL: Record<Status, string> = {
         disconnected: "Não conectado",
         connecting: "Conectando…",
@@ -780,38 +750,6 @@ export default function WhatsAppIntegrationApp() {
                                                 <div className="mt-2 flex flex-wrap gap-3 text-sm font-semibold">
                                                     {phone.healthManageUrl && <a href={phone.healthManageUrl} target="_blank" rel="noreferrer" className="text-brand-primary underline underline-offset-2">Abrir no Gerenciador do WhatsApp</a>}
                                                     {phone.healthPaymentSettingsUrl && <a href={phone.healthPaymentSettingsUrl} target="_blank" rel="noreferrer" className="text-brand-primary underline underline-offset-2">Revisar forma de pagamento</a>}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    {connection?.connected && (
-                                        <div className="mt-4 rounded-control border border-border p-3">
-                                            <p className="text-sm font-semibold text-foreground">Pagamentos nativos (Meta Payments)</p>
-                                            {connection.capabilityPayments ? (
-                                                <p className="mt-1 text-sm text-emerald-700">Aprovação da Meta registrada para este número.</p>
-                                            ) : enablingPaymentsSellerId === seller.id ? (
-                                                <div className="mt-3 space-y-3">
-                                                    <p className="text-xs leading-5 text-muted-foreground">Registre quando a Meta/parceiro aprovou Orders/Payments para a WABA deste número. Fica como histórico de quem confirmou.</p>
-                                                    <label className="block text-xs font-semibold text-foreground">
-                                                        Registro da aprovação
-                                                        <input
-                                                            className="mt-1 w-full rounded-control border border-border bg-surface px-3 py-2 text-sm font-normal"
-                                                            value={paymentCapabilityReason}
-                                                            maxLength={240}
-                                                            onChange={(event) => setPaymentCapabilityReason(event.target.value)}
-                                                            placeholder="Ex.: Meta aprovou Orders/Payments em 10/09/2026"
-                                                        />
-                                                    </label>
-                                                    <div className="flex flex-wrap gap-2">
-                                                        <Button type="button" size="sm" loading={savingPaymentsCapability} onClick={() => void confirmPaymentsCapability(seller.id)}>Registrar aprovação</Button>
-                                                        <Button type="button" size="sm" variant="outline" disabled={savingPaymentsCapability} onClick={() => { setEnablingPaymentsSellerId(null); setPaymentCapabilityReason(""); }}>Cancelar</Button>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                                                    <p className="text-xs leading-5 text-muted-foreground">Nenhuma aprovação da Meta registrada ainda para este número.</p>
-                                                    <Button type="button" size="sm" variant="outline" onClick={() => { setEnablingPaymentsSellerId(seller.id); setPaymentCapabilityReason(""); }}>Registrar aprovação da Meta</Button>
                                                 </div>
                                             )}
                                         </div>

@@ -345,20 +345,3 @@ export function associateWhatsAppSenderProfile(
     ) as Promise<TenantWhatsAppConnectionStatus>;
 }
 
-// Ação administrativa deliberada: só habilita, nunca é disparada pelo
-// onboarding ou por uma reassociação de telefone.
-export function enableWhatsAppPaymentsCapability(
-    sellerId: string,
-    reason: string,
-): Promise<TenantWhatsAppConnectionStatus> {
-    return adminJson(
-        `/api/admin/whatsapp/sellers/${encodeURIComponent(sellerId)}/payments-capability`,
-        unknown,
-        {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ reason }),
-        },
-        "Não foi possível habilitar pagamentos nativos no WhatsApp.",
-    ) as Promise<TenantWhatsAppConnectionStatus>;
-}
