@@ -1430,11 +1430,12 @@ Meta: pedido simplificado não aceita header de imagem, ver
 [Orders API](https://developers.facebook.com/documentation/business-messaging/whatsapp/payments/payments-br/orders#full-api-reference)).
 **Erros de validação local (400) sempre vêm com `error: "invalid_order_payload"`
 (ou um dos códigos mais específicos listados abaixo), e o motivo exato — qual
-campo e por quê — só está em `message`, nunca no `error`.** Um payload com
-`payment.pix_dynamic_code.merchant_name` de 30 caracteres, por exemplo, falha
-com `error: "invalid_order_payload"` e
-`message: "payment.pix_dynamic_code.merchant_name e obrigatorio e deve ter no
-maximo 25 caracteres."` — logue sempre `message` junto com `error`, senão a
+campo e por quê — só está em `message`, nunca no `error`.** `message` distingue
+campo ausente de campo grande demais: um `body` não enviado (ou vazio) falha
+com `message: "body e obrigatorio e nao foi enviado (ou veio vazio)."`; um
+`payment.pix_dynamic_code.merchant_name` de 30 caracteres falha com
+`message: "payment.pix_dynamic_code.merchant_name deve ter no maximo 25
+caracteres (recebido 30)."` — logue sempre `message` junto com `error`, senão a
 causa real fica invisível (ver formato geral de erro no topo do documento).
 Códigos mais específicos que este endpoint pode devolver em vez do genérico:
 `invalid_reference_id` (`reference_id` fora do formato), `invalid_order_items`
@@ -1487,6 +1488,22 @@ Resposta `202` (ou `200` se `idempotency_key` repetida — `duplicate: true`):
 
 Erro `409 reference_conflict` se `reference_id` já pertence a outro pedido
 com `idempotency_key` diferente.
+
+**O `202` acima só confirma que o pedido foi aceito e enfileirado — não que a
+Meta já recebeu/aceitou o envio.** O envio real acontece depois, de forma
+assíncrona, pelo worker da outbox; não existe rota `GET` para consultar o
+pedido, então acompanhe pelo evento `message.failed` (ver seção "Eventos de
+saída" mais abaixo) ou faça polling direto em `bippa_messaging.payment_orders`.
+Se esse envio falhar de
+forma definitiva (ex.: a Meta recusa com `4xx` — como o `131009 - Parameter
+value is not valid`, um erro genérico de validação do lado da Meta que
+acontece mesmo depois da nossa validação local passar), `payment_orders.status`
+e `payment_status` mudam para `failed` (antes disso era um bug conhecido:
+o pedido ficava travado em `pending`/`pending` para sempre, sem sinalizar
+que nunca seria entregue — corrigido em 2026-09-11). O evento `message.failed`
+carrega `reference_id`, `error_code` (código bruto da Meta) e `error_message`
+(texto descritivo) para permitir diagnosticar sem precisar de acesso aos logs
+do worker.
 
 ### `POST /v1/payment-orders/:referenceId/order-status`
 
@@ -1697,16 +1714,16 @@ Resposta `202` (ou `200` se `idempotency_key` repetida):
 
 O worker da outbox entrega eventos ao endpoint HTTP da aplicação cliente:
 
-| Tipo                       | Quando dispara                                    | `data`                                                                                                   |
-| -------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `conversation.inbound`     | Mensagem recebida de um contato                   | `{ conversation_id, message_id, sender_reference }`                                                      |
-| `message.sent`             | Mensagem entregue à Meta com sucesso              | `{ dispatch_id, provider_message_id, sender_reference }`                                                 |
-| `message.delivered`        | Meta confirma entrega ao destinatário             | `{ dispatch_id, provider_message_id, sender_reference }`                                                 |
-| `message.read`             | Destinatário leu a mensagem                       | `{ dispatch_id, provider_message_id, sender_reference }`                                                 |
-| `message.failed`           | Envio falhou definitivamente                      | `{ dispatch_id, sender_reference }`                                                                      |
-| `payment.status_changed`   | Status de pagamento mudou (webhook da Meta)       | `{ reference_id, order_status, payment_status, payment_timestamp, sender_reference }`                    |
-| `payment.method_confirmed` | Comprador aprovou cobrança via One-Click Payments | `{ reference_id, payment_method, credential_id, last_four_digits, payment_timestamp, sender_reference }` |
-| `template.status_changed`  | Meta aprovou/rejeitou/pausou um template          | `{ template_id, name, language, status, rejection_reason }`                                              |
+| Tipo                       | Quando dispara                                    | `data`                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| -------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `conversation.inbound`     | Mensagem recebida de um contato                   | `{ conversation_id, message_id, sender_reference }`                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `message.sent`             | Mensagem entregue à Meta com sucesso              | `{ dispatch_id, provider_message_id, sender_reference }`                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `message.delivered`        | Meta confirma entrega ao destinatário             | `{ dispatch_id, provider_message_id, sender_reference }`                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `message.read`             | Destinatário leu a mensagem                       | `{ dispatch_id, provider_message_id, sender_reference }`                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `message.failed`           | Envio falhou definitivamente                      | `{ dispatch_id, sender_reference, reference_id, error_code, error_message }` — `reference_id` e as demais chaves de pagamento só vêm preenchidas quando o dispatch é `payment_order`/`payment_status` (caso contrário `reference_id` é `null`); `error_code` é o código bruto da Meta (ex.: `"131009"`) e `error_message` é o texto descritivo — ver [Error Codes da Meta](https://developers.facebook.com/documentation/business-messaging/whatsapp/support/error-codes) |
+| `payment.status_changed`   | Status de pagamento mudou (webhook da Meta)       | `{ reference_id, order_status, payment_status, payment_timestamp, sender_reference }`                                                                                                                                                                                                                                                                                                                                                                                     |
+| `payment.method_confirmed` | Comprador aprovou cobrança via One-Click Payments | `{ reference_id, payment_method, credential_id, last_four_digits, payment_timestamp, sender_reference }`                                                                                                                                                                                                                                                                                                                                                                  |
+| `template.status_changed`  | Meta aprovou/rejeitou/pausou um template          | `{ template_id, name, language, status, rejection_reason }`                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 Corpo entregue (`POST` para o `callback_url` cadastrado):
 

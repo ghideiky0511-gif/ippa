@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ValidationError } from "@/services/shared/errors";
 import type { PaymentChargeRow } from "@/models/paymentChargesModel";
-import { assertOrderChargeable, extractInternalChargeId, mapChargeStatusToOrderPaymentUpdate, toOrderPaymentCharge } from "./paymentChargeService";
+import {
+    assertOrderChargeable,
+    extractInternalChargeId,
+    isReusableLivePixCharge,
+    mapChargeStatusToOrderPaymentUpdate,
+    toOrderPaymentCharge,
+} from "./paymentChargeService";
 
 // STRIPE_SECRET_KEY precisa existir antes do primeiro getStripeClient() --
 // mesmo raciocínio de providers/stripe/index.test.ts. toOrderPaymentCharge
@@ -146,4 +152,44 @@ test("toOrderPaymentCharge: provider desconhecido não quebra -- cartão sem NSU
 test("toOrderPaymentCharge: método não-cartão não gera bloco card", () => {
     const charge = toOrderPaymentCharge(fakeChargeRow({ method: "pix", card_last_digits: null, card_brand: null }));
     assert.equal(charge.card, undefined);
+});
+
+function fakePixChargeRow(overrides: Partial<PaymentChargeRow> = {}): PaymentChargeRow {
+    return fakeChargeRow({
+        method: "pix",
+        status: "pending",
+        provider: "mercadopago",
+        amount: "107.70",
+        pix_qr_code: "00020126...",
+        pix_copy_paste: "00020126...copia-e-cola",
+        provider_expires_at: new Date(Date.now() + 10 * 60_000),
+        card_last_digits: null,
+        card_brand: null,
+        ...overrides,
+    });
+}
+
+test("isReusableLivePixCharge: aceita Pix viva, não expirada, com o mesmo valor", () => {
+    assert.equal(isReusableLivePixCharge(fakePixChargeRow(), 107.70), true);
+});
+
+test("isReusableLivePixCharge: rejeita método diferente de pix", () => {
+    assert.equal(isReusableLivePixCharge(fakePixChargeRow({ method: "cartao" }), 107.70), false);
+});
+
+test("isReusableLivePixCharge: rejeita quando falta qr_code ou copy_paste", () => {
+    assert.equal(isReusableLivePixCharge(fakePixChargeRow({ pix_qr_code: null }), 107.70), false);
+    assert.equal(isReusableLivePixCharge(fakePixChargeRow({ pix_copy_paste: null }), 107.70), false);
+});
+
+test("isReusableLivePixCharge: rejeita sem provider_expires_at ou já expirada", () => {
+    assert.equal(isReusableLivePixCharge(fakePixChargeRow({ provider_expires_at: null }), 107.70), false);
+    assert.equal(
+        isReusableLivePixCharge(fakePixChargeRow({ provider_expires_at: new Date(Date.now() - 1000) }), 107.70),
+        false,
+    );
+});
+
+test("isReusableLivePixCharge: rejeita quando o valor do pedido mudou", () => {
+    assert.equal(isReusableLivePixCharge(fakePixChargeRow(), 200), false);
 });

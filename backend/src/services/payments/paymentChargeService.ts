@@ -51,6 +51,23 @@ export function isPaymentIntegrationReadyToCharge(row: PaymentIntegrationRow): b
     return false;
 }
 
+// Uma cobrança Pix "viva" só é candidata a reaproveitamento (ver
+// createOrderCharge abaixo) quando ainda tem QR/copia-e-cola gravados, não
+// expirou no provider e o valor não mudou desde que foi criada -- sem essa
+// última checagem, um pedido editado entre um envio e outro reenviaria um
+// código Pix com o valor errado. Pura/testável, mesmo padrão de
+// assertOrderChargeable abaixo.
+export function isReusableLivePixCharge(row: PaymentChargeRow, amount: number): boolean {
+    return (
+        row.method === "pix" &&
+        Boolean(row.pix_copy_paste) &&
+        Boolean(row.pix_qr_code) &&
+        row.provider_expires_at !== null &&
+        row.provider_expires_at.getTime() > Date.now() &&
+        Number(row.amount) === amount
+    );
+}
+
 export async function createOrderCharge(
     tenant: Tenant,
     actor: ActorContext,
@@ -110,16 +127,49 @@ export async function createOrderCharge(
         createExternalApiCallReporter(tenant, actor, prepared.integrationRow.provider),
     );
 
-    // Regra "uma cobrança viva por pedido": antes de abrir uma tentativa
-    // nova, toda tentativa anterior ainda em aberto (pending/processing/
-    // authorized) precisa ter sido processada (consulta ao provider resolve
-    // pra um estado terminal) ou cancelada -- nunca duas tentativas vivas ao
-    // mesmo tempo. Lança ValidationError se alguma não puder ser resolvida
-    // nem cancelada, bloqueando a nova tentativa (mais seguro que permitir
-    // duas cobranças correndo pro mesmo pedido).
+    // Pix é a única forma reaproveitável: o botão "Enviar pedido +
+    // pagamento" do WhatsApp e o link de pagamento reaberto pela cliente
+    // podem chamar createOrderCharge de novo pro MESMO pedido antes da
+    // cobrança anterior ser paga. Sem reaproveitar, cada chamada cancela a
+    // Pix viva e abre outra no provider -- no Mercado Pago isso cria uma
+    // "venda" (Orders API) e dispara um e-mail novo a cada clique/reload,
+    // mesmo que nada tenha mudado no pedido (confirmado em produção).
+    // Cartão nunca reaproveita: cada tentativa carrega um cardToken novo do
+    // Brick/Elements, que só serve pra uma cobrança.
+    let reusablePixResult: ChargeResult | null = null;
     for (const liveCharge of prepared.liveCharges) {
+        if (input.method === "pix" && !reusablePixResult && isReusableLivePixCharge(liveCharge, prepared.amount)) {
+            const resolution = await resolveLiveChargeStatus(tenant, actor, provider, liveCharge);
+            // racedTerminal: um webhook/reconciliação concorrente já marcou
+            // esta linha num estado terminal entre a leitura acima e agora --
+            // resolution.status (da consulta ao provider) pode estar
+            // desatualizado nesse caso, então nunca reaproveita.
+            if (!resolution.racedTerminal && (resolution.status === "pending" || resolution.status === "processing")) {
+                reusablePixResult = {
+                    method: "pix",
+                    externalId: liveCharge.external_id ?? "",
+                    qrCode: liveCharge.pix_qr_code!,
+                    copyPaste: liveCharge.pix_copy_paste!,
+                    expiresAt: liveCharge.provider_expires_at!,
+                    raw: liveCharge.raw_create_response,
+                };
+            }
+            // resolveLiveChargeStatus já persistiu o status (reaproveitada
+            // continua 'pending'; senão já virou terminal) -- nunca cancela
+            // aqui, diferente do caminho abaixo.
+            continue;
+        }
+        // Regra "uma cobrança viva por pedido": antes de abrir uma tentativa
+        // nova, toda tentativa anterior ainda em aberto (pending/processing/
+        // authorized) precisa ter sido processada (consulta ao provider
+        // resolve pra um estado terminal) ou cancelada -- nunca duas
+        // tentativas vivas ao mesmo tempo. Lança ValidationError se alguma
+        // não puder ser resolvida nem cancelada, bloqueando a nova tentativa
+        // (mais seguro que permitir duas cobranças correndo pro mesmo
+        // pedido).
         await resolveOrCancelLiveCharge(tenant, actor, provider, liveCharge);
     }
+    if (reusablePixResult) return reusablePixResult;
 
     const chargeId = await withTenantTransaction(tenant, actor, async (client) => {
         // Grava a cobrança ANTES de chamar o provider (id gerado aqui) -- se
@@ -257,29 +307,30 @@ export async function createOrderCharge(
     return result;
 }
 
-// Resolve (consulta o estado real no provider) ou cancela uma tentativa de
-// cobrança que ainda está em aberto para o pedido -- chamada uma vez por
-// linha "viva" encontrada, ANTES de createOrderCharge abrir uma tentativa
-// nova (ver comentário acima). Nunca chama a API dentro de uma transação de
-// tenant (mesmo padrão do resto do arquivo: transação só ao redor do
-// trabalho de banco, chamada de rede sempre fora).
-async function resolveOrCancelLiveCharge(
+// Consulta o estado real no provider e persiste (idempotente via
+// applyPaymentChargeWebhookEvent) -- não cancela nada, só resolve. Usada
+// tanto por resolveOrCancelLiveCharge (que decide cancelar em seguida)
+// quanto pelo caminho de reaproveitamento de Pix em createOrderCharge (que
+// decide reaproveitar em vez de cancelar). Nunca chama a API dentro de uma
+// transação de tenant (mesmo padrão do resto do arquivo: transação só ao
+// redor do trabalho de banco, chamada de rede sempre fora).
+async function resolveLiveChargeStatus(
     tenant: Tenant,
     actor: ActorContext,
     provider: PaymentProvider,
     row: PaymentChargeRow,
-): Promise<void> {
+): Promise<{ status: PaymentChargeStatus; racedTerminal: boolean }> {
     if (!row.external_id) {
         // Nunca chegou a chamar o provider (ex. processo caiu entre
         // insertPendingPaymentChargeRow e a chamada de criação) -- não há
-        // nada pra reconciliar nem cancelar do lado de lá.
+        // nada pra reconciliar nem reaproveitar do lado de lá.
         await withTenantTransaction(tenant, actor, (client) =>
             applyPaymentChargeStatusById(client, row.id, {
                 status: "cancelled",
                 rawLastWebhook: { cancelled_reason: "superseded_before_provider_call" },
             }),
         );
-        return;
+        return { status: "cancelled", racedTerminal: false };
     }
 
     const event = await provider.fetchChargeStatus(row.external_id);
@@ -287,13 +338,33 @@ async function resolveOrCancelLiveCharge(
         applyPaymentChargeWebhookEvent(client, row.provider, event),
     );
     // resolved === null: a linha já estava num estado terminal (corrida com
-    // um webhook/reconciliação concorrente) -- nada a fazer.
-    if (!resolved) return;
+    // um webhook/reconciliação concorrente) -- event.status pode estar
+    // desatualizado nesse caso, então quem chama nunca deve confiar nele.
+    return { status: event.status, racedTerminal: !resolved };
+}
+
+// Cancela uma tentativa de cobrança que ainda está em aberto para o pedido
+// -- chamada uma vez por linha "viva" encontrada, ANTES de createOrderCharge
+// abrir uma tentativa nova (ver comentário acima), exceto pra uma Pix
+// reaproveitada (essa nunca passa por aqui).
+async function resolveOrCancelLiveCharge(
+    tenant: Tenant,
+    actor: ActorContext,
+    provider: PaymentProvider,
+    row: PaymentChargeRow,
+): Promise<void> {
+    const { status, racedTerminal } = await resolveLiveChargeStatus(tenant, actor, provider, row);
+    if (racedTerminal) return;
     // fetchChargeStatus só devolve pending/processing/paid/failed/cancelled
     // (nunca "authorized" -- ver mapPaymentIntentStatus); paid/failed/
     // cancelled/expired já são terminais, então só pending/processing ainda
-    // contam como "viva" depois da reconciliação.
-    if (event.status !== "pending" && event.status !== "processing") return;
+    // contam como "viva" depois da reconciliação. Sem external_id, o status
+    // já veio "cancelled" de resolveLiveChargeStatus e cai aqui.
+    if (status !== "pending" && status !== "processing") return;
+    // Chegar aqui com status pending/processing implica external_id != null
+    // -- resolveLiveChargeStatus só devolve esse status quando a linha
+    // TINHA external_id (o ramo sem external_id sempre devolve "cancelled").
+    const externalId = row.external_id!;
 
     if (!provider.cancelCharge) {
         throw new ValidationError(
@@ -302,7 +373,7 @@ async function resolveOrCancelLiveCharge(
         );
     }
     try {
-        await provider.cancelCharge(row.external_id);
+        await provider.cancelCharge(externalId);
     } catch (exc) {
         logger.error("payment-charge", "Falha ao cancelar tentativa de cobrança anterior", {
             tenantId: tenant.id,
