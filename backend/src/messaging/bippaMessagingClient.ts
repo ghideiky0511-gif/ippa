@@ -1033,6 +1033,13 @@ export interface DispatchPaymentOrderInput {
     to: string;
     idempotencyKey: string;
     referenceId: string;
+    // Obrigatório na variante interativa (sem `template`, único caminho
+    // implementado aqui): sem `body`, o Messaging recusa com
+    // `invalid_order_payload` / "body e obrigatorio e deve ter no maximo
+    // 1024 caracteres." (confirmado em produção -- ver
+    // whatsappNotificationService.ts::sendPaymentOrderWhatsAppNow).
+    body: string;
+    footer?: string;
     items: PaymentOrderItemInput[];
     taxAmount: number;
     totalAmount: number;
@@ -1077,6 +1084,8 @@ export function dispatchPaymentOrder(
                 recipient: input.to,
                 idempotency_key: input.idempotencyKey,
                 reference_id: input.referenceId,
+                body: input.body,
+                ...(input.footer ? { footer: input.footer } : {}),
                 goods_type: input.goodsType ?? "physical-goods",
                 payment: {
                     methods: [

@@ -554,6 +554,7 @@ test("dispatchPaymentOrder envia payment.methods.pix_dynamic_code e items para P
                 to: "5511999999999",
                 idempotencyKey: "bippa-catalogo:tenant-1:seller:seller-1:order:order-1:payment-order:manual:uuid-1",
                 referenceId: "order-1",
+                body: "Revise e pague seu pedido.",
                 items: [{ retailerId: "item-1", name: "Produto", unitAmount: 5000, quantity: 1 }],
                 taxAmount: 0,
                 totalAmount: 5000,
@@ -568,6 +569,7 @@ test("dispatchPaymentOrder envia payment.methods.pix_dynamic_code e items para P
                 recipient: "5511999999999",
                 idempotency_key: "bippa-catalogo:tenant-1:seller:seller-1:order:order-1:payment-order:manual:uuid-1",
                 reference_id: "order-1",
+                body: "Revise e pague seu pedido.",
                 goods_type: "physical-goods",
                 payment: {
                     methods: [
@@ -611,6 +613,7 @@ test("dispatchPaymentOrder envia shipping_amount e discount_amount quando o pedi
                 to: "5511999999999",
                 idempotencyKey: "bippa-catalogo:tenant-1:seller:seller-1:order:order-1:payment-order:manual:uuid-1",
                 referenceId: "order-1",
+                body: "Revise e pague seu pedido.",
                 items: [{ retailerId: "item-1", name: "Produto", unitAmount: 5000, quantity: 1 }],
                 taxAmount: 0,
                 totalAmount: 5500,

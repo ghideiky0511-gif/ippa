@@ -295,9 +295,11 @@ export async function sendOrderConfirmedWhatsAppNow(
 // sendPaymentLinkWhatsAppNow, não passa por um template do catálogo: monta
 // direto o order_details pagável DENTRO do WhatsApp (ver
 // bippaMessagingClient.ts::dispatchPaymentOrder). Toda a validação de
-// pré-requisitos (capability_payments, CPF da cliente, chave Pix
-// configurada) já aconteceu no chamador (orderWhatsAppService.ts) -- esta
-// função só envia.
+// pré-requisitos (CPF da cliente, chave Pix configurada) já aconteceu no
+// chamador (orderWhatsAppService.ts) -- esta função só envia. `body` é
+// obrigatório nesta rota (fora da variante de template, não usada aqui) --
+// confirmado em produção: sem ele o Messaging recusa com
+// `invalid_order_payload` / "body e obrigatorio...".
 export async function sendPaymentOrderWhatsAppNow(
     tenant: Tenant,
     recipient: WhatsAppOrderRecipient,
@@ -317,6 +319,8 @@ export async function sendPaymentOrderWhatsAppNow(
             to: toWaId(recipient.whatsappPhone),
             idempotencyKey: `bippa-catalogo:${tenant.id}:seller:${recipient.sellerId}:order:${order.id}:payment-order:manual:${randomUUID()}`,
             referenceId,
+            body: `Olá, ${recipient.clientName}! Revise os detalhes do seu pedido e finalize o pagamento com Pix diretamente por aqui.`,
+            footer: "Pagamento seguro",
             items,
             totalAmount,
             taxAmount,
