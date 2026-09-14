@@ -1509,8 +1509,7 @@ genérico: `error_code: "131009"` no evento `message.failed`/`payload.error`
 do worker (_"One or more parameter values are invalid"_, conforme a doc
 oficial de [Error
 Codes](https://developers.facebook.com/documentation/business-messaging/whatsapp/support/error-codes)
-da Meta — não aponta qual campo).** A causa mais provável, com respaldo direto
-na doc da Meta:
+da Meta — não aponta qual campo).** Duas causas identificadas até agora:
 
 **`payment.methods[].type: "offsite_card_pay"` numa WABA sem One-Click
 Payments habilitado** — a própria Meta marca essa funcionalidade como "not
@@ -1520,6 +1519,41 @@ que confirme se uma WABA específica tem essa capability antes do envio (o
 mesmo tipo de lacuna que existia com `capability_payments`, só que sem
 equivalente manual — ver `PATCH
 /v1/admin/sender-profiles/:senderProfileId/payments-capability`).
+
+**Caso diagnosticado em 2026-09-11 e revisado em 2026-09-14.** Um dispatch
+anterior falhou com `131009` e `error_data.details: "Unsupported Interactive
+Message type"`. Naquela ocasião, o API Explorer da conta não listava
+`order_details`/`order_status` no enum de `interactive.type`. Isso é um sinal
+compatível com uma WABA sem a capability de Payments, mas **não é diagnóstico
+suficiente por si só**: a Meta pode bloquear o mesmo envio em uma validação
+anterior, específica do número remetente.
+
+**Contraprova realizada em 2026-09-14:** o mesmo formato documentado pela
+[Orders API](https://developers.facebook.com/documentation/business-messaging/whatsapp/payments/payments-br/orders#full-api-reference), enviado diretamente a partir de outro `phone_number_id` real, foi aceito pela Graph API. Portanto,
+`interactive.type: "order_details"` e o payload montado em `orders.js` são
+válidos; não trate o `131009` histórico como uma limitação global do app ou
+do Bippa Messaging.
+
+**Ordem de diagnóstico antes de alterar o payload:**
+
+1. Confirme que o `phone_number_id` remetente pode enviar qualquer mensagem.
+   O erro `131037`/`"WhatsApp provided number needs display name approval
+before message can be sent"` significa que o número ainda não teve seu
+   _display name_ aprovado no WhatsApp Manager. Ele bloqueia o envio antes da
+   validação de `order_details`, Pix, link ou totais.
+2. Depois da aprovação, envie uma mensagem `text` simples e, em seguida, o
+   `order_details` com `reference_id` novo e uma URL HTTPS real para
+   `payment_link.uri`.
+3. Somente se o número já puder enviar mensagens comuns e o retorno ainda for
+   `131009`/`Unsupported Interactive Message type`, investigue a habilitação
+   de Payments daquela WABA com a Meta/Solution Partner. A habilitação é por
+   WABA/número; não existe flag no Bippa Messaging ou chamada Graph API para
+   concedê-la.
+
+Ao testar diretamente na Graph API, envie o corpo como JSON (`Content-Type:
+application/json`), com `interactive` como objeto, não como uma string ou
+parâmetro de query. Isso evita mascarar um problema de serialização como erro
+de Payments.
 
 > Hipótese descartada por falta de evidência: cogitamos que `catalog_id`
 > e/ou `items[].retailer_id` sem corresponder a um catálogo Meta Commerce
@@ -1531,7 +1565,7 @@ equivalente manual — ver `PATCH
 > concreta (um `131009` que sumiu ao trocar `retailer_id`, por exemplo),
 > voltamos a documentar.
 
-Essa causa não fica visível no `error_code` bruto — só no texto de
+Essas causas não ficam visíveis no `error_code` bruto — só no texto de
 `error_message` do evento `message.failed` (ver seção "Eventos de saída" mais
 abaixo), então sempre logue `error_message` (não só `error_code`) ao
 investigar um `131009`.
@@ -1550,6 +1584,51 @@ investigar um `131009`.
 | `items[].sale_unit_amount` (ou `sale_amount`)                        | inteiro em centavos                                  | Preço promocional do item; precisa ser menor que `unit_amount`. Quando presente, é o valor usado no cálculo do `subtotal` (não o `unit_amount`).                                                                                                                                                                                                |
 | `goods_type` (ou `type`)                                             | `"physical-goods"` \| `"digital-goods"`              | Default `"physical-goods"` quando omitido.                                                                                                                                                                                                                                                                                                      |
 | `template.name` / `template.language`                                | string / string (locale, ex. `"pt_BR"`)              | Quando presente, muda o `order_details` de mensagem interativa (`body`/`footer`/`header` acima são ignorados) para o botão `ORDER_DETAILS` de um [Order Details Template](https://developers.facebook.com/documentation/business-messaging/whatsapp/payments/payments-br/orderdetailstemplate) já `ACTIVE` na WABA — ver seção dedicada abaixo. |
+
+#### Imagem do pedido
+
+O pedido detalhado pode ter **uma imagem de cabeçalho** (thumbnail do cartão
+do pedido no WhatsApp). Informe `header` ou o alias `header_image_url` com
+uma URL HTTPS pública:
+
+```json
+{
+    "header": "https://cdn.minha-loja.example.com/produtos/top-faixa.jpg",
+    "items": [
+        {
+            "retailer_id": "8-2505",
+            "name": "TOP FAIXA",
+            "unit_amount": 3590,
+            "quantity": 3
+        }
+    ]
+}
+```
+
+O Messaging converte o campo para o objeto exigido pela Meta:
+
+```json
+{
+    "header": {
+        "type": "image",
+        "image": {
+            "link": "https://cdn.minha-loja.example.com/produtos/top-faixa.jpg"
+        }
+    }
+}
+```
+
+`header` também aceita a forma explícita `{ "image": { "link": "https://..." } }`.
+A URL tem os mesmos requisitos de `payment_link.uri`: HTTPS, até 2048
+caracteres e sem usuário/senha embutidos. Ela precisa estar publicamente
+acessível aos servidores da Meta.
+
+Não existe `items[].image`: a API exibe somente a imagem única do pedido.
+`header` é permitido exclusivamente com `items`; pedido simplificado (sem
+`items`) recebe `400 invalid_order_payload`. Se `header` não for enviado, a
+Meta pode usar como thumbnail a imagem do primeiro produto do catálogo
+associado ao pedido, quando disponível; não dependa disso se a imagem for
+essencial para a apresentação.
 
 Resposta `202` (ou `200` se `idempotency_key` repetida — `duplicate: true`):
 
@@ -1582,7 +1661,11 @@ o pedido ficava travado em `pending`/`pending` para sempre, sem sinalizar
 que nunca seria entregue — corrigido em 2026-09-11). O evento `message.failed`
 carrega `reference_id`, `error_code` (código bruto da Meta) e `error_message`
 (texto descritivo) para permitir diagnosticar sem precisar de acesso aos logs
-do worker.
+do worker. Quando a Graph API devolve `error_data.details` ou
+`error_user_msg` — mais específico que o `message` genérico do erro, e nem
+sempre presente — `error_message` vem no formato `"<message> — details:
+<detail>"`; o log `event_failed` do worker também inclui isso, mais
+`subcode`/`trace_id` quando a Meta os retorna.
 
 ### `POST /v1/payment-orders/:referenceId/order-status`
 

@@ -6,7 +6,10 @@ import { errorMeta, logger } from "@/lib/logger";
 import { getApiKey } from "@/messaging/bippaAuthClient";
 import * as bippaMessagingClient from "@/messaging/bippaMessagingClient";
 import { toWaId } from "@/messaging/payloadBuilders";
-import { findWhatsAppConnectionBySeller, type WhatsAppConnectionRow } from "@/models/whatsappConnectionsModel";
+import {
+    findWhatsAppConnectionBySeller,
+    type WhatsAppConnectionRow,
+} from "@/models/whatsappConnectionsModel";
 import type { ClientRow } from "@/models/clientsModel";
 import { orderAccessLink } from "@/services/notifications/emailNotificationService";
 import {
@@ -15,7 +18,11 @@ import {
     revokePreviousOrderAccessTokens,
 } from "@/services/orders/orderAccessService";
 import { ValidationError } from "@/services/shared/errors";
-import { mapBippaMessagingError, metaGraphErrorMeta, rawBippaMessagingPayload } from "./whatsappServiceErrors";
+import {
+    mapBippaMessagingError,
+    metaGraphErrorMeta,
+    rawBippaMessagingPayload,
+} from "./whatsappServiceErrors";
 import {
     standardWhatsAppTemplate,
     WHATSAPP_TEMPLATE_KEYS,
@@ -55,9 +62,15 @@ export interface WhatsAppOrderRecipient {
 // usado pelos três call-sites (orderService, paymentService,
 // paymentLinkService) sobre o ClientRow que cada um já busca dentro da
 // própria transação de checkout.
-export function toWhatsAppOrderRecipient(client: ClientRow | null): WhatsAppOrderRecipient | null {
+export function toWhatsAppOrderRecipient(
+    client: ClientRow | null,
+): WhatsAppOrderRecipient | null {
     if (!client?.whatsapp_phone || !client.last_seller_id) return null;
-    return { whatsappPhone: client.whatsapp_phone, sellerId: client.last_seller_id, clientName: client.name };
+    return {
+        whatsappPhone: client.whatsapp_phone,
+        sellerId: client.last_seller_id,
+        clientName: client.name,
+    };
 }
 
 // O gate "só conversa se a integração estiver ativa": função pura,
@@ -65,17 +78,27 @@ export function toWhatsAppOrderRecipient(client: ClientRow | null): WhatsAppOrde
 // toWhatsAppOrderRecipient acima. Uma vendedora sem conexão própria
 // conectada (linha ausente, sem phone_id, ou status != 'connected')
 // simplesmente não tem número de WhatsApp para mandar a mensagem.
-export function hasActiveWhatsAppConnection(row: WhatsAppConnectionRow | null): row is WhatsAppConnectionRow {
+export function hasActiveWhatsAppConnection(
+    row: WhatsAppConnectionRow | null,
+): row is WhatsAppConnectionRow {
     return Boolean(row?.phone_id) && row?.status === "connected";
 }
 
 // Resolve pela VENDEDORA (recipient.sellerId), nunca por um número genérico
 // do tenant -- cada vendedora tem sua própria conexão.
-async function resolveActiveIntegration(tenant: Tenant, sellerId: string): Promise<WhatsAppConnectionRow | null> {
-    return withTenantTransaction(tenant, {}, (client) => findWhatsAppConnectionBySeller(client, sellerId));
+async function resolveActiveIntegration(
+    tenant: Tenant,
+    sellerId: string,
+): Promise<WhatsAppConnectionRow | null> {
+    return withTenantTransaction(tenant, {}, (client) =>
+        findWhatsAppConnectionBySeller(client, sellerId),
+    );
 }
 
-export async function assertWhatsAppConnectionAvailable(tenant: Tenant, sellerId: string): Promise<void> {
+export async function assertWhatsAppConnectionAvailable(
+    tenant: Tenant,
+    sellerId: string,
+): Promise<void> {
     const row = await resolveActiveIntegration(tenant, sellerId);
     if (!hasActiveWhatsAppConnection(row)) {
         throw new ValidationError(
@@ -97,7 +120,10 @@ function pathOnly(url: string): string {
 }
 
 interface ManualWhatsAppSendLogContext {
-    scope: "manual-order-whatsapp" | "manual-payment-order-whatsapp" | "manual-payment-link-whatsapp";
+    scope:
+        | "manual-order-whatsapp"
+        | "manual-payment-order-whatsapp"
+        | "manual-payment-link-whatsapp";
     kind: "order_template" | "order_details" | "payment_link_template";
     orderId: string;
 }
@@ -109,7 +135,10 @@ interface ManualWhatsAppSendLogContext {
 async function sendRequired(
     tenant: Tenant,
     recipient: WhatsAppOrderRecipient,
-    send: (row: WhatsAppConnectionRow, apiKey: string) => Promise<{ id: string }>,
+    send: (
+        row: WhatsAppConnectionRow,
+        apiKey: string,
+    ) => Promise<{ id: string }>,
     logContext: ManualWhatsAppSendLogContext,
 ): Promise<{ id: string }> {
     const logMeta = {
@@ -118,11 +147,19 @@ async function sendRequired(
         orderId: logContext.orderId,
         kind: logContext.kind,
     };
-    logger.info(logContext.scope, "Tentativa manual de envio pelo WhatsApp", logMeta);
+    logger.info(
+        logContext.scope,
+        "Tentativa manual de envio pelo WhatsApp",
+        logMeta,
+    );
     try {
         const row = await resolveActiveIntegration(tenant, recipient.sellerId);
         if (!hasActiveWhatsAppConnection(row)) {
-            logger.warn(logContext.scope, "Envio manual não realizado: WhatsApp da vendedora indisponível", logMeta);
+            logger.warn(
+                logContext.scope,
+                "Envio manual não realizado: WhatsApp da vendedora indisponível",
+                logMeta,
+            );
             throw new ValidationError(
                 "WHATSAPP_NOT_CONNECTED",
                 "A vendedora deste pedido ainda não tem um WhatsApp conectado.",
@@ -158,17 +195,28 @@ async function deliver(
     tenant: Tenant,
     recipient: WhatsAppOrderRecipient,
     logScope: string,
-    send: (row: WhatsAppConnectionRow, apiKey: string) => Promise<{ id: string }>,
+    send: (
+        row: WhatsAppConnectionRow,
+        apiKey: string,
+    ) => Promise<{ id: string }>,
 ): Promise<void> {
     const logMeta = {
         tenantId: tenant.id,
         sellerId: recipient.sellerId,
     };
-    logger.info(logScope, "Tentativa automática de envio pelo WhatsApp", logMeta);
+    logger.info(
+        logScope,
+        "Tentativa automática de envio pelo WhatsApp",
+        logMeta,
+    );
     try {
         const row = await resolveActiveIntegration(tenant, recipient.sellerId);
         if (!hasActiveWhatsAppConnection(row)) {
-            logger.warn(logScope, "Envio automático não realizado: WhatsApp da vendedora indisponível", logMeta);
+            logger.warn(
+                logScope,
+                "Envio automático não realizado: WhatsApp da vendedora indisponível",
+                logMeta,
+            );
             return; // vendedora sem WhatsApp conectado -- e-mail/push já cobrem
         }
         const result = await send(row, getApiKey());
@@ -192,32 +240,50 @@ export function sendOrderConfirmedWhatsApp(
     order: { id: string; orderNumber: number; total: number },
 ): void {
     if (!recipient) return;
-    const definition = standardWhatsAppTemplate(WHATSAPP_TEMPLATE_KEYS.orderConfirmed);
-    void deliver(tenant, recipient, "order-confirmed-whatsapp", async (row, apiKey) => {
-        const access = await createOrderAccessToken(tenant, order.id);
-        const result = await bippaMessagingClient.dispatchTemplateWithUrlButton(apiKey, {
-            sourceReference: tenant.id,
-            sellerReference: row.external_reference,
-            to: toWaId(recipient.whatsappPhone),
-            // Determinístico: este disparo automático é sempre o MESMO
-            // evento de negócio (pedido confirmado) -- uma repetição
-            // acidental (ex.: reentrância do checkout) deve deduplicar no
-            // bippa-messaging, não mandar a mensagem de novo.
-            idempotencyKey: `bippa-catalogo:${tenant.id}:seller:${recipient.sellerId}:order:${order.id}:confirmed`,
-            templateName: definition.name,
-            languageCode: definition.languageCode,
-            bodyParams: [recipient.clientName, String(order.orderNumber), formatBRL(order.total)],
-            buttonParam: pathOnly(
-                orderAccessLink(
+    const definition = standardWhatsAppTemplate(
+        WHATSAPP_TEMPLATE_KEYS.orderConfirmed,
+    );
+    void deliver(
+        tenant,
+        recipient,
+        "order-confirmed-whatsapp",
+        async (row, apiKey) => {
+            const access = await createOrderAccessToken(tenant, order.id);
+            const result =
+                await bippaMessagingClient.dispatchTemplateWithUrlButton(
+                    apiKey,
+                    {
+                        sourceReference: tenant.id,
+                        sellerReference: row.external_reference,
+                        to: toWaId(recipient.whatsappPhone),
+                        // Determinístico: este disparo automático é sempre o MESMO
+                        // evento de negócio (pedido confirmado) -- uma repetição
+                        // acidental (ex.: reentrância do checkout) deve deduplicar no
+                        // bippa-messaging, não mandar a mensagem de novo.
+                        idempotencyKey: `bippa-catalogo:${tenant.id}:seller:${recipient.sellerId}:order:${order.id}:confirmed`,
+                        templateName: definition.name,
+                        languageCode: definition.languageCode,
+                        bodyParams: [
+                            recipient.clientName,
+                            String(order.orderNumber),
+                            formatBRL(order.total),
+                        ],
+                        buttonParam: pathOnly(
+                            orderAccessLink(tenant, access.token),
+                        ),
+                    },
+                );
+            if (result.duplicate)
+                await discardOrderAccessToken(tenant, access.token);
+            else
+                await revokePreviousOrderAccessTokens(
                     tenant,
+                    order.id,
                     access.token,
-                ),
-            ),
-        });
-        if (result.duplicate) await discardOrderAccessToken(tenant, access.token);
-        else await revokePreviousOrderAccessTokens(tenant, order.id, access.token);
-        return result;
-    });
+                );
+            return result;
+        },
+    );
 }
 
 export function sendPaymentLinkWhatsApp(
@@ -227,27 +293,49 @@ export function sendPaymentLinkWhatsApp(
     referenceId: string,
 ): void {
     if (!recipient) return;
-    const definition = standardWhatsAppTemplate(WHATSAPP_TEMPLATE_KEYS.paymentLink);
-    void deliver(tenant, recipient, "payment-link-whatsapp", async (row, apiKey) => {
-        const result = await bippaMessagingClient.dispatchTemplateWithUrlButton(apiKey, {
-            sourceReference: tenant.id,
-            sellerReference: row.external_reference,
-            to: toWaId(recipient.whatsappPhone),
-            idempotencyKey: paymentLinkIdempotencyKey(tenant.id, recipient.sellerId, referenceId),
-            templateName: definition.name,
-            languageCode: definition.languageCode,
-            bodyParams: [recipient.clientName],
-            buttonParam: pathOnly(link),
-        });
-        return result;
-    });
+    const definition = standardWhatsAppTemplate(
+        WHATSAPP_TEMPLATE_KEYS.paymentLink,
+    );
+    void deliver(
+        tenant,
+        recipient,
+        "payment-link-whatsapp",
+        async (row, apiKey) => {
+            const result =
+                await bippaMessagingClient.dispatchTemplateWithUrlButton(
+                    apiKey,
+                    {
+                        sourceReference: tenant.id,
+                        sellerReference: row.external_reference,
+                        to: toWaId(recipient.whatsappPhone),
+                        idempotencyKey: paymentLinkIdempotencyKey(
+                            tenant.id,
+                            recipient.sellerId,
+                            referenceId,
+                        ),
+                        templateName: definition.name,
+                        languageCode: definition.languageCode,
+                        bodyParams: [recipient.clientName],
+                        buttonParam: pathOnly(link),
+                    },
+                );
+            return result;
+        },
+    );
 }
 
 // `referenceId` é o token de pagamento (já único por link gerado) -- vira a
 // idempotency key junto com tenant/vendedora, como a doc do bippa-messaging
 // pede ("deve incluir tenant, vendedor, entidade de negócio e evento").
-function paymentLinkIdempotencyKey(tenantId: string, sellerId: string, referenceId: string): string {
-    const digest = createHash("sha256").update(referenceId).digest("hex").slice(0, 16);
+function paymentLinkIdempotencyKey(
+    tenantId: string,
+    sellerId: string,
+    referenceId: string,
+): string {
+    const digest = createHash("sha256")
+        .update(referenceId)
+        .digest("hex")
+        .slice(0, 16);
     return `bippa-catalogo:${tenantId}:seller:${sellerId}:payment-link:${digest}:sent`;
 }
 
@@ -258,36 +346,54 @@ export async function sendOrderConfirmedWhatsAppNow(
     recipient: WhatsAppOrderRecipient,
     order: { id: string; orderNumber: number; total: number },
 ): Promise<{ id: string }> {
-    const definition = standardWhatsAppTemplate(WHATSAPP_TEMPLATE_KEYS.orderConfirmed);
-    const result = await sendRequired(tenant, recipient, async (row, apiKey) => {
-        const access = await createOrderAccessToken(tenant, order.id);
-        const dispatch = await bippaMessagingClient.dispatchTemplateWithUrlButton(apiKey, {
-            sourceReference: tenant.id,
-            sellerReference: row.external_reference,
-            to: toWaId(recipient.whatsappPhone),
-            // Ação manual (clique explícito na UI): cada clique deve enviar
-            // de novo, nunca ser deduplicado contra um envio anterior do
-            // mesmo pedido -- por isso um sufixo aleatório, ao contrário do
-            // disparo automático acima.
-            idempotencyKey: `bippa-catalogo:${tenant.id}:seller:${recipient.sellerId}:order:${order.id}:manual:${randomUUID()}`,
-            templateName: definition.name,
-            languageCode: definition.languageCode,
-            bodyParams: [recipient.clientName, String(order.orderNumber), formatBRL(order.total)],
-            buttonParam: pathOnly(
-                orderAccessLink(
+    const definition = standardWhatsAppTemplate(
+        WHATSAPP_TEMPLATE_KEYS.orderConfirmed,
+    );
+    const result = await sendRequired(
+        tenant,
+        recipient,
+        async (row, apiKey) => {
+            const access = await createOrderAccessToken(tenant, order.id);
+            const dispatch =
+                await bippaMessagingClient.dispatchTemplateWithUrlButton(
+                    apiKey,
+                    {
+                        sourceReference: tenant.id,
+                        sellerReference: row.external_reference,
+                        to: toWaId(recipient.whatsappPhone),
+                        // Ação manual (clique explícito na UI): cada clique deve enviar
+                        // de novo, nunca ser deduplicado contra um envio anterior do
+                        // mesmo pedido -- por isso um sufixo aleatório, ao contrário do
+                        // disparo automático acima.
+                        idempotencyKey: `bippa-catalogo:${tenant.id}:seller:${recipient.sellerId}:order:${order.id}:manual:${randomUUID()}`,
+                        templateName: definition.name,
+                        languageCode: definition.languageCode,
+                        bodyParams: [
+                            recipient.clientName,
+                            String(order.orderNumber),
+                            formatBRL(order.total),
+                        ],
+                        buttonParam: pathOnly(
+                            orderAccessLink(tenant, access.token),
+                        ),
+                    },
+                );
+            if (dispatch.duplicate)
+                await discardOrderAccessToken(tenant, access.token);
+            else
+                await revokePreviousOrderAccessTokens(
                     tenant,
+                    order.id,
                     access.token,
-                ),
-            ),
-        });
-        if (dispatch.duplicate) await discardOrderAccessToken(tenant, access.token);
-        else await revokePreviousOrderAccessTokens(tenant, order.id, access.token);
-        return dispatch;
-    }, {
-        scope: "manual-order-whatsapp",
-        kind: "order_template",
-        orderId: order.id,
-    });
+                );
+            return dispatch;
+        },
+        {
+            scope: "manual-order-whatsapp",
+            kind: "order_template",
+            orderId: order.id,
+        },
+    );
     return result;
 }
 
@@ -300,40 +406,58 @@ export async function sendOrderConfirmedWhatsAppNow(
 // obrigatório nesta rota (fora da variante de template, não usada aqui) --
 // confirmado em produção: sem ele o Messaging recusa com
 // `invalid_order_payload` / "body e obrigatorio...".
+//
+// `header` é a imagem única do cartão de pagamento (thumbnail do pedido
+// inteiro) -- a Meta/Messaging não aceita imagem por item (não existe
+// items[].image), só esse único campo de nível pedido. Já vem pronta e
+// validada (HTTPS absoluta) de orderWhatsAppService.ts::selectOrderHeaderImageUrl;
+// omitida quando o pedido não tem uma imagem válida.
 export async function sendPaymentOrderWhatsAppNow(
     tenant: Tenant,
     recipient: WhatsAppOrderRecipient,
     order: { id: string },
     referenceId: string,
-    items: Array<{ retailerId: string; name: string; unitAmount: number; quantity: number }>,
+    items: Array<{
+        retailerId: string;
+        name: string;
+        unitAmount: number;
+        quantity: number;
+    }>,
     totalAmount: number,
     taxAmount: number,
     pix: { code: string; merchantName: string; key: string; keyType: string },
     shipping?: { amount: number; description?: string },
     discount?: { amount: number; description?: string },
+    headerImage?: string,
 ): Promise<{ id: string }> {
-    const result = await sendRequired(tenant, recipient, (row, apiKey) =>
-        bippaMessagingClient.dispatchPaymentOrder(apiKey, {
-            sourceReference: tenant.id,
-            sellerReference: row.external_reference,
-            to: toWaId(recipient.whatsappPhone),
-            idempotencyKey: `bippa-catalogo:${tenant.id}:seller:${recipient.sellerId}:order:${order.id}:payment-order:manual:${randomUUID()}`,
-            referenceId,
-            body: `Olá, ${recipient.clientName}! Revise os detalhes do seu pedido e finalize o pagamento com Pix diretamente por aqui.`,
-            footer: "Pagamento seguro",
-            items,
-            totalAmount,
-            taxAmount,
-            shippingAmount: shipping?.amount,
-            shippingDescription: shipping?.description,
-            discountAmount: discount?.amount,
-            discountDescription: discount?.description,
-            pix,
-        }), {
-        scope: "manual-payment-order-whatsapp",
-        kind: "order_details",
-        orderId: order.id,
-    });
+    const result = await sendRequired(
+        tenant,
+        recipient,
+        (row, apiKey) =>
+            bippaMessagingClient.dispatchPaymentOrder(apiKey, {
+                sourceReference: tenant.id,
+                sellerReference: row.external_reference,
+                to: toWaId(recipient.whatsappPhone),
+                idempotencyKey: `bippa-catalogo:${tenant.id}:seller:${recipient.sellerId}:order:${order.id}:payment-order:manual:${randomUUID()}`,
+                referenceId,
+                body: `Olá, ${recipient.clientName}! Revise os detalhes do seu pedido e finalize o pagamento com Pix diretamente por aqui.`,
+                footer: "Pagamento seguro",
+                header: headerImage,
+                items,
+                totalAmount,
+                taxAmount,
+                shippingAmount: shipping?.amount,
+                shippingDescription: shipping?.description,
+                discountAmount: discount?.amount,
+                discountDescription: discount?.description,
+                pix,
+            }),
+        {
+            scope: "manual-payment-order-whatsapp",
+            kind: "order_details",
+            orderId: order.id,
+        },
+    );
     return result;
 }
 
@@ -343,21 +467,28 @@ export async function sendPaymentLinkWhatsAppNow(
     link: string,
     orderId: string,
 ): Promise<{ id: string }> {
-    const definition = standardWhatsAppTemplate(WHATSAPP_TEMPLATE_KEYS.paymentLink);
-    const result = await sendRequired(tenant, recipient, (row, apiKey) =>
-        bippaMessagingClient.dispatchTemplateWithUrlButton(apiKey, {
-            sourceReference: tenant.id,
-            sellerReference: row.external_reference,
-            to: toWaId(recipient.whatsappPhone),
-            idempotencyKey: `bippa-catalogo:${tenant.id}:seller:${recipient.sellerId}:payment-link:manual:${randomUUID()}`,
-            templateName: definition.name,
-            languageCode: definition.languageCode,
-            bodyParams: [recipient.clientName],
-            buttonParam: pathOnly(link),
-        }), {
-        scope: "manual-payment-link-whatsapp",
-        kind: "payment_link_template",
-        orderId,
-    });
+    const definition = standardWhatsAppTemplate(
+        WHATSAPP_TEMPLATE_KEYS.paymentLink,
+    );
+    const result = await sendRequired(
+        tenant,
+        recipient,
+        (row, apiKey) =>
+            bippaMessagingClient.dispatchTemplateWithUrlButton(apiKey, {
+                sourceReference: tenant.id,
+                sellerReference: row.external_reference,
+                to: toWaId(recipient.whatsappPhone),
+                idempotencyKey: `bippa-catalogo:${tenant.id}:seller:${recipient.sellerId}:payment-link:manual:${randomUUID()}`,
+                templateName: definition.name,
+                languageCode: definition.languageCode,
+                bodyParams: [recipient.clientName],
+                buttonParam: pathOnly(link),
+            }),
+        {
+            scope: "manual-payment-link-whatsapp",
+            kind: "payment_link_template",
+            orderId,
+        },
+    );
     return result;
 }

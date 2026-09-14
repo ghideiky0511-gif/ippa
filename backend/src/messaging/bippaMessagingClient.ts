@@ -306,8 +306,7 @@ export function getOnboardingAttempt(
                       platformType: phone.platform_type ?? null,
                       codeVerificationStatus:
                           phone.code_verification_status ?? null,
-                      messagingLimitTier:
-                          phone.messaging_limit_tier ?? null,
+                      messagingLimitTier: phone.messaging_limit_tier ?? null,
                   })),
               }
             : null,
@@ -462,7 +461,10 @@ export function listWhatsAppConnections(
         {
             service: "bippa-messaging",
             apiKey,
-            params: { source_reference: sourceReference, sync: sync ? "true" : undefined },
+            params: {
+                source_reference: sourceReference,
+                sync: sync ? "true" : undefined,
+            },
             operation: "listWhatsAppConnections",
             reporter,
         },
@@ -488,9 +490,7 @@ export function listWhatsAppConnections(
                 connectionStatus: connection.status ?? "unknown",
                 healthCanSendMessage:
                     connection.health_can_send_message ?? null,
-                healthIssues: mapWhatsAppHealthIssues(
-                    connection.health_issues,
-                ),
+                healthIssues: mapWhatsAppHealthIssues(connection.health_issues),
                 healthCheckedAt: connection.health_checked_at ?? null,
                 healthManageUrl: connection.health_manage_url ?? null,
                 healthPaymentSettingsUrl:
@@ -777,7 +777,9 @@ interface WhatsAppTemplateResponse {
     last_synced_at?: string | null;
 }
 
-function toWhatsAppTemplateEntry(template: WhatsAppTemplateResponse): WhatsAppTemplateEntry {
+function toWhatsAppTemplateEntry(
+    template: WhatsAppTemplateResponse,
+): WhatsAppTemplateEntry {
     return {
         id: template.id,
         organizationId: template.organization_id ?? null,
@@ -977,7 +979,12 @@ export function dispatchTemplateWithUrlButton(
                                       {
                                           type: "header",
                                           parameters: [
-                                              { type: "image", image: { link: input.mediaUrl } },
+                                              {
+                                                  type: "image",
+                                                  image: {
+                                                      link: input.mediaUrl,
+                                                  },
+                                              },
                                           ],
                                       },
                                   ]
@@ -993,7 +1000,9 @@ export function dispatchTemplateWithUrlButton(
                                 type: "button",
                                 sub_type: "url",
                                 index: "0",
-                                parameters: [{ type: "text", text: input.buttonParam }],
+                                parameters: [
+                                    { type: "text", text: input.buttonParam },
+                                ],
                             },
                         ],
                     },
@@ -1040,6 +1049,13 @@ export interface DispatchPaymentOrderInput {
     // whatsappNotificationService.ts::sendPaymentOrderWhatsAppNow).
     body: string;
     footer?: string;
+    // Imagem única de cabeçalho do pedido (thumbnail do cartão inteiro no
+    // WhatsApp) -- não existe imagem por item (`items[].image` não é um
+    // campo aceito pela Meta, ver api-reference.md "Imagem do pedido").
+    // Só é enviada de fato se `items` não estiver vazio (ver dispatchPaymentOrder
+    // abaixo): em pedido simplificado (sem items) a Meta rejeita `header`
+    // com 400, mesma regra de `payment_link.uri` (HTTPS, sem usuário/senha).
+    header?: string;
     items: PaymentOrderItemInput[];
     taxAmount: number;
     totalAmount: number;
@@ -1086,6 +1102,9 @@ export function dispatchPaymentOrder(
                 reference_id: input.referenceId,
                 body: input.body,
                 ...(input.footer ? { footer: input.footer } : {}),
+                ...(input.header && input.items.length > 0
+                    ? { header: input.header }
+                    : {}),
                 goods_type: input.goodsType ?? "physical-goods",
                 payment: {
                     methods: [
@@ -1108,10 +1127,18 @@ export function dispatchPaymentOrder(
                 })),
                 tax_amount: input.taxAmount,
                 total_amount: input.totalAmount,
-                ...(input.shippingAmount ? { shipping_amount: input.shippingAmount } : {}),
-                ...(input.shippingDescription ? { shipping_description: input.shippingDescription } : {}),
-                ...(input.discountAmount ? { discount_amount: input.discountAmount } : {}),
-                ...(input.discountDescription ? { discount_description: input.discountDescription } : {}),
+                ...(input.shippingAmount
+                    ? { shipping_amount: input.shippingAmount }
+                    : {}),
+                ...(input.shippingDescription
+                    ? { shipping_description: input.shippingDescription }
+                    : {}),
+                ...(input.discountAmount
+                    ? { discount_amount: input.discountAmount }
+                    : {}),
+                ...(input.discountDescription
+                    ? { discount_description: input.discountDescription }
+                    : {}),
             },
             operation: "dispatchPaymentOrder",
             reporter,

@@ -59,6 +59,36 @@ export function maskWhatsAppPhone(phone: string): string {
     return `+${digits.slice(0, 2)} *****-${digits.slice(-4)}`;
 }
 
+// O Messaging só aceita UMA imagem de cabeçalho por pedido (não existe
+// items[].image, ver api-reference.md "Imagem do pedido") e exige que ela
+// tenha os mesmos requisitos de payment_link.uri: HTTPS absoluta, até 2048
+// chars, sem usuário/senha embutidos. Usa a imagem do primeiro item porque é
+// o mesmo item que aparece primeiro na lista renderizada no cartão do
+// WhatsApp (mesma ordem de `items` montada logo abaixo). A fonte é o
+// snapshot do carrinho no momento da compra (order_items.snapshot.image via
+// CartItemSchema, contracts/shared.ts) -- não busca a imagem atual do
+// produto, mesmo raciocínio de já usar snapshot.name/snapshot.price aqui:
+// se o produto for editado depois, o pedido já enviado não deve mudar.
+// snapshot.image não é validado como URL na origem (CartItemSchema.image é
+// só `z.string().optional()`), então a validação abaixo é necessária, não
+// defensiva-por-excesso: sem ela um valor vazio, relativo ou http:// vaza
+// pro payload e o Messaging rejeita o payment order inteiro com 400.
+export function selectOrderHeaderImageUrl(
+    items: ReadonlyArray<{ image?: string | null }>,
+): string | undefined {
+    const image = items[0]?.image?.trim();
+    if (!image || image.length > 2048) return undefined;
+    let url: URL;
+    try {
+        url = new URL(image);
+    } catch {
+        return undefined; // vazia, relativa ou malformada
+    }
+    if (url.protocol !== "https:") return undefined;
+    if (url.username || url.password) return undefined;
+    return image;
+}
+
 export interface WhatsAppAvailabilityStatus {
     available: boolean;
     reason?: string;
@@ -313,6 +343,7 @@ export async function sendOrderWhatsApp(
                 | undefined;
             let shipping: { amount: number; description?: string } | undefined;
             let discount: { amount: number; description?: string } | undefined;
+            let headerImage: string | undefined;
             if (parsed.data.kind === "payment_order") {
                 const paymentOrderStatus = await assessPaymentOrderAvailability(
                     client,
@@ -347,6 +378,9 @@ export async function sendOrderWhatsApp(
                     unitAmount: Math.round(row.snapshot.price * 100),
                     quantity: row.snapshot.qty,
                 }));
+                headerImage = selectOrderHeaderImageUrl(
+                    itemRows.map((row) => row.snapshot),
+                );
                 // items[].unit_amount de 0 é rejeitado pelo Messaging
                 // (allowZero: false, ver api-reference.md) -- diferente de
                 // tax_amount/shipping_amount, que aceitam 0. Um item promocional
@@ -399,6 +433,7 @@ export async function sendOrderWhatsApp(
                 items,
                 shipping,
                 discount,
+                headerImage,
             };
         },
     );
@@ -465,6 +500,7 @@ export async function sendOrderWhatsApp(
                 { ...prepared.pix!, code: charge.copyPaste },
                 prepared.shipping,
                 prepared.discount,
+                prepared.headerImage,
             );
         } else {
             delivery = await sendOrderConfirmedWhatsAppNow(
