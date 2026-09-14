@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 interface DisabledActionHintProps {
-  reason: string;
+  reason?: string;
   children: React.ReactNode;
   side?: 'top' | 'right' | 'bottom' | 'left';
 }
