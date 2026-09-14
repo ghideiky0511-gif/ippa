@@ -224,11 +224,16 @@ Resposta `200`:
     "onboarding": {
         "id": "uuid",
         "destination_key": "whatsapp-settings",
+        "onboarding_mode": "standard | coexistence",
+        "session_event": "FINISH | FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING",
+        "session_version": 3,
         "status": "pending | processing | completed | failed | expired",
         "result": {
             "destination_key": "...",
+            "onboarding_mode": "standard | coexistence",
             "connection": { "...": "ver publicConnection abaixo" },
-            "phones": ["...publicPhone..."]
+            "phones": ["...publicPhone..."],
+            "coexistence_sync": ["...presente somente em Coexistence..."]
         },
         "error_code": null,
         "error_message": null,
@@ -251,7 +256,16 @@ Sem `X-Bippa-Api-Key`. Autenticado exclusivamente pelo `state` de uso único.
 POST /v1/admin/onboarding/complete
 Content-Type: application/json
 
-{ "state": "token-de-uso-unico", "code": "codigo-do-fb-login", "session_info": { "waba_id": "...", "phone_number_id": "..." } }
+{
+  "state": "token-de-uso-unico",
+  "code": "codigo-do-fb-login",
+  "session_info": {
+    "type": "WA_EMBEDDED_SIGNUP",
+    "event": "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING",
+    "version": 3,
+    "data": { "waba_id": "..." }
+  }
+}
 ```
 
 Resposta `200`:
@@ -260,6 +274,7 @@ Resposta `200`:
 {
     "onboarding": {
         "destination_key": "whatsapp-settings",
+        "onboarding_mode": "coexistence",
         "connection": {
             "id": "...",
             "waba_id": "...",
@@ -267,10 +282,10 @@ Resposta `200`:
             "expires_at": null,
             "owner_business_id": "...",
             "granted_scopes": [
-                "business_management",
                 "whatsapp_business_management",
                 "whatsapp_business_messaging"
             ],
+            "onboarding_mode": "coexistence",
             "health_can_send_message": null,
             "health_issues": [],
             "health_checked_at": null,
@@ -288,12 +303,48 @@ Resposta `200`:
                 "name_status": "...",
                 "platform_type": "...",
                 "code_verification_status": "...",
-                "messaging_limit_tier": "..."
+                "messaging_limit_tier": "...",
+                "is_on_biz_app": true
+            }
+        ],
+        "coexistence_sync": [
+            {
+                "sync_type": "smb_app_state_sync",
+                "status": "requested",
+                "request_id": "id-da-meta",
+                "progress": null,
+                "error_code": null,
+                "error_message": null
+            },
+            {
+                "sync_type": "history",
+                "status": "requested",
+                "request_id": "id-da-meta",
+                "progress": null,
+                "error_code": null,
+                "error_message": null
             }
         ]
     }
 }
 ```
+
+Quando o evento da Meta é
+`FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING`, o modo é `coexistence`: o número
+continua ativo no WhatsApp Business app, precisa retornar
+`is_on_biz_app: true` e `platform_type: "CLOUD_API"`, e o Messaging **não**
+chama `/{PHONE_NUMBER_ID}/register`. Em seguida, solicita uma única vez os
+syncs `smb_app_state_sync` e `history`; `requested` significa somente que a
+Meta aceitou a solicitação. O resultado chega de forma assíncrona pelos
+webhooks. `status: "declined"` no sync de histórico (erro Meta `2593109`)
+significa que o lojista não compartilhou o histórico, não que a conexão
+falhou.
+
+No modo `standard`, o telefone selecionado é registrado normalmente e
+`coexistence_sync` não aparece. Se a WABA tiver vários números e a Meta não
+informar `phone_number_id`, a conclusão falha com `422
+ambiguous_onboarding_phone`; o serviço nunca escolhe nem registra todos os
+números silenciosamente.
 
 `connection` é o mesmo objeto de `GET /v1/admin/whatsapp-connections` (veja
 os campos `health_*` abaixo); logo após o onboarding eles vêm `null`/`[]`
@@ -302,7 +353,11 @@ porque a Meta ainda não foi consultada — só populam com `?sync=true` num
 
 Erros comuns: `409 invalid_onboarding_attempt` (state expirado/já usado),
 `422 invalid_meta_token`, `422 missing_meta_scopes`,
-`422 waba_without_phone_numbers`, `422 phone_waba_mismatch`.
+`422 waba_without_phone_numbers`, `422 phone_waba_mismatch`, `422
+onboarding_phone_not_found`, `422 coexistence_phone_not_ready` e `422
+ambiguous_onboarding_phone`. Uma sessão Coexistence que não use
+`sessionInfoVersion: "3"` recebe `422
+unsupported_coexistence_session_version`.
 
 ### `POST /v1/admin/onboarding/browser-events` — só o popup chama
 
@@ -372,6 +427,7 @@ Resposta `200`:
             "status": "connected",
             "expires_at": null,
             "owner_business_id": "...",
+            "onboarding_mode": "coexistence",
             "granted_scopes": [
                 "business_management",
                 "whatsapp_business_management",
@@ -406,6 +462,7 @@ Resposta `200`:
                     "platform_type": "CLOUD_API",
                     "code_verification_status": "VERIFIED",
                     "messaging_limit_tier": "TIER_1K",
+                    "is_on_biz_app": true,
                     "sender_profile_key": "seller:17",
                     "external_reference": "17",
                     "capability_payments": false
@@ -1177,6 +1234,7 @@ Visão humana das conversas, isolada por organização.
             "created_at": "...",
             "updated_at": "...",
             "phone_number": "5511988887777",
+            "contact_name": "Cliente salvo no WhatsApp Business",
             "preview": "Última mensagem em texto puro"
         }
     ]
@@ -1251,6 +1309,14 @@ leitura à Meta (equivalente ao "✓✓ azul") acompanhada de um indicador de
 "digitando..." de ~25s — uma única chamada Graph por evento
 `conversation.inbound`, sem rota própria nem opção de desativar por
 enquanto.
+
+No Coexistence, mensagens importadas por `history` também aparecem nesta
+listagem com `metadata.source: "history"` (ou `"history_media"`), e mensagens
+enviadas pelo lojista no WhatsApp Business app aparecem como `direction:
+"outbound"` e `metadata.source: "smb_message_echo"`. Esses dois caminhos não
+atualizam `last_inbound_at`, não abrem a janela de 24 horas e não geram
+confirmação de leitura/digitação. Contatos sincronizados alimentam
+`contact_name` em `GET /v1/conversations`; os nomes ficam cifrados no banco.
 
 ### `POST /v1/conversations/:id/reply`
 

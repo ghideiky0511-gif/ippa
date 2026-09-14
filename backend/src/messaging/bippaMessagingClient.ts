@@ -159,6 +159,12 @@ export interface OnboardingAttemptConnection {
     expiresAt: string | null;
     ownerBusinessId: string;
     grantedScopes: string[];
+    // "standard" (número novo, registrado via Cloud API) ou "coexistence"
+    // (número que já usava o WhatsApp Business app e continua ativo nele --
+    // ver api-reference.md, seção "Onboarding Meta",
+    // FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING). `null` em onboardings antigos,
+    // de antes deste campo existir.
+    onboardingMode: string | null;
     healthCanSendMessage: string | null;
     healthIssues: WhatsAppHealthIssue[];
     healthCheckedAt: string | null;
@@ -177,11 +183,32 @@ export interface OnboardingAttemptPhone {
     platformType: string | null;
     codeVerificationStatus: string | null;
     messagingLimitTier: string | null;
+    // true quando o número segue ativo no aplicativo WhatsApp Business
+    // (Coexistence) -- a Meta exige isso como true nesse modo, junto de
+    // platformType "CLOUD_API" (ver api-reference.md).
+    isOnBizApp: boolean | null;
+}
+
+// Presente (não vazio) só quando `onboardingMode` é "coexistence" -- o
+// Messaging solicita esses syncs à Meta uma única vez durante o onboarding;
+// `requested` significa só que a Meta aceitou o pedido, o resultado chega
+// depois por webhook. `status: "declined"` no sync `history` (erro Meta
+// `2593109`) significa que o lojista não compartilhou o histórico do
+// WhatsApp Business app -- não é falha de conexão, ver api-reference.md.
+export interface CoexistenceSyncEntry {
+    syncType: string;
+    status: string;
+    requestId: string | null;
+    progress: number | null;
+    errorCode: string | null;
+    errorMessage: string | null;
 }
 
 export interface OnboardingAttemptResult {
+    onboardingMode: string | null;
     connection: OnboardingAttemptConnection;
     phones: OnboardingAttemptPhone[];
+    coexistenceSync: CoexistenceSyncEntry[];
 }
 
 export interface OnboardingAttemptStatus {
@@ -196,6 +223,15 @@ export interface OnboardingAttemptStatus {
     createdAt: string;
 }
 
+interface CoexistenceSyncResponse {
+    sync_type: string;
+    status: string;
+    request_id?: string | null;
+    progress?: number | null;
+    error_code?: string | null;
+    error_message?: string | null;
+}
+
 interface GetOnboardingAttemptResponse {
     onboarding: {
         id: string;
@@ -203,6 +239,7 @@ interface GetOnboardingAttemptResponse {
         status: OnboardingAttemptStatus["status"];
         result: {
             destination_key: string;
+            onboarding_mode?: string | null;
             connection: {
                 id: string;
                 waba_id: string;
@@ -210,6 +247,7 @@ interface GetOnboardingAttemptResponse {
                 expires_at: string | null;
                 owner_business_id: string;
                 granted_scopes: string[];
+                onboarding_mode?: string | null;
                 health_can_send_message?: string | null;
                 health_issues?: WhatsAppHealthIssueResponse[];
                 health_checked_at?: string | null;
@@ -227,7 +265,10 @@ interface GetOnboardingAttemptResponse {
                 platform_type?: string | null;
                 code_verification_status?: string | null;
                 messaging_limit_tier?: string | null;
+                is_on_biz_app?: boolean | null;
             }>;
+            // Só vem preenchido em Coexistence -- ver CoexistenceSyncEntry.
+            coexistence_sync?: CoexistenceSyncResponse[] | null;
         } | null;
         error_code: string | null;
         error_message: string | null;
@@ -236,6 +277,19 @@ interface GetOnboardingAttemptResponse {
         completed_at: string | null;
         created_at: string;
     };
+}
+
+function mapCoexistenceSync(
+    entries: CoexistenceSyncResponse[] | null | undefined,
+): CoexistenceSyncEntry[] {
+    return (entries ?? []).map((entry) => ({
+        syncType: entry.sync_type,
+        status: entry.status,
+        requestId: entry.request_id ?? null,
+        progress: entry.progress ?? null,
+        errorCode: entry.error_code ?? null,
+        errorMessage: entry.error_message ?? null,
+    }));
 }
 
 // Reconcilia uma tentativa pelo `attempt_id` -- fonte de verdade do estado
@@ -268,6 +322,8 @@ export function getOnboardingAttempt(
         status: response.onboarding.status,
         result: response.onboarding.result
             ? {
+                  onboardingMode:
+                      response.onboarding.result.onboarding_mode ?? null,
                   connection: {
                       id: response.onboarding.result.connection.id,
                       wabaId: response.onboarding.result.connection.waba_id,
@@ -279,6 +335,9 @@ export function getOnboardingAttempt(
                               .owner_business_id,
                       grantedScopes:
                           response.onboarding.result.connection.granted_scopes,
+                      onboardingMode:
+                          response.onboarding.result.connection
+                              .onboarding_mode ?? null,
                       healthCanSendMessage:
                           response.onboarding.result.connection
                               .health_can_send_message ?? null,
@@ -307,7 +366,11 @@ export function getOnboardingAttempt(
                       codeVerificationStatus:
                           phone.code_verification_status ?? null,
                       messagingLimitTier: phone.messaging_limit_tier ?? null,
+                      isOnBizApp: phone.is_on_biz_app ?? null,
                   })),
+                  coexistenceSync: mapCoexistenceSync(
+                      response.onboarding.result.coexistence_sync,
+                  ),
               }
             : null,
         errorCode: response.onboarding.error_code,
@@ -348,6 +411,13 @@ export interface WhatsAppConnectionEntry {
     connectionId: string;
     status: string;
     connectionStatus: string;
+    // "standard" ou "coexistence" (número que segue ativo no aplicativo
+    // WhatsApp Business, ver OnboardingAttemptConnection acima) -- pertence à
+    // conexão/WABA, repetido aqui como os campos de saúde logo abaixo.
+    onboardingMode: string | null;
+    // true quando este telefone segue ativo no aplicativo WhatsApp Business
+    // (só relevante em onboardingMode "coexistence").
+    isOnBizApp: boolean | null;
     // Saude da WABA fornecida pela Meta. Esses campos pertencem a conexao,
     // mas sao repetidos em cada telefone ao achatar `connections[].phones`
     // para que a tela consiga mostrar o aviso ao lado da vendedora certa.
@@ -421,12 +491,14 @@ interface WhatsAppConnectionPhoneResponse {
     sender_profile_key?: string | null;
     external_reference?: string | null;
     capability_payments?: boolean;
+    is_on_biz_app?: boolean | null;
 }
 
 interface WhatsAppConnectionResponse {
     id: string; // id da CONEXÃO/WABA -- nunca usar como phoneId, ver acima.
     waba_id: string;
     status?: string;
+    onboarding_mode?: string | null;
     health_can_send_message?: string | null;
     health_issues?: WhatsAppHealthIssueResponse[];
     health_checked_at?: string | null;
@@ -488,6 +560,8 @@ export function listWhatsAppConnections(
                 connectionId: connection.id,
                 status: phone.active ? "connected" : "not_connected",
                 connectionStatus: connection.status ?? "unknown",
+                onboardingMode: connection.onboarding_mode ?? null,
+                isOnBizApp: phone.is_on_biz_app ?? null,
                 healthCanSendMessage:
                     connection.health_can_send_message ?? null,
                 healthIssues: mapWhatsAppHealthIssues(connection.health_issues),

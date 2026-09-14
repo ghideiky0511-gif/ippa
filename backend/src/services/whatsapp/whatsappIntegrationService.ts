@@ -56,6 +56,10 @@ export interface WhatsAppConnectionOption {
     messagingLimitTier: string | null;
     senderProfileKey: string | null;
     status: string;
+    // "standard" ou "coexistence" -- número que já tinha WABA e segue ativo
+    // no aplicativo WhatsApp Business (ver bippaMessagingClient.ts).
+    onboardingMode: string | null;
+    isOnBizApp: boolean | null;
 }
 
 // Lista os telefones já conectados à organização deste TENANT no
@@ -112,6 +116,8 @@ export async function getWhatsAppConnections(
                 messagingLimitTier: entry.messagingLimitTier,
                 senderProfileKey: entry.senderProfileKey,
                 status: entry.status,
+                onboardingMode: entry.onboardingMode,
+                isOnBizApp: entry.isOnBizApp,
             }));
     } catch (exc) {
         logger.error(
@@ -150,6 +156,10 @@ export interface TenantWhatsAppPhoneHealth {
     capabilityPayments: boolean;
     wabaId: string;
     connectionStatus: string;
+    // "standard" ou "coexistence" -- número que já tinha WABA e segue ativo
+    // no aplicativo WhatsApp Business (ver bippaMessagingClient.ts).
+    onboardingMode: string | null;
+    isOnBizApp: boolean | null;
     healthCanSendMessage: string | null;
     healthIssues: bippaMessagingClient.WhatsAppHealthIssue[];
     healthCheckedAt: string | null;
@@ -184,6 +194,8 @@ export async function listTenantWhatsAppPhoneHealth(
             capabilityPayments: entry.capabilityPayments,
             wabaId: entry.wabaId,
             connectionStatus: entry.connectionStatus,
+            onboardingMode: entry.onboardingMode,
+            isOnBizApp: entry.isOnBizApp,
             healthCanSendMessage: entry.healthCanSendMessage,
             healthIssues: entry.healthIssues,
             healthCheckedAt: entry.healthCheckedAt,

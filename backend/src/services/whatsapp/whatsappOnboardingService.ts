@@ -134,8 +134,16 @@ export interface WhatsAppOnboardingAttemptStatus {
     errorCode: string | null;
     errorMessage: string | null;
     expiresAt: string;
+    // "standard" ou "coexistence" (número que já tinha WABA e segue ativo no
+    // aplicativo WhatsApp Business) -- `null` até a tentativa completar, ou
+    // em tentativas antigas gravadas antes deste campo existir. Ver
+    // bippaMessagingClient.OnboardingAttemptResult.
+    onboardingMode: string | null;
     connection: bippaMessagingClient.OnboardingAttemptConnection | null;
     phones: bippaMessagingClient.OnboardingAttemptPhone[];
+    // Só vem preenchido em Coexistence -- ver
+    // bippaMessagingClient.CoexistenceSyncEntry.
+    coexistenceSync: bippaMessagingClient.CoexistenceSyncEntry[];
 }
 
 function toAttemptStatus(row: WhatsAppOnboardingAttemptRow): WhatsAppOnboardingAttemptStatus {
@@ -146,6 +154,7 @@ function toAttemptStatus(row: WhatsAppOnboardingAttemptRow): WhatsAppOnboardingA
         errorCode: row.error_code,
         errorMessage: row.error_message,
         expiresAt: row.expires_at.toISOString(),
+        onboardingMode: row.result?.onboarding_mode ?? null,
         connection: row.result
             ? {
                   id: row.result.connection.id,
@@ -154,6 +163,7 @@ function toAttemptStatus(row: WhatsAppOnboardingAttemptRow): WhatsAppOnboardingA
                   expiresAt: row.result.connection.expires_at,
                   ownerBusinessId: row.result.connection.owner_business_id,
                   grantedScopes: row.result.connection.granted_scopes,
+                  onboardingMode: row.result.connection.onboarding_mode,
                   healthCanSendMessage:
                       row.result.connection.health_can_send_message,
                   healthIssues: row.result.connection.health_issues.map(
@@ -184,6 +194,15 @@ function toAttemptStatus(row: WhatsAppOnboardingAttemptRow): WhatsAppOnboardingA
             platformType: phone.platform_type,
             codeVerificationStatus: phone.code_verification_status,
             messagingLimitTier: phone.messaging_limit_tier,
+            isOnBizApp: phone.is_on_biz_app,
+        })) ?? [],
+        coexistenceSync: row.result?.coexistence_sync?.map((entry) => ({
+            syncType: entry.sync_type,
+            status: entry.status,
+            requestId: entry.request_id,
+            progress: entry.progress,
+            errorCode: entry.error_code,
+            errorMessage: entry.error_message,
         })) ?? [],
     };
 }
@@ -261,6 +280,7 @@ export async function reconcileWhatsAppOnboardingAttempt(
             errorMessage: remote.errorMessage,
             result: remote.result
                 ? {
+                      onboarding_mode: remote.result.onboardingMode,
                       connection: {
                           id: remote.result.connection.id,
                           waba_id: remote.result.connection.wabaId,
@@ -268,6 +288,7 @@ export async function reconcileWhatsAppOnboardingAttempt(
                           expires_at: remote.result.connection.expiresAt,
                           owner_business_id: remote.result.connection.ownerBusinessId,
                           granted_scopes: remote.result.connection.grantedScopes,
+                          onboarding_mode: remote.result.connection.onboardingMode,
                           health_can_send_message:
                               remote.result.connection.healthCanSendMessage,
                           health_issues:
@@ -303,7 +324,18 @@ export async function reconcileWhatsAppOnboardingAttempt(
                           code_verification_status:
                               phone.codeVerificationStatus,
                           messaging_limit_tier: phone.messagingLimitTier,
+                          is_on_biz_app: phone.isOnBizApp,
                       })),
+                      coexistence_sync: remote.result.coexistenceSync.map(
+                          (entry) => ({
+                              sync_type: entry.syncType,
+                              status: entry.status,
+                              request_id: entry.requestId,
+                              progress: entry.progress,
+                              error_code: entry.errorCode,
+                              error_message: entry.errorMessage,
+                          }),
+                      ),
                   }
                 : null,
             consumedAt: remote.consumedAt ? new Date(remote.consumedAt) : null,

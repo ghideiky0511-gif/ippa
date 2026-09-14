@@ -8,6 +8,7 @@ import {
     dispatchTemplateMessage,
     dispatchTemplateWithUrlButton,
     ensureApplicationInstallation,
+    getOnboardingAttempt,
     listWabaTemplates,
     listWhatsAppConnections,
     setPaymentsCapability,
@@ -169,6 +170,8 @@ test("listWhatsAppConnections manda source_reference como query param e mapeia s
                     connectionId: "connection-1",
                     status: "connected",
                     connectionStatus: "connected",
+                    onboardingMode: null,
+                    isOnBizApp: null,
                     healthCanSendMessage: "LIMITED",
                     healthIssues: [{
                         entityType: "WABA",
@@ -185,6 +188,188 @@ test("listWhatsAppConnections manda source_reference como query param e mapeia s
                 },
             ]);
             assert.equal(calls[0].url, `${DEFAULT_BASE_URL}/v1/admin/whatsapp-connections?source_reference=tenant-1`);
+        },
+    );
+});
+
+test("listWhatsAppConnections mapeia onboarding_mode e is_on_biz_app quando o número é Coexistence", async () => {
+    await withFetch(
+        async () =>
+            new Response(
+                JSON.stringify({
+                    data: [
+                        {
+                            id: "connection-1",
+                            waba_id: "waba-1",
+                            status: "connected",
+                            onboarding_mode: "coexistence",
+                            phones: [
+                                {
+                                    id: "phone-1",
+                                    phone_number_id: "meta-phone-1",
+                                    active: true,
+                                    is_on_biz_app: true,
+                                },
+                            ],
+                        },
+                    ],
+                }),
+                { status: 200, headers: { "Content-Type": "application/json" } },
+            ),
+        async () => {
+            const result = await listWhatsAppConnections("bippa_key123_segredo", "tenant-1");
+            assert.equal(result[0].onboardingMode, "coexistence");
+            assert.equal(result[0].isOnBizApp, true);
+        },
+    );
+});
+
+test("getOnboardingAttempt mapeia onboarding_mode, phones[].is_on_biz_app e coexistence_sync quando a tentativa é Coexistence", async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    await withFetch(
+        async (input, init) => {
+            calls.push({ url: String(input), init });
+            return new Response(
+                JSON.stringify({
+                    onboarding: {
+                        id: "attempt-1",
+                        destination_key: "catalogo-whatsapp-settings",
+                        status: "completed",
+                        result: {
+                            destination_key: "catalogo-whatsapp-settings",
+                            onboarding_mode: "coexistence",
+                            connection: {
+                                id: "connection-1",
+                                waba_id: "waba-1",
+                                status: "connected",
+                                expires_at: null,
+                                owner_business_id: "business-1",
+                                granted_scopes: ["whatsapp_business_messaging"],
+                                onboarding_mode: "coexistence",
+                            },
+                            phones: [
+                                {
+                                    id: "phone-1",
+                                    phone_number_id: "meta-phone-1",
+                                    display_phone_number: "+55 11 99999-9999",
+                                    verified_name: "Loja Teste",
+                                    quality_rating: "GREEN",
+                                    active: true,
+                                    platform_type: "CLOUD_API",
+                                    is_on_biz_app: true,
+                                },
+                            ],
+                            coexistence_sync: [
+                                {
+                                    sync_type: "smb_app_state_sync",
+                                    status: "requested",
+                                    request_id: "meta-req-1",
+                                },
+                                {
+                                    sync_type: "history",
+                                    status: "declined",
+                                    request_id: "meta-req-2",
+                                    error_code: "2593109",
+                                },
+                            ],
+                        },
+                        error_code: null,
+                        error_message: null,
+                        expires_at: "2026-09-09T12:10:00.000Z",
+                        consumed_at: "2026-09-09T12:05:00.000Z",
+                        completed_at: "2026-09-09T12:05:30.000Z",
+                        created_at: "2026-09-09T12:00:00.000Z",
+                    },
+                }),
+                { status: 200, headers: { "Content-Type": "application/json" } },
+            );
+        },
+        async () => {
+            const result = await getOnboardingAttempt(
+                "bippa_key123_segredo",
+                "attempt-1",
+                "tenant-1",
+            );
+            assert.equal(result.result?.onboardingMode, "coexistence");
+            assert.equal(result.result?.connection.onboardingMode, "coexistence");
+            assert.equal(result.result?.phones[0]?.isOnBizApp, true);
+            assert.deepEqual(result.result?.coexistenceSync, [
+                {
+                    syncType: "smb_app_state_sync",
+                    status: "requested",
+                    requestId: "meta-req-1",
+                    progress: null,
+                    errorCode: null,
+                    errorMessage: null,
+                },
+                {
+                    syncType: "history",
+                    status: "declined",
+                    requestId: "meta-req-2",
+                    progress: null,
+                    errorCode: "2593109",
+                    errorMessage: null,
+                },
+            ]);
+            assert.equal(
+                calls[0].url,
+                `${DEFAULT_BASE_URL}/v1/admin/onboarding/attempts/attempt-1?source_reference=tenant-1`,
+            );
+        },
+    );
+});
+
+test("getOnboardingAttempt mapeia onboarding_mode standard e coexistence_sync vazio quando não é Coexistence", async () => {
+    await withFetch(
+        async () =>
+            new Response(
+                JSON.stringify({
+                    onboarding: {
+                        id: "attempt-2",
+                        destination_key: "catalogo-whatsapp-settings",
+                        status: "completed",
+                        result: {
+                            destination_key: "catalogo-whatsapp-settings",
+                            onboarding_mode: "standard",
+                            connection: {
+                                id: "connection-2",
+                                waba_id: "waba-2",
+                                status: "connected",
+                                expires_at: null,
+                                owner_business_id: "business-2",
+                                granted_scopes: ["whatsapp_business_messaging"],
+                            },
+                            phones: [
+                                {
+                                    id: "phone-2",
+                                    phone_number_id: "meta-phone-2",
+                                    display_phone_number: "+55 11 98888-8888",
+                                    verified_name: "Loja Teste 2",
+                                    quality_rating: "GREEN",
+                                    active: true,
+                                },
+                            ],
+                        },
+                        error_code: null,
+                        error_message: null,
+                        expires_at: "2026-09-09T12:10:00.000Z",
+                        consumed_at: "2026-09-09T12:05:00.000Z",
+                        completed_at: "2026-09-09T12:05:30.000Z",
+                        created_at: "2026-09-09T12:00:00.000Z",
+                    },
+                }),
+                { status: 200, headers: { "Content-Type": "application/json" } },
+            ),
+        async () => {
+            const result = await getOnboardingAttempt(
+                "bippa_key123_segredo",
+                "attempt-2",
+                "tenant-1",
+            );
+            assert.equal(result.result?.onboardingMode, "standard");
+            assert.equal(result.result?.connection.onboardingMode, null);
+            assert.equal(result.result?.phones[0]?.isOnBizApp, null);
+            assert.deepEqual(result.result?.coexistenceSync, []);
         },
     );
 });

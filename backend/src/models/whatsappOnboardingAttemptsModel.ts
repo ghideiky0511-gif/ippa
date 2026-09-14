@@ -7,6 +7,9 @@ import type { PoolClient } from "pg";
 // model e é responsável por não vazar `state` nem para o log.
 
 export interface WhatsAppOnboardingAttemptResult {
+    // "standard" ou "coexistence" -- ver bippaMessagingClient.OnboardingAttemptResult.
+    // `null` em linhas gravadas antes deste campo existir.
+    onboarding_mode: string | null;
     connection: {
         id: string;
         waba_id: string;
@@ -14,6 +17,7 @@ export interface WhatsAppOnboardingAttemptResult {
         expires_at: string | null;
         owner_business_id: string;
         granted_scopes: string[];
+        onboarding_mode: string | null;
         health_can_send_message: string | null;
         health_issues: Array<{
             entity_type: string | null;
@@ -39,6 +43,19 @@ export interface WhatsAppOnboardingAttemptResult {
         platform_type: string | null;
         code_verification_status: string | null;
         messaging_limit_tier: string | null;
+        is_on_biz_app: boolean | null;
+    }>;
+    // Só vem preenchido em Coexistence -- ver
+    // bippaMessagingClient.CoexistenceSyncEntry (status "declined" no sync
+    // "history" não é falha, só significa que o lojista não compartilhou o
+    // histórico).
+    coexistence_sync: Array<{
+        sync_type: string;
+        status: string;
+        request_id: string | null;
+        progress: number | null;
+        error_code: string | null;
+        error_message: string | null;
     }>;
 }
 
