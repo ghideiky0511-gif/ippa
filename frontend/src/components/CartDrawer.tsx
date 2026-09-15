@@ -8,6 +8,7 @@ import { formatBRL } from '@/lib/format';
 import { CONFIG } from '@/lib/config';
 import { useCart } from './CartProvider';
 import { useAuthUser } from './AuthProvider';
+import { applyStockChangeClamp, buildStockChangeSummary, parseStockChangeDetails } from '@/lib/stockChangeError';
 import GroupedCartItems from './GroupedCartItems';
 import { useTenant } from './TenantProvider';
 import { Button } from '@/components/ui/button';
@@ -16,7 +17,7 @@ import { useState } from 'react';
 
 export default function CartDrawer() {
   const router = useRouter();
-  const { cart, cartCount, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, isCartOpen, closeCart, saveOrderToHistory } = useCart();
+  const { cart, cartCount, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, isCartOpen, closeCart, saveOrderToHistory, changeQty, removeFromCart } = useCart();
   const { showPrices } = useAuthUser();
   const { tenant, href } = useTenant();
   const [isSendingWhatsapp, setSendingWhatsapp] = useState(false);
@@ -48,7 +49,15 @@ export default function CartDrawer() {
       });
       closeCart();
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : 'Não foi possível registrar o pedido. Seu carrinho foi preservado.');
+      const details = parseStockChangeDetails(cause);
+      if (details) {
+        applyStockChangeClamp(cart, details, changeQty, removeFromCart);
+        toast.error(`O estoque de algumas peças mudou — ajustamos seu carrinho: ${buildStockChangeSummary(details)}`);
+        closeCart();
+        router.push(href('/carrinho'));
+      } else {
+        toast.error(cause instanceof Error ? cause.message : 'Não foi possível registrar o pedido. Seu carrinho foi preservado.');
+      }
     } finally {
       setSendingWhatsapp(false);
     }

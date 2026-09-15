@@ -19,3 +19,14 @@ export function getBackendUrl(): string {
  * No servidor, usa a URL interna do backend para evitar uma volta pela rede pública.
  */
 export const API_BASE = typeof window === 'undefined' ? getBackendUrl() : '';
+
+/**
+ * Assina uma chamada de servidor confiável (SSR ou proxy) para o backend
+ * isentá-la do rate limit por IP. No Render, todo o tráfego SSR sai de poucos
+ * IPs de egress compartilhados; sem essa marca uma única page view (vários
+ * GETs + prefetch) estoura o limite (429). Vazio em dev local — não faz nada.
+ */
+export function applyInternalRequestHeader(headers: Headers): void {
+  const token = process.env.INTERNAL_REQUEST_TOKEN;
+  if (token) headers.set('x-ippa-internal', token);
+}

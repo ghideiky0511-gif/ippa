@@ -39,3 +39,19 @@ export async function listProviderOrderAttemptRowsByOrderId(client: PoolClient, 
     );
     return result.rows;
 }
+
+// Quantas vezes um pedido de VERDADE já foi criado no provider para este
+// pedido local (outcome 'sent') -- usado por orderPushService para numerar
+// a "versão" do código de integração a cada cancelamento+recriação (nunca
+// num retry simples que ainda não chegou a criar nada lá, ver comentário em
+// buildProviderOrderIdempotencyKey). Count dedicado em vez de reusar
+// listProviderOrderAttemptRowsByOrderId para não trazer payload/response de
+// todo o histórico só para contar.
+export async function countSentProviderOrderAttempts(client: PoolClient, orderId: string): Promise<number> {
+    const result = await client.query<{ count: string }>(
+        `SELECT count(*)::int AS count FROM provider_order_attempts
+         WHERE tenant_id = app_tenant_id() AND order_id = $1 AND outcome = 'sent'`,
+        [orderId],
+    );
+    return Number(result.rows[0]?.count ?? 0);
+}

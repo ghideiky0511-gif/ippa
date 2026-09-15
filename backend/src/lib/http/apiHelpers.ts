@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
 import { NextRequest, NextResponse } from "next/server";
 import * as authentication from "@/services/auth";
@@ -85,6 +85,19 @@ export const ERROR_MESSAGES: Record<string, string> = {
     DELIVERY_LAST_ACTIVE_TYPE: "Mantenha pelo menos um tipo de entrega ativo.",
     DELIVERY_ADDRESS_REQUIRED: "Informe o CEP para entrega no endereço.",
     DELIVERY_EXTERNAL_QUOTE_NOT_AVAILABLE: "A cotação externa ainda não está disponível.",
+    ORDER_NOT_READY_FOR_SEPARATION: "Este pedido ainda está em montagem — finalize o checkout antes de confirmar a separação.",
+    ORDER_ALREADY_SEPARATED: "Este pedido já teve a separação confirmada.",
+    ORDER_HAS_NO_ITEMS: "Este pedido não tem itens.",
+    ORDER_ITEMS_NOT_SEPARATED: "Os itens deste pedido ainda não foram confirmados como separados.",
+    PAYMENT_INTEGRATION_NOT_READY: "O gateway de pagamento deste tenant ainda não está pronto para cobrar.",
+    // WHATSAPP_INSTALLATION_FAILED/WHATSAPP_ONBOARDING_FAILED/
+    // WHATSAPP_CONNECTIONS_UNAVAILABLE/WHATSAPP_ASSOCIATION_FAILED
+    // (whatsapp*Service.ts) são deliberadamente omitidos aqui: a mensagem
+    // específica já vem preenchida dinamicamente a partir do erro do
+    // bippa-messaging (ex.: "instalação pertence a outra organização"), e
+    // este mapa só teria uma versão genérica pior -- serviceError() cai em
+    // error.message quando o código não está aqui, igual a
+    // WHATSAPP_NO_PHONE_NUMBER no fluxo antigo.
 };
 
 export function cookieOptions() {
@@ -122,6 +135,23 @@ export function clientIp(request: NextRequest): string | undefined {
     return [forwardedFor, realIp].find(
         (value): value is string =>
             typeof value === "string" && isIP(value) !== 0,
+    );
+}
+
+// Marca chamadas de servidor confiáveis (SSR/proxy do Next) que carregam o
+// header `x-ippa-internal` com o valor de INTERNAL_REQUEST_TOKEN. Sem o token
+// configurado, nada é confiável (dev local não precisa). Comparação em tempo
+// constante para não vazar o segredo por timing.
+export function isTrustedInternalRequest(request: NextRequest): boolean {
+    const expected = process.env.INTERNAL_REQUEST_TOKEN;
+    if (!expected) return false;
+    const provided = request.headers.get("x-ippa-internal");
+    if (!provided) return false;
+    const expectedBuf = Buffer.from(expected);
+    const providedBuf = Buffer.from(provided);
+    return (
+        expectedBuf.length === providedBuf.length &&
+        timingSafeEqual(expectedBuf, providedBuf)
     );
 }
 
@@ -185,18 +215,25 @@ export function tooManyRequests(retryAfterSeconds: number): NextResponse {
 }
 
 // Limites de aplicação geral: baseline "por app" aplicado em toda rota de
-// tenant (ver resolveTenantRoute em lib/http/tenantRoute.ts). 120/min era
-// apertado demais: uma única navegação no catálogo público já dispara vários
-// GETs em paralelo (tenant, categorias, config da loja, seções, destaques,
-// filtros) e todo tráfego atrás do mesmo IP (proxy/NAT, ou o próprio SSR
-// local em dev) soma no mesmo balde.
-export const GENERAL_RATE_LIMIT = { limit: 300, windowMs: 60_000 };
+// tenant (ver resolveTenantRoute em lib/http/tenantRoute.ts). Opt-in via
+// GENERAL_RATE_LIMIT_ENABLED=true — desligado, porque sem um IP de cliente
+// confiável (proxy/NAT, IPs de egress compartilhados do Render) ele agrupa
+// visitantes distintos no mesmo balde: uma page view do catálogo (vários
+// GETs + prefetch do Next) já estourava o teto e devolvia 429. Ligue só onde
+// dá pra confiar no IP por request (plano pago com rede privada, ou proxy
+// próprio repassando x-forwarded-for real). Os limites de brute-force
+// (AUTH_RATE_LIMIT) são independentes e continuam sempre ativos.
+export const GENERAL_RATE_LIMIT = {
+    enabled: process.env.GENERAL_RATE_LIMIT_ENABLED === "true",
+    limit: 2_000,
+    windowMs: 60_000,
+};
 
 // Limites para rotas sensíveis a força bruta / enumeração (login, cadastro,
 // consulta de documento) — mais apertado que o baseline geral, contado à
 // parte por IP+rota pra uma rajada de cadastro não consumir o orçamento do
 // login e vice-versa.
-export const AUTH_RATE_LIMIT = { limit: 10, windowMs: 10 * 60_000 };
+export const AUTH_RATE_LIMIT = { limit: 20, windowMs: 10 * 60_000 };
 
 export function parseIdsParam(value: string | null): string[] | undefined {
     if (!value) return undefined;

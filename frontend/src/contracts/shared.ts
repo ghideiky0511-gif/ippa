@@ -75,6 +75,26 @@ export const OptionalCepSchema = z.preprocess(
   CepSchema.optional(),
 );
 
+// Normaliza pro formato E.164 que a migration de clients.whatsapp_phone
+// exige (^\+[1-9][0-9]{7,14}$) e que a WhatsApp Cloud API espera de
+// origem: sem "+", assume Brasil (o mercado do produto); com "+", só limpa
+// os separadores e mantém o código de país informado.
+export const WhatsAppPhoneSchema = z.string()
+  .trim()
+  .transform((value) => {
+    const hasPlus = value.startsWith('+');
+    const digits = documentDigits(value);
+    return hasPlus ? `+${digits}` : `+55${digits}`;
+  })
+  .refine((value) => /^\+[1-9][0-9]{7,14}$/.test(value), {
+    message: 'Informe um telefone válido com WhatsApp (DDD + número).',
+  });
+
+export const OptionalWhatsAppPhoneSchema = z.preprocess(
+  (value) => typeof value === 'string' && !value.trim() ? undefined : value,
+  WhatsAppPhoneSchema.optional(),
+);
+
 export const HttpUrlSchema = z.string().url('Informe uma URL válida.').refine((value) => {
   const protocol = new URL(value).protocol;
   return protocol === 'http:' || protocol === 'https:';

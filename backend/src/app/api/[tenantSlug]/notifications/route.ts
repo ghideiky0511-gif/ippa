@@ -24,13 +24,15 @@ export async function GET(
     );
     if (!session)
         return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-    const filtro = request.nextUrl.searchParams.get("filtro");
+    const filtro = request.nextUrl.searchParams.get("filtro") ?? "nao_lidas";
+    const filter = filtro === "todas" ? "all" : filtro === "lidas" ? "read" : "unread";
     return execute(() =>
         pushNotifications.inbox(
             route.tenant,
             session.user,
-            filtro !== "todas",
+            filter,
             Number(request.nextUrl.searchParams.get("limite") ?? 20),
+            Number(request.nextUrl.searchParams.get("offset") ?? 0),
         ),
     );
 }

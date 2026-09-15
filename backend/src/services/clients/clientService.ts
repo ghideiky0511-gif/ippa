@@ -20,22 +20,23 @@ import {
     type ClientRow,
     type ClientWriteRow,
 } from "@/models/clientsModel";
-import { findUserRowByClientId } from "@/models/usersModel";
+import { findUserRowByClientId, findUserRowById } from "@/models/usersModel";
 import { findActiveErpIntegrationRow } from "@/models/erpIntegrationsModel";
 import { findExternalIdByInternalId, upsertExternalReferenceRow } from "@/models/erpExternalReferencesModel";
-import { createErpProvider } from "@/erp/registry";
 import { createExternalApiCallReporter } from "@/services/erp/externalApiLogService";
+import { createErpProviderForIntegration } from "@/services/erp/erpProviderFactory";
 import { recordAuditEvent, CLIENT_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
+import { isAdministrator } from "@/services/users/userService";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
 import { toClient } from "./clientMapper";
 
 const ERP_SYNCABLE_FIELDS = [
-    "cpfCnpj", "email", "cep", "street", "number",
+    "cpfCnpj", "email", "whatsappPhone", "cep", "street", "number",
     "complement", "neighborhood", "city", "state",
 ] as const satisfies readonly (keyof Client)[];
 
 const AUDITED_CLIENT_FIELDS = [
-    "name", "cpfCnpj", "email", "cep", "street", "number", "complement",
+    "name", "cpfCnpj", "email", "whatsappPhone", "cep", "street", "number", "complement",
     "neighborhood", "city", "state", "companyResponsible", "storeName",
 ] as const;
 
@@ -52,17 +53,49 @@ export async function searchTenantClients(tenant: Tenant, user: AuthUser, query?
 
 export type AdministrativeClientsPage = ClientsPage;
 
-export async function searchAdministrativeClients(tenant: Tenant, user: AuthUser, query?: string, requestedPage?: number, requestedPageSize?: number): Promise<AdministrativeClientsPage> {
+export async function searchAdministrativeClients(tenant: Tenant, user: AuthUser, query?: string, requestedPage?: number, requestedPageSize?: number, sellerId?: string): Promise<AdministrativeClientsPage> {
     if (!canManageClients(user)) throw new ForbiddenError();
     const pageSize = Math.min(Math.max(requestedPageSize || 20, 10), 100);
     const page = Math.max(requestedPage || 1, 1);
     return withTenantTransaction(tenant, user, async (client) => {
-        const result = await searchClientRowsPage(client, query?.trim() || null, page, pageSize);
+        const result = await searchClientRowsPage(client, query?.trim() || null, page, pageSize, sellerId || null);
         return {
             clients: result.rows.map(toClient),
             pagination: { page, pageSize, total: result.total, totalPages: Math.max(Math.ceil(result.total / pageSize), 1) },
             kpis: { newThisMonth: result.newThisMonth, withEmail: result.withEmail, withAddress: result.withAddress },
         };
+    });
+}
+
+// Reatribuição estreita da carteira: só troca last_seller_id, nunca reabre o
+// resto do cadastro do cliente (ver comentário em updateTenantClient sobre
+// por que a edição administrativa geral foi removida). Exige administradora
+// (não qualquer staff, diferente de canManageClients) porque mexe na
+// distribuição comercial entre vendedoras, não no cadastro da própria
+// cliente.
+export async function reassignClientSeller(
+    tenant: Tenant,
+    user: AuthUser,
+    clientId: string,
+    sellerId: string,
+    context: AuditRequestContext,
+): Promise<Client> {
+    if (!isAdministrator(user)) throw new ForbiddenError();
+    return withTenantTransaction(tenant, user, async (client) => {
+        const seller = await findUserRowById(client, sellerId);
+        if (!seller || seller.role !== "vendedora") {
+            throw new ValidationError("SELLER_NOT_FOUND", "Vendedora não encontrada nesta loja.");
+        }
+        const updated = await patchClientRow(client, clientId, { lastSellerId: sellerId });
+        if (!updated) throw new NotFoundError("CLIENT_NOT_FOUND");
+        await recordAuditEvent(client, {
+            action: CLIENT_AUDIT_ACTIONS.UPDATED,
+            entityId: clientId,
+            actor: user,
+            context,
+            metadata: { fields: ["lastSellerId"], sellerId },
+        });
+        return toClient(updated);
     });
 }
 
@@ -124,6 +157,7 @@ export async function patchClientRow(
         name: changes.name ?? current.name,
         cpfCnpj: Object.hasOwn(changes, "cpfCnpj") ? changes.cpfCnpj : current.cpf_cnpj ?? undefined,
         email: Object.hasOwn(changes, "email") ? changes.email : current.email ?? undefined,
+        whatsappPhone: Object.hasOwn(changes, "whatsappPhone") ? changes.whatsappPhone : current.whatsapp_phone ?? undefined,
         cep: Object.hasOwn(changes, "cep") ? changes.cep : current.cep ?? undefined,
         street: Object.hasOwn(changes, "street") ? changes.street : current.street ?? undefined,
         number: Object.hasOwn(changes, "number") ? changes.number : current.number ?? undefined,
@@ -147,11 +181,27 @@ export async function updateTenantClient(
     if (!canManageClients(user) && user.clientId !== id) throw new ForbiddenError();
     const parsed = UpdateClientInputSchema.safeParse(value);
     if (!parsed.success) throw new ValidationError("INVALID_INPUT", "Dados inválidos.", parsed.error.issues);
+    const changes = { ...parsed.data };
     return withTenantTransaction(tenant, user, async (client) => {
         const currentRow = await findClientRow(client, id);
         if (!currentRow) return null;
         const current = toClient(currentRow);
-        const merged = { ...current, ...parsed.data };
+        // CPF/CNPJ, e-mail e WhatsApp são dados obrigatórios/sensíveis do
+        // cadastro — a equipe (staff) editando o cadastro de outra pessoa nunca
+        // pode sobrescrever um valor já preenchido por aqui, só via "Sincronizar
+        // com ERP" (mesma regra de completude que o próprio sync usa: só toca
+        // campo em branco, ver ERP_SYNCABLE_FIELDS em syncClientFromErp).
+        // Preencher um campo que ainda está vazio continua permitido — é o
+        // caso do talão completando o cadastro de uma cliente antes do frete
+        // (ver ClientCadastroSection, TalaoDrawer.tsx). A própria cliente
+        // completando/editando o próprio cadastro (user.clientId === id)
+        // continua podendo alterá-los livremente.
+        if (user.clientId !== id) {
+            if (current.cpfCnpj?.trim()) delete changes.cpfCnpj;
+            if (current.email?.trim()) delete changes.email;
+            if (current.whatsappPhone?.trim()) delete changes.whatsappPhone;
+        }
+        const merged = { ...current, ...changes };
         const digits = merged.cpfCnpj ? documentDigits(merged.cpfCnpj) : "";
         if (digits) {
             const existing = await findClientRowByDocumentDigits(client, digits);
@@ -162,7 +212,7 @@ export async function updateTenantClient(
             name: merged.name.trim(),
         });
         if (!row) return null;
-        const changedFields = AUDITED_CLIENT_FIELDS.filter((field) => Object.hasOwn(parsed.data, field));
+        const changedFields = AUDITED_CLIENT_FIELDS.filter((field) => Object.hasOwn(changes, field));
         await recordAuditEvent(client, {
             action: CLIENT_AUDIT_ACTIONS.UPDATED,
             entityId: id,
@@ -200,8 +250,8 @@ export async function findOrImportTenantClientByDocument(
         const integration = await findActiveErpIntegrationRow(client);
         if (!integration) return { client: null, source: "not_found" };
 
-        const provider = createErpProvider(
-            integration.provider, integration.credentials,
+        const provider = createErpProviderForIntegration(
+            tenant, user, integration,
             createExternalApiCallReporter(tenant, user, integration.provider),
         );
         if (!provider.lookupClientByDocument) return { client: null, source: "not_found" };
@@ -265,8 +315,8 @@ export async function syncClientFromErp(
 
         const integration = await findActiveErpIntegrationRow(client);
         if (!integration) throw new ValidationError("ERP_INTEGRATION_NOT_CONFIGURED");
-        const provider = createErpProvider(
-            integration.provider, integration.credentials,
+        const provider = createErpProviderForIntegration(
+            tenant, user, integration,
             createExternalApiCallReporter(tenant, user, integration.provider),
         );
         if (!provider.lookupClientByDocument) throw new ValidationError("ERP_SYNC_UNAVAILABLE");

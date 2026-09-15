@@ -16,6 +16,7 @@ import TalaoDrawer from './TalaoDrawer';
 import PresenceBadge from './PresenceBadge';
 import TalaoPresenceBadge from './TalaoPresenceBadge';
 import ProductQuickView from './ProductQuickView';
+import { PRODUCT_DETAIL_LAYOUT_GROUP_ID } from './product-detail-motion';
 import SideMenu from './SideMenu';
 import CatalogFooter from './CatalogFooter';
 import { publicUi } from '@/lib/ui';
@@ -124,7 +125,7 @@ export default function AppShell({ children, categoryTree, authUser, publicCatal
     <AuthProvider authUser={authUser} publicCatalogPrices={publicCatalogPrices} suggestedPiecesEnabled={suggestedPiecesEnabled}>
       <QuickViewProvider>
         <CartProvider>
-          <LayoutGroup id="product-detail">
+          <LayoutGroup id={PRODUCT_DETAIL_LAYOUT_GROUP_ID}>
             <div className="flex min-h-screen flex-col">
               <TopNav categoryTree={categoryTree} authUser={authUser} />
               <div className="flex-1">{children}</div>

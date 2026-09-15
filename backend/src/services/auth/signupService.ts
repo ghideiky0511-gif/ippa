@@ -27,13 +27,14 @@ export async function signupCustomer(
     }
     if (await findClientRowByDocumentDigits(client, digits)) throw new ConflictError("DOCUMENT_TAKEN");
     const row = await insertClientRow(client, {
-      name: fields.name, cpfCnpj: fields.cpfCnpj, email: fields.email, cep: fields.cep,
+      name: fields.name, cpfCnpj: fields.cpfCnpj, email: fields.email, whatsappPhone: fields.whatsappPhone, cep: fields.cep,
       street: fields.street, number: fields.number, complement: fields.complement,
       neighborhood: fields.neighborhood, city: fields.city, state: fields.state,
       companyResponsible: fields.companyResponsible, storeName: fields.storeName,
     });
     const registration: Client = {
       id: row.id, name: row.name, cpfCnpj: row.cpf_cnpj ?? undefined, email: row.email ?? undefined,
+      whatsappPhone: row.whatsapp_phone ?? undefined,
       cep: row.cep ?? undefined, street: row.street ?? undefined, number: row.number ?? undefined,
       complement: row.complement ?? undefined, neighborhood: row.neighborhood ?? undefined,
       city: row.city ?? undefined, state: row.state ?? undefined,

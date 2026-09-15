@@ -8,11 +8,14 @@ import {
     findOrderRowById,
     findOrderRowByNumber,
     findOrderSessionRow,
+    insertOrderItemFulfillmentEventRow,
     listOrderItemRows,
     listOrderItemRowsByOrder,
     listOrderRowsBy,
     listTenantOrderRows,
+    separateAllOrderItemsRow,
     updateOrderRow,
+    updateOrderSellerRow,
 } from "@/models/ordersModel";
 import { findFreightProviderRow } from "@/models/freightProvidersModel";
 import { findOrderFreightRowByOrderId, insertOrderFreightRow, listOrderFreightRows, updateOrderFreightMethodRow } from "@/models/orderFreightsModel";
@@ -22,7 +25,9 @@ import { findUserRowById } from "@/models/usersModel";
 import { findStoreSettingsRow } from "@/models/settingsModel";
 import { notifyOrder, notifyOrderBook, notifySession } from "@/services/realtime/updateBroadcast";
 import { notifyNewOrderForSeller, notifyOrderConfirmed } from "@/services/notifications";
+import { sendOrderConfirmedWhatsApp, toWhatsAppOrderRecipient, type WhatsAppOrderRecipient } from "@/services/whatsapp";
 import { cancelProviderOrderForOrder, enqueueOrderPush, requestProviderOrderResend } from "@/services/erp/orderPushService";
+import type { ProviderOrderRow } from "@/models/providerOrdersModel";
 import { logger, errorMeta } from "@/lib/logger";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
 import { toOrder, toOrderBook, toOrderSession } from "./orderMapper";
@@ -61,19 +66,17 @@ export async function userOrders(
 ): Promise<Order[]> {
     if (filters?.clientId && !isAdministrator(user)) throw new ForbiddenError();
     return withTenantTransaction(tenant, user, async (client) => {
-        const [orders, items, freights] = await Promise.all([
-            filters?.clientId
-                ? listOrderRowsBy(client, "client_id", filters.clientId)
-                : isAdministrator(user)
-                  ? listTenantOrderRows(client)
-                  : user.role === "cliente" && user.clientId
-                    ? listOrderRowsBy(client, "client_id", user.clientId)
-                    : user.role === "vendedora"
-                      ? listOrderRowsBy(client, "seller_id", user.id)
-                      : listTenantOrderRows(client),
-            listOrderItemRows(client),
-            listOrderFreightRows(client),
-        ]);
+        const orders = await (filters?.clientId
+            ? listOrderRowsBy(client, "client_id", filters.clientId)
+            : isAdministrator(user)
+              ? listTenantOrderRows(client)
+              : user.role === "cliente" && user.clientId
+                ? listOrderRowsBy(client, "client_id", user.clientId)
+                : user.role === "vendedora"
+                  ? listOrderRowsBy(client, "seller_id", user.id)
+                  : listTenantOrderRows(client));
+        const items = await listOrderItemRows(client);
+        const freights = await listOrderFreightRows(client);
         return orders.map((order) =>
             toOrder(
                 order,
@@ -132,6 +135,7 @@ export async function createCustomerOrder(
     let changedSessions: OrderSession[] = [];
     let changedBooks: OrderBookRow[] = [];
     let sellerRecipient: Pick<AuthUser, "id" | "role"> | undefined;
+    let whatsappRecipient: WhatsAppOrderRecipient | null = null;
     const order = await withTenantTransaction(tenant, user, async (client) => {
         let sellerId: string | undefined;
         // Checkout iniciado numa sessão de vendedora já tem order_id (foi
@@ -202,13 +206,14 @@ export async function createCustomerOrder(
         }
         if (!deliveryConfiguration) throw new ValidationError("DELIVERY_OFFERING_NOT_FOUND");
         const deliveryQuote = deliveryQuoteFromConfiguration(deliveryConfiguration);
+        const registration = await findClientRow(client, user.clientId!);
+        whatsappRecipient = toWhatsAppOrderRecipient(registration);
         // Snapshot do CEP de destino -- nulo pra retirada. O CEP digitado em
         // /frete (body.destinationCep) tem prioridade sobre o do cadastro:
         // a tela aceita cotar um endereço diferente do salvo, e o snapshot
         // precisa acompanhar a escolha, não o cadastro (ver orderMapper.ts).
         let destinationCep: string | null = null;
         if (deliveryQuote.fulfillmentMode === "address_delivery") {
-            const registration = user.clientId ? await findClientRow(client, user.clientId) : null;
             destinationCep = body.destinationCep ?? registration?.cep?.trim() ?? null;
             if (!destinationCep) throw new ValidationError("DELIVERY_ADDRESS_REQUIRED");
         }
@@ -249,17 +254,71 @@ export async function createCustomerOrder(
         const closedRows = await closeOpenOrderSessionRowsByOrder(client, orderId);
         changedSessions = closedRows.map((closedRow) => toOrderSession(closedRow, orderItems));
         const bookIds = new Set(closedRows.map((closedRow) => closedRow.order_book_id));
-        changedBooks = (await Promise.all(
-            [...bookIds].map((bookId) => closeOrderBookWhenFinished(client, bookId)),
-        )).filter((book): book is OrderBookRow => Boolean(book));
+        changedBooks = [];
+        for (const bookId of bookIds) {
+            const closedBook = await closeOrderBookWhenFinished(client, bookId);
+            if (closedBook) changedBooks.push(closedBook);
+        }
         return toOrder(row, orderItems, freightRow);
     });
     for (const changedSession of changedSessions) notifySession(tenant.id, changedSession);
     for (const book of changedBooks) notifyOrderBook(tenant.id, toOrderBook(book));
     notifyOrder(tenant.id, order);
     notifyOrderConfirmed(tenant, user, order);
+    sendOrderConfirmedWhatsApp(tenant, whatsappRecipient, order);
     if (sellerRecipient) notifyNewOrderForSeller(tenant, sellerRecipient, order);
     await enqueueOrderPush(tenant, user, order.id);
+    return order;
+}
+
+// Confirmação manual da separação física dos itens (ver migration 023/036 --
+// nenhuma integração de fulfillment escreve qty_separated automaticamente
+// ainda, então é a loja quem confirma). Pré-requisito obrigatório pra
+// createOrderCharge aceitar cobrar o pedido (ver assertOrderChargeable em
+// paymentChargeService.ts) -- sem isso a cobrança real nunca teria como
+// funcionar. 'novo' é o único status de origem válido: 'aberto'/
+// 'aguardando_pagamento' ainda não fecharam o carrinho, e 'separado'/'pago'/
+// 'cancelado' já passaram desse ponto ou nunca vão passar.
+export async function confirmOrderItemsSeparation(
+    tenant: Tenant,
+    user: AuthUser,
+    orderId: string,
+    auditRequestContext: AuditRequestContext,
+): Promise<Order> {
+    requireInternal(user);
+    const order = await withTenantTransaction(tenant, user, async (client) => {
+        const existing = await findOrderRowById(client, orderId, true);
+        if (!existing) throw new NotFoundError("ORDER_NOT_FOUND");
+        if (existing.status === "aberto" || existing.status === "aguardando_pagamento") {
+            throw new ValidationError("ORDER_NOT_READY_FOR_SEPARATION");
+        }
+        if (existing.status === "separado" || existing.status === "pago") {
+            throw new ValidationError("ORDER_ALREADY_SEPARATED");
+        }
+        if (existing.status === "cancelado") throw new ValidationError("ORDER_ALREADY_CANCELLED");
+        const items = (await listOrderItemRowsByOrder(client, orderId)).map((item) => item.snapshot);
+        if (items.length === 0) throw new ValidationError("ORDER_HAS_NO_ITEMS");
+        const separated = await separateAllOrderItemsRow(client, orderId);
+        for (const item of separated) {
+            await insertOrderItemFulfillmentEventRow(client, {
+                orderId,
+                itemKey: item.item_key,
+                qtyDelta: item.qty_delta,
+            });
+        }
+        const row = await updateOrderRow(client, orderId, { status: "separado" });
+        if (!row) throw new NotFoundError("ORDER_NOT_FOUND");
+        await recordAuditEvent(client, {
+            action: ORDER_AUDIT_ACTIONS.ITEMS_SEPARATED,
+            entityId: orderId,
+            actor: user,
+            context: auditRequestContext,
+            metadata: {},
+        });
+        const freightRow = await findOrderFreightRowByOrderId(client, orderId);
+        return toOrder(row, items, freightRow);
+    });
+    notifyOrder(tenant.id, order);
     return order;
 }
 
@@ -322,7 +381,7 @@ export async function cancelOrder(
     user: AuthUser,
     orderId: string,
     auditRequestContext: AuditRequestContext,
-): Promise<{ order: Order; erpWarning?: string }> {
+): Promise<{ order: Order; erpWarning?: string; pushStatus: ProviderOrderRow | null }> {
     requireInternal(user);
     let cancelledSessions: OrderSession[] = [];
     let changedBooks: OrderBookRow[] = [];
@@ -337,9 +396,11 @@ export async function cancelOrder(
         const cancelledRows = await cancelOpenOrderSessionRowsByOrder(client, orderId);
         cancelledSessions = cancelledRows.map((cancelledRow) => toOrderSession(cancelledRow, items));
         const bookIds = new Set(cancelledRows.map((cancelledRow) => cancelledRow.order_book_id));
-        changedBooks = (await Promise.all(
-            [...bookIds].map((bookId) => closeOrderBookWhenFinished(client, bookId)),
-        )).filter((book): book is OrderBookRow => Boolean(book));
+        changedBooks = [];
+        for (const bookId of bookIds) {
+            const closedBook = await closeOrderBookWhenFinished(client, bookId);
+            if (closedBook) changedBooks.push(closedBook);
+        }
         await recordAuditEvent(client, {
             action: ORDER_AUDIT_ACTIONS.MANUALLY_CANCELLED,
             entityId: orderId,
@@ -354,7 +415,7 @@ export async function cancelOrder(
     for (const book of changedBooks) notifyOrderBook(tenant.id, toOrderBook(book));
     notifyOrder(tenant.id, order);
     const erpResult = await cancelProviderOrderForOrder(tenant, user, orderId, auditRequestContext);
-    return { order, erpWarning: erpResult.cancelled ? undefined : erpResult.error };
+    return { order, erpWarning: erpResult.cancelled ? undefined : erpResult.error, pushStatus: erpResult.pushStatus };
 }
 
 // Troca o tipo de frete (transportadora/correios/motoboy/etc.) de um pedido
@@ -389,6 +450,47 @@ export async function updateOrderFreightMethod(
             metadata: { method },
         });
         return toOrder(existing, items, freightRow);
+    });
+    notifyOrder(tenant.id, order);
+    return order;
+}
+
+// Reatribui a vendedora responsável pelo pedido -- mesmo critério de
+// reassignClientSeller (services/clients/clientService.ts): exige
+// administradora porque mexe na distribuição comercial entre vendedoras,
+// não é algo que a própria vendedora deveria poder fazer sozinha. Bloqueada
+// em pedido pago/cancelado (mesmo gate de cancelOrder/markOrderPaid): a
+// comissão é atribuída no momento da venda, então reabrir isso depois
+// desalinharia o que já foi fechado.
+export async function reassignOrderSeller(
+    tenant: Tenant,
+    user: AuthUser,
+    orderId: string,
+    sellerId: string,
+    auditRequestContext: AuditRequestContext,
+): Promise<Order> {
+    if (!isAdministrator(user)) throw new ForbiddenError();
+    const order = await withTenantTransaction(tenant, user, async (client) => {
+        const existing = await findOrderRowById(client, orderId);
+        if (!existing) throw new NotFoundError("ORDER_NOT_FOUND");
+        if (existing.status === "pago") throw new ValidationError("ORDER_ALREADY_PAID");
+        if (existing.status === "cancelado") throw new ValidationError("ORDER_ALREADY_CANCELLED");
+        const seller = await findUserRowById(client, sellerId);
+        if (!seller || seller.role !== "vendedora") {
+            throw new ValidationError("SELLER_NOT_FOUND", "Vendedora não encontrada nesta loja.");
+        }
+        const items = (await listOrderItemRowsByOrder(client, orderId)).map((item) => item.snapshot);
+        const row = await updateOrderSellerRow(client, orderId, sellerId);
+        if (!row) throw new NotFoundError("ORDER_NOT_FOUND");
+        await recordAuditEvent(client, {
+            action: ORDER_AUDIT_ACTIONS.SELLER_CHANGED,
+            entityId: orderId,
+            actor: user,
+            context: auditRequestContext,
+            metadata: { sellerId },
+        });
+        const freightRow = await findOrderFreightRowByOrderId(client, orderId);
+        return toOrder(row, items, freightRow);
     });
     notifyOrder(tenant.id, order);
     return order;

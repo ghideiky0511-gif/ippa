@@ -45,6 +45,7 @@ export default function ControlPage() {
 
   return <main className="mx-auto max-w-5xl p-6">
     <header className="mb-7 flex items-center justify-between"><div><h1 className="text-2xl font-semibold">Control IPPA</h1><p className="text-sm text-brand-muted">Gestao de tenants da plataforma.</p></div><button className="text-sm underline" onClick={logout}>Sair</button></header>
+    <section className="mb-7 rounded-brand bg-white p-5 shadow-sm"><h2 className="text-lg font-semibold">Integrações de pagamento</h2><p className="mt-2 text-sm text-brand-muted">Consulte a configuração e o status da conta Stripe da plataforma.</p><Link className="mt-4 inline-block rounded border px-3 py-1.5 text-sm" href="/control/payments/stripe">Abrir Stripe</Link></section>
     <div className="mb-5 flex justify-end"><button className="rounded-lg bg-brand-primary px-4 py-2 font-semibold text-white" onClick={() => setShowCreate((current) => !current)}>{showCreate ? 'Cancelar' : 'Criar tenant'}</button></div>
     {showCreate && <section className="mb-7 rounded-brand bg-white p-5 shadow-sm"><h2 className="mb-4 text-lg font-semibold">Novo tenant</h2><form className="grid gap-3 md:grid-cols-2" onSubmit={create}>
       {field('name', 'Nome da loja')}{field('slug', 'slug-da-loja')}{field('adminName', 'Nome do administrador')}{field('adminEmail', 'E-mail do administrador', 'email')}{field('adminPassword', 'Senha inicial (minimo 12 caracteres)', 'password')}

@@ -14,8 +14,20 @@ export interface PaymentIntegrationOption {
   description: string;
   logoPath?: string;
   credentialFields: PaymentProviderCredentialField[];
+  onboardingType?: 'credentials' | 'redirect';
   configured: boolean;
   active: boolean;
+  stripeAccountId?: string | null;
+  stripeOnboardingStatus?: 'pending' | 'complete' | 'restricted' | null;
+  stripeApiVersion?: 'v2' | null;
+  // Espelha stripeAccountId: id do vendedor Mercado Pago, só exibição.
+  mercadoPagoUserId?: string | null;
+  // Chave Pix da loja, usada pro payment_order nativo do WhatsApp (ver
+  // PixNativePaymentSettingsForm.tsx). Não é segredo -- diferente de
+  // credentials, vem preenchida com o valor já salvo.
+  pixMerchantName?: string | null;
+  pixKey?: string | null;
+  pixKeyType?: 'CPF' | 'CNPJ' | 'EMAIL' | 'PHONE' | 'EVP' | null;
   updatedAt: string | null;
 }
 
@@ -46,6 +58,26 @@ export function savePaymentIntegrationCredentials(
       body: JSON.stringify({ provider, credentials }),
     },
     'Não foi possível salvar as credenciais.'
+  ) as Promise<PaymentIntegrationOption>;
+}
+
+// Chave Pix usada no envio nativo (payment_order) pelo WhatsApp -- rota
+// separada de savePaymentIntegrationCredentials porque não é segredo e não
+// é bloqueada pelo onboarding hospedado da Stripe/Mercado Pago (ver
+// backend/src/app/api/[tenantSlug]/payment-integration/pix-settings/route.ts).
+export function savePixSettings(
+  provider: string,
+  input: { pixMerchantName: string; pixKey: string; pixKeyType: string }
+): Promise<PaymentIntegrationOption> {
+  return adminJson(
+    '/api/payment-integration/pix-settings',
+    unknown,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider, ...input }),
+    },
+    'Não foi possível salvar a chave Pix.'
   ) as Promise<PaymentIntegrationOption>;
 }
 
@@ -82,4 +114,100 @@ export function activatePaymentIntegration(provider: string): Promise<PaymentInt
 
 export function deactivatePaymentIntegration(): Promise<{ deactivated: boolean }> {
   return adminJson('/api/payment-integration/deactivate', unknown, { method: 'POST' }, 'Não foi possível desativar o provedor.') as Promise<{ deactivated: boolean }>;
+}
+
+export interface StripeOnboardingStatusResult {
+  stripeAccountId: string;
+  status: 'pending' | 'complete' | 'restricted';
+  active: boolean;
+  requirements: {
+    disabledReason: string | null;
+    currentlyDue: string[];
+    pastDue: string[];
+  };
+}
+
+// Stripe Connect é diferente dos providers por credenciais: a conta do
+// tenant é criada pela plataforma e o cadastro/KYC acontece em uma página
+// hospedada pela Stripe. A URL devolvida é de uso único e deve receber
+// navegação completa do browser, não um popup.
+export function createStripeOnboardingLink(returnUrl: string): Promise<{ url: string }> {
+  return adminJson(
+    '/api/payment-integration/stripe/onboarding-link',
+    unknown,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ returnUrl }),
+    },
+    'Não foi possível iniciar o cadastro da Stripe.'
+  ) as Promise<{ url: string }>;
+}
+
+export function refreshStripeOnboardingStatus(): Promise<StripeOnboardingStatusResult> {
+  return adminJson(
+    '/api/payment-integration/stripe/status',
+    unknown,
+    { method: 'POST' },
+    'Não foi possível consultar o status da conta Stripe.'
+  ) as Promise<StripeOnboardingStatusResult>;
+}
+
+export function disconnectStripeAccount(): Promise<{ disconnected: boolean }> {
+  return adminJson(
+    '/api/payment-integration/stripe/disconnect',
+    unknown,
+    { method: 'POST' },
+    'Não foi possível desvincular a conta Stripe.'
+  ) as Promise<{ disconnected: boolean }>;
+}
+
+// Mercado Pago (Split Payments) -- mesmo desenho de onboarding hospedado da
+// Stripe (URL de uso único, navegação completa do browser), mas mais
+// simples: a ativação é síncrona no callback OAuth (ver
+// mercadoPagoOnboardingService.ts), sem um status assíncrono pra consultar
+// depois -- por isso não há um equivalente a refreshStripeOnboardingStatus.
+export function createMercadoPagoOnboardingLink(returnUrl: string): Promise<{ url: string }> {
+  return adminJson(
+    '/api/payment-integration/mercadopago/onboarding-link',
+    unknown,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ returnUrl }),
+    },
+    'Não foi possível iniciar a conexão com o Mercado Pago.'
+  ) as Promise<{ url: string }>;
+}
+
+export function disconnectMercadoPagoAccount(): Promise<{ disconnected: boolean }> {
+  return adminJson(
+    '/api/payment-integration/mercadopago/disconnect',
+    unknown,
+    { method: 'POST' },
+    'Não foi possível desvincular a conta Mercado Pago.'
+  ) as Promise<{ disconnected: boolean }>;
+}
+
+export interface MercadoPagoAccountSummary {
+  id: string;
+  nickname?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  documentType?: string;
+  documentNumberMasked?: string;
+  siteStatus?: string;
+}
+
+// Busca nome/apelido/documento (já redigido pelo backend) da conta
+// conectada -- só pra exibir na tela como prova visual de qual conta o
+// access_token salvo representa, ver MercadoPagoIntegrationApp.tsx.
+export function fetchMercadoPagoAccountSummary(): Promise<MercadoPagoAccountSummary> {
+  return adminJson(
+    '/api/payment-integration/mercadopago/account',
+    unknown,
+    {},
+    'Não foi possível carregar os dados da conta Mercado Pago.'
+  ) as Promise<MercadoPagoAccountSummary>;
 }

@@ -32,6 +32,7 @@ export async function GET(
             params.get("q") ?? undefined,
             Number(params.get("page")) || undefined,
             Number(params.get("pageSize")) || undefined,
+            params.get("sellerId") ?? undefined,
         ),
     );
 }

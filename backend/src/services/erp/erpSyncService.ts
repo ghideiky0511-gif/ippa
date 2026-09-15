@@ -1,8 +1,8 @@
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser } from "@/lib/types";
-import { createErpProvider } from "@/erp/registry";
 import { createExternalApiCallReporter } from "@/services/erp/externalApiLogService";
+import { createErpProviderForIntegration } from "@/services/erp/erpProviderFactory";
 import { insertCompanyRow, updateCompanyRow } from "@/models/companiesModel";
 import { insertProductRow, updateProductRow, type ProductWriteRow } from "@/models/catalogModel";
 import { insertClientRow, updateClientRow } from "@/models/clientsModel";
@@ -31,8 +31,8 @@ export async function syncTenantCompanies(tenant: Tenant, actor: AuthUser): Prom
     return withTenantTransaction(tenant, actor, async (client) => {
         const integration = await findActiveErpIntegrationRow(client);
         if (!integration) throw new Error("ERP_INTEGRATION_NOT_CONFIGURED");
-        const provider = createErpProvider(
-            integration.provider, integration.credentials,
+        const provider = createErpProviderForIntegration(
+            tenant, actor, integration,
             createExternalApiCallReporter(tenant, actor, integration.provider),
         );
         const { items } = await provider.getCompanies();
@@ -55,8 +55,8 @@ export async function syncTenantClients(tenant: Tenant, actor: AuthUser): Promis
     return withTenantTransaction(tenant, actor, async (client) => {
         const integration = await findActiveErpIntegrationRow(client);
         if (!integration) throw new Error("ERP_INTEGRATION_NOT_CONFIGURED");
-        const provider = createErpProvider(
-            integration.provider, integration.credentials,
+        const provider = createErpProviderForIntegration(
+            tenant, actor, integration,
             createExternalApiCallReporter(tenant, actor, integration.provider),
         );
         const { items } = await provider.getClients();
@@ -79,8 +79,8 @@ export async function syncTenantProducts(tenant: Tenant, actor: AuthUser): Promi
     return withTenantTransaction(tenant, actor, async (client) => {
         const integration = await findActiveErpIntegrationRow(client);
         if (!integration) throw new Error("ERP_INTEGRATION_NOT_CONFIGURED");
-        const provider = createErpProvider(
-            integration.provider, integration.credentials,
+        const provider = createErpProviderForIntegration(
+            tenant, actor, integration,
             createExternalApiCallReporter(tenant, actor, integration.provider),
         );
         const { items } = await provider.getProducts();
@@ -113,8 +113,8 @@ export async function syncTenantOrders(tenant: Tenant, actor: AuthUser): Promise
     return withTenantTransaction(tenant, actor, async (client) => {
         const integration = await findActiveErpIntegrationRow(client);
         if (!integration) throw new Error("ERP_INTEGRATION_NOT_CONFIGURED");
-        const provider = createErpProvider(
-            integration.provider, integration.credentials,
+        const provider = createErpProviderForIntegration(
+            tenant, actor, integration,
             createExternalApiCallReporter(tenant, actor, integration.provider),
         );
         const { items } = await provider.getOrders();

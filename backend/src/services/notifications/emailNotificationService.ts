@@ -11,9 +11,19 @@ import {
 } from "@/lib/email";
 import { errorMeta, logger } from "@/lib/logger";
 
-function orderDetailsLink(tenant: Tenant, orderNumber: number): string {
-    const origin = (process.env.APP_URL || process.env.ADMIN_ORIGIN || "http://localhost:3010").replace(/\/+$/, "");
+export function orderDetailsLink(tenant: Tenant, orderNumber: number): string {
+    const origin = (process.env.APP_URL || process.env.ADMIN_ORIGIN || "https://ippa-frontend.onrender.com").replace(/\/+$/, "");
     return `${origin}/${encodeURIComponent(tenant.slug)}/pedidos/${encodeURIComponent(String(orderNumber))}`;
+}
+
+export function orderAccessLink(tenant: Tenant, token: string): string {
+    const origin = (process.env.APP_URL || process.env.ADMIN_ORIGIN || "https://ippa-frontend.onrender.com").replace(/\/+$/, "");
+    return `${origin}/${encodeURIComponent(tenant.slug)}/acesso/pedido/${encodeURIComponent(token)}`;
+}
+
+export function orderPaymentLink(tenant: Tenant, token: string): string {
+    const origin = (process.env.APP_URL || process.env.ADMIN_ORIGIN || "https://ippa-frontend.onrender.com").replace(/\/+$/, "");
+    return `${origin}/${encodeURIComponent(tenant.slug)}/pagar/${encodeURIComponent(token)}`;
 }
 
 export function notifySignup(

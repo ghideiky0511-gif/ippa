@@ -2,7 +2,7 @@
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
 import { useState } from 'react';
-import { X } from 'lucide-react';
+import { LockKeyhole, X } from 'lucide-react';
 import { createVendedora, createCliente, updateUser, updateClient } from '@/workspace/lib/usersClient';
 import { DEFAULT_SELLER_CATALOG_AREAS } from '@/domain/clients/types';
 
@@ -20,6 +20,7 @@ const EMPTY = {
   name: '',
   email: '',
   password: '',
+  whatsappPhone: '',
   cpfCnpj: '',
   clientEmail: '',
   cep: '',
@@ -45,6 +46,7 @@ export default function UserFormModal({ role, mode, user, onClose, onSaved }) {
     ...EMPTY,
     name: user?.name || '',
     email: user?.email || '',
+    whatsappPhone: user?.whatsappPhone || '',
     cpfCnpj: user?.cpfCnpj || '',
     clientEmail: user?.clientEmail || '',
     cep: user?.cep || '',
@@ -78,11 +80,11 @@ export default function UserFormModal({ role, mode, user, onClose, onSaved }) {
     try {
       let saved;
       if (!isEdit && !isCliente) {
-        saved = await createVendedora({ name: form.name, email: form.email, password: form.password, catalogAreas });
+        saved = await createVendedora({ name: form.name, email: form.email, password: form.password, whatsappPhone: form.whatsappPhone || undefined, catalogAreas });
       } else if (!isEdit && isCliente) {
         saved = await createCliente(form);
       } else if (isEdit && !isCliente) {
-        saved = await updateUser(user.id, { name: form.name, email: form.email, password: form.password, catalogAreas });
+        saved = await updateUser(user.id, { name: form.name, email: form.email, password: form.password, whatsappPhone: form.whatsappPhone || undefined, catalogAreas });
       } else {
         // Edita login e cadastro juntos — dois registros diferentes por
         // trás (ver comentário em Client, web/src/lib/types.ts).
@@ -167,6 +169,25 @@ export default function UserFormModal({ role, mode, user, onClose, onSaved }) {
 
             {!isCliente && (
               <div className="contents">
+                <h3>WhatsApp</h3>
+                <div className={adminUi.fieldRow}>
+                  <div className={adminUi.field}>
+                    <label>Telefone WhatsApp Business</label>
+                    <input
+                      value={form.whatsappPhone}
+                      onChange={set('whatsappPhone')}
+                      placeholder="(11) 91234-5678"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-brand-muted">
+                  Número próprio desta vendedora -- conecte-o em Integrações → WhatsApp depois de salvar aqui.
+                </p>
+              </div>
+            )}
+
+            {!isCliente && (
+              <div className="contents">
                 <h3>Ferramentas liberadas no catálogo</h3>
                 {CATALOG_AREAS.map((area) => (
                   <label key={area.key} className="contents">
@@ -184,16 +205,35 @@ export default function UserFormModal({ role, mode, user, onClose, onSaved }) {
             {isCliente && (
               <div className="contents">
                 <h3>Cadastro</h3>
-                <div className={adminUi.fieldRow}>
-                  <div className={adminUi.field}>
-                    <label>CPF/CNPJ</label>
-                    <input value={form.cpfCnpj} onChange={set('cpfCnpj')} placeholder="Somente números" />
+                {isEdit ? (
+                  <>
+                    <div className={adminUi.fieldRow}>
+                      <div className={adminUi.field}>
+                        <label>CPF/CNPJ</label>
+                        <input value={form.cpfCnpj} disabled readOnly />
+                      </div>
+                      <div className={adminUi.field}>
+                        <label>E-mail de contato</label>
+                        <input type="email" value={form.clientEmail} disabled readOnly />
+                      </div>
+                    </div>
+                    <p className="text-xs text-brand-muted">
+                      <LockKeyhole className="mr-1 inline size-3" aria-hidden="true" />
+                      CPF/CNPJ e e-mail não são editáveis aqui — use &quot;Sincronizar com ERP&quot; ou peça para a cliente confirmar no próprio login (ver /workspace/clientes).
+                    </p>
+                  </>
+                ) : (
+                  <div className={adminUi.fieldRow}>
+                    <div className={adminUi.field}>
+                      <label>CPF/CNPJ</label>
+                      <input value={form.cpfCnpj} onChange={set('cpfCnpj')} placeholder="Somente números" />
+                    </div>
+                    <div className={adminUi.field}>
+                      <label>E-mail de contato</label>
+                      <input type="email" value={form.clientEmail} onChange={set('clientEmail')} placeholder="Opcional, se diferente do login" />
+                    </div>
                   </div>
-                  <div className={adminUi.field}>
-                    <label>E-mail de contato</label>
-                    <input type="email" value={form.clientEmail} onChange={set('clientEmail')} placeholder="Opcional, se diferente do login" />
-                  </div>
-                </div>
+                )}
                 <div className={adminUi.fieldRow}>
                   <div className={adminUi.field}>
                     <label>Responsável (CNPJ)</label>

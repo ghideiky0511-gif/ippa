@@ -1,6 +1,14 @@
 envVarGroups:
   - name: ippa-env-prod
     envVars:
+      # Segredo compartilhado frontend<->backend: marca as chamadas de servidor
+      # confiáveis (SSR e proxy do Next) para o backend isentá-las do rate
+      # limit por IP (ver resolveTenantRoute / isTrustedInternalRequest). Sem
+      # isso, todo o SSR sai dos poucos IPs de egress compartilhados do Render
+      # e uma page view com prefetch estoura o limite (429). generateValue
+      # cria um valor único para o group, entregue aos dois serviços.
+      - key: INTERNAL_REQUEST_TOKEN
+        generateValue: true
       - key: DATABASE_SSL
         value: "true"
       - key: DATABASE_URL
@@ -43,6 +51,44 @@ envVarGroups:
         sync: false
       - key: CATALOG_SYNC_SECRET
         sync: false
+      - key: APP_COMERCIAL_NAME
+        sync: false
+      - key: APP_COMERCIAL_NAME_INTEGRATION
+        sync: false
+      # Mercado Pago Split Payments (ver backend/src/payments/providers/mercadopago
+      # e .env.example) -- credenciais do APP na plataforma (painel de
+      # desenvolvedores Mercado Pago), não de um tenant. Preencher no painel
+      # do Render: CLIENT_ID/CLIENT_SECRET vêm de "Suas integrações" > app >
+      # "Credenciais de produção"; WEBHOOK_SECRET vem da mesma tela onde a
+      # URL de notificações abaixo é cadastrada; OAUTH_STATE_SECRET é gerado
+      # localmente (ex. `openssl rand -base64 32`), não vem do painel MP.
+      - key: MERCADOPAGO_CLIENT_ID
+        sync: false
+      - key: MERCADOPAGO_CLIENT_SECRET
+        sync: false
+      - key: MERCADOPAGO_WEBHOOK_SECRET
+        sync: false
+      - key: MERCADOPAGO_APPLICATION_FEE_BPS
+        sync: false
+      - key: MERCADOPAGO_OAUTH_STATE_SECRET
+        sync: false
+      # Cache opcional (ver backend/src/lib/redis.ts) -- preencha no painel
+      # com a Internal Key Value URL do Redis (redis://..., mesma região do
+      # ippa-backend). Free web service não recebe conexão privada, mas pode
+      # abrir uma para um datastore da mesma região -- por isso interna
+      # funciona aqui mesmo no plano Free, diferente do caso
+      # frontend->backend documentado abaixo em BACKEND_INTERNAL_URL.
+      - key: REDIS_URL
+        sync: false
+      # WhatsApp via bippa-messaging (ver backend/src/messaging e
+      # backend/docs/whatsapp-bippa-messaging.md) -- BIPPA_CATALOGO_API_KEY é
+      # a API key de serviço do Catálogo perante o bippa-messaging (escopos
+      # messaging:write + messaging:control), gerada pelo bippa-auth via
+      # POST /admin/api-keys. Preencher no painel do Render.
+      - key: BIPPA_MESSAGING_BASE_URL
+        value: https://bippa-messaging.onrender.com
+      - key: BIPPA_CATALOGO_API_KEY
+        sync: false
 
 services:
   - type: web
@@ -52,6 +98,7 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     plan: free
+    healthCheckPath: /api/health
     envVars:
       - fromGroup: ippa-env-prod
       # Mesmo valor no compose local é APP_URL — aqui cada serviço declara sua
@@ -62,6 +109,28 @@ services:
         sync: false
       - key: REALTIME_ALLOWED_ORIGINS
         sync: false
+      # URL pública do PRÓPRIO backend, só pro callback OAuth do Mercado
+      # Pago (precisa bater exatamente com o redirect_uri cadastrado no
+      # painel do app -- ver mercadoPagoOnboardingService.ts). Mesma URL
+      # hardcoded que o frontend usa como BACKEND_INTERNAL_URL abaixo
+      # (plano Free não tem rede privada). MERCADOPAGO_CLIENT_ID/
+      # CLIENT_SECRET/WEBHOOK_SECRET/APPLICATION_FEE_BPS/OAUTH_STATE_SECRET
+      # são segredos de verdade -- entram no group ippa-env-prod (painel do
+      # Render), não aqui.
+      - key: MERCADOPAGO_REDIRECT_URI
+        value: https://ippa-backend.onrender.com/api/webhooks/mercadopago/oauth-callback
+      # Dois endpoints Mercado Pago diferentes, dois lugares diferentes pra
+      # cadastrar no painel do app (developers.mercadopago.com/panel/app):
+      # (1) o redirect_uri acima entra na tela de OAuth/"Vinculação de
+      # aplicações"; (2) a URL DESTE comentário
+      # (https://ippa-backend.onrender.com/api/webhooks/mercadopago, SEM
+      # /oauth-callback) entra na tela "Webhooks"/Notificações, com só o
+      # tópico "Orders (Mercado Pago)" (`order`) ativado -- é o único que
+      # corresponde ao que este provider usa (POST /v1/orders pra Pix E
+      # cartão, ver providers/mercadopago/index.ts; o tópico "Pagamentos"
+      # é da API de Payments legada, não usada aqui, mesmo o cartão
+      # passando pelo Card Payment Brick do lado do cliente). O secret
+      # mostrado nessa mesma tela vai em MERCADOPAGO_WEBHOOK_SECRET acima.
 
   - type: web
     name: ippa-frontend

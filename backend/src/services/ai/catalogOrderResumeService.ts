@@ -154,10 +154,8 @@ async function readCatalogOrderResumeSnapshot(
 
     const order = await findLatestPaidOrderForClientRow(client, session.client_id);
     if (!order) return null;
-    const [items, tickets] = await Promise.all([
-      listCatalogOrderResumeItemRows(client, order.id),
-      findPaidOrderTicketStatisticsRow(client, session.client_id, periodStart),
-    ]);
+    const items = await listCatalogOrderResumeItemRows(client, order.id);
+    const tickets = await findPaidOrderTicketStatisticsRow(client, session.client_id, periodStart);
     return { order, items, tickets };
   });
 }

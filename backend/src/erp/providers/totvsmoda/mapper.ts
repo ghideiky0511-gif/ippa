@@ -184,6 +184,11 @@ export interface TotvsModaEmail {
     isDefault?: boolean;
 }
 
+export interface TotvsModaPhone {
+    number?: string;
+    isDefault?: boolean;
+}
+
 // RelatedModel (person/v2/.../search com expand "relateds") — coligados do
 // PESFM010 (PESFM024), cada um já com o próprio CPF/CNPJ. Só vem quando
 // pedido explicitamente no expand (ver TotvsModaClient.searchIndividualRelateds/
@@ -208,6 +213,24 @@ function primaryEmail(
     return (emails?.find((e) => e.isDefault) ?? emails?.[0])?.email;
 }
 
+function normalizeWhatsAppPhone(value: string | undefined): string | undefined {
+    if (!value) return undefined;
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    const hasPlus = trimmed.startsWith('+');
+    const digits = trimmed.replace(/\D/g, '');
+    if (!digits) return undefined;
+    const normalized = hasPlus ? `+${digits}` : `+55${digits}`;
+    return /^\+[1-9][0-9]{7,14}$/.test(normalized) ? normalized : undefined;
+}
+
+function primaryPhone(
+    phones: TotvsModaPhone[] | undefined,
+): string | undefined {
+    const phone = (phones?.find((p) => p.isDefault) ?? phones?.[0])?.number;
+    return phone ? normalizeWhatsAppPhone(phone) : undefined;
+}
+
 // IndividualDataModel (person/v2/individuals/search) — uma linha por pessoa
 // física, chave de busca é "cpf" (IndividualFilterModel.cpfList).
 export interface TotvsModaIndividual {
@@ -217,6 +240,7 @@ export interface TotvsModaIndividual {
     isInactive?: boolean;
     addresses?: TotvsModaAddress[];
     emails?: TotvsModaEmail[];
+    phones?: TotvsModaPhone[];
     relateds?: TotvsModaRelated[];
 }
 
@@ -230,6 +254,7 @@ export interface TotvsModaLegalEntity {
     isInactive?: boolean;
     addresses?: TotvsModaAddress[];
     emails?: TotvsModaEmail[];
+    phones?: TotvsModaPhone[];
     relateds?: TotvsModaRelated[];
 }
 
@@ -542,6 +567,7 @@ export function mapTotvsModaIndividualClient(
         name: raw.name ?? "",
         cpfCnpj: raw.cpf,
         email: primaryEmail(raw.emails),
+        whatsappPhone: primaryPhone(raw.phones),
         cep: address?.cep,
         street: address?.address,
         number:
@@ -563,6 +589,7 @@ export function mapTotvsModaLegalEntityClient(
         name: raw.name ?? raw.fantasyName ?? "",
         cpfCnpj: raw.cnpj,
         email: primaryEmail(raw.emails),
+        whatsappPhone: primaryPhone(raw.phones),
         cep: address?.cep,
         street: address?.address,
         number:

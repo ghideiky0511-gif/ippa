@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
-import { ArrowLeft, PackageCheck, ReceiptText, ShoppingBag } from 'lucide-react';
+import { useParams, useSearchParams } from 'next/navigation';
+import { ArrowLeft, CheckCircle2, PackageCheck, ReceiptText, ShoppingBag } from 'lucide-react';
 import Link from '@/components/TenantLink';
 import ProductImage from '@/components/ProductImage';
 import { useAuthUser } from '@/components/AuthProvider';
@@ -11,9 +11,11 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
+import { StatusChip, type StatusChipTone } from '@/components/StatusChip';
+import PaymentMethodIndicator from '@/components/payments/PaymentMethodIndicator';
 import type { Order } from '@/domain/orders/types';
 import { formatBRL } from '@/lib/format';
-import { fetchCustomerOrder } from '@/lib/ordersClient';
+import { fetchCustomerOrder, fetchOrderWithTemporaryAccess } from '@/lib/ordersClient';
 import { publicUi } from '@/lib/ui';
 
 const STATUS_LABELS: Record<Order['status'], string> = {
@@ -31,11 +33,21 @@ const CHANNEL_LABELS: Record<Order['channel'], string> = {
   whatsapp: 'WhatsApp',
 };
 
-const PAYMENT_METHODS = [
-  { id: 'pix', label: 'Pix' },
-  { id: 'cartao', label: 'Cartão de crédito' },
-  { id: 'boleto', label: 'Boleto' },
-];
+// Mesmo padrão de rótulo/tom do workspace (OrderDetailApp.tsx) -- ver
+// também a página dedicada em pedidos/[orderNumber]/pagamento/page.tsx.
+const PAYMENT_STATUS_LABELS: Record<NonNullable<Order['paymentStatus']>, string> = {
+  unpaid: 'Não cobrado',
+  awaiting_confirmation: 'Aguardando confirmação',
+  paid: 'Pago',
+  payment_failed: 'Falhou',
+};
+
+const PAYMENT_STATUS_TONES: Record<NonNullable<Order['paymentStatus']>, StatusChipTone> = {
+  unpaid: 'neutral',
+  awaiting_confirmation: 'neutral',
+  paid: 'brand',
+  payment_failed: 'danger',
+};
 
 function OrderDetailSkeleton() {
   return (
@@ -50,33 +62,60 @@ function OrderDetailSkeleton() {
 export default function PedidoDetalhePage() {
   const { authUser } = useAuthUser();
   const { orderNumber: rawOrderNumber } = useParams<{ orderNumber: string }>();
+  const searchParams = useSearchParams();
+  // ?pago=1 vem do redirect automático de /pagar/[token] logo após a
+  // confirmação (ver handlePaid em pagar/[token]/page.tsx) -- é só o
+  // gatilho pra mostrar o aviso de "pago com sucesso" nesta visita; o dado
+  // real de pagamento (order.paymentStatus) é sempre buscado do backend.
+  const justPaid = searchParams.get('pago') === '1';
   const orderNumber = /^[1-9]\d*$/.test(rawOrderNumber || '') ? Number(rawOrderNumber) : NaN;
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [temporaryAccessChecked, setTemporaryAccessChecked] = useState(false);
+  const [hasTemporaryAccess, setHasTemporaryAccess] = useState(false);
 
   useEffect(() => {
-    if (!authUser || !Number.isSafeInteger(orderNumber)) {
-      setLoading(false);
-      return;
-    }
     let active = true;
-    setLoading(true);
-    setNotFound(false);
-    void fetchCustomerOrder(orderNumber)
-      .then((nextOrder) => {
-        if (active) setOrder(nextOrder);
-      })
-      .catch(() => {
-        if (active) setNotFound(true);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => { active = false; };
+    const timer = window.setTimeout(() => {
+      if (!Number.isSafeInteger(orderNumber)) {
+        setLoading(false);
+        setTemporaryAccessChecked(true);
+        return;
+      }
+      setLoading(true);
+      setNotFound(false);
+      setTemporaryAccessChecked(Boolean(authUser));
+      setHasTemporaryAccess(false);
+      const loadOrder = authUser ? fetchCustomerOrder : fetchOrderWithTemporaryAccess;
+      void loadOrder(orderNumber)
+        .then((nextOrder) => {
+          if (active) {
+            setOrder(nextOrder);
+            setHasTemporaryAccess(!authUser);
+          }
+        })
+        .catch(() => {
+          if (active) setNotFound(true);
+        })
+        .finally(() => {
+          if (active) {
+            setLoading(false);
+            setTemporaryAccessChecked(true);
+          }
+        });
+    }, 0);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
   }, [authUser, orderNumber]);
 
-  if (!authUser) {
+  if (!authUser && !temporaryAccessChecked) {
+    return <main className={`${publicUi.container} py-8 sm:py-10`}><OrderDetailSkeleton /></main>;
+  }
+
+  if (!authUser && !hasTemporaryAccess) {
     return (
       <main className={`${publicUi.container} py-8 sm:py-10`}>
         <h1 className="mb-5 text-2xl font-bold tracking-[-0.03em] text-foreground sm:text-3xl">Detalhes do pedido</h1>
@@ -105,9 +144,9 @@ export default function PedidoDetalhePage() {
 
   return (
     <main className={`${publicUi.container} py-8 pb-14 sm:py-10`}>
-      <Button asChild variant="ghost" size="sm" className="mb-5">
+      {authUser && <Button asChild variant="ghost" size="sm" className="mb-5">
         <Link href="/pedidos"><ArrowLeft className="size-4" aria-hidden="true" />Meus pedidos</Link>
-      </Button>
+      </Button>}
 
       {loading || !order ? <OrderDetailSkeleton /> : (
         <div className="flex flex-col gap-4">
@@ -119,13 +158,39 @@ export default function PedidoDetalhePage() {
             <Badge>{STATUS_LABELS[order.status]}</Badge>
           </div>
 
+          {justPaid && order.paymentStatus === 'paid' && (
+            <Card className="border-emerald-200 bg-emerald-50/40 p-4">
+              <div className={publicUi.paySuccessWrap}>
+                <span className={publicUi.paySuccessIcon}>
+                  <CheckCircle2 strokeWidth={2} />
+                </span>
+                <div>
+                  <p className={publicUi.paySuccessTitle}>Pagamento confirmado!</p>
+                  <p className={publicUi.paySuccessSubtitle}>Recebemos seu pagamento — obrigado pela compra!</p>
+                </div>
+              </div>
+            </Card>
+          )}
+
           <Card className="p-4">
             <div className="flex items-start gap-3">
               <ReceiptText className="mt-0.5 size-5 shrink-0 text-brand-primary" aria-hidden="true" />
               <div className="grid flex-1 gap-3 text-sm sm:grid-cols-2">
                 <div><p className="text-muted-foreground">Data</p><p className="mt-0.5 font-semibold text-foreground">{new Date(order.date).toLocaleString('pt-BR')}</p></div>
                 <div><p className="text-muted-foreground">Canal</p><p className="mt-0.5 font-semibold text-foreground">{CHANNEL_LABELS[order.channel]}</p></div>
-                {order.paymentMethod && <div><p className="text-muted-foreground">Pagamento</p><p className="mt-0.5 font-semibold text-foreground">{order.paymentMethod}</p></div>}
+                <div>
+                  <p className="text-muted-foreground">Pagamento</p>
+                  <div className="mt-0.5 flex items-center gap-2">
+                    <StatusChip
+                      label={PAYMENT_STATUS_LABELS[order.paymentStatus ?? 'unpaid']}
+                      tone={PAYMENT_STATUS_TONES[order.paymentStatus ?? 'unpaid']}
+                    />
+                    {authUser && <PaymentMethodIndicator orderId={order.id} />}
+                    {authUser && <Link href={`/pedidos/${order.orderNumber}/pagamento`} className="text-xs font-semibold text-brand-primary underline">
+                      Ver detalhes
+                    </Link>}
+                  </div>
+                </div>
                 {order.freight && <div><p className="text-muted-foreground">Frete</p><p className="mt-0.5 font-semibold text-foreground">{order.freight.label} · {formatBRL(order.freight.price)}</p></div>}
               </div>
             </div>
@@ -156,21 +221,6 @@ export default function PedidoDetalhePage() {
               <div className="flex justify-between border-t border-border pt-3 text-base font-bold text-foreground"><span>Total</span><span>{formatBRL(order.total)}</span></div>
             </div>
           </Card>
-
-          {order.status === 'separado' && (
-            <Card className="p-4">
-              <h2 className="font-bold text-foreground">Pagamento</h2>
-              <div className={`${publicUi.paymentOptions} mt-3`}>
-                {PAYMENT_METHODS.map((method) => (
-                  <label key={method.id} className={`${publicUi.paymentOption} opacity-50`}>
-                    <input type="radio" name="payment" disabled />
-                    {method.label} <span className="text-xs">(em breve)</span>
-                  </label>
-                ))}
-              </div>
-              <p className="mt-3 text-sm text-muted-foreground">Pagamento pelo site em breve — a loja entra em contato para combinar o pagamento.</p>
-            </Card>
-          )}
         </div>
       )}
     </main>

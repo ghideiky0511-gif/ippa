@@ -15,23 +15,28 @@ import { useAuthUser } from '@/components/AuthProvider';
 import CheckoutSteps from '@/components/CheckoutSteps';
 import { useTenant } from '@/components/TenantProvider';
 import { finalizeOrderSession } from '@/lib/ordersClient';
+import { applyStockChangeClamp, buildStockChangeSummary, parseStockChangeDetails } from '@/lib/stockChangeError';
 
 const PAYMENT_METHODS = [
   { id: 'pix', label: 'Pix' },
   { id: 'cartao', label: 'Cartão de crédito' },
-  { id: 'boleto', label: 'Boleto' },
 ];
 
 export default function PagamentoPage() {
   const router = useRouter();
   const { href } = useTenant();
-  const { cart, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, freight, saveOrderToHistory } = useCart();
+  const { cart, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, freight, saveOrderToHistory, changeQty, removeFromCart } = useCart();
   const talao = useTalao();
   const activeSession = talao?.activeSession ?? null;
   const gate = useTalaoClientGate();
   const { authUser } = useAuthUser();
   const selfCheckoutBlocked = useClientSelfCheckoutGate();
   const [isConfirming, setConfirming] = useState(false);
+  // Preferência de pagamento gravada no pedido -- não cobra nada aqui (a
+  // cobrança real só acontece depois que a loja separa o pedido, no link de
+  // /pagar/[token], mesma regra já usada pelo Stripe hoje). Sem sessão de
+  // talão ativa: obrigatório escolher antes de confirmar.
+  const [paymentMethod, setPaymentMethod] = useState<string | null>(null);
 
   if (cart.length === 0) {
     return (
@@ -120,6 +125,10 @@ export default function PagamentoPage() {
   // e o pedido vai pro histórico dela.
   async function confirmOrder() {
     if (isConfirming) return;
+    if (!activeSession && !paymentMethod) {
+      toast.error('Escolha uma forma de pagamento antes de confirmar.');
+      return;
+    }
     setConfirming(true);
     try {
       if (activeSession) {
@@ -128,11 +137,19 @@ export default function PagamentoPage() {
         await saveOrderToHistory(cart, total, {
           channel: 'site',
           discount: cartDiscountTotal > 0 ? { label: cartDiscountLabel!, amount: cartDiscountTotal } : undefined,
+          paymentMethod: paymentMethod!,
         });
       }
       router.push(href('/pedido-confirmado'));
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : 'Não foi possível confirmar o pedido. Seu carrinho foi preservado.');
+      const details = parseStockChangeDetails(cause);
+      if (details) {
+        applyStockChangeClamp(cart, details, changeQty, removeFromCart);
+        toast.error(`O estoque de algumas peças mudou — ajustamos seu carrinho: ${buildStockChangeSummary(details)}`);
+        router.push(href('/carrinho'));
+      } else {
+        toast.error(cause instanceof Error ? cause.message : 'Não foi possível confirmar o pedido. Seu carrinho foi preservado.');
+      }
       setConfirming(false);
     }
   }
@@ -144,9 +161,14 @@ export default function PagamentoPage() {
 
       <div className={publicUi.paymentOptions}>
         {PAYMENT_METHODS.map((method) => (
-          <label key={method.id} className={`${publicUi.paymentOption} opacity-50`}>
-            <input type="radio" name="payment" disabled />
-            {method.label} <span className="text-xs">(em breve)</span>
+          <label key={method.id} className={publicUi.paymentOption}>
+            <input
+              type="radio"
+              name="payment"
+              checked={paymentMethod === method.id}
+              onChange={() => setPaymentMethod(method.id)}
+            />
+            {method.label}
           </label>
         ))}
       </div>
@@ -173,13 +195,17 @@ export default function PagamentoPage() {
       </div>
 
       <div className={publicUi.checkoutActions}>
-        <button className={publicUi.primaryButton} onClick={() => void confirmOrder()} disabled={isConfirming}>
+        <button
+          className={publicUi.primaryButton}
+          onClick={() => void confirmOrder()}
+          disabled={isConfirming || (!activeSession && !paymentMethod)}
+        >
           {isConfirming ? 'Finalizando…' : activeSession ? 'Finalizar pedido' : 'Confirmar pedido'}
         </button>
         <div className={publicUi.hint}>
           {activeSession
             ? 'Cobrança pelo app em breve — combine o pagamento direto com a cliente.'
-            : 'Pagamento pelo site em breve — a loja entra em contato para combinar o pagamento.'}
+            : 'Assim que a loja confirmar a separação do seu pedido, você recebe um link para pagar.'}
         </div>
       </div>
 

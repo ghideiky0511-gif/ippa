@@ -18,6 +18,8 @@ export interface OrderRow {
     id: string; order_number: number; created_at: Date; updated_at: Date; client_id: string | null; seller_id: string | null;
     client_name: string | null; channel: string; status: Order["status"]; total: string;
     payment_method: string | null; discount: Order["discount"];
+    payment_status: NonNullable<Order["paymentStatus"]>; paid_at: Date | null;
+    payment_token_created_at: Date | null;
 }
 export interface OrderItemRow { order_id: string; item_key: string; snapshot: CartItem }
 
@@ -324,6 +326,23 @@ export async function listOrderItemRowsByOrder(client: PoolClient, orderId: stri
     return result.rows;
 }
 
+export interface OrderItemSeparationRow { item_key: string; qty: number; qty_separated: number }
+
+// Usada por paymentChargeService.ts pra checar, antes de cobrar, se o
+// pedido tem itens e se a separação física (qty_separated, migration 023 --
+// confirmação vinda do Bippa via order_item_fulfillment_events) já cobre a
+// quantidade pedida (qty) em cada linha.
+export async function listOrderItemSeparationRowsByOrder(
+    client: PoolClient,
+    orderId: string,
+): Promise<OrderItemSeparationRow[]> {
+    const result = await client.query<OrderItemSeparationRow>(
+        `SELECT item_key, qty, qty_separated FROM order_items
+         WHERE tenant_id = app_tenant_id() AND order_id = $1`, [orderId],
+    );
+    return result.rows;
+}
+
 export interface OrderWriteRow {
     clientId?: string; sellerId?: string; clientName?: string; channel: string;
     // Default 'pago': todo caminho que ainda não foi migrado pra criar o
@@ -336,7 +355,7 @@ export interface OrderWriteRow {
     createdAt?: string;
 }
 
-const orderFields = "id, order_number, created_at, updated_at, client_id, seller_id, client_name, channel, status, total, payment_method, discount";
+const orderFields = "id, order_number, created_at, updated_at, client_id, seller_id, client_name, channel, status, total, payment_method, discount, payment_status, paid_at, payment_token_created_at";
 
 export async function insertOrderRow(client: PoolClient, value: OrderWriteRow): Promise<OrderRow> {
     const result = await client.query<OrderRow>(
@@ -363,6 +382,28 @@ export async function findOrderRowById(client: PoolClient, id: string, lock = fa
     const result = await client.query<OrderRow>(
         `SELECT ${orderFields} FROM orders
          WHERE tenant_id = app_tenant_id() AND id = $1${lock ? " FOR UPDATE" : ""}`, [id],
+    );
+    return result.rows[0] ?? null;
+}
+
+export async function findOrderRowByPaymentTokenHash(
+    client: PoolClient,
+    tokenHash: string,
+    lock = false,
+): Promise<OrderRow | null> {
+    const result = await client.query<OrderRow>(
+        `SELECT ${orderFields} FROM orders
+         WHERE tenant_id = app_tenant_id() AND payment_token_hash = $1${lock ? " FOR UPDATE" : ""}`, [tokenHash],
+    );
+    return result.rows[0] ?? null;
+}
+
+export async function setOrderPaymentTokenRow(client: PoolClient, id: string, tokenHash: string): Promise<OrderRow | null> {
+    const result = await client.query<OrderRow>(
+        `UPDATE orders SET payment_token_hash = $2, payment_token_created_at = now(), updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND id = $1
+         RETURNING ${orderFields}`,
+        [id, tokenHash],
     );
     return result.rows[0] ?? null;
 }
@@ -411,6 +452,64 @@ export async function updateOrderRow(client: PoolClient, id: string, value: {
     return result.rows[0] ?? null;
 }
 
+export async function updateOrderSellerRow(client: PoolClient, id: string, sellerId: string): Promise<OrderRow | null> {
+    const result = await client.query<OrderRow>(
+        `UPDATE orders SET seller_id = $2, updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND id = $1
+         RETURNING ${orderFields}`,
+        [id, sellerId],
+    );
+    return result.rows[0] ?? null;
+}
+
+// Trilha financeira (payment_status/paid_at), separada do ciclo de
+// separação física de `status` (ver comentário de OrderStatusSchema em
+// contracts/orders.ts) -- usada por paymentChargeService.ts, tanto na
+// confirmação síncrona de createOrderCharge quanto na aplicação de webhook/
+// reconciliação. advanceStatusTo nunca regride um status mais avançado (ex.
+// nunca sobrescreve 'cancelado', nunca desfaz 'pago'): 'novo' só pega a
+// partir de 'aberto' (fechamento de carrinho); 'pago' pega a partir de
+// qualquer status que não seja já 'pago'/'cancelado' -- é a mesma transição
+// que "Marcar como pago" faz manualmente (ver markOrderPaid em
+// orderService.ts), só que disparada por uma confirmação real do gateway em
+// vez de uma ação da vendedora.
+export async function updateOrderPaymentStatusRow(client: PoolClient, id: string, value: {
+    paymentStatus: NonNullable<Order["paymentStatus"]>; advanceStatusTo?: "novo" | "pago";
+}): Promise<OrderRow | null> {
+    const result = await client.query<OrderRow>(
+        `UPDATE orders SET
+           payment_status = $2,
+           paid_at = CASE WHEN $2 = 'paid' THEN now() ELSE paid_at END,
+           status = CASE
+             WHEN $3 = 'pago' AND status NOT IN ('pago', 'cancelado') THEN 'pago'
+             WHEN $3 = 'novo' AND status = 'aberto' THEN 'novo'
+             ELSE status
+           END,
+           updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND id = $1 AND payment_status != 'paid'
+         RETURNING ${orderFields}`,
+        [id, value.paymentStatus, value.advanceStatusTo ?? null],
+    );
+    return result.rows[0] ?? null;
+}
+
+// Reparo pontual: pedidos que já ficaram payment_status='paid' ANTES de
+// updateOrderPaymentStatusRow acima passar a avançar `status` até 'pago'
+// ficam presos num status anterior (ex. 'separado') pra sempre -- a
+// cláusula `payment_status != 'paid'` daquela função existe justamente pra
+// nunca reprocessar uma confirmação já aplicada, então ela nunca vai
+// alcançar essas linhas de novo sozinha. Uso manual (ver
+// scripts/testar-reparar-cobrancas-orfas.ts), não é chamada por nenhum
+// fluxo de requisição.
+export async function advanceAlreadyPaidOrderStatusRows(client: PoolClient): Promise<OrderRow[]> {
+    const result = await client.query<OrderRow>(
+        `UPDATE orders SET status = 'pago', updated_at = now()
+         WHERE tenant_id = app_tenant_id() AND payment_status = 'paid' AND status NOT IN ('pago', 'cancelado')
+         RETURNING ${orderFields}`,
+    );
+    return result.rows;
+}
+
 // Upsert por (tenant_id, order_id, item_key) -- a mesma linha muda de
 // valor em vez de trocar de identidade, o que é o que permite ter
 // order_item_events como histórico de verdade em cima dela. variant_id é
@@ -447,5 +546,45 @@ export async function insertOrderItemEventRow(client: PoolClient, event: OrderIt
         `INSERT INTO order_item_events (tenant_id, order_id, item_key, event_type, qty_delta, actor_id, actor_role)
          VALUES (app_tenant_id(), $1, $2, $3, $4, $5, $6)`,
         [event.orderId, event.itemKey, event.eventType, event.qtyDelta, event.actorId, event.actorRole],
+    );
+}
+
+export interface OrderItemSeparationUpdateRow { item_key: string; qty_delta: number }
+
+// Marca TODOS os itens do pedido como fisicamente separados (qty_separated
+// = qty) -- usada por orderService.confirmOrderItemsSeparation, o botão
+// manual "Confirmar separação" no workspace (ainda não existe integração
+// Bippa que faria isso automaticamente). CTE pra capturar o qty_separated
+// ANTES do update: RETURNING de um UPDATE só vê a linha já alterada, então
+// sem o "before" o delta sempre daria zero.
+export async function separateAllOrderItemsRow(
+    client: PoolClient,
+    orderId: string,
+): Promise<OrderItemSeparationUpdateRow[]> {
+    const result = await client.query<OrderItemSeparationUpdateRow>(
+        `WITH before AS (
+           SELECT item_key, qty, qty_separated FROM order_items
+           WHERE tenant_id = app_tenant_id() AND order_id = $1 AND qty_separated < qty
+           FOR UPDATE
+         )
+         UPDATE order_items AS oi SET qty_separated = oi.qty
+         FROM before
+         WHERE oi.tenant_id = app_tenant_id() AND oi.order_id = $1 AND oi.item_key = before.item_key
+         RETURNING oi.item_key, (oi.qty - before.qty_separated) AS qty_delta`,
+        [orderId],
+    );
+    return result.rows;
+}
+
+export interface OrderItemFulfillmentEventInput { orderId: string; itemKey: string; qtyDelta: number }
+
+export async function insertOrderItemFulfillmentEventRow(
+    client: PoolClient,
+    event: OrderItemFulfillmentEventInput,
+): Promise<void> {
+    await client.query(
+        `INSERT INTO order_item_fulfillment_events (tenant_id, order_id, item_key, qty_delta)
+         VALUES (app_tenant_id(), $1, $2, $3)`,
+        [event.orderId, event.itemKey, event.qtyDelta],
     );
 }

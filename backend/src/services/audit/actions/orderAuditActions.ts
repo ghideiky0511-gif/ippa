@@ -5,6 +5,8 @@ export const ORDER_AUDIT_ACTIONS = {
   MANUALLY_MARKED_PAID: 'order.manually_marked_paid',
   MANUALLY_CANCELLED: 'order.manually_cancelled',
   FREIGHT_METHOD_CHANGED: 'order.freight_method_changed',
+  ITEMS_SEPARATED: 'order.items_separated',
+  SELLER_CHANGED: 'order.seller_changed',
 } as const;
 
 export type OrderAuditAction = (typeof ORDER_AUDIT_ACTIONS)[keyof typeof ORDER_AUDIT_ACTIONS];

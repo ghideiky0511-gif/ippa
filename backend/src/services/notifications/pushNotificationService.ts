@@ -167,22 +167,24 @@ export async function pushStatus(
 export async function inbox(
     tenant: Tenant,
     user: AuthUser,
-    unreadOnly: boolean,
+    filter: "all" | "unread" | "read",
     limit: number,
+    offset: number = 0,
 ) {
     const [items, summary] = await withTenantTransaction(
         tenant,
         user,
-        async (client) =>
-            Promise.all([
-                listNotifications(
-                    client,
-                    user.id,
-                    unreadOnly,
-                    Math.min(Math.max(limit, 1), 100),
-                ),
-                notificationSummary(client, user.id),
-            ]),
+        async (client) => {
+            const notifications = await listNotifications(
+                client,
+                user.id,
+                filter,
+                Math.min(Math.max(limit, 1), 100),
+                Math.max(offset, 0),
+            );
+            const summaryRow = await notificationSummary(client, user.id);
+            return [notifications, summaryRow] as const;
+        },
     );
     return {
         items: items.map((item) => ({ ...item, read: Boolean(item.read_at) })),

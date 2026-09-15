@@ -7,8 +7,8 @@ import { listProductVariantRowsByProductIds } from "@/models/catalogModel";
 import { findActiveErpIntegrationRow, type ErpIntegrationRow } from "@/models/erpIntegrationsModel";
 import { findExternalIdByInternalId } from "@/models/erpExternalReferencesModel";
 import { applyErpInventorySnapshotRow } from "@/models/inventorySyncModel";
-import { createErpProvider } from "@/erp/registry";
 import { createExternalApiCallReporter } from "@/services/erp/externalApiLogService";
+import { createErpProviderForIntegration } from "@/services/erp/erpProviderFactory";
 import { getStockForVariants, getStockForVariantsFresh, invalidateVariantStock } from "@/services/inventory/stockCacheService";
 import { logger } from "@/lib/logger";
 
@@ -27,12 +27,25 @@ const FRESHNESS_MS = 5_000;
 // finalização, não só "razoavelmente recente" (gate obrigatório pedido pelo
 // usuário). Sem integração ERP ativa, não há autoridade de estoque pra
 // consultar -- no-op, mesma regra que já rege trackInventory hoje.
+// Uma linha com backorderDate já teve a parte excedente do estoque
+// explicitamente aceita como sob encomenda (ver pendingBackorders em
+// ProductDetailContent.tsx / seletor de entrega em CartRows.tsx) -- não é
+// corrida de estoque, é pré-venda por design. Isento do gate ao vivo por
+// enquanto (cobre a linha inteira, já que o contrato não guarda
+// backorderDate por unidade, só por linha color+size). Validação própria
+// do fluxo de programação fica pra outra rodada.
+export function isExemptFromStockGate(item: CartItem): boolean {
+    return Boolean(item.backorderDate);
+}
+
 export async function assertOrderItemsInStock(
     tenant: Tenant,
     client: PoolClient,
     items: CartItem[],
 ): Promise<void> {
-    const relevantItems = items.filter((item) => item.qty > 0 && item.color && item.size);
+    const relevantItems = items.filter(
+        (item) => item.qty > 0 && item.color && item.size && !isExemptFromStockGate(item),
+    );
     if (relevantItems.length === 0) return;
 
     const integration = await findActiveErpIntegrationRow(client);
@@ -88,9 +101,8 @@ async function refreshStockLive(
     }
     if (skuByVariant.size === 0) return new Map();
 
-    const provider = createErpProvider(
-        integration.provider,
-        integration.credentials,
+    const provider = createErpProviderForIntegration(
+        tenant, SYSTEM_ACTOR, integration,
         createExternalApiCallReporter(tenant, SYSTEM_ACTOR, integration.provider),
     );
     const runId = randomUUID();

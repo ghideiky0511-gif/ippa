@@ -59,7 +59,7 @@ export async function activatePushNotifications(): Promise<void> {
   await request("/push/subscriptions", { method: "POST", body: JSON.stringify({ installationId: installationId(), endpoint: subscription.endpoint, keys: { p256dh: json.keys?.p256dh, auth: json.keys?.auth }, userAgent: navigator.userAgent }) });
 }
 
-export const fetchNotifications = (filter = "unread") => request<NotificationsListResponse>(`/notifications?filtro=${filter === "all" ? "todas" : "nao_lidas"}&limite=20`);
+export const fetchNotifications = (filter = "unread", offset = 0) => request<NotificationsListResponse>(`/notifications?filtro=${filter === "all" ? "todas" : filter === "read" ? "lidas" : "nao_lidas"}&limite=20&offset=${offset}`);
 export const fetchNotificationsSummary = () => request<NotificationsSummaryResponse>("/notifications/summary");
 export const markNotificationAsRead = (id: string) => request<{ ok: boolean }>(`/notifications/${id}/read`, { method: "PATCH" });
 export const markAllNotificationsAsRead = () => request<{ marked: number }>("/notifications/read-all", { method: "PATCH" });

@@ -13,9 +13,8 @@ import { databaseId } from "@/services/shared/identifiers";
 
 export async function listHighlights(tenant: Tenant): Promise<Highlight[]> {
     return withTenantTransaction(tenant, {}, async (client) => {
-        const [highlights, products] = await Promise.all([
-            listHighlightRows(client), listHighlightProductRows(client),
-        ]);
+        const highlights = await listHighlightRows(client);
+        const products = await listHighlightProductRows(client);
         return highlights.map((highlight) => ({
             id: highlight.id,
             label: highlight.label,

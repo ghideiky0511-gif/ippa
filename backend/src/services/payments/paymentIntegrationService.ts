@@ -10,8 +10,10 @@ import {
 import {
     activatePaymentIntegrationRow,
     deactivatePaymentIntegrationRow,
+    findActivePaymentIntegrationRow,
     findPaymentIntegrationRowByProvider,
     listPaymentIntegrationRows,
+    updatePaymentIntegrationPixSettingsRow,
     upsertPaymentIntegrationCredentialsRow,
     type PaymentIntegrationRow,
 } from "@/models/paymentIntegrationsModel";
@@ -35,14 +37,38 @@ import { errorMeta, logger } from "@/lib/logger";
 //    "text"/"number" salvos para não obrigar redigitar tudo a cada edição.
 //    Aqui todo campo precisa ser redigitado a cada salvamento, por segurança.
 
+// Tipos de chave Pix aceitos pela Meta em payment.methods[].pix_dynamic_code
+// (ver api-reference.md, seção Orders/Pagamentos) -- EVP é o nome da Meta
+// pra chave aleatória.
+export const PIX_KEY_TYPES = ["CPF", "CNPJ", "EMAIL", "PHONE", "EVP"] as const;
+export type PixKeyType = (typeof PIX_KEY_TYPES)[number];
+
 export interface TenantPaymentIntegrationOption {
     provider: string;
     label: string;
     description: string;
     logoPath?: string;
     credentialFields: PaymentProviderCredentialField[];
+    onboardingType?: "credentials" | "redirect";
     configured: boolean;
     active: boolean;
+    // Estado público para o próprio administrador do tenant. Não expõe
+    // segredo algum: o acct_xxx é o identificador da connected account, não
+    // uma chave de API (a secret key permanece exclusivamente na plataforma).
+    stripeAccountId?: string | null;
+    stripeOnboardingStatus?: "pending" | "complete" | "restricted" | null;
+    stripeApiVersion?: "v2" | null;
+    // Espelha stripeAccountId: id do vendedor Mercado Pago, só exibição
+    // (não é segredo, ver models/paymentIntegrationsModel.ts).
+    mercadoPagoUserId?: string | null;
+    // Chave Pix da loja usada no payment_order nativo do WhatsApp (ver
+    // whatsappNotificationService.ts::sendPaymentOrderWhatsAppNow) -- ao
+    // contrário de `credentials`, não é segredo, então (diferente da nota no
+    // topo do arquivo) esses 3 campos SÃO devolvidos já preenchidos pra tela
+    // não obrigar redigitar a cada salvamento.
+    pixMerchantName?: string | null;
+    pixKey?: string | null;
+    pixKeyType?: PixKeyType | null;
     updatedAt: string | null;
 }
 
@@ -68,8 +94,22 @@ function toOption(
         description: entry.description,
         logoPath: entry.logoPath,
         credentialFields: entry.credentialFields,
+        onboardingType: entry.onboardingType,
         configured: Boolean(row),
         active: row?.active ?? false,
+        stripeAccountId: entry.code === "stripe" ? row?.stripe_account_id ?? null : undefined,
+        stripeOnboardingStatus:
+            entry.code === "stripe"
+                ? (row?.stripe_onboarding_status as TenantPaymentIntegrationOption["stripeOnboardingStatus"])
+                : undefined,
+        stripeApiVersion:
+            entry.code === "stripe"
+                ? row?.stripe_api_version ?? null
+                : undefined,
+        mercadoPagoUserId: entry.code === "mercadopago" ? row?.mercadopago_user_id ?? null : undefined,
+        pixMerchantName: (row?.credentials_meta?.pixMerchantName as string | undefined) ?? null,
+        pixKey: (row?.credentials_meta?.pixKey as string | undefined) ?? null,
+        pixKeyType: (row?.credentials_meta?.pixKeyType as PixKeyType | undefined) ?? null,
         updatedAt: row ? row.updated_at.toISOString() : null,
     };
 }
@@ -146,6 +186,12 @@ export async function saveTenantPaymentIntegrationCredentials(
 ): Promise<TenantPaymentIntegrationOption> {
     requireSettingsAdministrator(user);
     const entry = findVisibleCatalogEntry(provider);
+    if (entry.onboardingType === "redirect") {
+        throw new ValidationError(
+            "PAYMENT_INTEGRATION_ONBOARDING_REQUIRED",
+            "Conclua o onboarding hospedado da Stripe para conectar esta conta.",
+        );
+    }
     const credentials = parseCredentials(entry, rawCredentials ?? {});
     return withTenantTransaction(tenant, user, async (client) => {
         const row = await upsertPaymentIntegrationCredentialsRow(client, {
@@ -164,6 +210,81 @@ export async function saveTenantPaymentIntegrationCredentials(
     });
 }
 
+// Salva a chave Pix usada pro payment_order nativo do WhatsApp -- diferente
+// de saveTenantPaymentIntegrationCredentials, não é bloqueada por
+// onboardingType "redirect" (Stripe/Mercado Pago também guardam a chave
+// aqui, mesmo com credenciais geridas por onboarding hospedado) e não é
+// segredo, então o valor salvo é devolvido em toOption() (ver comentário no
+// topo do arquivo sobre a diferença de tratamento).
+export async function savePaymentIntegrationPixSettings(
+    tenant: Tenant,
+    user: AuthUser,
+    provider: string,
+    input: { pixMerchantName: string; pixKey: string; pixKeyType: string },
+    context: AuditRequestContext,
+): Promise<TenantPaymentIntegrationOption> {
+    requireSettingsAdministrator(user);
+    const entry = findVisibleCatalogEntry(provider);
+    const pixMerchantName = (input.pixMerchantName ?? "").trim();
+    const pixKey = (input.pixKey ?? "").trim();
+    const pixKeyType = (input.pixKeyType ?? "").trim().toUpperCase();
+    const errors: string[] = [];
+    if (!pixMerchantName) errors.push("Nome do recebedor é obrigatório.");
+    // Limite da Meta pra payment.pix_dynamic_code.merchant_name (ver
+    // api-reference.md, seção Orders/Pagamentos) -- validar aqui, na
+    // configuração, evita descobrir o estouro só quando um pedido de verdade
+    // falha no envio (400 invalid_order_payload).
+    else if (pixMerchantName.length > 25) errors.push("Nome do recebedor deve ter no máximo 25 caracteres.");
+    if (!pixKey) errors.push("Chave Pix é obrigatória.");
+    else if (pixKey.length > 160) errors.push("Chave Pix deve ter no máximo 160 caracteres.");
+    if (!PIX_KEY_TYPES.includes(pixKeyType as PixKeyType)) {
+        errors.push(`Tipo de chave Pix deve ser um de: ${PIX_KEY_TYPES.join(", ")}.`);
+    }
+    if (errors.length > 0) throw new ValidationError("INVALID_INPUT", errors.join(" "));
+
+    return withTenantTransaction(tenant, user, async (client) => {
+        const row = await updatePaymentIntegrationPixSettingsRow(client, provider, {
+            pixMerchantName,
+            pixKey,
+            pixKeyType,
+        });
+        if (!row) {
+            throw new ValidationError(
+                "PAYMENT_INTEGRATION_NOT_CONFIGURED",
+                "Configure este provider de pagamento antes de cadastrar a chave Pix.",
+            );
+        }
+        await recordAuditEvent(client, {
+            action: PAYMENT_INTEGRATION_AUDIT_ACTIONS.CONFIGURED,
+            entityId: row.id,
+            actor: user,
+            context,
+            metadata: { provider, field: "pix_settings" },
+        });
+        return toOption(entry, row);
+    });
+}
+
+// Leitura usada pelo envio de payment_order nativo do WhatsApp
+// (orderWhatsAppService.ts) -- devolve null se não houver integração ativa
+// ou se a chave Pix ainda não tiver sido configurada, deixando o chamador
+// decidir a mensagem de erro certa (mesmo padrão de
+// isPaymentIntegrationReadyToCharge em paymentChargeService.ts).
+export async function getActivePaymentIntegrationPixSettings(
+    tenant: Tenant,
+    actor: AuthUser,
+): Promise<{ pixMerchantName: string; pixKey: string; pixKeyType: PixKeyType } | null> {
+    return withTenantTransaction(tenant, actor, async (client) => {
+        const row = await findActivePaymentIntegrationRow(client);
+        if (!row) return null;
+        const pixMerchantName = row.credentials_meta?.pixMerchantName as string | undefined;
+        const pixKey = row.credentials_meta?.pixKey as string | undefined;
+        const pixKeyType = row.credentials_meta?.pixKeyType as PixKeyType | undefined;
+        if (!pixMerchantName || !pixKey || !pixKeyType) return null;
+        return { pixMerchantName, pixKey, pixKeyType };
+    });
+}
+
 export async function activateTenantPaymentIntegration(
     tenant: Tenant,
     user: AuthUser,
@@ -172,6 +293,12 @@ export async function activateTenantPaymentIntegration(
 ): Promise<TenantPaymentIntegrationOption> {
     requireSettingsAdministrator(user);
     const entry = findVisibleCatalogEntry(provider);
+    if (entry.onboardingType === "redirect") {
+        throw new ValidationError(
+            "PAYMENT_INTEGRATION_ONBOARDING_REQUIRED",
+            "A Stripe é ativada automaticamente quando o onboarding for concluído.",
+        );
+    }
     return withTenantTransaction(tenant, user, async (client) => {
         const row = await activatePaymentIntegrationRow(client, provider);
         if (!row)
@@ -228,13 +355,41 @@ export async function testTenantPaymentIntegrationConnection(
 
     let credentials: Record<string, unknown>;
     if (rawCredentials) {
+        if (entry.onboardingType === "redirect") {
+            throw new ValidationError(
+                "PAYMENT_INTEGRATION_ONBOARDING_REQUIRED",
+                "Conclua o onboarding hospedado da Stripe antes de testar a conexão.",
+            );
+        }
         credentials = parseCredentials(entry, rawCredentials);
     } else {
         const stored = await withTenantTransaction(tenant, user, (client) =>
             findPaymentIntegrationRowByProvider(client, provider),
         );
         if (!stored) throw new NotFoundError("PAYMENT_INTEGRATION_NOT_CONFIGURED");
-        credentials = stored.credentials;
+        if (entry.onboardingType === "redirect") {
+            if (provider === "stripe") {
+                if (!stored.stripe_account_id) {
+                    return { ok: false, message: "Conecte uma conta Stripe antes de testar a conexão." };
+                }
+                credentials = { stripeAccountId: stored.stripe_account_id };
+            } else if (provider === "mercadopago") {
+                if (!stored.mercadopago_user_id) {
+                    return { ok: false, message: "Conecte uma conta Mercado Pago antes de testar a conexão." };
+                }
+                // stored.credentials já vem decifrado pelo model
+                // (accessToken/refreshToken/expiresAt) -- teste manual não
+                // passa por resolveProviderCredentials de propósito (sem o
+                // efeito colateral de renovar+regravar token só por causa de
+                // um clique de "testar conexão"; um token expirado falhando
+                // o teste com mensagem clara já é UX aceitável aqui).
+                credentials = { ...stored.credentials, userId: stored.mercadopago_user_id };
+            } else {
+                return { ok: false, message: "Provider não suporta teste de conexão." };
+            }
+        } else {
+            credentials = stored.credentials;
+        }
     }
 
     try {

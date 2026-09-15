@@ -6,6 +6,7 @@ import {
     OptionalCpfCnpjSchema,
     OptionalEmailSchema,
     OptionalTextSchema,
+    OptionalWhatsAppPhoneSchema,
     RequiredTextSchema,
 } from "./shared";
 
@@ -26,6 +27,9 @@ export const ClientProfileSchema = z.object({
     name: RequiredTextSchema,
     cpfCnpj: z.string().optional(),
     email: OptionalEmailSchema,
+    // WhatsApp para notificação de pedido (ver services/whatsapp) — opcional
+    // como o resto do cadastro, nunca bloqueia o fluxo de quem preenche.
+    whatsappPhone: z.string().optional(),
     cep: z.string().optional(),
     // Endereço completo — opcional aqui (cadastro parcial da vendedora no
     // talão pode não ter isso), mas obrigatório no autocadastro da cliente
@@ -51,6 +55,7 @@ export const ClientProfileInputSchema = z.object({
     name: RequiredTextSchema,
     cpfCnpj: OptionalCpfCnpjSchema,
     email: OptionalEmailSchema,
+    whatsappPhone: OptionalWhatsAppPhoneSchema,
     cep: OptionalCepSchema,
     street: OptionalTextSchema,
     number: OptionalTextSchema,
@@ -71,6 +76,17 @@ export type CreateClientInput = z.infer<typeof CreateClientInputSchema>;
 
 export const UpdateClientInputSchema = ClientProfileInputSchema.partial();
 export type UpdateClientInput = z.infer<typeof UpdateClientInputSchema>;
+
+// Formulário de edição do workspace (staff): CPF/CNPJ, e-mail e WhatsApp são
+// dados obrigatórios/sensíveis do cadastro e nunca devem ser alterados por
+// ali — só via "Sincronizar com ERP" ou pela própria cliente completando o
+// cadastro dela (ver bloqueio equivalente em updateTenantClient).
+export const UpdateClientProfileInputSchema = UpdateClientInputSchema.omit({
+    cpfCnpj: true,
+    email: true,
+    whatsappPhone: true,
+});
+export type UpdateClientProfileInput = z.infer<typeof UpdateClientProfileInputSchema>;
 
 export const ClientSchema = ClientProfileSchema.extend({
     id: EntityIdSchema,

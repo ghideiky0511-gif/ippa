@@ -19,7 +19,7 @@ const dev = process.env.NODE_ENV !== "production";
 // rewrite do frontend, então nunca precisou de CORS) — allow-list explícita,
 // nunca "*". credentials: false porque a auth da sala vai por ticket
 // (handshake.auth/query), não por cookie.
-const allowedOrigins = (process.env.REALTIME_ALLOWED_ORIGINS ?? "http://localhost:3010")
+const allowedOrigins = (process.env.REALTIME_ALLOWED_ORIGINS ?? "http://localhost:3015")
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
@@ -43,7 +43,7 @@ function isAllowedOrigin(origin: string): boolean {
     try {
         const url = new URL(origin);
         return url.protocol === "http:"
-            && url.port === "3010"
+            && url.port === "3015"
             && isPrivateNetworkHostname(url.hostname);
     } catch {
         return false;

@@ -17,8 +17,8 @@ import {
     setCommercialGroupMemberPrimaryRow,
 } from "@/models/commercialGroupMembersModel";
 import { findActiveErpIntegrationRow } from "@/models/erpIntegrationsModel";
-import { createErpProvider } from "@/erp/registry";
 import { createExternalApiCallReporter } from "@/services/erp/externalApiLogService";
+import { createErpProviderForIntegration } from "@/services/erp/erpProviderFactory";
 import { findOrImportTenantClientByDocument } from "@/services/clients/clientService";
 import { recordAuditEvent, COMMERCIAL_GROUP_AUDIT_ACTIONS, type AuditRequestContext } from "@/services/audit";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/services/shared/errors";
@@ -67,8 +67,8 @@ export async function hasErpRelatedPartiesCapability(tenant: Tenant, user: AuthU
     return withTenantTransaction(tenant, user, async (client) => {
         const integration = await findActiveErpIntegrationRow(client);
         if (!integration) return false;
-        const provider = createErpProvider(
-            integration.provider, integration.credentials,
+        const provider = createErpProviderForIntegration(
+            tenant, user, integration,
             createExternalApiCallReporter(tenant, user, integration.provider),
         );
         return Boolean(provider.lookupRelatedPartiesByDocument);
@@ -99,8 +99,8 @@ export async function listErpRelatedPartiesForClient(tenant: Tenant, user: AuthU
         const integration = await findActiveErpIntegrationRow(client);
         if (!integration) return [];
 
-        const provider = createErpProvider(
-            integration.provider, integration.credentials,
+        const provider = createErpProviderForIntegration(
+            tenant, user, integration,
             createExternalApiCallReporter(tenant, user, integration.provider),
         );
         if (!provider.lookupRelatedPartiesByDocument) return [];

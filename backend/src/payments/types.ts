@@ -17,11 +17,41 @@ export interface CreateChargeInput {
     amount: number;
     method: PaymentMethod;
     orderId: string;
+    // Número sequencial do pedido, mostrado ao cliente na loja (ex. "Pedido
+    // #42") -- diferente de orderId (uuid interno), que não é legível.
+    // Providers usam isso pra montar descrição/referência mais úteis do que
+    // o uuid puro na tela de detalhes do pagamento (ex. Mercado Pago
+    // mostrava só "Pedido <uuid>" sem contexto nenhum do pedido).
+    orderNumber?: number;
+    // Itens do pedido, pra providers que aceitam uma lista detalhada (ex.
+    // Mercado Pago Orders API `items[]`) e mostram isso na tela de detalhes
+    // do pagamento pro comprador. Opcional -- providers sem suporte
+    // simplesmente ignoram.
+    items?: Array<{ title: string; quantity: number; unitPrice: number }>;
     customer: { name: string; document: string; email: string };
     // Cartão: token gerado client-side pelo SDK do provider (ex. iugu.js) --
     // a ippa nunca vê o PAN, só recebe o token para autorizar a cobrança.
     cardToken?: string;
     installments?: number;
+    // Cartão via Mercado Pago: o Card Payment Brick devolve payment_method_id
+    // (bandeira, ex. "visa"/"master") e issuer_id junto do token -- a API de
+    // pagamentos exige os dois além do token (diferente da Stripe, que
+    // resolve a bandeira a partir do PaymentMethod já criado). Ausentes para
+    // providers que não precisam disso.
+    paymentMethodId?: string;
+    issuerId?: string;
+    // Fingerprint do device (window.MP_DEVICE_SESSION_ID, gerado pelo
+    // Security.js que o SDK JS do Mercado Pago carrega sozinho junto com
+    // initMercadoPago no frontend) -- enviado como header X-meli-session-id
+    // na criação da order, melhora a análise de risco/aprovação da MP.
+    // Específico de Mercado Pago; providers sem suporte simplesmente ignoram.
+    deviceId?: string;
+    // Id da linha payment_charges já commitada por paymentChargeService
+    // ANTES desta chamada -- providers que precisam de uma chave estável
+    // pro webhook encontrar a cobrança mesmo que ele chegue antes desta
+    // chamada retornar (ex. metadata do PaymentIntent na Stripe) usam este
+    // valor; providers sem essa corrida (mock) simplesmente ignoram.
+    internalChargeId?: string;
 }
 
 export interface PixChargeResult {
@@ -93,6 +123,13 @@ export interface PaymentProvider {
     // implementam -- ausência é "sem teste disponível", nunca falha (mesmo
     // raciocínio de ErpProvider.testConnection).
     testConnection?(): Promise<{ ok: boolean; message?: string }>;
+    // Opcional: usado por paymentChargeService.ts para encerrar uma
+    // tentativa anterior ainda em aberto antes de permitir uma nova (regra
+    // "uma cobrança viva por pedido"). Ausência = provider não suporta
+    // cancelamento explícito; quem chama trata isso como impedimento para a
+    // nova tentativa, não como sucesso silencioso. Deve lançar se o provider
+    // rejeitar o cancelamento (ex. cobrança já capturada do lado dele).
+    cancelCharge?(externalId: string): Promise<void>;
 }
 
 // reporter é opcional e não carrega tenant/banco (ver lib/externalApiCall.ts)

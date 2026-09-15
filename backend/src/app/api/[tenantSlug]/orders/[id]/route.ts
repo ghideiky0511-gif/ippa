@@ -4,7 +4,7 @@ import { execute, requestToken } from "@/lib/http/apiHelpers";
 import * as authentication from "@/services/auth";
 import * as orders from "@/services/orders";
 
-type RouteContext = { params: Promise<{ tenantSlug: string; orderNumber: string }> };
+type RouteContext = { params: Promise<{ tenantSlug: string; id: string }> };
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,7 @@ export async function GET(
     );
     if (!session) return NextResponse.json({ error: "NÃ£o autenticado." }, { status: 401 });
 
-    const { orderNumber: rawOrderNumber } = await context.params;
+    const { id: rawOrderNumber } = await context.params;
     if (!/^[1-9]\d*$/.test(rawOrderNumber)) {
         return NextResponse.json({ error: "NÃºmero de pedido invÃ¡lido." }, { status: 400 });
     }

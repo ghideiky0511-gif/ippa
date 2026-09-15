@@ -97,6 +97,8 @@ export function toOrder(row: OrderRow, items: CartItem[], freightRow?: OrderFrei
         channel: OrderChannelSchema.catch("online").parse(row.channel),
         freight: freightRow ? toOrderFreight(freightRow) : undefined,
         paymentMethod: row.payment_method ?? undefined,
+        paymentStatus: row.payment_status,
+        paidAt: row.paid_at ? row.paid_at.toISOString() : undefined,
         discount: row.discount ?? undefined,
         clientId: row.client_id ?? undefined,
         sellerId: row.seller_id ?? undefined,

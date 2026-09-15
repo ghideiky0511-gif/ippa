@@ -7,6 +7,7 @@ export function toClient(row: ClientRow): Client {
         name: row.name,
         cpfCnpj: row.cpf_cnpj ?? undefined,
         email: row.email ?? undefined,
+        whatsappPhone: row.whatsapp_phone ?? undefined,
         cep: row.cep ?? undefined,
         street: row.street ?? undefined,
         number: row.number ?? undefined,
