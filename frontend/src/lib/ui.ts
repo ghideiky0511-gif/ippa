@@ -96,19 +96,14 @@ export const publicUi = {
   loginForm: 'mx-auto flex w-full max-w-[450px] flex-col gap-4 rounded-brand bg-brand-card p-6 shadow-[0_1px_4px_rgba(0,0,0,0.08)] lg:border lg:border-solid lg:border-neutral-300 lg:p-8',
   authSwitch: 'm-0 text-center text-[13px] text-brand-muted [&>a]:font-semibold [&>a]:text-brand-primary',
   productDetail: 'grid grid-cols-2 gap-8 py-6 max-md:grid-cols-1',
-  // A tira de miniaturas é posicionada `absolute inset-y-0`, então sua
-  // altura é sempre a da imagem principal (único filho em fluxo do
-  // wrapper). As até 5 fotos dividem essa altura (flex-1 + min-h-0) e
-  // nunca "descem" além da imagem. Passando de 5, as setas ‹ › sobre a
-  // imagem rotacionam a galeria (ver stepGallery em ProductDetailContent).
-  gallery: 'relative flex min-w-0',
-  galleryThumbRail: 'absolute inset-y-0 left-0 z-10 flex w-[68px] flex-col gap-2 max-sm:w-12',
-  galleryThumb: 'min-h-0 w-full flex-1 cursor-pointer rounded-md object-cover ring-1 ring-[#eee] transition-[box-shadow] hover:ring-brand-primary',
-  galleryMainWrap: 'relative grid min-w-0 flex-1 [&>*]:[grid-area:1/1]',
-  galleryNavButton: 'absolute top-1/2 z-10 flex size-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border-0 bg-white/90 text-foreground shadow-[0_1px_4px_rgba(0,0,0,0.2)] hover:bg-white',
-  galleryNavButtonPrev: 'left-1.5',
-  galleryNavButtonNext: 'right-1.5',
-  detailImage: 'aspect-[9/16] w-full rounded-brand bg-[#eee] object-cover',
+  // Galeria da quick-view (ProductDetailContent, modo painel): a imagem
+  // principal e a tira de miniaturas têm a MESMA altura fixa (--gallery-h),
+  // então as miniaturas nunca passam da foto. Até 5 miniaturas dividem essa
+  // altura (flex-1 + min-h-0); com mais fotos, as setas ‹ › rotacionam a
+  // galeria (carrossel — ver stepGallery).
+  galleryNavButton: 'absolute top-1/2 z-10 flex size-9 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full border-0 bg-white/90 text-foreground shadow-[0_2px_8px_rgba(0,0,0,0.25)] transition-colors hover:bg-white',
+  galleryNavButtonPrev: 'left-2',
+  galleryNavButtonNext: 'right-2',
   detailInfo: 'flex flex-col gap-3',
   sectionTitle: 'mb-2 text-lg font-bold',
   modal: 'fixed inset-0 z-80 flex items-center justify-center bg-black/45 p-5',

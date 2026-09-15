@@ -163,68 +163,124 @@ export default function ProductDetailContent({ product, presentation = 'page', o
 
   const hasThumbs = gallery.length > 1;
 
-  const galleryBlock = (
-    <div className={publicUi.gallery}>
+  // Círculos de cor — clicar troca a galeria pra cor escolhida
+  // (resolveGallery por cor). No painel ficam logo abaixo da foto; na
+  // página cheia, junto do resto das infos.
+  const colorPicker = matrix.colors.length > 0 && (
+    <div className="flex flex-wrap items-center gap-2.5" role="group" aria-label="Cor">
+      {matrix.colors.map((c) => {
+        const isSelected = selectedColor === c;
+        const available = matrix.availableColors.includes(c);
+        return (
+          <button
+            key={c}
+            type="button"
+            title={c}
+            aria-label={c}
+            aria-pressed={isSelected}
+            onClick={() => pickColor(c)}
+            className={[
+              'relative shrink-0 cursor-pointer rounded-full border border-black/15 transition-transform hover:scale-110',
+              isPanel ? 'size-6' : 'size-7',
+              isSelected ? 'ring-2 ring-brand-primary ring-offset-2 ring-offset-surface' : '',
+              available ? '' : 'opacity-35',
+            ].join(' ')}
+            style={{ background: COLOR_MAP[c] || '#ccc' }}
+          />
+        );
+      })}
+    </div>
+  );
+
+  // No máx. 5 miniaturas ao lado da foto — o resto se alcança pelas setas
+  // ‹ › (stepGallery rotaciona a ordem = carrossel).
+  const visibleThumbs = galleryOrder.slice(1, 6);
+
+  const mainImage = (
+    // Crossfade na troca de foto: as duas imagens ficam sobrepostas
+    // (absolute inset-0) enquanto a antiga some.
+    <AnimatePresence initial={false}>
+      <motion.div
+        key={displayImage}
+        className="absolute inset-0"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: shouldReduceMotion ? 0 : 0.3, ease: 'easeInOut' }}
+      >
+        <ProductImage className="size-full" src={displayImage} alt={product.name} />
+      </motion.div>
+    </AnimatePresence>
+  );
+
+  const navButtons = hasThumbs && (
+    <>
+      <button
+        type="button"
+        className={[publicUi.galleryNavButton, publicUi.galleryNavButtonPrev].join(' ')}
+        onClick={() => stepGallery(-1)}
+        aria-label="Foto anterior"
+      >
+        <ChevronLeft className="size-5" aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        className={[publicUi.galleryNavButton, publicUi.galleryNavButtonNext].join(' ')}
+        onClick={() => stepGallery(1)}
+        aria-label="Próxima foto"
+      >
+        <ChevronRight className="size-5" aria-hidden="true" />
+      </button>
+    </>
+  );
+
+  const galleryBlock = isPanel ? (
+    // Painel: altura FIXA compartilhada (--gallery-h). Tira e foto ocupam os
+    // dois exatamente essa altura, então as miniaturas nunca passam da foto.
+    <div className="flex flex-col gap-3">
+      <div className="flex gap-3 [--gallery-h:min(72vh,44rem)] max-lg:[--gallery-h:min(56vh,24rem)]">
+        {hasThumbs && (
+          <div className="flex h-[var(--gallery-h)] w-[68px] shrink-0 flex-col gap-2 max-sm:w-[52px]">
+            {visibleThumbs.map((imageIndex, i) => (
+              <button
+                key={imageIndex}
+                type="button"
+                onClick={() => swapToCenter(i + 1)}
+                aria-label={`Ver foto ${imageIndex + 1}`}
+                className="min-h-0 flex-1 cursor-pointer overflow-hidden rounded-md ring-1 ring-[#eee] transition-[box-shadow] hover:ring-brand-primary"
+              >
+                <ProductImage src={gallery[imageIndex]} alt="" className="size-full" />
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="relative h-[var(--gallery-h)] min-w-0 flex-1 overflow-hidden rounded-brand bg-[#eee]">
+          {mainImage}
+          {navButtons}
+        </div>
+      </div>
+      {colorPicker}
+    </div>
+  ) : (
+    <div className="flex min-w-0 gap-2">
       {hasThumbs && (
-        <div className={publicUi.galleryThumbRail}>
-          {/* No máx. 5 miniaturas ao lado da foto principal — o resto se
-             alcança pelas setas ‹ › (stepGallery rotaciona a ordem). A tira
-             é `absolute inset-y-0`, então acompanha exatamente a altura da
-             imagem, sem "descer" além dela. */}
-          {galleryOrder.slice(1, 6).map((imageIndex, i) => (
-            <ProductImage
+        <div className="flex w-14 shrink-0 flex-col gap-2 sm:w-16">
+          {visibleThumbs.map((imageIndex, i) => (
+            <button
               key={imageIndex}
-              src={gallery[imageIndex]}
-              alt=""
-              className={publicUi.galleryThumb}
+              type="button"
               onClick={() => swapToCenter(i + 1)}
-            />
+              aria-label={`Ver foto ${imageIndex + 1}`}
+              className="aspect-[4/5] shrink-0 cursor-pointer overflow-hidden rounded-md ring-1 ring-[#eee] transition-[box-shadow] hover:ring-brand-primary"
+            >
+              <ProductImage src={gallery[imageIndex]} alt="" className="size-full" />
+            </button>
           ))}
         </div>
       )}
-      <div className={[publicUi.galleryMainWrap, hasThumbs ? 'ml-[76px] max-sm:ml-14' : ''].join(' ')}>
-        {/* Crossfade na troca de foto (clique na miniatura ou setas) — as
-           duas imagens ficam empilhadas na mesma célula de grid enquanto a
-           antiga some. */}
-        <AnimatePresence initial={false}>
-          <motion.div
-            key={displayImage}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: shouldReduceMotion ? 0 : 0.3, ease: 'easeInOut' }}
-          >
-            <ProductImage
-              className={
-                isPanel
-                  ? 'aspect-[4/5] max-h-[68vh] w-full rounded-brand bg-[#eee] object-cover'
-                  : publicUi.detailImage
-              }
-              src={displayImage}
-              alt={product.name}
-            />
-          </motion.div>
-        </AnimatePresence>
-        {hasThumbs && (
-          <>
-            <button
-              type="button"
-              className={[publicUi.galleryNavButton, publicUi.galleryNavButtonPrev].join(' ')}
-              onClick={() => stepGallery(-1)}
-              aria-label="Foto anterior"
-            >
-              <ChevronLeft className="size-4" aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className={[publicUi.galleryNavButton, publicUi.galleryNavButtonNext].join(' ')}
-              onClick={() => stepGallery(1)}
-              aria-label="Próxima foto"
-            >
-              <ChevronRight className="size-4" aria-hidden="true" />
-            </button>
-          </>
-        )}
+      <div className="relative aspect-[9/16] min-w-0 flex-1 overflow-hidden rounded-brand bg-[#eee]">
+        {mainImage}
+        {navButtons}
       </div>
     </div>
   );
@@ -278,35 +334,9 @@ export default function ProductDetailContent({ product, presentation = 'page', o
           </p>
         )}
 
-        {/* Só os círculos com a cor de referência — clicar troca a galeria
-           pra cor escolhida (resolveGallery por cor). Sem rótulo "Cor — X"
-           nem botão "todas as cores": a grade de variantes abaixo já lista
-           todas as cores. */}
-        {matrix.colors.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2.5" role="group" aria-label="Cor">
-            {matrix.colors.map((c) => {
-              const isSelected = selectedColor === c;
-              const available = matrix.availableColors.includes(c);
-              return (
-                <button
-                  key={c}
-                  type="button"
-                  title={c}
-                  aria-label={c}
-                  aria-pressed={isSelected}
-                  onClick={() => pickColor(c)}
-                  className={[
-                    'relative shrink-0 cursor-pointer rounded-full border border-black/15 transition-transform hover:scale-110',
-                    isPanel ? 'size-6' : 'size-7',
-                    isSelected ? 'ring-2 ring-brand-primary ring-offset-2 ring-offset-surface' : '',
-                    available ? '' : 'opacity-35',
-                  ].join(' ')}
-                  style={{ background: COLOR_MAP[c] || '#ccc' }}
-                />
-              );
-            })}
-          </div>
-        )}
+        {/* No painel os círculos de cor ficam junto da galeria; aqui (página
+           cheia) ficam com o resto das infos. */}
+        {!isPanel && colorPicker}
 
         {product.packs && product.packs.length > 0 && (
           <div className="contents">
@@ -467,9 +497,9 @@ export default function ProductDetailContent({ product, presentation = 'page', o
     >
       {isPanel ? (
         <>
-          {/* Esquerda: fotos + dados da peça + cores. Direita: a grade,
+          {/* Esquerda: fotos + cores + dados da peça. Direita: a grade,
              que sobe pra ocupar o espaço que ficava em branco. */}
-          <div className="flex w-[42%] min-w-0 flex-col gap-4 max-lg:w-full">
+          <div className="flex w-[44%] min-w-0 flex-col gap-4 max-lg:w-full">
             {galleryBlock}
             {infoBlock}
           </div>
