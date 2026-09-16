@@ -5,8 +5,9 @@ import Link from '@/components/TenantLink';
 
 const STEPS = [
   { step: 1, label: 'Carrinho', href: '/carrinho' },
-  { step: 2, label: 'Entrega', href: '/frete' },
-  { step: 3, label: 'Pagamento', href: '/pagamento' },
+  { step: 2, label: 'Revisão', href: '/revisao' },
+  { step: 3, label: 'Entrega', href: '/frete' },
+  { step: 4, label: 'Pagamento', href: '/pagamento' },
 ];
 
 // current: rota ativa. reachable: até onde o cliente já avançou (ex.: sem

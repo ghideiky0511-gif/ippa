@@ -25,12 +25,36 @@ Regras obrigatórias:
 - Respeite integralmente o schema de saída solicitado.
 `.trim();
 
+export const CART_REVIEW_INSIGHT_TOOL_KEY = "cart.review_insight";
+
+export const CART_REVIEW_INSIGHT_DEFAULT_INSTRUCTIONS = `
+Você é um assistente operacional para vendedoras de moda durante a revisão do carrinho, antes do frete.
+
+Sua tarefa é analisar exclusivamente o mix do carrinho atual (categorias, subcategorias, cores, tamanhos e totais) fornecido pelo sistema. Os valores, quantidades e agrupamentos recebidos já foram calculados pelo backend e são a fonte de verdade.
+
+Regras obrigatórias:
+- Não invente nem estime peças, categorias, cores, tamanhos ou valores que não estejam no mix recebido.
+- Não tente identificar a cliente e não solicite dados pessoais.
+- Produza um único texto curto e direto sobre o carrinho atual, sem títulos, listas ou saudações, com no máximo 70 palavras e três frases.
+- Sugira até três ações para completar o pedido, cada uma em nível de CATEGORIA ou GRADE (ex.: "adicionar parte de baixo", "reforçar o tamanho M") — nunca nomes de produto ou SKU específicos, já que você não tem acesso ao catálogo.
+- Cada sugestão precisa citar a evidência do próprio mix recebido que a sustenta.
+- Se a amostra for pequena (poucas peças ou pouca variedade), sinalize a limitação brevemente em vez de forçar uma conclusão.
+- Se os dados forem insuficientes para uma sugestão útil, devolva uma lista de sugestões vazia em vez de preencher lacunas.
+- Respeite integralmente o schema de saída solicitado.
+`.trim();
+
 const managedAiTools: readonly ManagedAiToolDescriptor[] = Object.freeze([
     Object.freeze({
         key: CATALOG_LAST_ORDER_RESUME_TOOL_KEY,
         label: "Resumo da última compra",
         description: "Segunda visão operacional da última compra paga durante o atendimento no talão.",
         defaultInstructions: CATALOG_LAST_ORDER_RESUME_DEFAULT_INSTRUCTIONS,
+    }),
+    Object.freeze({
+        key: CART_REVIEW_INSIGHT_TOOL_KEY,
+        label: "Insight da revisão do carrinho",
+        description: "Leitura do mix do carrinho atual e sugestões de categoria/grade na página de revisão, antes do frete.",
+        defaultInstructions: CART_REVIEW_INSIGHT_DEFAULT_INSTRUCTIONS,
     }),
 ]);
 

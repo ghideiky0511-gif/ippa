@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  CartItemSchema,
   EntityIdSchema,
   IsoDateTimeSchema,
   MoneySchema,
@@ -65,3 +66,68 @@ export const CatalogLastOrderSummarySchema = z.discriminatedUnion('status', [
   }).strict(),
 ]);
 export type CatalogLastOrderSummary = z.infer<typeof CatalogLastOrderSummarySchema>;
+
+// Requisição da revisão do carrinho: o carrinho ainda não é um pedido
+// persistido, então os itens vêm no corpo da requisição (mesmo padrão de
+// `similar-products`/`orders`), não de um `sessionId`.
+export const CartReviewRequestSchema = z.object({
+  items: z.array(CartItemSchema),
+}).strict();
+export type CartReviewRequest = z.infer<typeof CartReviewRequestSchema>;
+
+export const CartReviewMixSchema = z.object({
+  categories: z.array(CatalogOrderBreakdownItemSchema),
+  subcategories: z.array(CatalogOrderBreakdownItemSchema),
+  colors: z.array(CatalogOrderBreakdownItemSchema),
+  sizes: z.array(CatalogOrderBreakdownItemSchema),
+  piecesWithoutCategory: NonNegativeIntegerSchema,
+}).strict();
+export type CartReviewMix = z.infer<typeof CartReviewMixSchema>;
+
+// Fatos calculados pelo backend a partir do carrinho atual — usados tanto
+// como resposta da rota simples (renderização da página, sem IA) quanto
+// como input da ferramenta de IA. Sem IDs nem dado pessoal.
+export const CartReviewFactsSchema = z.object({
+  totalPieces: NonNegativeIntegerSchema,
+  totalValue: MoneySchema,
+  distinctProducts: NonNegativeIntegerSchema,
+  mix: CartReviewMixSchema,
+}).strict();
+export type CartReviewFacts = z.infer<typeof CartReviewFactsSchema>;
+
+export const CartReviewGroupSchema = z.object({
+  category: RequiredTextSchema, // "Sem categoria" quando a peça não resolve nível 1
+  itemKeys: z.array(EntityIdSchema),
+}).strict();
+export type CartReviewGroup = z.infer<typeof CartReviewGroupSchema>;
+
+export const CartReviewSchema = z.object({
+  facts: CartReviewFactsSchema,
+  groups: z.array(CartReviewGroupSchema),
+}).strict();
+export type CartReview = z.infer<typeof CartReviewSchema>;
+
+export const CartReviewSuggestionSchema = z.object({
+  title: RequiredTextSchema.max(80),
+  evidence: RequiredTextSchema.max(160),
+  action: RequiredTextSchema.max(160),
+}).strict();
+export type CartReviewSuggestion = z.infer<typeof CartReviewSuggestionSchema>;
+
+export const CartReviewInsightOutputSchema = z.object({
+  text: z.string().trim().min(1).max(400),
+  suggestions: z.array(CartReviewSuggestionSchema).max(3),
+}).strict();
+export type CartReviewInsightOutput = z.infer<typeof CartReviewInsightOutputSchema>;
+
+export const CartReviewInsightSummarySchema = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('empty_cart') }).strict(),
+  z.object({
+    status: z.literal('available'),
+    facts: CartReviewFactsSchema,
+    analysis: CartReviewInsightOutputSchema,
+    executionId: EntityIdSchema,
+    source: AiExecutionSourceSchema,
+  }).strict(),
+]);
+export type CartReviewInsightSummary = z.infer<typeof CartReviewInsightSummarySchema>;

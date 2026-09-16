@@ -6,6 +6,8 @@ export {
     resolveAiToolPrompt,
 } from "./promptManagementService";
 export {
+    CART_REVIEW_INSIGHT_DEFAULT_INSTRUCTIONS,
+    CART_REVIEW_INSIGHT_TOOL_KEY,
     CATALOG_LAST_ORDER_RESUME_DEFAULT_INSTRUCTIONS,
     CATALOG_LAST_ORDER_RESUME_TOOL_KEY,
     findManagedAiTool,
@@ -19,6 +21,15 @@ export {
     catalogOrderResume,
     createCatalogOrderResumeService,
 } from "./catalogOrderResumeService";
+export { cartReviewInsightTool } from "./cartReviewInsightTool";
+export {
+    buildCartReview,
+    canRunCartReviewInsight,
+    cartReview,
+    cartReviewInsight,
+    createCartReviewInsightService,
+    createCartReviewService,
+} from "./cartReviewInsightService";
 export type {
     AiProviderFailureKind,
     AiProviderProfile,

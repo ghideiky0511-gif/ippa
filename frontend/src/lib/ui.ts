@@ -172,7 +172,7 @@ export const publicUi = {
   variantPicker: 'mt-1 flex flex-col gap-3',
   variantFilters: 'flex flex-wrap items-center gap-2',
   variantFilter: 'cursor-pointer rounded-full border border-[#ddd] bg-white px-3 py-1.5 text-xs font-semibold text-brand-muted transition-[border-color,background-color,color,transform] hover:border-brand-primary hover:text-brand-primary active:scale-[.98]',
-  variantFilterActive: 'border-brand-primary bg-brand-primary text-white hover:border-brand-primary-dark hover:bg-brand-primary-dark hover:text-white',
+  variantFilterActive: 'border-brand-primary bg-brand-primary !text-white hover:border-brand-primary-dark hover:bg-brand-primary-dark hover:!text-white',
   variantFilterPreorder: 'border-[#d9b76c] text-[#87611a] hover:border-[#b9892d] hover:text-[#76500d]',
   variantFilterInStock: 'border-[#9acdae] text-[#247144] hover:border-[#4d9a6d] hover:text-[#1d613a]',
   variantMatrix: 'overflow-x-auto rounded-brand border border-[#eee] bg-white',

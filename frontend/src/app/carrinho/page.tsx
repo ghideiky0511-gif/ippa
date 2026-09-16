@@ -131,16 +131,16 @@ export default function CarrinhoPage() {
     sendWhatsapp();
   }
 
-  function goToFrete() {
+  function goToRevisao() {
     const names = unselectedProductNames(cart);
     if (names.length > 0) {
-      setPendingAction({ names, run: () => router.push(href('/frete')) });
+      setPendingAction({ names, run: () => router.push(href('/revisao')) });
       return;
     }
-    router.push(href('/frete'));
+    router.push(href('/revisao'));
   }
 
-  const reachable = freight ? 3 : cartCount > 0 ? 2 : 1;
+  const reachable = freight ? 4 : cartCount > 0 ? 3 : 1;
 
   return (
     <main className={`${publicUi.container} py-5 pb-14`}>
@@ -177,8 +177,8 @@ export default function CarrinhoPage() {
           </div>
 
           <div className={`${publicUi.checkoutActions} max-w-[420px]`}>
-            <button className={publicUi.primaryButton} disabled={cartCount === 0} onClick={goToFrete}>
-              Continuar para o frete
+            <button className={publicUi.primaryButton} disabled={cartCount === 0} onClick={goToRevisao}>
+              Continuar
             </button>
             <button className={publicUi.whatsapp} onClick={checkoutWhatsapp} disabled={isSendingWhatsapp}>{isSendingWhatsapp ? 'Registrando pedido…' : 'Finalizar pedido via WhatsApp'}</button>
           </div>

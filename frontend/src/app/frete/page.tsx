@@ -82,7 +82,7 @@ export default function FretePage() {
     router.push(href('/pagamento'));
   }
 
-  const reachable = freight ? 3 : cart.length > 0 ? 2 : 1;
+  const reachable = freight ? 4 : cart.length > 0 ? 3 : 1;
   const hasValidCep = cep.replace(/\D/g, '').length === 8;
   const visibleOptions = options?.filter((option) =>
     option.fulfillmentMode === 'pickup' || hasValidCep,
@@ -121,7 +121,7 @@ export default function FretePage() {
   if (gate.blocked) {
     return (
       <main className={`${publicUi.container} py-5 pb-14`}>
-        <CheckoutSteps current="/frete" reachable={2} />
+        <CheckoutSteps current="/frete" reachable={3} />
         <h1 className="mb-5 text-2xl font-extrabold tracking-[-0.03em]">Entrega</h1>
         <div className="max-w-[420px]">
           <p className="mb-4 text-sm text-brand-muted">
@@ -145,7 +145,7 @@ export default function FretePage() {
   if (activeSession?.status === 'fechado') {
     return (
       <main className={`${publicUi.container} py-5 pb-14`}>
-        <CheckoutSteps current="/frete" reachable={3} />
+        <CheckoutSteps current="/frete" reachable={4} />
         <h1 className="mb-5 text-2xl font-extrabold tracking-[-0.03em]">Entrega</h1>
         <div className="mb-4 flex items-center gap-2 text-sm font-semibold">
           <Check className="size-5 text-success" aria-hidden="true" />

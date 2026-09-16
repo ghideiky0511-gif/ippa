@@ -10,6 +10,7 @@ import {
   EmailSchema,
   EntityIdSchema,
   OptionalEmailSchema,
+  OptionalWhatsAppPhoneSchema,
   RequiredTextSchema,
 } from './shared';
 
@@ -75,8 +76,13 @@ export const CreateUserCredentialsSchema = UserCredentialsSchema.extend({
   password: PasswordSchema,
 });
 
+// whatsappPhone aqui é o número WhatsApp Business da própria vendedora (para
+// conectar via bippa-messaging), diferente de clients.whatsappPhone (contato
+// da cliente) usado em ClientRegistrationSchema abaixo -- por isso entra só
+// nestes dois schemas, não em UserCredentialsSchema.
 export const CreateTenantUserInputSchema = CreateUserCredentialsSchema.extend({
   role: UserRoleSchema.optional(),
+  whatsappPhone: OptionalWhatsAppPhoneSchema,
 });
 export type CreateTenantUserInput = z.infer<typeof CreateTenantUserInputSchema>;
 
@@ -85,6 +91,7 @@ export const UpdateTenantUserInputSchema = z.object({
   email: OptionalEmailSchema,
   password: PasswordSchema.optional(),
   catalogAreas: z.array(CatalogAreaSchema).optional(),
+  whatsappPhone: OptionalWhatsAppPhoneSchema,
 });
 export type UpdateTenantUserInput = z.infer<typeof UpdateTenantUserInputSchema>;
 
@@ -137,5 +144,6 @@ export const AdminUserSchema = AuthUserSchema.extend({
   storeName: z.string().optional(),
   lastSellerId: EntityIdSchema.optional(),
   createdAt: z.iso.datetime().optional(),
+  whatsappPhone: z.string().optional(),
 });
 export type AdminUser = z.infer<typeof AdminUserSchema>;

@@ -1,6 +1,6 @@
 import type { z } from "zod";
 
-export type AiProviderProfileKey = "catalogOrderResume";
+export type AiProviderProfileKey = "catalogOrderResume" | "cartReviewInsight";
 
 export interface AiToolDefinition<TInput, TOutput> {
     key: string;

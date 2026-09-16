@@ -53,7 +53,7 @@ export default function PagamentoPage() {
   if (!freight) {
     return (
       <main className={`${publicUi.container} py-5 pb-14`}>
-        <CheckoutSteps current="/pagamento" reachable={2} />
+        <CheckoutSteps current="/pagamento" reachable={3} />
         <h1 className="mb-5 text-2xl font-extrabold tracking-[-0.03em]">Pagamento</h1>
         <div className={publicUi.empty}>
           Escolha a entrega primeiro. <Link href="/frete">Voltar para a entrega</Link>
@@ -65,7 +65,7 @@ export default function PagamentoPage() {
   if (gate.blocked) {
     return (
       <main className={`${publicUi.container} py-5 pb-14`}>
-        <CheckoutSteps current="/pagamento" reachable={2} />
+        <CheckoutSteps current="/pagamento" reachable={3} />
         <h1 className="mb-5 text-2xl font-extrabold tracking-[-0.03em]">Pagamento</h1>
         <div className="max-w-[420px]">
           <p className="mb-4 text-sm text-brand-muted">
@@ -87,7 +87,7 @@ export default function PagamentoPage() {
   if (!authUser) {
     return (
       <main className={`${publicUi.container} py-5 pb-14`}>
-        <CheckoutSteps current="/pagamento" reachable={2} />
+        <CheckoutSteps current="/pagamento" reachable={3} />
         <h1 className="mb-5 text-2xl font-extrabold tracking-[-0.03em]">Pagamento</h1>
         <div className="max-w-[420px]">
           <p className="mb-4 text-sm text-brand-muted">Pra finalizar o pedido você precisa entrar ou criar uma conta — seu carrinho continua salvo.</p>
@@ -107,7 +107,7 @@ export default function PagamentoPage() {
   if (selfCheckoutBlocked) {
     return (
       <main className={`${publicUi.container} py-5 pb-14`}>
-        <CheckoutSteps current="/pagamento" reachable={2} />
+        <CheckoutSteps current="/pagamento" reachable={3} />
         <h1 className="mb-5 text-2xl font-extrabold tracking-[-0.03em]">Pagamento</h1>
         <p className="max-w-[420px] text-sm text-brand-muted">
           Esta loja finaliza pedidos de talão só pela vendedora — peça pra ela finalizar o pedido.
@@ -156,7 +156,7 @@ export default function PagamentoPage() {
 
   return (
     <main className={`${publicUi.container} py-5 pb-14`}>
-      <CheckoutSteps current="/pagamento" reachable={3} />
+      <CheckoutSteps current="/pagamento" reachable={4} />
       <h1 className="mb-5 text-2xl font-extrabold tracking-[-0.03em]">Pagamento</h1>
 
       <div className={publicUi.paymentOptions}>
