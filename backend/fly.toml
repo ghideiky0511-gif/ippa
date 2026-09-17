@@ -1,0 +1,32 @@
+# Configuração Fly.io do backend (Socket.IO + Next.js custom server).
+# Requer processo de longa duração (ver server.ts e o rate-limiter em memória
+# em src/lib/http/apiHelpers.ts) — por isso min_machines_running=1 e
+# auto_stop_machines=false: uma Machine dormindo derrubaria conexões
+# WebSocket ativas e zeraria o estado do rate limiter a qualquer momento.
+app = "ippa-backend"
+primary_region = "gru"
+
+[build]
+
+[env]
+  PORT = "3011"
+  HOSTNAME = "0.0.0.0"
+
+[http_service]
+  internal_port = 3011
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "15s"
+    method = "GET"
+    timeout = "5s"
+    path = "/api/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

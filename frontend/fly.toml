@@ -1,0 +1,36 @@
+# Configuração Fly.io do frontend (Next.js standalone).
+#
+# BACKEND_INTERNAL_URL aponta para a rede privada do Fly (.flycast) em vez da
+# URL pública do backend: como os dois apps ficam na mesma região (gru), o
+# SSR/proxy fala com o backend sem sair para a internet pública — algo que o
+# Render Free não permite (ver comentário em render.yaml). Ajuste o nome do
+# app do backend abaixo se ele for diferente de "ippa-backend".
+#
+# NEXT_PUBLIC_APP_URL / NEXT_PUBLIC_REALTIME_URL vão para o bundle do
+# navegador, então precisam ser definidas em tempo de BUILD, não aqui em
+# [env] (que só afeta o processo em runtime). Preencha [build.args] abaixo
+# com a URL pública final antes de rodar `fly deploy`, ou passe via
+# `fly deploy --build-arg NEXT_PUBLIC_APP_URL=... --build-arg NEXT_PUBLIC_REALTIME_URL=...`.
+app = "ippa-frontend"
+primary_region = "gru"
+
+[build]
+  [build.args]
+    NEXT_PUBLIC_APP_URL = "https://ippa-frontend.fly.dev"
+    NEXT_PUBLIC_REALTIME_URL = "https://ippa-backend.fly.dev"
+
+[env]
+  PORT = "3015"
+  HOSTNAME = "0.0.0.0"
+  BACKEND_INTERNAL_URL = "http://ippa-backend.flycast:3011"
+
+[http_service]
+  internal_port = 3015
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
