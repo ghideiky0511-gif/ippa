@@ -9,9 +9,9 @@ export const adminUi = {
   status: 'mr-3 text-[13px] text-brand-muted',
   chipSuccess:
     'mr-3 inline-flex items-center rounded-full bg-success/10 px-2.5 py-0.5 text-[12px] font-semibold text-success',
-  button: 'cursor-pointer rounded-md border border-[#ddd] bg-white px-3 py-2 text-[13px] font-semibold text-brand-text transition-[background,color,border-color,transform] hover:border-brand-primary hover:text-brand-primary active:scale-95 disabled:cursor-not-allowed disabled:opacity-60',
-  primaryButton: 'cursor-pointer rounded-md border-0 bg-brand-primary px-3 py-2 text-[13px] font-semibold text-white transition-[background,transform] hover:bg-brand-primary-dark active:scale-95 disabled:cursor-not-allowed disabled:opacity-60',
-  dangerButton: 'cursor-pointer rounded-md border border-[#dba0a0] bg-white px-3 py-2 text-[13px] font-semibold text-[#b00020] transition-[background,transform] hover:bg-[#fff1f1] active:scale-95',
+  button: 'cursor-pointer whitespace-nowrap rounded-md border border-[#ddd] bg-white px-3 py-2 text-[13px] font-semibold text-brand-text transition-[background,color,border-color,transform] hover:border-brand-primary hover:text-brand-primary active:scale-95 disabled:cursor-not-allowed disabled:opacity-60',
+  primaryButton: 'cursor-pointer whitespace-nowrap rounded-md border-0 bg-brand-primary px-3 py-2 text-[13px] font-semibold text-white transition-[background,transform] hover:bg-brand-primary-dark active:scale-95 disabled:cursor-not-allowed disabled:opacity-60',
+  dangerButton: 'cursor-pointer whitespace-nowrap rounded-md border border-[#dba0a0] bg-white px-3 py-2 text-[13px] font-semibold text-[#b00020] transition-[background,transform] hover:bg-[#fff1f1] active:scale-95',
   iconButton: 'flex size-8 cursor-pointer items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-brand-muted transition-[background,color,border-color,transform] hover:border-brand-primary/20 hover:bg-brand-primary/8 hover:text-brand-primary active:scale-95 disabled:cursor-not-allowed disabled:opacity-50',
   // O `field` literal na string ativa os seletores `[&>.field]` de `fieldRow`
   // (colunas de largura igual). `min-w-0` + inputs `w-full` impedem que um

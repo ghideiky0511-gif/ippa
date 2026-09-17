@@ -30,6 +30,18 @@ export async function findCommercialGroupRow(client: PoolClient, id: string): Pr
     return result.rows[0] ?? null;
 }
 
+// Lookup em lote — usado pelo CRM (crmConversationService.ts) para resolver
+// o grupo comercial de uma página inteira de conversas sem uma query por
+// linha, mesmo padrão de listUserRowsByIds (usersModel.ts).
+export async function listCommercialGroupRowsByIds(client: PoolClient, ids: string[]): Promise<CommercialGroupRow[]> {
+    if (ids.length === 0) return [];
+    const result = await client.query<CommercialGroupRow>(
+        `SELECT ${commercialGroupFields} FROM commercial_groups WHERE tenant_id = app_tenant_id() AND id = ANY($1::uuid[])`,
+        [ids],
+    );
+    return result.rows;
+}
+
 export async function insertCommercialGroupRow(client: PoolClient, value: CommercialGroupWriteRow): Promise<CommercialGroupRow> {
     const result = await client.query<CommercialGroupRow>(
         `INSERT INTO commercial_groups (tenant_id, name)

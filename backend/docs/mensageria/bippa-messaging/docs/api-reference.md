@@ -359,6 +359,48 @@ ambiguous_onboarding_phone`. Uma sessão Coexistence que não use
 `sessionInfoVersion: "3"` recebe `422
 unsupported_coexistence_session_version`.
 
+### `POST /v1/admin/coexistence/sync-requests/:id/retry` — reenvio manual de sync travado
+
+A Meta dá só 24h de janela para iniciar um `smb_app_state_sync`/`history` após
+o onboarding Coexistence; se a chamada original a `/{phone_number_id}/smb_app_data`
+falhar (rate limit, timeout, etc.), o sync fica travado em `status: "failed"`
+ou `"unknown"` sem retry automático. Um processo interno do worker
+(`reconcileCoexistenceSyncOnce`, a cada 10 minutos) já reenvia essas
+solicitações sozinho enquanto `attempts < 5` e a solicitação tiver menos de
+24h — essa rota é o caminho manual para o mesmo reenvio (ex.: suporte
+reprocessando um caso específico sem esperar o próximo ciclo do worker).
+
+```http
+POST /v1/admin/coexistence/sync-requests/<uuid-da-sync-request>/retry
+X-Bippa-Api-Key: bippa_<key_id>_<segredo>
+Content-Type: application/json
+
+{ "source_reference": "tenant-123" }
+```
+
+Resposta `200`:
+
+```json
+{
+    "coexistence_sync": {
+        "sync_type": "smb_app_state_sync",
+        "status": "requested",
+        "request_id": "id-da-meta",
+        "progress": null,
+        "error_code": null,
+        "error_message": null
+    }
+}
+```
+
+A solicitação é resolvida pelo `id` na URL, escopada à organização de
+`source_reference` — um `id` de outra organização responde `404
+sync_request_not_found` como se não existisse. Só pode ser reenviada uma
+solicitação com `status` `failed` ou `unknown` (`409
+sync_request_not_retryable`) cuja conexão esteja `connected` (`409
+connection_not_connected`); `503 connection_credentials_unavailable` indica
+falha ao decifrar a credencial salva da conexão.
+
 ### `POST /v1/admin/onboarding/browser-events` — só o popup chama
 
 Telemetria de diagnóstico do fluxo no navegador; não retorna dado de negócio.
@@ -1218,30 +1260,76 @@ Limite de 16 MB por arquivo. Resposta `201`:
 
 Visão humana das conversas, isolada por organização.
 
+### Paginação, filtros e projeção
+
+As listagens abaixo usam paginação por cursor (keyset), não `offset`. Os
+parâmetros comuns são:
+
+| Parâmetro | Regra |
+| --- | --- |
+| `limit` | Opcional, de `1` a `100`; padrão `50`. |
+| `cursor` | Cursor opaco recebido em `page.next_cursor`; use-o para a página seguinte. Não monte ou altere seu conteúdo. |
+| `fields` | Lista CSV dos campos necessários. Ao omitir, devolve o conjunto padrão completo. Use-o para não carregar/decifrar conteúdo que a tela não exibirá. |
+
+Todas as respostas de listagem têm `data` e `page`:
+
+```json
+{
+  "data": [],
+  "page": {
+    "limit": 50,
+    "has_more": true,
+    "next_cursor": "eyJ0aW1lc3RhbXAiOiIuLi4iLCJpZCI6Ii4uLiJ9",
+    "cursor_field": "updated_at"
+  }
+}
+```
+
+Quando `has_more` for `false`, `next_cursor` é `null`. Cursores são válidos
+somente para os mesmos filtros e a mesma ordenação da consulta original.
+
+Em banco já provisionado, aplique uma vez a migration
+`db/migrations/20260916000000_add_inbox_cursor_indexes.sql`. Ela usa `CREATE
+INDEX CONCURRENTLY` e deve rodar fora de uma transação explícita.
+
 ### `GET /v1/conversations?source_reference=<tenant>`
+
+Ordenação: `updated_at DESC, id DESC`. Filtros opcionais: `status` (`open` ou
+`closed`), `phone_number` (normalizado para dígitos) e `updated_since`
+(ISO-8601). Campos disponíveis em `fields`: `id`, `status`,
+`organization_id`, `phone_id`, `contact_id`, `assigned_user_id`,
+`last_inbound_at`, `created_at`, `updated_at`,
+`phone_number`, `contact_name`, `preview`.
+
+Para uma inbox enxuta, por exemplo:
+
+```http
+GET /v1/conversations?source_reference=tenant-123&status=open&limit=25&fields=id,status,updated_at,phone_number,contact_name,preview
+```
 
 ```json
 {
     "data": [
         {
             "id": "uuid",
-            "organization_id": "...",
-            "phone_id": "...",
-            "contact_id": "...",
             "status": "open",
-            "assigned_user_id": null,
-            "last_inbound_at": "...",
-            "created_at": "...",
             "updated_at": "...",
             "phone_number": "5511988887777",
             "contact_name": "Cliente salvo no WhatsApp Business",
             "preview": "Última mensagem em texto puro"
         }
-    ]
+    ],
+    "page": {
+        "limit": 25,
+        "has_more": false,
+        "next_cursor": null,
+        "cursor_field": "updated_at"
+    }
 }
 ```
 
-Ordenado por `updated_at desc`, limitado a 100 conversas.
+O campo `preview` exige buscar e decifrar a última mensagem de cada conversa;
+omita-o em telas que mostram apenas contadores ou um seletor de conversa.
 
 ### `GET /v1/service-window?source_reference=<tenant>&seller_reference=<id>&recipient=<telefone>`
 
@@ -1270,6 +1358,23 @@ envio indisponivel para esta organizacao.` caso contrário).
 
 ### `GET /v1/conversations/:id/messages?source_reference=<tenant>`
 
+Busca primeiro as mensagens mais recentes de forma indexável, mas devolve cada
+página em ordem cronológica (`occurred_at ASC, id ASC`) para renderização do
+chat. Passe `page.next_cursor` para carregar mensagens mais antigas. Filtros
+opcionais: `direction` (`inbound` ou `outbound`), `type` (um ou mais tipos,
+separados por vírgula), `occurred_since` e `occurred_until` (ISO-8601).
+Campos disponíveis em `fields`: `id`, `conversation_id`, `direction`, `type`,
+`provider_message_id`, `body`, `metadata`, `occurred_at`, `expires_at`.
+
+Para a primeira carga de uma tela de chat, por exemplo:
+
+```http
+GET /v1/conversations/uuid/messages?source_reference=tenant-123&limit=50&fields=id,direction,type,provider_message_id,body,occurred_at
+```
+
+Omitir `body` evita buscar e decifrar o conteúdo; omitir `metadata` evita
+transferir o JSON de tipos complexos quando a tela não precisa dele.
+
 ```json
 {
     "data": [
@@ -1280,11 +1385,15 @@ envio indisponivel para esta organizacao.` caso contrário).
             "type": "text",
             "provider_message_id": "wamid...",
             "body": "Olá, quero saber do meu pedido",
-            "metadata": { "type": "text" },
-            "occurred_at": "...",
-            "expires_at": "..."
+            "occurred_at": "..."
         }
-    ]
+    ],
+    "page": {
+        "limit": 50,
+        "has_more": false,
+        "next_cursor": null,
+        "cursor_field": "occurred_at"
+    }
 }
 ```
 

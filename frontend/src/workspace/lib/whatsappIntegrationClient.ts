@@ -244,8 +244,21 @@ const whatsappTemplateSchema = z.object({
     category: z.literal("UTILITY"),
     languageCode: z.literal("pt_BR"),
     body: z.string(),
+    // Botão de link dinâmico do template, quando existe (ver
+    // whatsappTemplates.ts, STANDARD_WHATSAPP_TEMPLATES) -- `urlTemplate`
+    // traz o domínio estático + "{{1}}"; quem envia preenche só o sufixo
+    // dinâmico (ver CrmApp/TemplatePicker.tsx, que precisa saber se o
+    // template exige esse valor antes de habilitar o envio).
+    button: z.object({ text: z.string(), urlTemplate: z.string() }).optional(),
     parameters: z.array(
-        z.object({ key: z.string(), label: z.string(), example: z.string() }),
+        z.object({
+            key: z.string(),
+            label: z.string(),
+            example: z.string(),
+            // "body" | "button" -- ausente nas respostas antigas do
+            // backend, então opcional aqui; tratar ausência como "body".
+            component: z.enum(["body", "button"]).optional(),
+        }),
     ),
     metaTemplate: z.object({
         id: z.string(),

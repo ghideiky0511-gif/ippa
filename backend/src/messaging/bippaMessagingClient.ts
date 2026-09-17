@@ -1222,3 +1222,293 @@ export function dispatchPaymentOrder(
         duplicate: response.duplicate,
     }));
 }
+
+// ---------------------------------------------------------------------------
+// Inbox / Conversas -- consumido pelo CRM (crmConversationService.ts). Ver
+// backend/docs/mensageria/bippa-messaging/docs/api-reference.md, seção
+// "Inbox / Conversas", e chat-backend-integration.md. Paginação por cursor
+// keyset (opaco -- nunca interpretado aqui, só repassado).
+// ---------------------------------------------------------------------------
+
+export interface BippaPage {
+    limit: number;
+    hasMore: boolean;
+    nextCursor: string | null;
+    cursorField: string;
+}
+
+interface BippaPageResponse {
+    limit: number;
+    has_more: boolean;
+    next_cursor: string | null;
+    cursor_field: string;
+}
+
+function toBippaPage(page: BippaPageResponse): BippaPage {
+    return {
+        limit: page.limit,
+        hasMore: page.has_more,
+        nextCursor: page.next_cursor,
+        cursorField: page.cursor_field,
+    };
+}
+
+export interface ConversationEntry {
+    id: string;
+    status: string;
+    phoneId: string | null;
+    phoneNumber: string | null;
+    contactName: string | null;
+    preview: string | null;
+    lastInboundAt: string | null;
+    updatedAt: string;
+}
+
+interface ConversationEntryResponse {
+    id: string;
+    status: string;
+    phone_id?: string | null;
+    phone_number?: string | null;
+    contact_name?: string | null;
+    preview?: string | null;
+    last_inbound_at?: string | null;
+    updated_at: string;
+}
+
+interface ListConversationsResponse {
+    data: ConversationEntryResponse[];
+    page: BippaPageResponse;
+}
+
+export interface ListConversationsInput {
+    sourceReference: string;
+    status?: "open" | "closed";
+    phoneNumber?: string;
+    updatedSince?: string;
+    cursor?: string;
+    limit?: number;
+}
+
+// GET /v1/conversations -- fields fixo no conjunto que a inbox do CRM
+// precisa (id, status, phone_id, phone_number, contact_name, preview,
+// last_inbound_at, updated_at). `phone_id` é o que permite ao Catálogo
+// restringir a listagem por vendedora/WABA -- a rota upstream não filtra
+// por ele (ver crmConversationService.listCrmConversations, over-fetch em
+// laço).
+export function listConversations(
+    apiKey: string,
+    input: ListConversationsInput,
+    reporter?: ExternalApiCallReporter,
+): Promise<{ data: ConversationEntry[]; page: BippaPage }> {
+    return bippaMessagingRequest<ListConversationsResponse>(
+        "GET",
+        `${baseUrl()}/v1/conversations`,
+        {
+            service: "bippa-messaging",
+            apiKey,
+            params: {
+                source_reference: input.sourceReference,
+                status: input.status,
+                phone_number: input.phoneNumber,
+                updated_since: input.updatedSince,
+                cursor: input.cursor,
+                limit: input.limit,
+                fields: "id,status,phone_id,phone_number,contact_name,preview,last_inbound_at,updated_at",
+            },
+            operation: "listConversations",
+            reporter,
+        },
+    ).then((response) => ({
+        data: response.data.map((entry) => ({
+            id: entry.id,
+            status: entry.status,
+            phoneId: entry.phone_id ?? null,
+            phoneNumber: entry.phone_number ?? null,
+            contactName: entry.contact_name ?? null,
+            preview: entry.preview ?? null,
+            lastInboundAt: entry.last_inbound_at ?? null,
+            updatedAt: entry.updated_at,
+        })),
+        page: toBippaPage(response.page),
+    }));
+}
+
+export interface ConversationMessage {
+    id: string;
+    conversationId: string;
+    direction: "inbound" | "outbound";
+    type: string;
+    providerMessageId: string | null;
+    body: string | null;
+    metadata: Record<string, unknown> | null;
+    occurredAt: string;
+}
+
+interface ConversationMessageResponse {
+    id: string;
+    conversation_id: string;
+    direction: "inbound" | "outbound";
+    type: string;
+    provider_message_id?: string | null;
+    body?: string | null;
+    metadata?: Record<string, unknown> | null;
+    occurred_at: string;
+}
+
+interface ListConversationMessagesResponse {
+    data: ConversationMessageResponse[];
+    page: BippaPageResponse;
+}
+
+export interface ListConversationMessagesInput {
+    sourceReference: string;
+    conversationId: string;
+    direction?: "inbound" | "outbound";
+    cursor?: string;
+    limit?: number;
+}
+
+// GET /v1/conversations/:id/messages -- devolve cada página em ordem
+// cronológica (occurred_at ASC), pronta para render direto de cima para
+// baixo. `body` vazio + `metadata.retained: true` = conteúdo purgado após
+// 90 dias (ver crmConversationService.listCrmMessages, contentPurged).
+export function listConversationMessages(
+    apiKey: string,
+    input: ListConversationMessagesInput,
+    reporter?: ExternalApiCallReporter,
+): Promise<{ data: ConversationMessage[]; page: BippaPage }> {
+    return bippaMessagingRequest<ListConversationMessagesResponse>(
+        "GET",
+        `${baseUrl()}/v1/conversations/${encodeURIComponent(input.conversationId)}/messages`,
+        {
+            service: "bippa-messaging",
+            apiKey,
+            params: {
+                source_reference: input.sourceReference,
+                direction: input.direction,
+                cursor: input.cursor,
+                limit: input.limit,
+                fields: "id,conversation_id,direction,type,provider_message_id,body,metadata,occurred_at",
+            },
+            operation: "listConversationMessages",
+            reporter,
+        },
+    ).then((response) => ({
+        data: response.data.map((entry) => ({
+            id: entry.id,
+            conversationId: entry.conversation_id,
+            direction: entry.direction,
+            type: entry.type,
+            providerMessageId: entry.provider_message_id ?? null,
+            body: entry.body ?? null,
+            metadata: entry.metadata ?? null,
+            occurredAt: entry.occurred_at,
+        })),
+        page: toBippaPage(response.page),
+    }));
+}
+
+export interface ServiceWindowStatus {
+    recipient: string;
+    withinWindow: boolean;
+    lastInboundAt: string | null;
+    expiresAt: string | null;
+}
+
+interface ServiceWindowResponse {
+    recipient: string;
+    within_window: boolean;
+    last_inbound_at: string | null;
+    expires_at: string | null;
+}
+
+export interface GetServiceWindowInput {
+    sourceReference: string;
+    sellerReference: string;
+    recipient: string;
+}
+
+// GET /v1/service-window -- consulta prévia da janela de 24h antes de
+// habilitar o botão de enviar texto livre. Não substitui o tratamento do
+// 422 no envio em si: a janela pode fechar entre a consulta e o envio (ver
+// chat-backend-integration.md, "Envio, reação e idempotência").
+export function getServiceWindow(
+    apiKey: string,
+    input: GetServiceWindowInput,
+    reporter?: ExternalApiCallReporter,
+): Promise<ServiceWindowStatus> {
+    return bippaMessagingRequest<ServiceWindowResponse>(
+        "GET",
+        `${baseUrl()}/v1/service-window`,
+        {
+            service: "bippa-messaging",
+            apiKey,
+            params: {
+                source_reference: input.sourceReference,
+                seller_reference: input.sellerReference,
+                recipient: input.recipient,
+            },
+            operation: "getServiceWindow",
+            reporter,
+        },
+    ).then((response) => ({
+        recipient: response.recipient,
+        withinWindow: response.within_window,
+        lastInboundAt: response.last_inbound_at,
+        expiresAt: response.expires_at,
+    }));
+}
+
+export interface ReplyToConversationInput {
+    sourceReference: string;
+    conversationId: string;
+    sellerReference: string;
+    recipient: string;
+    idempotencyKey: string;
+    text: string;
+}
+
+interface ReplyToConversationResponse {
+    dispatch: { id: string; status?: string };
+}
+
+// POST /v1/conversations/:id/reply -- atalho para POST /v1/dispatches com
+// kind fixo em "text", vinculado à conversa. Só aceito dentro da janela de
+// 24h (422 fora dela); se a organização tiver mais de um número e
+// sellerReference não bater com o dono da conversa, 409
+// conversation_sender_mismatch (ver requireKnownConversationScope em
+// crmConversationService.ts -- sellerReference sempre resolvido localmente
+// pelo phone_id gravado em whatsapp_contact_links, nunca do corpo da
+// requisição do navegador).
+export function replyToConversation(
+    apiKey: string,
+    input: ReplyToConversationInput,
+    reporter?: ExternalApiCallReporter,
+): Promise<DispatchMessageResult> {
+    return bippaMessagingRequest<ReplyToConversationResponse>(
+        "POST",
+        `${baseUrl()}/v1/conversations/${encodeURIComponent(input.conversationId)}/reply`,
+        {
+            service: "bippa-messaging",
+            apiKey,
+            jsonBody: {
+                source_reference: input.sourceReference,
+                seller_reference: input.sellerReference,
+                recipient: input.recipient,
+                idempotency_key: input.idempotencyKey,
+                payload: { text: input.text },
+            },
+            operation: "replyToConversation",
+            reporter,
+        },
+    ).then((response) => ({
+        id: response.dispatch.id,
+        // A rota de reply não devolve `duplicate` (só POST /v1/dispatches
+        // devolve) -- normalizado para false porque o chamador
+        // (sendCrmText) nunca precisa distinguir os dois casos aqui: o
+        // dedup de reenvio de UI já é feito pela idempotency_key derivada
+        // de uma tentativa persistida (whatsapp_chat_send_attempts), não
+        // por este campo.
+        duplicate: false,
+    }));
+}

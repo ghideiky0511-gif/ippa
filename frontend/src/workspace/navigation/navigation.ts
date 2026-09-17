@@ -4,6 +4,7 @@ import {
   FolderKanban,
   LayoutDashboard,
   LayoutTemplate,
+  MessagesSquare,
   NotebookText,
   Percent,
   Plug,
@@ -38,6 +39,7 @@ export const WORKSPACE_NAV_GROUPS: WorkspaceNavGroup[] = [
     items: [
       { href: '/workspace/pedidos', label: 'Pedidos', icon: ShoppingBag },
       { href: '/workspace/talao', label: 'Talão', icon: NotebookText },
+      { href: '/workspace/crm', label: 'CRM', icon: MessagesSquare },
       { href: '/workspace/clientes', label: 'Clientes', icon: Users },
       { href: '/catalogo', label: 'Catálogo', icon: ClipboardList },
     ],

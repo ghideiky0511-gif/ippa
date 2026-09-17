@@ -73,6 +73,18 @@ export async function findClientRow(client: PoolClient, id: string): Promise<Cli
     return result.rows[0] ?? null;
 }
 
+// Lookup em lote por id -- usado pelo CRM (crmConversationService.ts) para
+// resolver os clientes já vinculados (manual ou auto) de uma página inteira
+// de conversas numa query só, mesmo padrão de listUserRowsByIds.
+export async function findClientRowsByIds(client: PoolClient, ids: string[]): Promise<ClientRow[]> {
+    if (ids.length === 0) return [];
+    const result = await client.query<ClientRow>(
+        `SELECT ${clientFields} FROM clients WHERE tenant_id = app_tenant_id() AND id = ANY($1::uuid[])`,
+        [ids],
+    );
+    return result.rows;
+}
+
 export async function findClientRowByDocumentDigits(client: PoolClient, documentDigits: string): Promise<ClientRow | null> {
     const result = await client.query<ClientRow>(
         `SELECT ${clientFields} FROM clients
@@ -80,6 +92,23 @@ export async function findClientRowByDocumentDigits(client: PoolClient, document
            AND regexp_replace(coalesce(cpf_cnpj, ''), '\\D', '', 'g') = $1`, [documentDigits],
     );
     return result.rows[0] ?? null;
+}
+
+// Lookup em lote por telefone WhatsApp (E.164, com "+") -- usado pelo CRM
+// (crmConversationService.ts) para auto-vincular conversas do
+// bippa-messaging a cadastros de cliente pelo índice
+// clients_whatsapp_phone_idx (migration 055). whatsapp_phone NÃO é único
+// (matriz/filial podem compartilhar o mesmo número) -- por isso devolve
+// TODOS os candidatos por telefone; quem chama decide: exatamente um
+// candidato vira vínculo automático, mais de um fica para escolha manual.
+export async function findClientRowsByWhatsAppPhones(client: PoolClient, phonesE164: string[]): Promise<ClientRow[]> {
+    if (phonesE164.length === 0) return [];
+    const result = await client.query<ClientRow>(
+        `SELECT ${clientFields} FROM clients
+         WHERE tenant_id = app_tenant_id() AND whatsapp_phone = ANY($1::text[])`,
+        [phonesE164],
+    );
+    return result.rows;
 }
 
 export async function insertClientRow(client: PoolClient, value: ClientWriteRow): Promise<ClientRow> {

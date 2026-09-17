@@ -106,6 +106,26 @@ function healthIssueText(phone: TenantWhatsAppPhoneHealth): string | null {
     return error.possibleSolution ?? error.message;
 }
 
+function OverviewStatItem({
+    label,
+    labelClassName,
+    title,
+    detail,
+}: {
+    label: string;
+    labelClassName: string;
+    title: string;
+    detail: string;
+}) {
+    return (
+        <li className="rounded-control border border-border p-3">
+            <p className={`text-xs font-bold uppercase tracking-wide ${labelClassName}`}>{label}</p>
+            <p className="mt-1 text-sm font-semibold text-foreground">{title}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+        </li>
+    );
+}
+
 export default function WhatsAppIntegrationApp() {
     const [sellers, setSellers] = useState<AdminUser[]>([]);
     const [connectionsBySeller, setConnectionsBySeller] = useState<
@@ -157,6 +177,13 @@ export default function WhatsAppIntegrationApp() {
     const readyFallbackTimerRef = useRef<number | null>(null);
     const pollTimerRef = useRef<number | null>(null);
     const startSentRef = useRef(false);
+    // Token da tentativa de início em curso -- incrementado a cada chamada a
+    // `startOnboarding` e a cada `cancelOnboarding`. `startOnboarding` faz
+    // `await`s antes de ter um `attemptId` para colocar em `attemptIdRef`
+    // (ensureWhatsAppInstallation, startWhatsAppOnboardingAttempt); sem este
+    // token, cancelar durante essa janela não impede que a chamada, ao
+    // resolver, sobrescreva o cancelamento e reabra o popup.
+    const startTokenRef = useRef(0);
 
     async function refresh() {
         setLoading(true);
@@ -372,6 +399,7 @@ export default function WhatsAppIntegrationApp() {
             // Rede de segurança: o backend deveria ter respondido `expired` bem
             // antes disso (ver reconcileAttempt) -- só chega aqui se as consultas
             // estiverem falhando repetidamente.
+            popupRef.current?.close();
             teardownOnboardingListeners();
             setStatus("expired");
             showMessage(
@@ -399,6 +427,7 @@ export default function WhatsAppIntegrationApp() {
     }
 
     async function startOnboarding(sellerId: string) {
+        const startToken = ++startTokenRef.current;
         setActiveSellerId(sellerId);
         setPending(true);
         setStatus("connecting");
@@ -407,7 +436,9 @@ export default function WhatsAppIntegrationApp() {
         teardownOnboardingListeners();
         try {
             await ensureWhatsAppInstallation(sellerId);
+            if (startTokenRef.current !== startToken) return; // cancelado enquanto aguardava
             const attempt = await startWhatsAppOnboardingAttempt(sellerId);
+            if (startTokenRef.current !== startToken) return; // cancelado enquanto aguardava
             attemptIdRef.current = attempt.attemptId;
             expiresAtMsRef.current = new Date(attempt.expiresAt).getTime();
             // NUNCA aceitar connect_url informado pelo navegador -- este é
@@ -487,6 +518,7 @@ export default function WhatsAppIntegrationApp() {
                 jitteredDelay(POLL_INTERVAL_OPEN_MS),
             );
         } catch (error) {
+            if (startTokenRef.current !== startToken) return; // cancelado enquanto aguardava
             teardownOnboardingListeners();
             setStatus("error");
             showMessage(
@@ -518,6 +550,11 @@ export default function WhatsAppIntegrationApp() {
     // Encerramento manual do onboarding em curso -- a administradora pode
     // cancelar a qualquer momento em vez de esperar a expiração da tentativa.
     function cancelOnboarding(sellerId: string) {
+        // Invalida qualquer `startOnboarding` ainda em voo (nos `await`s antes
+        // de existir um `attemptId`) -- sem isso, ela sobrescreveria este
+        // cancelamento ao resolver, reabrindo o popup e voltando para
+        // "Conectando…".
+        startTokenRef.current += 1;
         popupRef.current?.close();
         teardownOnboardingListeners();
         attemptIdRef.current = null;
@@ -658,9 +695,24 @@ export default function WhatsAppIntegrationApp() {
                                 <Button asChild type="button" variant="outline" size="sm"><Link href="/workspace/integracoes/whatsapp/templates">Ver templates padrão</Link></Button>
                             </div>
                             <ol className="mt-5 grid gap-3 md:grid-cols-3">
-                                <li className="rounded-control border border-border p-3"><p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Concluído</p><p className="mt-1 text-sm font-semibold text-foreground">Vendedoras cadastradas</p><p className="mt-1 text-xs text-muted-foreground">{sellers.length} disponível{ sellers.length === 1 ? "" : "eis" } para configurar.</p></li>
-                                <li className="rounded-control border border-border p-3"><p className={`text-xs font-bold uppercase tracking-wide ${disconnectedSellers.length === 0 ? "text-emerald-700" : "text-amber-700"}`}>{disconnectedSellers.length === 0 ? "Concluído" : "Próximo passo"}</p><p className="mt-1 text-sm font-semibold text-foreground">Números por vendedora</p><p className="mt-1 text-xs text-muted-foreground">{disconnectedSellers.length === 0 ? "Todos os números foram conectados." : `${disconnectedSellers.length} vendedora${disconnectedSellers.length === 1 ? "" : "s"} ainda sem número.`}</p></li>
-                                <li className="rounded-control border border-border p-3"><p className="text-xs font-bold uppercase tracking-wide text-brand-primary">Configuração</p><p className="mt-1 text-sm font-semibold text-foreground">Templates padrão</p><p className="mt-1 text-xs text-muted-foreground">Confira o vínculo dos modelos fixos com a Meta.</p></li>
+                                <OverviewStatItem
+                                    label="Concluído"
+                                    labelClassName="text-emerald-700"
+                                    title="Vendedoras cadastradas"
+                                    detail={`${sellers.length} disponível${sellers.length === 1 ? "" : "eis"} para configurar.`}
+                                />
+                                <OverviewStatItem
+                                    label={disconnectedSellers.length === 0 ? "Concluído" : "Próximo passo"}
+                                    labelClassName={disconnectedSellers.length === 0 ? "text-emerald-700" : "text-amber-700"}
+                                    title="Números por vendedora"
+                                    detail={disconnectedSellers.length === 0 ? "Todos os números foram conectados." : `${disconnectedSellers.length} vendedora${disconnectedSellers.length === 1 ? "" : "s"} ainda sem número.`}
+                                />
+                                <OverviewStatItem
+                                    label="Configuração"
+                                    labelClassName="text-brand-primary"
+                                    title="Templates padrão"
+                                    detail="Confira o vínculo dos modelos fixos com a Meta."
+                                />
                             </ol>
                             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-control bg-brand-background p-3"><p className="text-sm text-muted-foreground">Os detalhes de saúde de cada número aparecem junto da respectiva vendedora.</p><Button type="button" variant="outline" size="sm" loading={refreshingPhones} onClick={() => void refreshPhoneHealth()}>Atualizar dados da Meta</Button></div>
                             {phoneHealthError && <p role="status" className="mt-3 text-sm text-red-700">{phoneHealthError}</p>}
