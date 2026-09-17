@@ -10,6 +10,7 @@ import {
   NonNegativeIntegerSchema,
   RequiredTextSchema,
 } from './shared';
+import { ProductPublicSchema } from './products';
 
 export const AiExecutionSourceSchema = z.enum(['provider', 'cache']);
 export type AiExecutionSource = z.infer<typeof AiExecutionSourceSchema>;
@@ -110,25 +111,56 @@ export const CartReviewSchema = z.object({
 }).strict();
 export type CartReview = z.infer<typeof CartReviewSchema>;
 
+// `category`, quando presente, precisa repetir exatamente um dos rótulos de
+// `mix.categories`/`mix.subcategories` recebidos como input — é a única
+// âncora que o backend usa pra resolver peças de verdade do catálogo (ver
+// cartReviewInsightService.ts). A IA nunca nomeia produto ou SKU.
 export const CartReviewSuggestionSchema = z.object({
   title: RequiredTextSchema.max(80),
   evidence: RequiredTextSchema.max(160),
   action: RequiredTextSchema.max(160),
+  category: RequiredTextSchema.max(80).optional(),
 }).strict();
 export type CartReviewSuggestion = z.infer<typeof CartReviewSuggestionSchema>;
 
+// Saída bruta da ferramenta de IA — validada diretamente contra a resposta
+// do provider. `headline` + `highlights` substituem um parágrafo único por
+// tópicos curtos, mais fáceis de escanear na revisão do carrinho.
 export const CartReviewInsightOutputSchema = z.object({
-  text: z.string().trim().min(1).max(400),
+  headline: RequiredTextSchema.max(160),
+  highlights: z.array(RequiredTextSchema.max(140)).max(5),
   suggestions: z.array(CartReviewSuggestionSchema).max(3),
 }).strict();
 export type CartReviewInsightOutput = z.infer<typeof CartReviewInsightOutputSchema>;
+
+// Peças de verdade do catálogo anexadas pelo backend a cada sugestão, nunca
+// produzidas pela IA — resolvidas deterministicamente a partir de
+// `suggestion.category` (ver resolveSuggestedProducts em
+// cartReviewInsightService.ts). Mesmo formato público já exposto por
+// GET /api/[tenantSlug]/catalog.
+export const CartReviewSuggestedProductSchema = ProductPublicSchema;
+export type CartReviewSuggestedProduct = z.infer<typeof CartReviewSuggestedProductSchema>;
+
+export const CartReviewInsightSuggestionSchema = CartReviewSuggestionSchema.extend({
+  products: z.array(CartReviewSuggestedProductSchema),
+}).strict();
+export type CartReviewInsightSuggestion = z.infer<typeof CartReviewInsightSuggestionSchema>;
+
+// Análise devolvida pela rota — a saída da IA enriquecida com os produtos
+// reais resolvidos pelo backend.
+export const CartReviewInsightAnalysisSchema = z.object({
+  headline: RequiredTextSchema.max(160),
+  highlights: z.array(RequiredTextSchema.max(140)).max(5),
+  suggestions: z.array(CartReviewInsightSuggestionSchema).max(3),
+}).strict();
+export type CartReviewInsightAnalysis = z.infer<typeof CartReviewInsightAnalysisSchema>;
 
 export const CartReviewInsightSummarySchema = z.discriminatedUnion('status', [
   z.object({ status: z.literal('empty_cart') }).strict(),
   z.object({
     status: z.literal('available'),
     facts: CartReviewFactsSchema,
-    analysis: CartReviewInsightOutputSchema,
+    analysis: CartReviewInsightAnalysisSchema,
     executionId: EntityIdSchema,
     source: AiExecutionSourceSchema,
   }).strict(),

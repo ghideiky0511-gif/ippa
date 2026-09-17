@@ -2,9 +2,12 @@ import type { CartItem } from '@/contracts/shared';
 import type {
   CartReview,
   CartReviewFacts,
+  CartReviewInsightAnalysis,
   CartReviewInsightOutput,
+  CartReviewInsightSuggestion,
   CartReviewInsightSummary,
   CartReviewRequest,
+  CartReviewSuggestedProduct,
   CatalogOrderBreakdownItem,
 } from '@/contracts/ai';
 import { CartReviewRequestSchema } from '@/contracts/ai';
@@ -15,6 +18,10 @@ import { ForbiddenError, ValidationError } from '@/services/shared/errors';
 import { runAiTool } from './aiToolEngine';
 import { cartReviewInsightTool } from './cartReviewInsightTool';
 import type { AiToolRunResult } from './types';
+
+// Quantas peças reais do catálogo anexar por sugestão — o suficiente pra
+// dar opções sem virar uma segunda vitrine dentro do card de IA.
+const MAX_SUGGESTED_PRODUCTS_PER_SUGGESTION = 2;
 
 interface ResolvedLine {
   key: string;
@@ -122,6 +129,58 @@ export function buildCartReview(items: CartItem[], catalog: Product[]): CartRevi
   };
 }
 
+function toSuggestedProduct(product: Product): CartReviewSuggestedProduct {
+  const {
+    relatedProductIds: _relatedProductIds,
+    similarProductIdsQuickview: _similarProductIdsQuickview,
+    similarProductIdsCart: _similarProductIdsCart,
+    markup: _markup,
+    ...publicProduct
+  } = product;
+  return publicProduct;
+}
+
+function productMatchesCategory(product: Product, normalizedCategory: string): boolean {
+  return product.variants.some((variant) =>
+    variant.classifications.some((classification) => {
+      const label = normalizedLabel(classification.name);
+      return label !== null && label.toLocaleUpperCase('pt-BR') === normalizedCategory;
+    }));
+}
+
+// Âncora determinística entre a sugestão da IA e o catálogo real: a IA só
+// aponta um rótulo de categoria já recebido no mix (nunca um produto), e o
+// backend resolve peças de verdade a partir dele — sem categoria
+// reconhecida, a sugestão simplesmente não ganha peças anexadas.
+function resolveSuggestedProducts(
+  category: string | undefined,
+  catalog: Product[],
+  cartProductIds: Set<string>,
+): CartReviewSuggestedProduct[] {
+  const normalizedCategory = normalizedLabel(category ?? null)?.toLocaleUpperCase('pt-BR');
+  if (!normalizedCategory) return [];
+
+  return catalog
+    .filter((product) => !cartProductIds.has(product.id))
+    .filter((product) => product.variants.some((variant) => variant.availability === 'in_stock'))
+    .filter((product) => productMatchesCategory(product, normalizedCategory))
+    .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'))
+    .slice(0, MAX_SUGGESTED_PRODUCTS_PER_SUGGESTION)
+    .map(toSuggestedProduct);
+}
+
+function buildCartReviewInsightAnalysis(
+  output: CartReviewInsightOutput,
+  catalog: Product[],
+  cartProductIds: Set<string>,
+): CartReviewInsightAnalysis {
+  const suggestions: CartReviewInsightSuggestion[] = output.suggestions.map((suggestion) => ({
+    ...suggestion,
+    products: resolveSuggestedProducts(suggestion.category, catalog, cartProductIds),
+  }));
+  return { headline: output.headline, highlights: output.highlights, suggestions };
+}
+
 export function canRunCartReviewInsight(user: AuthUser): boolean {
   if (user.role === 'cliente' || user.role === 'vendedora') return true;
   return user.role === 'administrador' && user.permissions?.adminAccess === true;
@@ -165,10 +224,11 @@ export function createCartReviewInsightService(
     if (facts.totalPieces === 0) return { status: 'empty_cart' };
 
     const execution = await dependencies.runTool(tenant, { userId: user.id, role: user.role }, facts);
+    const cartProductIds = new Set(items.filter((item) => item.qty > 0).map((item) => item.id));
     return {
       status: 'available',
       facts,
-      analysis: execution.data,
+      analysis: buildCartReviewInsightAnalysis(execution.data, catalog, cartProductIds),
       executionId: execution.executionId,
       source: execution.source,
     };

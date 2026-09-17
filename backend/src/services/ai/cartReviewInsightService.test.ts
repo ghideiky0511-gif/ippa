@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { CartReviewInsightOutput } from '@/contracts/ai';
+import type { CartReviewInsightOutput, CartReviewInsightSummary } from '@/contracts/ai';
 import type { Tenant } from '@/lib/db/tenant';
 import type { AuthUser, CartItem, Product } from '@/lib/types';
 import {
@@ -76,6 +76,38 @@ function catalog(): Product[] {
         classifications: [],
       }],
     },
+    // Não está no carrinho — candidato válido pra sugestão da categoria Calças.
+    {
+      id: 'product-4',
+      name: 'Calça Adicional',
+      description: '',
+      price: 160,
+      colors: ['Preto'],
+      sizes: ['M'],
+      variants: [{
+        id: 'v5', color: 'Preto', size: 'M', price: 160, availability: 'in_stock',
+        classifications: [{
+          id: 'c2', externalCode: 'e2', name: 'Calças', active: true,
+          type: { id: 't2', integrationId: 'i1', externalCode: 'te2', label: 'Categoria', active: true, categoryLevel: 1 },
+        }],
+      }],
+    },
+    // Só tem variante fora de estoque — nunca deve ser sugerido.
+    {
+      id: 'product-5',
+      name: 'Calça Esgotada',
+      description: '',
+      price: 170,
+      colors: ['Branco'],
+      sizes: ['P'],
+      variants: [{
+        id: 'v6', color: 'Branco', size: 'P', price: 170, availability: 'out_of_stock',
+        classifications: [{
+          id: 'c2', externalCode: 'e2', name: 'Calças', active: true,
+          type: { id: 't2', integrationId: 'i1', externalCode: 'te2', label: 'Categoria', active: true, categoryLevel: 1 },
+        }],
+      }],
+    },
   ];
 }
 
@@ -89,8 +121,15 @@ function cartItems(): CartItem[] {
 }
 
 const analysis: CartReviewInsightOutput = {
-  text: 'O carrinho concentra camisetas e calças em partes iguais. Considere reforçar o tamanho M e sugerir uma peça de baixo adicional.',
+  headline: 'O carrinho concentra camisetas e calças em partes iguais.',
+  highlights: ['Tamanho M concentra 2 das 7 peças.', 'Calças e camisetas dividem o mix igualmente.'],
   suggestions: [
+    {
+      title: 'Reforçar calças',
+      evidence: 'Calças já representam metade do mix.',
+      action: 'Sugerir outra peça de calça.',
+      category: 'calças',
+    },
     { title: 'Reforçar tamanho M', evidence: 'M é o tamanho mais presente no mix.', action: 'Sugerir outra peça no tamanho M.' },
   ],
 };
@@ -117,9 +156,12 @@ test('contratos da ferramenta rejeitam identificação, campos extras e texto ex
   const { facts } = buildCartReview(cartItems(), catalog());
   assert.equal(cartReviewInsightTool.inputSchema.safeParse({ ...facts, clientId: 'não enviar' }).success, false);
   assert.equal(cartReviewInsightTool.outputSchema.safeParse({ ...analysis, clientName: 'não retornar' }).success, false);
-  assert.equal(cartReviewInsightTool.outputSchema.safeParse({ text: 'a'.repeat(401), suggestions: [] }).success, false);
   assert.equal(cartReviewInsightTool.outputSchema.safeParse({
-    text: 'ok',
+    headline: 'a'.repeat(161), highlights: [], suggestions: [],
+  }).success, false);
+  assert.equal(cartReviewInsightTool.outputSchema.safeParse({
+    headline: 'ok',
+    highlights: [],
     suggestions: [
       { title: 'a', evidence: 'b', action: 'c' },
       { title: 'a', evidence: 'b', action: 'c' },
@@ -127,7 +169,13 @@ test('contratos da ferramenta rejeitam identificação, campos extras e texto ex
       { title: 'a', evidence: 'b', action: 'c' },
     ],
   }).success, false);
-  assert.equal(cartReviewInsightTool.version, '1');
+  // Uma peça/SKU nunca é um campo esperado — só `category`, que aponta pro
+  // rótulo já recebido no mix.
+  assert.equal(cartReviewInsightTool.outputSchema.safeParse({
+    headline: 'ok', highlights: [],
+    suggestions: [{ title: 'a', evidence: 'b', action: 'c', productId: 'não enviar' }],
+  }).success, false);
+  assert.equal(cartReviewInsightTool.version, '2');
 
   const prompt = cartReviewInsightTool.buildPrompt(facts);
   assert.doesNotMatch(prompt, /cliente@example\.test|Cliente teste|11111111/);
@@ -162,14 +210,50 @@ test('lê o catálogo, executa a ferramenta e repassa a origem do resultado', as
     },
   });
 
-  const result = await service(tenant, client, { items: cartItems() });
+  const result: CartReviewInsightSummary = await service(tenant, client, { items: cartItems() });
   assert.deepEqual(events, ['catalog-read', 'provider']);
   assert.equal(result.status, 'available');
   if (result.status === 'available') {
     assert.equal(result.executionId, 'execution-1');
     assert.equal(result.source, 'cache');
-    assert.deepEqual(result.analysis, analysis);
+    assert.equal(result.analysis.headline, analysis.headline);
+    assert.deepEqual(result.analysis.highlights, analysis.highlights);
+    assert.equal(result.analysis.suggestions.length, 2);
   }
+});
+
+test('resolve peças reais do catálogo pela categoria da sugestão, sem repetir o que já está no carrinho', async () => {
+  const service = createCartReviewInsightService({
+    readCatalog: async () => catalog(),
+    runTool: async () => ({ executionId: 'execution-2', source: 'provider', data: analysis }),
+  });
+
+  const result = await service(tenant, client, { items: cartItems() });
+  assert.equal(result.status, 'available');
+  if (result.status !== 'available') return;
+
+  const [comCategoria, semCategoria] = result.analysis.suggestions;
+  // "calças" (minúsculo, vindo da IA) casa com "Calças" do catálogo, ignora
+  // o product-2 (já no carrinho) e o product-5 (só tem variante esgotada).
+  assert.equal(comCategoria.products.length, 1);
+  assert.equal(comCategoria.products[0]?.id, 'product-4');
+  // Sem `category`, a sugestão nunca ganha peças anexadas.
+  assert.deepEqual(semCategoria.products, []);
+});
+
+test('categoria sem correspondência no catálogo não anexa peças', async () => {
+  const service = createCartReviewInsightService({
+    readCatalog: async () => catalog(),
+    runTool: async () => ({
+      executionId: 'execution-3',
+      source: 'provider',
+      data: { ...analysis, suggestions: [{ ...analysis.suggestions[0], category: 'Categoria inexistente' }] },
+    }),
+  });
+
+  const result = await service(tenant, client, { items: cartItems() });
+  assert.equal(result.status, 'available');
+  if (result.status === 'available') assert.deepEqual(result.analysis.suggestions[0].products, []);
 });
 
 test('rejeita corpo inválido antes de ler o catálogo', async () => {

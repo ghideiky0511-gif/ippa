@@ -9,10 +9,10 @@ import { apiFetch } from '@/lib/api-client';
 import type { CartItem } from '@/domain/orders/types';
 import {
   AiResponseCard,
-  AiResponseInsights,
   AiResponseText,
   type AiResponseState,
 } from '@/components/ui/ai-response';
+import SuggestedProductCard from './SuggestedProductCard';
 
 interface CartReviewInsightCardProps {
   items: CartItem[];
@@ -79,12 +79,36 @@ function CartReviewInsightCardSession({ items }: CartReviewInsightCardProps) {
     >
       {available && (
         <div className="space-y-2.5">
-          <AiResponseText>{available.analysis.text}</AiResponseText>
-          <AiResponseInsights items={available.analysis.suggestions.map((suggestion) => ({
-            title: suggestion.title,
-            evidence: suggestion.evidence,
-            action: suggestion.action,
-          }))} />
+          <AiResponseText>{available.analysis.headline}</AiResponseText>
+
+          {available.analysis.highlights.length > 0 && (
+            <ul className="list-disc space-y-1 pl-4 text-xs leading-relaxed text-muted-foreground">
+              {available.analysis.highlights.map((highlight, index) => (
+                <li key={index}>{highlight}</li>
+              ))}
+            </ul>
+          )}
+
+          {available.analysis.suggestions.length > 0 && (
+            <div className="space-y-2">
+              {available.analysis.suggestions.map((suggestion, index) => (
+                <article key={`${suggestion.title}-${index}`} className="rounded-control border border-border bg-surface p-3">
+                  <h4 className="text-xs font-extrabold text-foreground">{suggestion.title}</h4>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{suggestion.evidence}</p>
+                  <p className="mt-2 text-xs font-semibold leading-relaxed text-foreground">
+                    Próximo passo: {suggestion.action}
+                  </p>
+                  {suggestion.products.length > 0 && (
+                    <div className="mt-2.5 space-y-1.5">
+                      {suggestion.products.map((product) => (
+                        <SuggestedProductCard key={product.id} product={product} />
+                      ))}
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </AiResponseCard>

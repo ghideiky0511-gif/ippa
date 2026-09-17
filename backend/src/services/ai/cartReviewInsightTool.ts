@@ -10,20 +10,22 @@ import { defineAiTool } from './toolDefinition';
 
 export const cartReviewInsightTool = defineAiTool({
   key: CART_REVIEW_INSIGHT_TOOL_KEY,
-  version: '1',
+  version: '2',
   providerProfile: 'cartReviewInsight',
   inputSchema: CartReviewFactsSchema,
   outputSchema: CartReviewInsightOutputSchema,
   instructions: CART_REVIEW_INSIGHT_DEFAULT_INSTRUCTIONS,
   buildPrompt: (input) => [
-    'Analise o mix do carrinho atual (já calculado pelo backend) e devolva somente a resposta estruturada solicitada.',
-    'O campo text deve conter um único comentário em português do Brasil sobre o carrinho atual, com no máximo 70 palavras e três frases, sem títulos, listas ou saudações.',
+    'Analise o mix do carrinho atual (já calculado pelo backend) e devolva somente a resposta estruturada solicitada, em português do Brasil.',
+    'O campo headline deve ter uma única frase curta (até 20 palavras) resumindo o carrinho, sem saudação.',
+    'O campo highlights deve ter até cinco tópicos curtos (uma linha cada, sem numeração própria nem introdução), destacando fatos do mix recebido (categoria, tamanho, cor).',
     'O campo suggestions deve ter até três sugestões, cada uma em nível de categoria ou grade para completar o pedido — nunca nomes de produto ou SKU específicos, já que você não recebe o catálogo.',
+    'Quando a sugestão apontar pra completar com uma categoria específica, preencha suggestions[].category repetindo exatamente o rótulo recebido em mix.categories ou mix.subcategories. Caso contrário, deixe o campo de fora.',
     'Cada sugestão precisa citar a evidência do próprio mix recebido que a sustenta.',
     'Não recalcule nem invente números fora dos recebidos. Use-os como fonte de verdade.',
-    'Se a amostra for pequena, sinalize a limitação no texto. Se não houver base para sugestões úteis, devolva suggestions vazio.',
+    'Se a amostra for pequena, sinalize a limitação em um highlight. Se não houver base para sugestões úteis, devolva suggestions vazio.',
     JSON.stringify(input),
   ].join('\n'),
-  maxOutputTokens: 500,
+  maxOutputTokens: 600,
   cacheTtlMs: 2 * 60 * 60 * 1000,
 });
