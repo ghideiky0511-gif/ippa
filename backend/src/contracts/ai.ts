@@ -108,15 +108,19 @@ export const CartReviewSchema = z.object({
 }).strict();
 export type CartReview = z.infer<typeof CartReviewSchema>;
 
-// `category`, quando presente, precisa repetir exatamente um dos rótulos de
+// `category`, quando não-nulo, precisa repetir exatamente um dos rótulos de
 // `mix.categories`/`mix.subcategories` recebidos como input — é a única
 // âncora que o backend usa pra resolver peças de verdade do catálogo (ver
 // cartReviewInsightService.ts). A IA nunca nomeia produto ou SKU.
+// `.nullable()` em vez de `.optional()`: a API de Structured Outputs da
+// OpenAI exige que todo campo esteja em `required` — "ausente" se expressa
+// com `null`, nunca com a chave faltando (mesmo padrão já usado em
+// CatalogOrderTicketComparisonSchema acima).
 export const CartReviewSuggestionSchema = z.object({
   title: RequiredTextSchema.max(80),
   evidence: RequiredTextSchema.max(160),
   action: RequiredTextSchema.max(160),
-  category: RequiredTextSchema.max(80).optional(),
+  category: RequiredTextSchema.max(80).nullable(),
 }).strict();
 export type CartReviewSuggestion = z.infer<typeof CartReviewSuggestionSchema>;
 

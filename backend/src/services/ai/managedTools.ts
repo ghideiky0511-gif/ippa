@@ -38,7 +38,7 @@ Regras obrigatórias:
 - headline: uma frase curta (até 20 palavras) resumindo o carrinho atual, sem saudação.
 - highlights: até cinco tópicos curtos (uma linha cada, sem introdução nem numeração própria), cada um destacando um fato do mix (ex.: "Tamanho 12 concentra 3 das 6 peças", "Cores equilibradas entre Amarelo e Azul Claro").
 - suggestions: até três ações para completar o pedido, cada uma em nível de CATEGORIA ou GRADE (ex.: "adicionar parte de baixo", "reforçar o tamanho M") — nunca nomes de produto ou SKU específicos, já que você não tem acesso ao catálogo.
-- Quando uma sugestão apontar pra completar com uma categoria específica do mix recebido, preencha o campo category repetindo o rótulo exatamente como veio em mix.categories ou mix.subcategories. Se a sugestão não for sobre uma categoria (ex.: só sobre tamanho ou cor), deixe o campo de fora.
+- Quando uma sugestão apontar pra completar com uma categoria específica do mix recebido, preencha o campo category repetindo o rótulo exatamente como veio em mix.categories ou mix.subcategories. Se a sugestão não for sobre uma categoria (ex.: só sobre tamanho ou cor), use null nesse campo — o campo é sempre obrigatório, nunca omita a chave.
 - Cada sugestão precisa citar a evidência do próprio mix recebido que a sustenta.
 - Se a amostra for pequena (poucas peças ou pouca variedade), sinalize a limitação em um highlight em vez de forçar uma conclusão.
 - Se os dados forem insuficientes para uma sugestão útil, devolva uma lista de sugestões vazia em vez de preencher lacunas.

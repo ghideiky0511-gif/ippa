@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ActorContext, Tenant } from "@/lib/db/tenant";
-import { logger } from "@/lib/logger";
+import { errorMeta, logger } from "@/lib/logger";
 import { ServiceError, ValidationError } from "@/services/shared/errors";
 import { resolveAiProviderProfile } from "./config";
 import { createDatabaseAiExecutionStore, type AiExecutionIdentity, type AiExecutionStore } from "./executionStore";
@@ -185,6 +185,17 @@ export function createAiToolRunner(overrides: Partial<AiToolRunnerDependencies> 
                 : new AiProviderFailure("unavailable", { cause: error });
             const normalized = serviceErrorForFailure(failure);
             const durationMs = Math.max(0, dependencies.now().getTime() - startedAt.getTime());
+            // `failure.cause` carrega o erro real por trás do kind normalizado
+            // (ex.: um schema inválido pro provider vira "unavailable" pro
+            // cliente, mas sem isto o motivo de verdade nunca aparece em lugar
+            // nenhum). Nível error: é sempre uma execução que falhou de fato.
+            logger.error("AI_TOOL", "Execução da ferramenta de IA falhou", {
+                tenantId: tenant.id,
+                tool: tool.key,
+                kind: failure.kind,
+                errorCode: normalized.code,
+                ...errorMeta(failure),
+            });
             try {
                 await store.fail({
                     id: executionId,

@@ -153,11 +153,11 @@ function productMatchesCategory(product: Product, normalizedCategory: string): b
 // backend resolve peças de verdade a partir dele — sem categoria
 // reconhecida, a sugestão simplesmente não ganha peças anexadas.
 function resolveSuggestedProducts(
-  category: string | undefined,
+  category: string | null,
   catalog: Product[],
   cartProductIds: Set<string>,
 ): CartReviewSuggestedProduct[] {
-  const normalizedCategory = normalizedLabel(category ?? null)?.toLocaleUpperCase('pt-BR');
+  const normalizedCategory = normalizedLabel(category)?.toLocaleUpperCase('pt-BR');
   if (!normalizedCategory) return [];
 
   return catalog

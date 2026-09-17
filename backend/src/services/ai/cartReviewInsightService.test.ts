@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { zodTextFormat } from 'openai/helpers/zod';
 import type { CartReviewInsightOutput, CartReviewInsightSummary } from '@/contracts/ai';
 import type { Tenant } from '@/lib/db/tenant';
 import type { AuthUser, CartItem, Product } from '@/lib/types';
@@ -130,7 +131,7 @@ const analysis: CartReviewInsightOutput = {
       action: 'Sugerir outra peça de calça.',
       category: 'calças',
     },
-    { title: 'Reforçar tamanho M', evidence: 'M é o tamanho mais presente no mix.', action: 'Sugerir outra peça no tamanho M.' },
+    { title: 'Reforçar tamanho M', evidence: 'M é o tamanho mais presente no mix.', action: 'Sugerir outra peça no tamanho M.', category: null },
   ],
 };
 
@@ -173,12 +174,26 @@ test('contratos da ferramenta rejeitam identificação, campos extras e texto ex
   // rótulo já recebido no mix.
   assert.equal(cartReviewInsightTool.outputSchema.safeParse({
     headline: 'ok', highlights: [],
-    suggestions: [{ title: 'a', evidence: 'b', action: 'c', productId: 'não enviar' }],
+    suggestions: [{ title: 'a', evidence: 'b', action: 'c', category: null, productId: 'não enviar' }],
   }).success, false);
-  assert.equal(cartReviewInsightTool.version, '2');
+  // `category` omitido (em vez de null) também é inválido: Structured
+  // Outputs da OpenAI exige a chave sempre presente.
+  assert.equal(cartReviewInsightTool.outputSchema.safeParse({
+    headline: 'ok', highlights: [],
+    suggestions: [{ title: 'a', evidence: 'b', action: 'c' }],
+  }).success, false);
+  assert.equal(cartReviewInsightTool.version, '3');
 
   const prompt = cartReviewInsightTool.buildPrompt(facts);
   assert.doesNotMatch(prompt, /cliente@example\.test|Cliente teste|11111111/);
+});
+
+// Regressão: `.optional()` num schema de saída passa no zod normal mas o
+// helper da OpenAI pra Structured Outputs rejeita em runtime (todo campo
+// precisa estar em `required`; "ausente" só existe via `.nullable()`) — sem
+// este teste, esse erro só aparece batendo na API de verdade em produção.
+test('o schema de saída é aceito pelo conversor de Structured Outputs da OpenAI', () => {
+  assert.doesNotThrow(() => zodTextFormat(cartReviewInsightTool.outputSchema, 'cart_review_insight_test'));
 });
 
 test('carrinho vazio devolve empty_cart e não executa a ferramenta', async () => {

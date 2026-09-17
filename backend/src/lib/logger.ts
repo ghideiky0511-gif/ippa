@@ -40,8 +40,17 @@ export const logger = {
 // call site precisar checar o tipo na mão.
 export function errorMeta(error: unknown): LogMeta {
     const err = error as
-        | { message?: string; code?: string; detail?: string; constraint?: string; table?: string; statusCode?: number; endpoint?: string }
+        | { message?: string; code?: string; detail?: string; constraint?: string; table?: string; statusCode?: number; endpoint?: string; cause?: unknown }
         | null;
+    // `cause` (padrão do Error nativo, ex. `new Error(msg, { cause })`) costuma
+    // guardar o erro de verdade por trás de um wrapper normalizado (ex.
+    // AiProviderFailure só expõe `kind` como message — sem isto, uma falha de
+    // schema na conversão pro provider vira "unavailable" sem nenhum rastro
+    // de qual campo/regra causou).
+    const cause = err?.cause;
+    const causeMessage = cause instanceof Error
+        ? cause.message
+        : cause !== undefined && cause !== null ? String(cause) : undefined;
     return {
         error: err?.message ?? String(error),
         code: err?.code,
@@ -50,5 +59,6 @@ export function errorMeta(error: unknown): LogMeta {
         table: err?.table,
         statusCode: err?.statusCode,
         endpoint: err?.endpoint,
+        cause: causeMessage,
     };
 }
