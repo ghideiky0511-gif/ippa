@@ -26,6 +26,10 @@ export const cartReviewInsightTool = defineAiTool({
     'Se a amostra for pequena, sinalize a limitação em um highlight. Se não houver base para sugestões úteis, devolva suggestions vazio.',
     JSON.stringify(input),
   ].join('\n'),
-  maxOutputTokens: 600,
+  // headline + até 5 highlights + até 3 suggestions (4 campos cada) já soma
+  // ~2300 caracteres no pior caso, fora overhead de JSON estruturado e
+  // tokens de raciocínio de modelos que gastam isso do próprio orçamento de
+  // saída — 600 vinha cortando a resposta no meio (status "incomplete").
+  maxOutputTokens: 2000,
   cacheTtlMs: 2 * 60 * 60 * 1000,
 });
