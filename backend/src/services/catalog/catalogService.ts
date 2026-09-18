@@ -1,7 +1,15 @@
 import type { PoolClient } from "pg";
 import type { Tenant } from "@/lib/db/tenant";
 import { withTenantTransaction } from "@/lib/db/tenant";
-import type { CategoryTreeEntry, Classification, ClassificationType, Discount, Highlight, Product, Variant } from "@/lib/types";
+import type {
+    CategoryTreeEntry,
+    Classification,
+    ClassificationType,
+    Discount,
+    Highlight,
+    Product,
+    Variant,
+} from "@/lib/types";
 import type { ProductAdmin, ProductSourceOrigin } from "@/contracts/products";
 import type { CatalogPage, CatalogSectionsResult } from "@/contracts/catalog";
 import type {
@@ -31,7 +39,12 @@ import {
     listVariantClassificationRows,
     listVariantClassificationRowsByVariantIds,
 } from "@/models/classificationModel";
-import type { DiscountProductRow, DiscountRow, DiscountTierRow, StoreSettingsRow } from "@/models/settingsModel";
+import type {
+    DiscountProductRow,
+    DiscountRow,
+    DiscountTierRow,
+    StoreSettingsRow,
+} from "@/models/settingsModel";
 import {
     findStoreSettingsRow,
     listDiscountProductRows,
@@ -47,7 +60,9 @@ import { resolveCatalogMedia } from "@/services/catalog/catalogMediaService";
 // Árvore categoria->subcategorias pro menu público — direto de `classifications`/
 // `classification_types` (hierarquia real via `parent_id`, sem heurística de
 // nome), já filtrada pelo opt-in do tenant (`active`, ver listCategoryMenuRows).
-export async function categoryMenu(tenant: Tenant): Promise<CategoryTreeEntry[]> {
+export async function categoryMenu(
+    tenant: Tenant,
+): Promise<CategoryTreeEntry[]> {
     return withTenantTransaction(tenant, {}, async (client) => {
         const rows = await listCategoryMenuRows(client);
         const childrenByParent = new Map<string | null, typeof rows>();
@@ -78,19 +93,31 @@ export function hasPublicCatalogPrice(price: string | number): boolean {
     return Number.isFinite(numericPrice) && numericPrice > 0;
 }
 
-export async function listCatalogFilters(tenant: Tenant): Promise<CatalogFilters> {
+export async function listCatalogFilters(
+    tenant: Tenant,
+): Promise<CatalogFilters> {
     return withTenantTransaction(tenant, {}, async (client) => {
         const categories = await categoryMenu(tenant);
         const variants = await listProductVariantRows(client);
         const products = await listProductRows(client);
         const visibleProductIds = new Set(
-            products.filter((product) => hasPublicCatalogPrice(product.price)).map((product) => product.id),
+            products
+                .filter((product) => hasPublicCatalogPrice(product.price))
+                .map((product) => product.id),
         );
-        const visibleVariants = variants.filter((variant) => visibleProductIds.has(variant.product_id));
+        const visibleVariants = variants.filter((variant) =>
+            visibleProductIds.has(variant.product_id),
+        );
 
-        const allColors = [...new Set(visibleVariants.map((v) => v.color).filter(Boolean))].sort();
-        const allSizes = [...new Set(visibleVariants.map((v) => v.size).filter(Boolean))].sort((a, b) =>
-            isNaN(Number(a)) || isNaN(Number(b)) ? a.localeCompare(b) : Number(a) - Number(b)
+        const allColors = [
+            ...new Set(visibleVariants.map((v) => v.color).filter(Boolean)),
+        ].sort();
+        const allSizes = [
+            ...new Set(visibleVariants.map((v) => v.size).filter(Boolean)),
+        ].sort((a, b) =>
+            isNaN(Number(a)) || isNaN(Number(b))
+                ? a.localeCompare(b)
+                : Number(a) - Number(b),
         );
 
         return {
@@ -101,16 +128,25 @@ export async function listCatalogFilters(tenant: Tenant): Promise<CatalogFilters
     });
 }
 
-function buildDiscounts(discountRows: DiscountRow[], tierRows: DiscountTierRow[], discountProductRows: DiscountProductRow[]): Discount[] {
+function buildDiscounts(
+    discountRows: DiscountRow[],
+    tierRows: DiscountTierRow[],
+    discountProductRows: DiscountProductRow[],
+): Discount[] {
     return discountRows.map((discount) => ({
         id: discount.id,
         label: discount.label,
         active: discount.active,
         type: discount.type,
         percent: Number(discount.percent),
-        tiers: tierRows.filter((tier) => tier.discount_id === discount.id)
-            .map((tier) => ({ minQty: tier.min_qty, percent: Number(tier.percent) })),
-        productIds: discountProductRows.filter((product) => product.discount_id === discount.id)
+        tiers: tierRows
+            .filter((tier) => tier.discount_id === discount.id)
+            .map((tier) => ({
+                minQty: tier.min_qty,
+                percent: Number(tier.percent),
+            })),
+        productIds: discountProductRows
+            .filter((product) => product.discount_id === discount.id)
             .map((product) => product.product_id),
     }));
 }
@@ -127,12 +163,24 @@ interface CatalogAssociations {
 }
 
 // Monta os Product[] a partir de linhas já carregadas -- compartilhada pelo
-// catálogo completo (loadCatalog, associações do tenant inteiro) e pela
-// página real (listCatalogPage, associações só dos produtos da página), que
-// só diferem em QUAIS linhas são carregadas antes de chegar aqui.
-async function assembleCatalogProducts(productRows: ProductRow[], assoc: CatalogAssociations): Promise<Product[]> {
+// workspace administrativo (associações do tenant inteiro) e pela página
+// pública (listCatalogPage, associações só dos produtos da página), que só
+// diferem em QUAIS linhas são carregadas antes de chegar aqui.
+async function assembleCatalogProducts(
+    productRows: ProductRow[],
+    assoc: CatalogAssociations,
+): Promise<Product[]> {
     if (productRows.length === 0) return [];
-    const { variants, stockByVariant, classifications, packs, packItems, colorImages, storeSettings, discounts } = assoc;
+    const {
+        variants,
+        stockByVariant,
+        classifications,
+        packs,
+        packItems,
+        colorImages,
+        storeSettings,
+        discounts,
+    } = assoc;
     const colorImagesByProduct = new Map<string, Record<string, string[]>>();
     for (const row of colorImages) {
         const byColor = colorImagesByProduct.get(row.product_id) ?? {};
@@ -172,67 +220,91 @@ async function assembleCatalogProducts(productRows: ProductRow[], assoc: Catalog
             price: Number(row.price),
             availability: row.availability,
             availableFrom: row.available_from ?? undefined,
-            stockQty: row.track_inventory ? (stockByVariant.get(row.id) ?? 0) : undefined,
+            stockQty: row.track_inventory
+                ? (stockByVariant.get(row.id) ?? 0)
+                : undefined,
             classifications: classificationsByVariant.get(row.id) ?? [],
         });
         variantsByProduct.set(row.product_id, productVariants);
     }
 
-    return Promise.all(productRows.map(async (row) => {
-        const productVariants = variantsByProduct.get(row.id) ?? [];
-        const resolvedMedia = await resolveCatalogMedia(row.media);
-        const { manualOverride, ...attributes } = row.attributes as typeof row.attributes & {
-            manualOverride?: Partial<Product>;
-        };
-        let product: Product = {
-            id: row.id,
-            name: row.name,
-            description: row.description,
-            referenceId: row.reference_id ?? undefined,
-            price: Number(row.price),
-            suggestedRetailPrice: row.suggested_retail_price ? Number(row.suggested_retail_price) : undefined,
-            markup: row.markup ? Number(row.markup) : undefined,
-            image: resolvedMedia.image,
-            images: resolvedMedia.images,
-            imagesByColor: resolvedMedia.imagesByColor,
-            galleryByColor: colorImagesByProduct.get(row.id),
-            videoUrl: resolvedMedia.videoUrl,
-            colors: [...new Set(productVariants.map((variant) => variant.color))],
-            sizes: [...new Set(productVariants.map((variant) => variant.size))],
-            variants: productVariants,
-            packs: packs.filter((pack) => pack.product_id === row.id).map((pack) => ({
-                id: pack.id,
-                scope: pack.scope,
-                label: pack.label,
-                color: pack.color ?? undefined,
-                price: Number(pack.price),
-                items: packItems.filter((item) => item.pack_id === pack.id).map((item) => ({
-                    size: item.size,
-                    qty: item.quantity,
-                    color: item.color ?? undefined,
-                })),
-            })),
-            ...attributes,
-            ...(row.source_origin === "erp" ? {} : manualOverride),
-        } as Product;
-        if (canApplyDefaultMarkup(row.source_origin) && storeSettings?.default_markup && product.suggestedRetailPrice === undefined && product.markup === undefined) {
-            const defaultMarkup = Number(storeSettings.default_markup);
-            product = {
-                ...product,
-                suggestedRetailPrice: Math.round(product.price * defaultMarkup * 100) / 100,
-                markup: defaultMarkup,
-            };
-        }
-        const activeDiscount = getActiveProductDiscount(product.id, discounts);
-        if (activeDiscount) product = { ...product, activeDiscount };
-        if (storeSettings?.features?.suggestedPrice === false) {
-            const withoutSuggestedPrice = { ...product };
-            delete withoutSuggestedPrice.suggestedRetailPrice;
-            delete withoutSuggestedPrice.markup;
-            product = withoutSuggestedPrice;
-        }
-        return product;
-    }));
+    return Promise.all(
+        productRows.map(async (row) => {
+            const productVariants = variantsByProduct.get(row.id) ?? [];
+            const resolvedMedia = await resolveCatalogMedia(row.media);
+            const { manualOverride, ...attributes } =
+                row.attributes as typeof row.attributes & {
+                    manualOverride?: Partial<Product>;
+                };
+            let product: Product = {
+                id: row.id,
+                name: row.name,
+                description: row.description,
+                referenceId: row.reference_id ?? undefined,
+                price: Number(row.price),
+                suggestedRetailPrice: row.suggested_retail_price
+                    ? Number(row.suggested_retail_price)
+                    : undefined,
+                markup: row.markup ? Number(row.markup) : undefined,
+                image: resolvedMedia.image,
+                images: resolvedMedia.images,
+                imagesByColor: resolvedMedia.imagesByColor,
+                galleryByColor: colorImagesByProduct.get(row.id),
+                videoUrl: resolvedMedia.videoUrl,
+                colors: [
+                    ...new Set(productVariants.map((variant) => variant.color)),
+                ],
+                sizes: [
+                    ...new Set(productVariants.map((variant) => variant.size)),
+                ],
+                variants: productVariants,
+                packs: packs
+                    .filter((pack) => pack.product_id === row.id)
+                    .map((pack) => ({
+                        id: pack.id,
+                        scope: pack.scope,
+                        label: pack.label,
+                        color: pack.color ?? undefined,
+                        price: Number(pack.price),
+                        items: packItems
+                            .filter((item) => item.pack_id === pack.id)
+                            .map((item) => ({
+                                size: item.size,
+                                qty: item.quantity,
+                                color: item.color ?? undefined,
+                            })),
+                    })),
+                ...attributes,
+                ...(row.source_origin === "erp" ? {} : manualOverride),
+            } as Product;
+            if (
+                canApplyDefaultMarkup(row.source_origin) &&
+                storeSettings?.default_markup &&
+                product.suggestedRetailPrice === undefined &&
+                product.markup === undefined
+            ) {
+                const defaultMarkup = Number(storeSettings.default_markup);
+                product = {
+                    ...product,
+                    suggestedRetailPrice:
+                        Math.round(product.price * defaultMarkup * 100) / 100,
+                    markup: defaultMarkup,
+                };
+            }
+            const activeDiscount = getActiveProductDiscount(
+                product.id,
+                discounts,
+            );
+            if (activeDiscount) product = { ...product, activeDiscount };
+            if (storeSettings?.features?.suggestedPrice === false) {
+                const withoutSuggestedPrice = { ...product };
+                delete withoutSuggestedPrice.suggestedRetailPrice;
+                delete withoutSuggestedPrice.markup;
+                product = withoutSuggestedPrice;
+            }
+            return product;
+        }),
+    );
 }
 
 // Catálogo administrativo é deliberadamente completo: o workspace precisa
@@ -252,23 +324,46 @@ async function loadAdminCatalog(tenant: Tenant): Promise<Product[]> {
         const discountRows = await listDiscountRows(client);
         const tierRows = await listDiscountTierRows(client);
         const discountProductRows = await listDiscountProductRows(client);
-        const stockByVariant = await getStockForVariants(tenant, client, variants.map((variant) => variant.id));
-        const discounts = buildDiscounts(discountRows, tierRows, discountProductRows);
-        return assembleCatalogProducts(productRows, { variants, stockByVariant, classifications, packs, packItems, colorImages, storeSettings, discounts });
+        const stockByVariant = await getStockForVariants(
+            tenant,
+            client,
+            variants.map((variant) => variant.id),
+        );
+        const discounts = buildDiscounts(
+            discountRows,
+            tierRows,
+            discountProductRows,
+        );
+        return assembleCatalogProducts(productRows, {
+            variants,
+            stockByVariant,
+            classifications,
+            packs,
+            packItems,
+            colorImages,
+            storeSettings,
+            discounts,
+        });
     });
 }
 
-export function canApplyDefaultMarkup(sourceOrigin: ProductSourceOrigin): boolean {
+export function canApplyDefaultMarkup(
+    sourceOrigin: ProductSourceOrigin,
+): boolean {
     return sourceOrigin !== "erp";
 }
 
 /** Visão exclusiva do workspace, com a origem usada para controlar edição. */
-export async function listAdminProducts(tenant: Tenant): Promise<ProductAdmin[]> {
+export async function listAdminProducts(
+    tenant: Tenant,
+): Promise<ProductAdmin[]> {
     const [products, sourceRows] = await Promise.all([
         loadAdminCatalog(tenant),
         withTenantTransaction(tenant, {}, (client) => listProductRows(client)),
     ]);
-    const sourceById = new Map(sourceRows.map((row) => [row.id, row.source_origin]));
+    const sourceById = new Map(
+        sourceRows.map((row) => [row.id, row.source_origin]),
+    );
     return products.map((product) => ({
         ...product,
         sourceOrigin: sourceById.get(product.id) ?? "manual",
@@ -308,25 +403,50 @@ export interface CatalogQuery {
     excludeFeatured?: boolean;
 }
 
-function filterCatalogVariants(product: Product, query: {
-    term?: string; classificationId?: string; color?: string; size?: string; restrictIds?: string[]; excludeIds?: string[];
-}): Product | undefined {
+function filterCatalogVariants(
+    product: Product,
+    query: {
+        term?: string;
+        classificationId?: string;
+        color?: string;
+        size?: string;
+        restrictIds?: string[];
+        excludeIds?: string[];
+    },
+): Product | undefined {
     const term = query.term?.trim().toLowerCase();
-    if (term
-        && !(product.name || "").toLowerCase().includes(term)
-        && !(product.referenceId || "").toLowerCase().includes(term)) return undefined;
+    if (
+        term &&
+        !(product.name || "").toLowerCase().includes(term) &&
+        !(product.referenceId || "").toLowerCase().includes(term)
+    )
+        return undefined;
     // Categorias "dobradas" no menu (ex.: BODY ALCA vira subcategoria de
     // BODY) têm produtos cujo `category` real é o nome dobrado — some do
     // filtro se a gente só comparar contra `subcategory`.
-    if (query.restrictIds && !query.restrictIds.includes(product.id)) return undefined;
-    if (query.excludeIds && query.excludeIds.includes(product.id)) return undefined;
-    const variants = product.variants.filter((variant) =>
-        (!query.classificationId || variant.classifications.some((classification) => classification.id === query.classificationId))
-        && (!query.color || variant.color === query.color)
-        && (!query.size || variant.size === query.size),
+    if (query.restrictIds && !query.restrictIds.includes(product.id))
+        return undefined;
+    if (query.excludeIds && query.excludeIds.includes(product.id))
+        return undefined;
+    const variants = product.variants.filter(
+        (variant) =>
+            (!query.classificationId ||
+                variant.classifications.some(
+                    (classification) =>
+                        classification.id === query.classificationId,
+                )) &&
+            (!query.color || variant.color === query.color) &&
+            (!query.size || variant.size === query.size),
     );
-    if ((query.classificationId || query.color || query.size) && variants.length === 0) return undefined;
-    const visibleVariants = query.classificationId || query.color || query.size ? variants : product.variants;
+    if (
+        (query.classificationId || query.color || query.size) &&
+        variants.length === 0
+    )
+        return undefined;
+    const visibleVariants =
+        query.classificationId || query.color || query.size
+            ? variants
+            : product.variants;
     return {
         ...product,
         variants: visibleVariants,
@@ -337,25 +457,45 @@ function filterCatalogVariants(product: Product, query: {
 
 function pickByIds(products: Product[], ids: string[]): Product[] {
     const byId = new Map(products.map((p) => [p.id, p]));
-    return ids.map((id) => byId.get(id)).filter((p): p is Product => Boolean(p));
+    return ids
+        .map((id) => byId.get(id))
+        .filter((p): p is Product => Boolean(p));
 }
 
 // Mesma regra de featuredProductIds (highlight ∪ desconto ativo do tipo
 // "products"), mas a partir das linhas cruas -- não precisa montar Product[]
 // do catálogo inteiro só pra saber quais ids excluir (ver getActiveProductDiscount).
-function activeProductDiscountIds(discountRows: DiscountRow[], discountProductRows: DiscountProductRow[]): Set<string> {
-    const activeDiscountIds = new Set(discountRows.filter((d) => d.active && d.type === "products").map((d) => d.id));
-    return new Set(discountProductRows.filter((dp) => activeDiscountIds.has(dp.discount_id)).map((dp) => dp.product_id));
+function activeProductDiscountIds(
+    discountRows: DiscountRow[],
+    discountProductRows: DiscountProductRow[],
+): Set<string> {
+    const activeDiscountIds = new Set(
+        discountRows
+            .filter((d) => d.active && d.type === "products")
+            .map((d) => d.id),
+    );
+    return new Set(
+        discountProductRows
+            .filter((dp) => activeDiscountIds.has(dp.discount_id))
+            .map((dp) => dp.product_id),
+    );
 }
 
 // Carrega associações (variantes, estoque, classificações, kits, descontos,
 // mídia) só para os produtos dados -- usada pela página real de catálogo
 // (listCatalogPage), que já resolveu no SQL quais produtos entram na página
 // atual e não precisa mais carregar o tenant inteiro para montá-los.
-async function loadAssociatedCatalogProducts(tenant: Tenant, client: PoolClient, productRows: ProductRow[]): Promise<Product[]> {
+async function loadAssociatedCatalogProducts(
+    tenant: Tenant,
+    client: PoolClient,
+    productRows: ProductRow[],
+): Promise<Product[]> {
     if (productRows.length === 0) return [];
     const productIds = productRows.map((row) => row.id);
-    const variants = await listProductVariantRowsByProductIds(client, productIds);
+    const variants = await listProductVariantRowsByProductIds(
+        client,
+        productIds,
+    );
     const packs = await listProductPackRowsByProductIds(client, productIds);
     const storeSettings = await findStoreSettingsRow(client);
     const discountRows = await listDiscountRows(client);
@@ -363,35 +503,81 @@ async function loadAssociatedCatalogProducts(tenant: Tenant, client: PoolClient,
     const discountProductRows = await listDiscountProductRows(client);
     const variantIds = variants.map((variant) => variant.id);
     const packIds = packs.map((pack) => pack.id);
-    const stockByVariant = await getStockForVariants(tenant, client, variantIds);
-    const classifications = await listVariantClassificationRowsByVariantIds(client, variantIds);
+    const stockByVariant = await getStockForVariants(
+        tenant,
+        client,
+        variantIds,
+    );
+    const classifications = await listVariantClassificationRowsByVariantIds(
+        client,
+        variantIds,
+    );
     const packItems = await listProductPackItemRowsByPackIds(client, packIds);
-    const colorImages = await listProductColorImageRowsByProductIds(client, productIds);
-    const discounts = buildDiscounts(discountRows, tierRows, discountProductRows);
-    return assembleCatalogProducts(productRows, { variants, stockByVariant, classifications, packs, packItems, colorImages, storeSettings, discounts });
+    const colorImages = await listProductColorImageRowsByProductIds(
+        client,
+        productIds,
+    );
+    const discounts = buildDiscounts(
+        discountRows,
+        tierRows,
+        discountProductRows,
+    );
+    return assembleCatalogProducts(productRows, {
+        variants,
+        stockByVariant,
+        classifications,
+        packs,
+        packItems,
+        colorImages,
+        storeSettings,
+        discounts,
+    });
 }
 
-export async function listCatalogPage(tenant: Tenant, query: CatalogQuery): Promise<CatalogPage> {
+export async function listCatalogPage(
+    tenant: Tenant,
+    query: CatalogQuery,
+): Promise<CatalogPage> {
     return withTenantTransaction(tenant, {}, async (client) => {
         const excludeFeaturedIds = new Set<string>();
         if (query.excludeFeatured) {
             const highlights = await listHighlights(tenant);
             const discountRows = await listDiscountRows(client);
             const discountProductRows = await listDiscountProductRows(client);
-            for (const id of activeProductDiscountIds(discountRows, discountProductRows)) excludeFeaturedIds.add(id);
-            for (const highlight of highlights) for (const id of highlight.productIds) excludeFeaturedIds.add(id);
+            for (const id of activeProductDiscountIds(
+                discountRows,
+                discountProductRows,
+            ))
+                excludeFeaturedIds.add(id);
+            for (const highlight of highlights)
+                for (const id of highlight.productIds)
+                    excludeFeaturedIds.add(id);
         }
-        const excludeIds = [...new Set([...(query.excludeIds ?? []), ...excludeFeaturedIds])];
+        const excludeIds = [
+            ...new Set([...(query.excludeIds ?? []), ...excludeFeaturedIds]),
+        ];
 
         if (query.ids) {
             const rows = await findProductRowsByIds(client, query.ids);
-            const products = await loadAssociatedCatalogProducts(tenant, client, rows);
+            const products = await loadAssociatedCatalogProducts(
+                tenant,
+                client,
+                rows,
+            );
             const matching = products
                 .map((product) => filterCatalogVariants(product, query))
                 .filter((product): product is Product => Boolean(product))
                 .filter((product) => !excludeFeaturedIds.has(product.id));
             const items = pickByIds(matching, query.ids);
-            return { items, pagination: { page: 1, pageSize: items.length || 1, total: items.length, totalPages: 1 } };
+            return {
+                items,
+                pagination: {
+                    page: 1,
+                    pageSize: items.length || 1,
+                    total: items.length,
+                    totalPages: 1,
+                },
+            };
         }
 
         const pageSize = normalizedPageSize(query.pageSize);
@@ -406,13 +592,22 @@ export async function listCatalogPage(tenant: Tenant, query: CatalogQuery): Prom
             limit: pageSize,
             offset: (page - 1) * pageSize,
         });
-        const products = await loadAssociatedCatalogProducts(tenant, client, rows);
+        const products = await loadAssociatedCatalogProducts(
+            tenant,
+            client,
+            rows,
+        );
         const items = products
             .map((product) => filterCatalogVariants(product, query))
             .filter((product): product is Product => Boolean(product));
         return {
             items,
-            pagination: { page, pageSize, total, totalPages: Math.max(Math.ceil(total / pageSize), 1) },
+            pagination: {
+                page,
+                pageSize,
+                total,
+                totalPages: Math.max(Math.ceil(total / pageSize), 1),
+            },
         };
     });
 }
@@ -427,23 +622,34 @@ export interface CatalogSectionsQuery {
     pageSize?: number;
 }
 
-// Casos internos que realmente precisam comparar o catálogo inteiro (IA e
-// recomendações) percorrem o MESMO motor público em páginas de no máximo 100
-// itens. Não há mais um atalho que monta tudo numa só requisição da rota.
-export async function listCatalogSnapshot(tenant: Tenant): Promise<Product[]> {
+// O chamador escolhe entre uma página (listCatalogPage) e o conjunto completo
+// (esta função). `MAX_PAGE_SIZE` é apenas o lote físico de cada consulta; o
+// loop continua até a última página, sem cortar produtos do resultado final.
+// O mesmo filtro do motor paginado pode ser aplicado ao snapshot completo.
+export async function listCatalogSnapshot(
+    tenant: Tenant,
+    query: Omit<CatalogQuery, "page" | "pageSize"> = {},
+): Promise<Product[]> {
     const items: Product[] = [];
     let page = 1;
     while (true) {
-        const result = await listCatalogPage(tenant, { page, pageSize: MAX_PAGE_SIZE });
+        const result = await listCatalogPage(tenant, {
+            ...query,
+            page,
+            pageSize: MAX_PAGE_SIZE,
+        });
         items.push(...result.items);
         if (page >= result.pagination.totalPages) return items;
         page += 1;
     }
 }
 
-export async function listCatalogSections(tenant: Tenant, query: CatalogSectionsQuery): Promise<CatalogSectionsResult> {
-    // A rota antiga chamava listCatalog(), montava cada produto/variante do
-    // tenant em memória e só depois fatiava a grade. Além de ignorar o
+export async function listCatalogSections(
+    tenant: Tenant,
+    query: CatalogSectionsQuery,
+): Promise<CatalogSectionsResult> {
+    // A implementação anterior montava cada produto/variante do tenant em
+    // memória e só depois fatiava a grade. Além de ignorar o
     // motor paginado, isso carregava centenas de URLs de mídia e saldos para
     // entregar somente 24 cards. Aqui os IDs destacados determinam a pequena
     // vitrine e a grade usa a mesma listCatalogPage de GET /api/catalog.
@@ -470,13 +676,19 @@ export async function listCatalogSections(tenant: Tenant, query: CatalogSections
         // Highlights ocultos continuam fora de "outros produtos", como antes.
         // Eles entram nesta consulta somente para que o total de `all` permaneça
         // correto sem precisar consultar o catálogo inteiro.
-        const featuredIds = new Set<string>(activeProductDiscountIds(discountRows, discountProductRows));
-        for (const highlight of highlights) for (const id of highlight.productIds) featuredIds.add(id);
-        const excludedIds = [...new Set([...(query.excludeIds ?? []), ...featuredIds])];
+        const featuredIds = new Set<string>(
+            activeProductDiscountIds(discountRows, discountProductRows),
+        );
+        for (const highlight of highlights)
+            for (const id of highlight.productIds) featuredIds.add(id);
+        const excludedIds = [
+            ...new Set([...(query.excludeIds ?? []), ...featuredIds]),
+        ];
 
-        const featuredRows = featuredIds.size > 0
-            ? await findProductRowsByIds(client, [...featuredIds])
-            : [];
+        const featuredRows =
+            featuredIds.size > 0
+                ? await findProductRowsByIds(client, [...featuredIds])
+                : [];
         const outrosPage = await listCatalogProductPage(client, {
             term: query.term,
             classificationId: query.classificationId,
@@ -487,16 +699,32 @@ export async function listCatalogSections(tenant: Tenant, query: CatalogSections
             limit: pageSize,
             offset: 0,
         });
-        const productRows = [...new Map([...featuredRows, ...outrosPage.rows].map((row) => [row.id, row])).values()];
-        const products = await loadAssociatedCatalogProducts(tenant, client, productRows);
-        const productById = new Map(products.map((product) => [product.id, product]));
+        const productRows = [
+            ...new Map(
+                [...featuredRows, ...outrosPage.rows].map((row) => [
+                    row.id,
+                    row,
+                ]),
+            ).values(),
+        ];
+        const products = await loadAssociatedCatalogProducts(
+            tenant,
+            client,
+            productRows,
+        );
+        const productById = new Map(
+            products.map((product) => [product.id, product]),
+        );
         const matching = pickByIds(products, [...featuredIds])
             .map((product) => filterCatalogVariants(product, query))
             .filter((product): product is Product => Boolean(product));
         const outros = {
             items: outrosPage.rows
                 .map((row) => productById.get(row.id))
-                .map((product) => product && filterCatalogVariants(product, query))
+                .map(
+                    (product) =>
+                        product && filterCatalogVariants(product, query),
+                )
                 .filter((product): product is Product => Boolean(product)),
             pagination: {
                 page: 1,
@@ -507,9 +735,19 @@ export async function listCatalogSections(tenant: Tenant, query: CatalogSections
         };
         const highlightSections = highlights
             .filter((h) => h.showInCatalog)
-            .map((h) => ({ id: h.id, label: h.label, items: pickByIds(matching, h.productIds) }));
-        const promoSection = { id: "promocoes", label: "Promoções", items: matching.filter((p) => !!p.activeDiscount) };
-        const sections = [...highlightSections, promoSection].filter((s) => s.items.length > 0);
+            .map((h) => ({
+                id: h.id,
+                label: h.label,
+                items: pickByIds(matching, h.productIds),
+            }));
+        const promoSection = {
+            id: "promocoes",
+            label: "Promoções",
+            items: matching.filter((p) => !!p.activeDiscount),
+        };
+        const sections = [...highlightSections, promoSection].filter(
+            (s) => s.items.length > 0,
+        );
         const allTotal = matching.length + outros.pagination.total;
         const allPagination = {
             page: 1,
@@ -517,13 +755,18 @@ export async function listCatalogSections(tenant: Tenant, query: CatalogSections
             total: allTotal,
             totalPages: Math.max(Math.ceil(allTotal / pageSize), 1),
         };
-        const showSections = sections.length + (outros.pagination.total > 0 ? 1 : 0) > 1;
+        const showSections =
+            sections.length + (outros.pagination.total > 0 ? 1 : 0) > 1;
 
         if (showSections) {
             // CatalogApp escolhe `outros` neste modo. Não devolvemos uma segunda
             // cópia dos mesmos cards em `all`, que antes respondia por boa parte
             // dos ~760 KB da carga inicial.
-            return { sections, all: { items: [], pagination: allPagination }, outros };
+            return {
+                sections,
+                all: { items: [], pagination: allPagination },
+                outros,
+            };
         }
 
         // Sem vitrines suficientes a UI usa `all`; esse caminho incomum mantém

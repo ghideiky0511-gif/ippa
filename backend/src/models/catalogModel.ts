@@ -12,8 +12,14 @@ export interface ProductRow {
     suggested_retail_price: string | null;
     markup: string | null;
     media: {
-        image?: string; images?: string[]; imagesByColor?: Record<string, string>; videoUrl?: string;
-        imageKey?: string; imageKeys?: string[]; imageKeysByColor?: Record<string, string>; videoKeys?: string[];
+        image?: string;
+        images?: string[];
+        imagesByColor?: Record<string, string>;
+        videoUrl?: string;
+        imageKey?: string;
+        imageKeys?: string[];
+        imageKeysByColor?: Record<string, string>;
+        videoKeys?: string[];
     };
     attributes: Record<string, unknown>;
     is_active: boolean;
@@ -37,17 +43,33 @@ export interface ProductVariantRow {
     source_origin: "manual" | "bootstrap" | "erp";
 }
 export interface ProductPackRow {
-    id: string; product_id: string; scope: import("@/lib/types").PackScope;
-    label: string; color: string | null; price: string;
+    id: string;
+    product_id: string;
+    scope: import("@/lib/types").PackScope;
+    label: string;
+    color: string | null;
+    price: string;
 }
 export interface ProductPackItemRow {
-    pack_id: string; size: string; color: string | null; quantity: number;
+    pack_id: string;
+    size: string;
+    color: string | null;
+    quantity: number;
 }
 
-export interface ProductColorImageRow { product_id: string; color: string; image_url: string }
+export interface ProductColorImageRow {
+    product_id: string;
+    color: string;
+    image_url: string;
+}
 
-export interface InventoryBalanceRow { variant_id: string; stock_qty: number }
-export async function listProductRows(client: PoolClient): Promise<ProductRow[]> {
+export interface InventoryBalanceRow {
+    variant_id: string;
+    stock_qty: number;
+}
+export async function listProductRows(
+    client: PoolClient,
+): Promise<ProductRow[]> {
     const result = await client.query<ProductRow>(
         `SELECT id, name, description, reference_id, price, suggested_retail_price, markup, media, attributes, is_active, source_origin
          FROM products WHERE tenant_id = app_tenant_id() AND is_active
@@ -69,7 +91,7 @@ export interface CatalogPageProductQuery {
 
 // Página real de produtos do catálogo público -- filtra, ordena e corta no
 // banco (LIMIT/OFFSET), em vez de carregar o catálogo inteiro e fatiar em
-// memória (ver listCatalog/loadCatalog em catalogService.ts). `count(*)
+// memória (ver listCatalogPage em catalogService.ts). `count(*)
 // OVER()` traz o total na mesma query, sem round-trip extra. `id` como
 // desempate final evita duplicar/pular itens entre páginas quando
 // display_position/created_at empatam (ex.: import em lote).
@@ -105,8 +127,12 @@ export async function listCatalogProductPage(
          LIMIT $7 OFFSET $8`,
         [
             term,
-            query.restrictIds && query.restrictIds.length > 0 ? query.restrictIds : null,
-            query.excludeIds && query.excludeIds.length > 0 ? query.excludeIds : null,
+            query.restrictIds && query.restrictIds.length > 0
+                ? query.restrictIds
+                : null,
+            query.excludeIds && query.excludeIds.length > 0
+                ? query.excludeIds
+                : null,
             query.classificationId ?? null,
             query.color ?? null,
             query.size ?? null,
@@ -116,9 +142,17 @@ export async function listCatalogProductPage(
     );
     const total = result.rows[0] ? Number(result.rows[0].total_count) : 0;
     const rows = result.rows.map((row) => ({
-        id: row.id, name: row.name, description: row.description, reference_id: row.reference_id,
-        price: row.price, suggested_retail_price: row.suggested_retail_price, markup: row.markup,
-        media: row.media, attributes: row.attributes, is_active: row.is_active, source_origin: row.source_origin,
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        reference_id: row.reference_id,
+        price: row.price,
+        suggested_retail_price: row.suggested_retail_price,
+        markup: row.markup,
+        media: row.media,
+        attributes: row.attributes,
+        is_active: row.is_active,
+        source_origin: row.source_origin,
     }));
     return { rows, total };
 }
@@ -126,7 +160,10 @@ export async function listCatalogProductPage(
 // Conjunto pequeno e limitado pelo caller (ex.: produtos de um Highlight) --
 // usado pelo modo `ids` de listCatalogPage, que ignora paginação e devolve
 // exatamente o conjunto pedido.
-export async function findProductRowsByIds(client: PoolClient, productIds: string[]): Promise<ProductRow[]> {
+export async function findProductRowsByIds(
+    client: PoolClient,
+    productIds: string[],
+): Promise<ProductRow[]> {
     if (productIds.length === 0) return [];
     const result = await client.query<ProductRow>(
         `SELECT id, name, description, reference_id, price, suggested_retail_price, markup, media, attributes, is_active, source_origin
@@ -136,7 +173,9 @@ export async function findProductRowsByIds(client: PoolClient, productIds: strin
     return result.rows;
 }
 
-export async function listProductVariantRows(client: PoolClient): Promise<ProductVariantRow[]> {
+export async function listProductVariantRows(
+    client: PoolClient,
+): Promise<ProductVariantRow[]> {
     const result = await client.query<ProductVariantRow>(
         `SELECT product_id, id, color, size, price, availability, available_from,
                 track_inventory, sku, bootstrap_external_code, is_active, source_origin
@@ -151,7 +190,10 @@ export async function listProductVariantRows(client: PoolClient): Promise<Produc
 // em catalogService.ts), que só precisa das associações dos produtos da
 // página atual, não do tenant inteiro. Mesmo padrão de
 // findProductReferenceIdsByIds acima.
-export async function listProductVariantRowsByProductIds(client: PoolClient, productIds: string[]): Promise<ProductVariantRow[]> {
+export async function listProductVariantRowsByProductIds(
+    client: PoolClient,
+    productIds: string[],
+): Promise<ProductVariantRow[]> {
     if (productIds.length === 0) return [];
     const result = await client.query<ProductVariantRow>(
         `SELECT product_id, id, color, size, price, availability, available_from,
@@ -164,7 +206,9 @@ export async function listProductVariantRowsByProductIds(client: PoolClient, pro
     return result.rows;
 }
 
-export async function listProductPackRows(client: PoolClient): Promise<ProductPackRow[]> {
+export async function listProductPackRows(
+    client: PoolClient,
+): Promise<ProductPackRow[]> {
     const result = await client.query<ProductPackRow>(
         `SELECT id, product_id, scope, label, color, price FROM product_packs
          WHERE tenant_id = app_tenant_id() ORDER BY label`,
@@ -172,7 +216,10 @@ export async function listProductPackRows(client: PoolClient): Promise<ProductPa
     return result.rows;
 }
 
-export async function listProductPackRowsByProductIds(client: PoolClient, productIds: string[]): Promise<ProductPackRow[]> {
+export async function listProductPackRowsByProductIds(
+    client: PoolClient,
+    productIds: string[],
+): Promise<ProductPackRow[]> {
     if (productIds.length === 0) return [];
     const result = await client.query<ProductPackRow>(
         `SELECT id, product_id, scope, label, color, price FROM product_packs
@@ -182,7 +229,9 @@ export async function listProductPackRowsByProductIds(client: PoolClient, produc
     return result.rows;
 }
 
-export async function listProductPackItemRows(client: PoolClient): Promise<ProductPackItemRow[]> {
+export async function listProductPackItemRows(
+    client: PoolClient,
+): Promise<ProductPackItemRow[]> {
     const result = await client.query<ProductPackItemRow>(
         `SELECT pack_id, size, color, quantity FROM product_pack_items
          WHERE tenant_id = app_tenant_id() ORDER BY id`,
@@ -190,7 +239,10 @@ export async function listProductPackItemRows(client: PoolClient): Promise<Produ
     return result.rows;
 }
 
-export async function listProductPackItemRowsByPackIds(client: PoolClient, packIds: string[]): Promise<ProductPackItemRow[]> {
+export async function listProductPackItemRowsByPackIds(
+    client: PoolClient,
+    packIds: string[],
+): Promise<ProductPackItemRow[]> {
     if (packIds.length === 0) return [];
     const result = await client.query<ProductPackItemRow>(
         `SELECT pack_id, size, color, quantity FROM product_pack_items
@@ -203,7 +255,9 @@ export async function listProductPackItemRowsByPackIds(client: PoolClient, packI
 // Uma linha por foto (produto × cor × posição) — carregado pra TODOS os
 // produtos de uma vez (mesmo padrão de listProductVariantRows), agrupado por
 // produto/cor no serviço de catálogo, não aqui.
-export async function listProductColorImageRows(client: PoolClient): Promise<ProductColorImageRow[]> {
+export async function listProductColorImageRows(
+    client: PoolClient,
+): Promise<ProductColorImageRow[]> {
     const result = await client.query<ProductColorImageRow>(
         `SELECT product_id, color, image_url FROM product_color_images
          WHERE tenant_id = app_tenant_id()
@@ -214,7 +268,10 @@ export async function listProductColorImageRows(client: PoolClient): Promise<Pro
 
 // Escopada por id -- usada pela página real de catálogo (listCatalogPage em
 // catalogService.ts), mesmo padrão de listProductVariantRowsByProductIds.
-export async function listProductColorImageRowsByProductIds(client: PoolClient, productIds: string[]): Promise<ProductColorImageRow[]> {
+export async function listProductColorImageRowsByProductIds(
+    client: PoolClient,
+    productIds: string[],
+): Promise<ProductColorImageRow[]> {
     if (productIds.length === 0) return [];
     const result = await client.query<ProductColorImageRow>(
         `SELECT product_id, color, image_url FROM product_color_images
@@ -247,7 +304,9 @@ export async function replaceProductColorImagesRow(
         }
     }
 }
-export async function listInventoryBalanceRows(client: PoolClient): Promise<InventoryBalanceRow[]> {
+export async function listInventoryBalanceRows(
+    client: PoolClient,
+): Promise<InventoryBalanceRow[]> {
     const result = await client.query<InventoryBalanceRow>(
         `SELECT balance.variant_id, SUM(balance.available_qty)::integer AS stock_qty
          FROM inventory_balances balance
@@ -258,7 +317,10 @@ export async function listInventoryBalanceRows(client: PoolClient): Promise<Inve
     return result.rows;
 }
 
-export async function listInventoryBalanceRowsByVariantIds(client: PoolClient, variantIds: string[]): Promise<InventoryBalanceRow[]> {
+export async function listInventoryBalanceRowsByVariantIds(
+    client: PoolClient,
+    variantIds: string[],
+): Promise<InventoryBalanceRow[]> {
     if (variantIds.length === 0) return [];
     const result = await client.query<InventoryBalanceRow>(
         `SELECT balance.variant_id, SUM(balance.available_qty)::integer AS stock_qty
@@ -272,9 +334,14 @@ export async function listInventoryBalanceRowsByVariantIds(client: PoolClient, v
 }
 
 export interface ProductWriteRow {
-    name: string; description?: string; referenceId?: string; price: number;
-    suggestedRetailPrice?: number; markup?: number;
-    media?: ProductRow["media"]; attributes?: Record<string, unknown>;
+    name: string;
+    description?: string;
+    referenceId?: string;
+    price: number;
+    suggestedRetailPrice?: number;
+    markup?: number;
+    media?: ProductRow["media"];
+    attributes?: Record<string, unknown>;
     isActive?: boolean;
     sourceOrigin?: ProductRow["source_origin"];
 }
@@ -294,15 +361,26 @@ export interface ProductVariantWriteRow {
 const productFields =
     "id, name, description, reference_id, price, suggested_retail_price, markup, media, attributes, is_active, source_origin";
 
-export async function insertProductRow(client: PoolClient, value: ProductWriteRow): Promise<ProductRow> {
+export async function insertProductRow(
+    client: PoolClient,
+    value: ProductWriteRow,
+): Promise<ProductRow> {
     const result = await client.query<ProductRow>(
         `INSERT INTO products (tenant_id, name, description, reference_id, price, suggested_retail_price, markup, media, attributes, is_active, source_origin)
          VALUES (app_tenant_id(), $1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
          RETURNING ${productFields}`,
-        [value.name, value.description ?? "", value.referenceId ?? null, value.price,
-         value.suggestedRetailPrice ?? null, value.markup ?? null,
-         JSON.stringify(value.media ?? {}), JSON.stringify(value.attributes ?? {}),
-         value.isActive ?? true, value.sourceOrigin ?? "manual"],
+        [
+            value.name,
+            value.description ?? "",
+            value.referenceId ?? null,
+            value.price,
+            value.suggestedRetailPrice ?? null,
+            value.markup ?? null,
+            JSON.stringify(value.media ?? {}),
+            JSON.stringify(value.attributes ?? {}),
+            value.isActive ?? true,
+            value.sourceOrigin ?? "manual",
+        ],
     );
     return result.rows[0];
 }
@@ -317,13 +395,25 @@ export async function insertProductVariantRow(
         `INSERT INTO product_variants (tenant_id, product_id, color, size, price, availability, sku, track_inventory, is_active, source_origin)
          VALUES (app_tenant_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING id`,
-        [productId, value.color, value.size, value.price, value.availability ?? "in_stock",
-         value.sku ?? null, value.trackInventory ?? false, value.isActive ?? true, value.sourceOrigin ?? "manual"],
+        [
+            productId,
+            value.color,
+            value.size,
+            value.price,
+            value.availability ?? "in_stock",
+            value.sku ?? null,
+            value.trackInventory ?? false,
+            value.isActive ?? true,
+            value.sourceOrigin ?? "manual",
+        ],
     );
     return result.rows[0].id;
 }
 
-export async function productReferenceIdExists(client: PoolClient, referenceId: string): Promise<boolean> {
+export async function productReferenceIdExists(
+    client: PoolClient,
+    referenceId: string,
+): Promise<boolean> {
     const result = await client.query(
         "SELECT 1 FROM products WHERE tenant_id = app_tenant_id() AND reference_id = $1 LIMIT 1",
         [referenceId],
@@ -351,10 +441,18 @@ export async function upsertProductByReferenceIdRow(
             is_active = EXCLUDED.is_active, source_origin = EXCLUDED.source_origin,
             updated_at = now()
          RETURNING ${productFields}, (xmax = 0) AS inserted`,
-        [value.name, value.description ?? "", value.referenceId, value.price,
-         value.suggestedRetailPrice ?? null, value.markup ?? null,
-         JSON.stringify(value.media ?? {}), JSON.stringify(value.attributes ?? {}),
-         value.isActive ?? true, value.sourceOrigin ?? "bootstrap"],
+        [
+            value.name,
+            value.description ?? "",
+            value.referenceId,
+            value.price,
+            value.suggestedRetailPrice ?? null,
+            value.markup ?? null,
+            JSON.stringify(value.media ?? {}),
+            JSON.stringify(value.attributes ?? {}),
+            value.isActive ?? true,
+            value.sourceOrigin ?? "bootstrap",
+        ],
     );
     const { inserted, ...row } = result.rows[0];
     return { row, created: inserted };
@@ -378,9 +476,18 @@ export async function upsertProductVariantRow(
            track_inventory = EXCLUDED.track_inventory,
            is_active = EXCLUDED.is_active, source_origin = EXCLUDED.source_origin
          RETURNING id, (xmax = 0) AS inserted`,
-        [productId, value.color, value.size, value.price, value.availability ?? "in_stock",
-         value.sku ?? null, value.bootstrapExternalCode ?? null, value.trackInventory ?? false,
-         value.isActive ?? true, value.sourceOrigin ?? "bootstrap"],
+        [
+            productId,
+            value.color,
+            value.size,
+            value.price,
+            value.availability ?? "in_stock",
+            value.sku ?? null,
+            value.bootstrapExternalCode ?? null,
+            value.trackInventory ?? false,
+            value.isActive ?? true,
+            value.sourceOrigin ?? "bootstrap",
+        ],
     );
     return { id: result.rows[0].id, created: result.rows[0].inserted };
 }
@@ -438,7 +545,13 @@ export async function upsertErpProductRow(
            price = EXCLUDED.price, is_active = EXCLUDED.is_active,
            source_origin = 'erp', updated_at = now()
          RETURNING ${productFields}, (xmax = 0) AS inserted`,
-        [value.name, value.description ?? "", value.referenceId, value.price, value.isActive ?? false],
+        [
+            value.name,
+            value.description ?? "",
+            value.referenceId,
+            value.price,
+            value.isActive ?? false,
+        ],
     );
     const { inserted, ...row } = result.rows[0];
     return { row, created: inserted };
@@ -478,9 +591,16 @@ export async function upsertErpProductVariantRow(
                    AND conflicting.id <> $1
                )
              RETURNING id`,
-            [input.id, input.productId, input.value.color, input.value.size,
-             input.value.price, input.value.availability ?? "out_of_stock",
-             input.value.sku ?? null, input.value.isActive ?? false],
+            [
+                input.id,
+                input.productId,
+                input.value.color,
+                input.value.size,
+                input.value.price,
+                input.value.availability ?? "out_of_stock",
+                input.value.sku ?? null,
+                input.value.isActive ?? false,
+            ],
         );
         if (result.rows[0]) return { id: result.rows[0].id, created: false };
     }
@@ -498,9 +618,15 @@ export async function upsertErpProductVariantRow(
            source_origin = 'erp',
            updated_at = now()
          RETURNING id`,
-        [input.productId, input.value.color, input.value.size, input.value.price,
-         input.value.availability ?? "out_of_stock", input.value.sku ?? null,
-         input.value.isActive ?? false],
+        [
+            input.productId,
+            input.value.color,
+            input.value.size,
+            input.value.price,
+            input.value.availability ?? "out_of_stock",
+            input.value.sku ?? null,
+            input.value.isActive ?? false,
+        ],
     );
     return { id: result.rows[0].id, created: true };
 }
@@ -532,16 +658,28 @@ export async function setProductSyncActiveRow(
 
 // COALESCE em vez de sobrescrever com null: um payload de sync do ERP pode
 // trazer só um subconjunto de campos, e não deve apagar o que já existia.
-export async function updateProductRow(client: PoolClient, id: string, value: Partial<ProductWriteRow>): Promise<ProductRow | null> {
+export async function updateProductRow(
+    client: PoolClient,
+    id: string,
+    value: Partial<ProductWriteRow>,
+): Promise<ProductRow | null> {
     const result = await client.query<ProductRow>(
         `UPDATE products SET name = COALESCE($2, name), description = COALESCE($3, description),
            reference_id = COALESCE($4, reference_id), price = COALESCE($5, price), suggested_retail_price = COALESCE($6, suggested_retail_price),
            markup = COALESCE($7, markup), media = COALESCE($8, media), attributes = COALESCE($9, attributes),
            updated_at = now()
          WHERE tenant_id = app_tenant_id() AND id = $1 RETURNING ${productFields}`,
-        [id, value.name ?? null, value.description ?? null, value.referenceId ?? null,
-         value.price ?? null, value.suggestedRetailPrice ?? null, value.markup ?? null,
-         value.media ? JSON.stringify(value.media) : null, value.attributes ? JSON.stringify(value.attributes) : null],
+        [
+            id,
+            value.name ?? null,
+            value.description ?? null,
+            value.referenceId ?? null,
+            value.price ?? null,
+            value.suggestedRetailPrice ?? null,
+            value.markup ?? null,
+            value.media ? JSON.stringify(value.media) : null,
+            value.attributes ? JSON.stringify(value.attributes) : null,
+        ],
     );
     return result.rows[0] ?? null;
 }
@@ -559,10 +697,17 @@ export async function replaceManualProductRow(
            attributes = $9, updated_at = now()
          WHERE tenant_id = app_tenant_id() AND id = $1
          RETURNING ${productFields}`,
-        [id, value.name, value.description ?? '', value.referenceId ?? null,
-         value.price, value.suggestedRetailPrice ?? null,
-         value.markup ?? null, JSON.stringify(value.media ?? {}),
-         JSON.stringify(value.attributes ?? {})],
+        [
+            id,
+            value.name,
+            value.description ?? "",
+            value.referenceId ?? null,
+            value.price,
+            value.suggestedRetailPrice ?? null,
+            value.markup ?? null,
+            JSON.stringify(value.media ?? {}),
+            JSON.stringify(value.attributes ?? {}),
+        ],
     );
     return result.rows[0] ?? null;
 }
@@ -570,7 +715,14 @@ export async function replaceManualProductRow(
 export async function replaceManualProductVariantsRow(
     client: PoolClient,
     productId: string,
-    variants: Array<{ id?: string; color: string; size: string; price: number; availability: Availability; classificationIds: string[] }>,
+    variants: Array<{
+        id?: string;
+        color: string;
+        size: string;
+        price: number;
+        availability: Availability;
+        classificationIds: string[];
+    }>,
 ): Promise<void> {
     // Desativar em vez de apagar preserva referências de estoque e histórico.
     await client.query(
@@ -585,10 +737,23 @@ export async function replaceManualProductVariantsRow(
                    availability = $6, is_active = true, source_origin = 'manual'
                  WHERE tenant_id = app_tenant_id() AND id = $1 AND product_id = $2
                  RETURNING id`,
-                [variant.id, productId, variant.color, variant.size, variant.price, variant.availability],
+                [
+                    variant.id,
+                    productId,
+                    variant.color,
+                    variant.size,
+                    variant.price,
+                    variant.availability,
+                ],
             );
             if (updated.rows[0]) {
-                if (!await replaceManualVariantClassificationIdsRow(client, updated.rows[0].id, variant.classificationIds)) {
+                if (
+                    !(await replaceManualVariantClassificationIdsRow(
+                        client,
+                        updated.rows[0].id,
+                        variant.classificationIds,
+                    ))
+                ) {
                     throw new Error("CLASSIFICATION_NOT_FOUND");
                 }
                 continue;
@@ -603,15 +768,29 @@ export async function replaceManualProductVariantsRow(
                price = EXCLUDED.price, availability = EXCLUDED.availability,
                is_active = true, source_origin = 'manual'
              RETURNING id`,
-            [productId, variant.color, variant.size, variant.price, variant.availability],
+            [
+                productId,
+                variant.color,
+                variant.size,
+                variant.price,
+                variant.availability,
+            ],
         );
-        if (!await replaceManualVariantClassificationIdsRow(client, inserted.rows[0].id, variant.classificationIds)) {
+        if (
+            !(await replaceManualVariantClassificationIdsRow(
+                client,
+                inserted.rows[0].id,
+                variant.classificationIds,
+            ))
+        ) {
             throw new Error("CLASSIFICATION_NOT_FOUND");
         }
     }
 }
 
-export async function listCatalogOrderRows(client: PoolClient): Promise<string[]> {
+export async function listCatalogOrderRows(
+    client: PoolClient,
+): Promise<string[]> {
     const result = await client.query<{ id: string }>(
         `SELECT id FROM products WHERE tenant_id = app_tenant_id() AND display_position IS NOT NULL
          ORDER BY display_position, created_at`,
@@ -619,7 +798,10 @@ export async function listCatalogOrderRows(client: PoolClient): Promise<string[]
     return result.rows.map((row) => row.id);
 }
 
-export async function replaceCatalogOrderRows(client: PoolClient, productIds: string[]): Promise<void> {
+export async function replaceCatalogOrderRows(
+    client: PoolClient,
+    productIds: string[],
+): Promise<void> {
     await client.query(
         "UPDATE products SET display_position = NULL WHERE tenant_id = app_tenant_id()",
     );
@@ -632,15 +814,22 @@ export async function replaceCatalogOrderRows(client: PoolClient, productIds: st
     }
 }
 
-export async function listProductOverrideRows(client: PoolClient): Promise<Array<{ id: string; override: ProductOverrideRow }>> {
-    const result = await client.query<{ id: string; override: ProductOverrideRow }>(
+export async function listProductOverrideRows(
+    client: PoolClient,
+): Promise<Array<{ id: string; override: ProductOverrideRow }>> {
+    const result = await client.query<{
+        id: string;
+        override: ProductOverrideRow;
+    }>(
         `SELECT id, attributes->'manualOverride' AS override FROM products
          WHERE tenant_id = app_tenant_id() AND attributes ? 'manualOverride' ORDER BY created_at`,
     );
     return result.rows;
 }
 
-export async function clearProductOverrideRows(client: PoolClient): Promise<void> {
+export async function clearProductOverrideRows(
+    client: PoolClient,
+): Promise<void> {
     await client.query(
         `UPDATE products SET attributes = attributes - 'manualOverride', updated_at = now()
          WHERE tenant_id = app_tenant_id() AND attributes ? 'manualOverride'
@@ -651,17 +840,23 @@ export async function clearProductOverrideRows(client: PoolClient): Promise<void
 export async function findProductSourceOriginsByIds(
     client: PoolClient,
     productIds: string[],
-): Promise<Record<string, ProductRow['source_origin']>> {
+): Promise<Record<string, ProductRow["source_origin"]>> {
     if (productIds.length === 0) return {};
-    const result = await client.query<Pick<ProductRow, 'id' | 'source_origin'>>(
+    const result = await client.query<Pick<ProductRow, "id" | "source_origin">>(
         `SELECT id, source_origin FROM products
          WHERE tenant_id = app_tenant_id() AND id = ANY($1::uuid[])`,
         [productIds],
     );
-    return Object.fromEntries(result.rows.map((row) => [row.id, row.source_origin]));
+    return Object.fromEntries(
+        result.rows.map((row) => [row.id, row.source_origin]),
+    );
 }
 
-export async function setProductOverrideRow(client: PoolClient, productId: string, value: ProductOverrideRow): Promise<void> {
+export async function setProductOverrideRow(
+    client: PoolClient,
+    productId: string,
+    value: ProductOverrideRow,
+): Promise<void> {
     await client.query(
         `UPDATE products SET attributes = jsonb_set(attributes, '{manualOverride}', $2::jsonb, true), updated_at = now()
          WHERE tenant_id = app_tenant_id() AND id = $1`,
