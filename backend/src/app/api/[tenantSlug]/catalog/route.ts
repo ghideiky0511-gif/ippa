@@ -11,10 +11,8 @@ export async function OPTIONS() {
     return new NextResponse(null, { status: 204 });
 }
 
-// Sem parâmetros: catálogo completo (compatibilidade com quem precisa da
-// lista inteira — carrinho, resumo de pedidos, busca do menu, admin). Com
-// parâmetros: consulta padronizada filtrada e paginada (ver CatalogQuery em
-// catalogService).
+// Toda leitura pública usa o mesmo motor filtrado e paginado. Não existe mais
+// uma variante sem parâmetros que materialize o catálogo inteiro na resposta.
 export async function GET(
     request: NextRequest,
     context: RouteContext,
@@ -22,9 +20,8 @@ export async function GET(
     const route = await resolveTenantRoute(request, context.params);
     if (isTenantRouteError(route)) return route;
     const params = request.nextUrl.searchParams;
-    return execute(() => {
-        if (params.toString() === "") return catalog.listCatalog(route.tenant);
-        return catalog.listCatalogPage(route.tenant, {
+    return execute(() =>
+        catalog.listCatalogPage(route.tenant, {
             page: Number(params.get("page")) || undefined,
             pageSize: Number(params.get("pageSize")) || undefined,
             term: params.get("term") || undefined,
@@ -35,6 +32,6 @@ export async function GET(
             excludeIds: parseIdsParam(params.get("excludeIds")),
             restrictIds: parseIdsParam(params.get("restrictIds")),
             excludeFeatured: params.get("excludeFeatured") === "1",
-        });
-    });
+        }),
+    );
 }

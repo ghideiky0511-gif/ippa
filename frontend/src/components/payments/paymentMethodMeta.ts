@@ -1,22 +1,20 @@
-import { Barcode, CreditCard, QrCode, Wallet } from 'lucide-react';
+import { createElement } from 'react';
+import { Barcode, CreditCard, QrCode, Wallet, type LucideProps } from 'lucide-react';
 import type { PaymentChargeMethod } from '@/domain/payments/types';
 
 // Mapas compartilhados entre ChargeRow (OrderPaymentDetails.tsx) e o
 // indicador de método/provider no resumo do pedido (PaymentMethodIndicator.tsx)
 // -- um método ou provider novo só precisa de uma entrada aqui.
 
-export const METHOD_ICONS: Record<PaymentChargeMethod, typeof CreditCard> = {
-  cartao: CreditCard,
-  pix: QrCode,
-  boleto: Barcode,
-};
-
-// Ícone genérico pra método que a UI ainda não conhece -- nunca deixa a
-// cobrança sem ícone nenhum.
-export const FALLBACK_METHOD_ICON = Wallet;
-
-export function methodIcon(method: string): typeof CreditCard {
-  return METHOD_ICONS[method as PaymentChargeMethod] ?? FALLBACK_METHOD_ICON;
+export function PaymentMethodIcon({ method, ...props }: { method: string } & LucideProps) {
+  switch (method as PaymentChargeMethod) {
+    case 'cartao': return createElement(CreditCard, props);
+    case 'pix': return createElement(QrCode, props);
+    case 'boleto': return createElement(Barcode, props);
+    // Ícone genérico pra método que a UI ainda não conhece -- nunca deixa a
+    // cobrança sem ícone nenhum.
+    default: return createElement(Wallet, props);
+  }
 }
 
 const PROVIDER_LABELS: Record<string, string> = {

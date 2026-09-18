@@ -51,9 +51,11 @@ export default function PedidoPagamentoPage() {
   const { orderNumber: rawOrderNumber } = useParams<{ orderNumber: string }>();
   const orderNumber = /^[1-9]\d*$/.test(rawOrderNumber || '') ? Number(rawOrderNumber) : NaN;
   const [order, setOrder] = useState<Order | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
+  const [loadedOrderNumber, setLoadedOrderNumber] = useState<number | null>(null);
+  const [notFoundOrderNumber, setNotFoundOrderNumber] = useState<number | null>(null);
   const [payingNow, setPayingNow] = useState(false);
+  const loading = Boolean(authUser && Number.isSafeInteger(orderNumber) && loadedOrderNumber !== orderNumber);
+  const notFound = notFoundOrderNumber === orderNumber;
 
   async function payNow() {
     if (!order) return;
@@ -69,21 +71,21 @@ export default function PedidoPagamentoPage() {
 
   useEffect(() => {
     if (!authUser || !Number.isSafeInteger(orderNumber)) {
-      setLoading(false);
       return;
     }
     let active = true;
-    setLoading(true);
-    setNotFound(false);
     void fetchCustomerOrder(orderNumber)
       .then((nextOrder) => {
-        if (active) setOrder(nextOrder);
+        if (active) {
+          setOrder(nextOrder);
+          setLoadedOrderNumber(orderNumber);
+        }
       })
       .catch(() => {
-        if (active) setNotFound(true);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
+        if (active) {
+          setNotFoundOrderNumber(orderNumber);
+          setLoadedOrderNumber(orderNumber);
+        }
       });
     return () => { active = false; };
   }, [authUser, orderNumber]);

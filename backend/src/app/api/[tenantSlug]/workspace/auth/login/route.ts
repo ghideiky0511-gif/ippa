@@ -24,7 +24,7 @@ export async function POST(
 ): Promise<Response> {
     const route = await resolveTenantRoute(request, context.params);
     if (isTenantRouteError(route)) return route;
-    const limitResult = rateLimit(
+    const limitResult = await rateLimit(
         "auth-workspace-login",
         clientIp(request),
         AUTH_RATE_LIMIT.limit,

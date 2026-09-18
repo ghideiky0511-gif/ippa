@@ -145,8 +145,12 @@ export interface AtualizacoesServerToClientEvents {
  * cliente só entra nas rooms derivadas do ticket e escuta. */
 export type AtualizacoesClientToServerEvents = Record<string, never>;
 
-/** Comunicação servidor↔servidor (`io.serverSideEmit`): nenhuma. Só faria
- * sentido com adapter distribuído, e hoje é uma Machine única sem adapter
- * Redis (decisão registrada em
- * documents/knowledge/socket.io/doc/redis-adapter.md). */
-export type RealtimeInterServerEvents = Record<string, never>;
+/** Comunicação servidor↔servidor (`io.serverSideEmit`) — só existe com o
+ * adapter Redis ligado (backend/src/realtime/redisAdapter.ts) e nunca chega a
+ * um navegador. O Socket.IO não entrega o evento pra própria Machine que
+ * emitiu. */
+export interface RealtimeInterServerEvents {
+  /** Um tenant mudou de status: as OUTRAS Machines descartam o cache local de
+   * slug → tenant (backend/src/lib/db/tenant.ts) em vez de esperar o TTL. */
+  tenant_invalidated: (slug: string) => void;
+}

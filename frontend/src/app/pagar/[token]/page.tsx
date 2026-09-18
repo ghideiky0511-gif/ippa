@@ -12,7 +12,7 @@ import { formatBRL } from '@/lib/format';
 import { useTenant } from '@/components/TenantProvider';
 import ProductImage from '@/components/ProductImage';
 import TenantLink from '@/components/TenantLink';
-import { methodIcon } from '@/components/payments/paymentMethodMeta';
+import { PaymentMethodIcon } from '@/components/payments/paymentMethodMeta';
 import type { CartItem } from '@/domain/orders/types';
 
 const PAYMENT_METHODS = [
@@ -362,12 +362,11 @@ function MercadoPagoChargeForm({ token, summary, onPaid }: { token: string; summ
   }, []);
 
   // Cartões clicáveis (ícone + rótulo) em vez de radio cru -- mesmos ícones
-  // já usados no resumo do pedido (methodIcon, paymentMethodMeta.ts), pra o
+  // já usados no resumo do pedido (PaymentMethodIcon, paymentMethodMeta.ts), pra o
   // cliente reconhecer o mesmo símbolo de Pix/cartão em toda a jornada.
   const methodPicker = (
     <div className={publicUi.payMethodGrid} role="radiogroup" aria-label="Forma de pagamento">
       {(['pix', 'cartao'] as const).map((id) => {
-        const Icon = methodIcon(id);
         const active = method === id;
         return (
           <button
@@ -381,7 +380,7 @@ function MercadoPagoChargeForm({ token, summary, onPaid }: { token: string; summ
               setError('');
             }}
           >
-            <Icon />
+            <PaymentMethodIcon method={id} />
             {id === 'pix' ? 'Pix' : 'Cartão de crédito'}
           </button>
         );

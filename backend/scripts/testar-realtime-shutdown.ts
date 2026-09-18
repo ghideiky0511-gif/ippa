@@ -9,7 +9,7 @@
  *
  * 1. `io.close()` desconecta quem já está em WebSocket e o motivo servidor é
  *    `server shutting down` (server-api.md) — é o que sustenta o handler de
- *    SIGTERM em server.ts.
+ *    SIGTERM em server.ts (via setupRealtime.ts).
  * 2. Depois do close, conexão nova é recusada.
  * 3. `to([roomA, roomB]).emit(...)` entrega UMA vez a quem está nas duas rooms
  *    (rooms.md) — é o que corrigiu a entrega dupla pra administrador em
@@ -56,7 +56,7 @@ async function main(): Promise<void> {
         cors: { origin: true },
     });
 
-    // Mesma otimização de memória aplicada em server.ts.
+    // Mesma otimização de memória aplicada em src/realtime/setupRealtime.ts.
     io.engine.on("connection", (rawSocket: { request: unknown }) => {
         rawSocket.request = null;
     });
@@ -96,7 +96,7 @@ async function main(): Promise<void> {
     const handshake = await client.emitWithAck("quem_sou_eu");
     assert.deepEqual(handshake.auth, { tenantSlug: "loja-teste", ticket: "t-123" }, "handshake.auth deveria sobreviver ao descarte da request");
     assert.deepEqual(handshake.query, {}, "handshake.query deveria ficar vazio depois de rawSocket.request = null");
-    console.log("2/4 ok — handshake.auth intacto, handshake.query vazio (como documentado em server.ts)");
+    console.log("2/4 ok — handshake.auth intacto, handshake.query vazio (como documentado em src/realtime/setupRealtime.ts)");
 
     // --- 3) união de rooms entrega uma vez só --------------------------------
     let recebidos = 0;

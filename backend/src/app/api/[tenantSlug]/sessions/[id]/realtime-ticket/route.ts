@@ -28,7 +28,7 @@ export async function POST(
     const token = requestToken(request, route.tenant.slug);
     // Mesma razão do /realtime-ticket sem sessão: um ticket por tentativa de
     // reconexão, e autenticar custa conexão do pool.
-    const limitResult = rateLimit(
+    const limitResult = await rateLimit(
         "session-realtime-ticket",
         sessionRateLimitKey(token),
         SESSION_POLL_RATE_LIMIT.limit,

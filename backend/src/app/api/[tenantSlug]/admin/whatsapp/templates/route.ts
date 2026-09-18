@@ -37,7 +37,7 @@ export async function GET(request: NextRequest, context: RouteContext): Promise<
 export async function POST(request: NextRequest, context: RouteContext): Promise<Response> {
     const auth = await authenticated(request, context);
     if (!auth.ok) return auth.response;
-    const limited = rateLimit("whatsapp-template-submission", auth.session.user.id, 10, 60_000);
+    const limited = await rateLimit("whatsapp-template-submission", auth.session.user.id, 10, 60_000);
     if (!limited.allowed) return tooManyRequests(limited.retryAfterSeconds);
     const body = await request.json().catch(() => null);
     return execute(

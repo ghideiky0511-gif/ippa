@@ -24,7 +24,7 @@ export async function POST(request: NextRequest, context: RouteContext): Promise
         requestToken(request, route.tenant.slug),
     );
     if (!session) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-    const limit = rateLimit("crm-chat-send", `${route.tenant.id}:${session.user.id}`, 10, 60_000);
+    const limit = await rateLimit("crm-chat-send", `${route.tenant.id}:${session.user.id}`, 10, 60_000);
     if (!limit.allowed) return tooManyRequests(limit.retryAfterSeconds);
     const body = await request.json().catch(() => null);
     const mutationContext = { ...auditContext(request), sessionId: session.sessionId };

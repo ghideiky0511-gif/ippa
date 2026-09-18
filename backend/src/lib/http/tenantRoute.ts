@@ -18,7 +18,7 @@ export async function resolveTenantRoute<TParams extends { tenantSlug: string }>
   // confiáveis (SSR/proxy) assinadas com INTERNAL_REQUEST_TOKEN ficam de fora
   // mesmo quando o baseline está ligado.
   if (GENERAL_RATE_LIMIT.enabled && !isTrustedInternalRequest(request)) {
-    const limitResult = rateLimit('general', clientIp(request), GENERAL_RATE_LIMIT.limit, GENERAL_RATE_LIMIT.windowMs);
+    const limitResult = await rateLimit('general', clientIp(request), GENERAL_RATE_LIMIT.limit, GENERAL_RATE_LIMIT.windowMs);
     if (!limitResult.allowed) return tooManyRequests(limitResult.retryAfterSeconds);
   }
   const resolved = await params;

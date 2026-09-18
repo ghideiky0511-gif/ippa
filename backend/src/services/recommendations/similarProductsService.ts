@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Tenant } from "@/lib/db/tenant";
 import type { Product, SimilarProductsRuleConfig, SimilarProductsSettings } from "@/lib/types";
-import { listCatalog } from "@/services/catalog";
+import { listCatalogSnapshot } from "@/services/catalog";
 import { getSimilarProductsSettings } from "@/services/settings";
 import { ValidationError } from "@/services/shared/errors";
 import { productClassificationIds, productDeepestCategoryIds } from "@/lib/catalogFacets";
@@ -99,7 +99,7 @@ export async function recommendSimilarProducts(
   const body = parsed.data;
   const context: SimilarProductsContext = body.context === "cart" ? "cart" : "quickview";
   const productIds = body.productIds ?? [];
-  const [catalog, settings] = await Promise.all([listCatalog(tenant), getSimilarProductsSettings(tenant)]);
+  const [catalog, settings] = await Promise.all([listCatalogSnapshot(tenant), getSimilarProductsSettings(tenant)]);
   const byId = new Map(catalog.map((product) => [product.id, product]));
   const anchors = productIds.map((id) => byId.get(id)).filter((product): product is Product => Boolean(product));
   const products = computeSimilarProducts(context, anchors, catalog, settings);

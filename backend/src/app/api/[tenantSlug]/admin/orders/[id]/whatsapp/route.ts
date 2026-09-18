@@ -32,7 +32,7 @@ export async function POST(request: NextRequest, context: RouteContext): Promise
         requestToken(request, route.tenant.slug),
     );
     if (!session) return NextResponse.json({ error: "N\u00e3o autenticado." }, { status: 401 });
-    const limit = rateLimit(
+    const limit = await rateLimit(
         "manual-order-whatsapp",
         `${route.tenant.id}:${session.user.id}`,
         10,

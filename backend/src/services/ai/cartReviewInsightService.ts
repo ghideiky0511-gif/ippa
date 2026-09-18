@@ -13,7 +13,7 @@ import type {
 import { CartReviewRequestSchema } from '@/contracts/ai';
 import type { Tenant } from '@/lib/db/tenant';
 import type { AuthUser, Product, Variant } from '@/lib/types';
-import { listCatalog } from '@/services/catalog';
+import { listCatalogSnapshot } from '@/services/catalog';
 import { ForbiddenError, ValidationError } from '@/services/shared/errors';
 import { runAiTool } from './aiToolEngine';
 import { cartReviewInsightTool } from './cartReviewInsightTool';
@@ -205,7 +205,7 @@ export function createCartReviewInsightService(
   overrides: Partial<CartReviewInsightDependencies> = {},
 ) {
   const dependencies: CartReviewInsightDependencies = {
-    readCatalog: overrides.readCatalog ?? listCatalog,
+    readCatalog: overrides.readCatalog ?? listCatalogSnapshot,
     runTool: overrides.runTool ?? ((tenant, actor, input) =>
       runAiTool(tenant, actor, cartReviewInsightTool, input)),
   };
@@ -243,7 +243,7 @@ export interface CartReviewDependencies {
 
 export function createCartReviewService(overrides: Partial<CartReviewDependencies> = {}) {
   const dependencies: CartReviewDependencies = {
-    readCatalog: overrides.readCatalog ?? listCatalog,
+    readCatalog: overrides.readCatalog ?? listCatalogSnapshot,
   };
 
   return async function cartReview(

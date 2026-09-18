@@ -29,7 +29,7 @@ export async function POST(
     // Antes de autenticar: um cliente reconectando em loop pede um ticket novo
     // por tentativa, e cada getAuthenticatedSession abaixo gasta conexão do
     // pool -- o recurso que a rajada esgota.
-    const limitResult = rateLimit(
+    const limitResult = await rateLimit(
         "realtime-ticket",
         sessionRateLimitKey(token),
         SESSION_POLL_RATE_LIMIT.limit,

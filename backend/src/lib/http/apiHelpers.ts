@@ -5,6 +5,7 @@ import * as authentication from "@/services/auth";
 import type { AuditRequestContext } from "@/services/audit";
 import { ServiceError, ValidationError } from "@/services/shared/errors";
 import { errorMeta, logger } from "@/lib/logger";
+import { safeRedis } from "@/lib/redis";
 
 export const ERROR_MESSAGES: Record<string, string> = {
     INVALID_INPUT: "Corpo inválido.",
@@ -163,13 +164,58 @@ export function auditContext(request: NextRequest): AuditRequestContext {
     };
 }
 
-// Contador em memória de processo único (ver nota em lib/logger.ts — o
-// backend roda como um processo Node de longa duração via Docker, não em
-// funções serverless/edge efêmeras, então um Map local é consistente entre
-// requisições). Reinicia a cada deploy/restart — aceitável para conter
-// abuso e força bruta, não é um requisito de auditoria permanente.
+// Contador por janela fixa, compartilhado entre as Machines via Redis. Um Map
+// por processo não serve com mais de uma Machine: o proxy do Fly espalha as
+// requisições de um mesmo cliente entre elas, e cada uma contava só o que
+// via — o limite efetivo virava limite × número de Machines (o que importa
+// de verdade no login, contra força bruta).
+//
+// O Map local continua como fallback: lib/redis.ts trata qualquer falha do
+// Redis como "sem cache" (e sem REDIS_URL, em dev, nem tenta), e aí cada
+// Machine volta a contar sozinha — o limite efetivo aumenta, mas nunca some.
+// Reinicia a cada deploy/restart — aceitável para conter abuso e força
+// bruta, não é um requisito de auditoria permanente.
 type RateLimitBucket = { count: number; resetAt: number };
 const rateLimitBuckets = new Map<string, RateLimitBucket>();
+
+// Prefixado pelo app pelo mesmo motivo do adapter do Socket.IO
+// (realtime/redisAdapter.ts): outro app no mesmo Redis não soma na contagem.
+const RATE_LIMIT_KEY_PREFIX = `ratelimit:${process.env.FLY_APP_NAME ?? "local"}`;
+
+// INCR e expiração numa ida só, atômica: com dois comandos soltos, uma queda
+// entre eles deixaria uma chave sem TTL, bloqueando aquele cliente pra sempre.
+// O `ttl < 0` cobre também uma chave que por algum motivo tenha ficado sem
+// expiração — ela se conserta na próxima chamada.
+const RATE_LIMIT_SCRIPT = `
+local count = redis.call('INCR', KEYS[1])
+local ttl = redis.call('PTTL', KEYS[1])
+if ttl < 0 then
+  redis.call('PEXPIRE', KEYS[1], ARGV[1])
+  ttl = tonumber(ARGV[1])
+end
+return {count, ttl}
+`;
+
+type RateLimitCount = { count: number; resetInMs: number };
+
+async function sharedRateLimitCount(key: string, windowMs: number): Promise<RateLimitCount | undefined> {
+    const result = await safeRedis((redis) => redis.eval(RATE_LIMIT_SCRIPT, 1, `${RATE_LIMIT_KEY_PREFIX}:${key}`, windowMs));
+    if (!Array.isArray(result) || result.length !== 2) return undefined;
+    const [count, resetInMs] = result.map(Number);
+    if (!Number.isFinite(count) || !Number.isFinite(resetInMs)) return undefined;
+    return { count, resetInMs };
+}
+
+function localRateLimitCount(key: string, windowMs: number): RateLimitCount {
+    const now = Date.now();
+    const bucket = rateLimitBuckets.get(key);
+    if (!bucket || bucket.resetAt <= now) {
+        rateLimitBuckets.set(key, { count: 1, resetAt: now + windowMs });
+        return { count: 1, resetInMs: windowMs };
+    }
+    bucket.count += 1;
+    return { count: bucket.count, resetInMs: bucket.resetAt - now };
+}
 
 setInterval(() => {
     const now = Date.now();
@@ -180,30 +226,21 @@ setInterval(() => {
 
 export type RateLimitResult = { allowed: boolean; retryAfterSeconds: number };
 
-export function rateLimit(
+export async function rateLimit(
     scope: string,
     identifier: string | undefined,
     limit: number,
     windowMs: number,
-): RateLimitResult {
+): Promise<RateLimitResult> {
     // Sem IP confiável (proxy não configurado, request local etc.): não dá
     // pra distinguir clientes, então não há o que limitar — falha aberta em
     // vez de bloquear todo mundo sob a mesma chave.
     if (!identifier) return { allowed: true, retryAfterSeconds: 0 };
     const key = `${scope}:${identifier}`;
-    const now = Date.now();
-    const bucket = rateLimitBuckets.get(key);
-    if (!bucket || bucket.resetAt <= now) {
-        rateLimitBuckets.set(key, { count: 1, resetAt: now + windowMs });
-        return { allowed: true, retryAfterSeconds: 0 };
+    const { count, resetInMs } = (await sharedRateLimitCount(key, windowMs)) ?? localRateLimitCount(key, windowMs);
+    if (count > limit) {
+        return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil(resetInMs / 1000)) };
     }
-    if (bucket.count >= limit) {
-        return {
-            allowed: false,
-            retryAfterSeconds: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)),
-        };
-    }
-    bucket.count += 1;
     return { allowed: true, retryAfterSeconds: 0 };
 }
 

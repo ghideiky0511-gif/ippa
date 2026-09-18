@@ -27,6 +27,11 @@ const PROVIDER_ICONS: Record<string, (props: { className?: string }) => React.JS
   stripe: StripeIcon,
 };
 
-export function providerIcon(provider: string): ((props: { className?: string }) => React.JSX.Element) | null {
-  return PROVIDER_ICONS[provider] ?? null;
+export function hasProviderIcon(provider: string): boolean {
+  return provider in PROVIDER_ICONS;
+}
+
+export function PaymentProviderIcon({ provider, className }: { provider: string; className?: string }) {
+  if (provider === 'stripe') return <StripeIcon className={className} />;
+  return null;
 }

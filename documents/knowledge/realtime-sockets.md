@@ -14,10 +14,12 @@ Mapa da implementação de tempo real (Socket.IO) da IPPA: onde vive, como auten
     - **`backend/`** — API Next.js (App Router), mas rodada por um **servidor HTTP customizado** ([`backend/server.ts`](../../backend/server.ts)) via `tsx`, especificamente para poder anexar o Socket.IO ao mesmo `http.Server`. `next start` sozinho não permite interceptar `server.on("upgrade", ...)`.
     - **`frontend/`** — UI Next.js, fala com o backend via HTTP (proxy) e via WebSocket direto para realtime.
 - Biblioteca: **`socket.io` v4.8.3** no servidor, **`socket.io-client`** no browser. Sem Pusher/Ably/`ws` puro.
-- **Sem adapter Redis** (`@socket.io/redis-adapter` não está nas dependências). O Socket.IO roda em memória, instância única. É por isso que `backend/fly.toml` fixa `min_machines_running=1` e `auto_stop_machines=false` — uma máquina dormindo ou uma segunda instância quebraria as conexões WebSocket e o rate limiter em memória.
-- Redis (`backend/src/lib/redis.ts`, ver [`backend/docs/fly-redis.md`](../../backend/docs/fly-redis.md)) é usado só como **cache best-effort** (token ERP, estoque) — não tem relação nenhuma com o Socket.IO.
+- **Mais de uma Machine**: o backend roda com 2 Machines no Fly, e o Socket.IO usa o **adapter Redis** (`@socket.io/redis-adapter`) pra um broadcast emitido numa Machine chegar aos sockets das outras. Todo estado que era por processo foi tratado — ver [Mais de uma Machine](#mais-de-uma-machine-adapter-redis). `backend/fly.toml` continua com `min_machines_running=1` e `auto_stop_machines=false`: uma Machine dormindo derrubaria as conexões WebSocket ativas.
+- Redis (ver [`backend/docs/fly-redis.md`](../../backend/docs/fly-redis.md)) aparece em três papéis, todos degradáveis: cache de estoque e contagem do rate limiter (via `backend/src/lib/redis.ts`, best-effort) e o adapter do Socket.IO (conexões próprias em [`backend/src/realtime/redisAdapter.ts`](../../backend/src/realtime/redisAdapter.ts)).
 
-## Entrada do servidor: `backend/server.ts`
+## Entrada do servidor: `backend/server.ts` + `backend/src/realtime/setupRealtime.ts`
+
+`server.ts` cuida do HTTP (CORS, Next) e dos sinais; a montagem do Socket.IO inteira (adapter, generics, memória, namespaces, aviso entre Machines, `close()`) mora em [`setupRealtime.ts`](../../backend/src/realtime/setupRealtime.ts) — separada pra o teste de cluster subir cada instância exatamente como a produção sobe.
 
 - `PORT` (padrão 3011), `HOSTNAME` (padrão `0.0.0.0`).
 - `REALTIME_ALLOWED_ORIGINS` — allow-list de origens (CSV) usada tanto no CORS do Socket.IO quanto no CORS HTTP manual do handler Next.js. Padrão dev: `http://localhost:3015`.
@@ -26,8 +28,9 @@ Mapa da implementação de tempo real (Socket.IO) da IPPA: onde vive, como auten
 - **Generics de TypeScript**: o `Server` é instanciado com os quatro generics (`ListenEvents`, `EmitEvents`, `ServerSideEvents`, `SocketData`), e cada namespace tem o seu próprio conjunto — padrão "Custom types for each namespace" da doc oficial. Ver a seção [Tipagem](#tipagem-compile-time-vs-runtime) abaixo.
 - **`pingInterval`/`pingTimeout` ficam no padrão** (25s + 20s = 45s). A checagem que `troubleshooting.md` manda fazer (proxy reverso com idle timeout menor que a soma) deu negativo: o fly-proxy **não fecha mais conexão TCP por ociosidade** desde 2023-09-01 ([anúncio](https://community.fly.io/t/tcp-idle-timeouts-restrictions-have-been-removed/15160)). Não mexer nesses valores sem evidência nova — um ajuste na direção errada aumenta o tráfego de heartbeat sem resolver nada.
 - **Memória por conexão**: `io.engine.on("connection", (rawSocket) => { rawSocket.request = null })` descarta a requisição HTTP do handshake, que o Socket.IO guardaria pela vida inteira de cada socket (`memory-usage.md`). Efeito colateral **assumido**: `handshake.query` e `handshake.headers` ficam vazios daí em diante — por isso os middlewares dos dois namespaces leem só `handshake.auth`.
-- **Shutdown gracioso**: handlers de `SIGTERM` (Fly: deploy/restart/escala) e `SIGINT` (Ctrl+C em dev) chamam `io.close()`, que desconecta cada socket com o motivo nativo `server shutting down` **e** fecha o `httpServer` (fechar só o HTTP não derruba quem já está em WebSocket — aviso explícito de `server-api.md`). Teto de 8s (`SHUTDOWN_TIMEOUT_MS`), abaixo do `kill_timeout = "12s"` do `fly.toml`, pra o processo conseguir registrar a falha antes do SIGKILL.
+- **Shutdown gracioso**: handlers de `SIGTERM` (Fly: deploy/restart/escala) e `SIGINT` (Ctrl+C em dev) chamam `realtime.close()` → `io.close()`, que desconecta cada socket com o motivo nativo `server shutting down`, desinscreve o adapter dos canais Redis **e** fecha o `httpServer` (fechar só o HTTP não derruba quem já está em WebSocket — aviso explícito de `server-api.md`); só depois fecha as conexões Redis do adapter. Teto de 8s (`SHUTDOWN_TIMEOUT_MS`), abaixo do `kill_timeout = "12s"` do `fly.toml`, pra o processo conseguir registrar a falha antes do SIGKILL.
 - Registra dois namespaces: `setupPedidosNamespace(io)` e `setupUpdatesNamespace(io)`.
+- No boot, o log diz qual adapter está ativo: `> Socket.IO com adapter Redis (broadcast entre Machines).` ou `> Socket.IO com adapter em memória (sem REDIS_URL: um processo só).`
 
 ## Autenticação: tickets de curta duração (não é JWT/cookie no handshake)
 
@@ -36,7 +39,7 @@ Fluxo (ver [`backend/src/services/realtime/ticketService.ts`](../../backend/src/
 1. Cliente já autenticado via sessão/cookie HTTP normal chama um endpoint REST para "trocar" a sessão por um ticket de socket:
     - `POST /api/[tenantSlug]/realtime-ticket` → autentica via `authentication.getAuthenticatedSession`, chama `mintUpdatesRealtimeTicket(tenant, user)`.
     - `POST /api/[tenantSlug]/sessions/[id]/realtime-ticket` → idem, mas também valida `canAccessOrderSession` antes de emitir (autorização por sessão de pedido).
-2. Ticket = `randomBytes(24).toString('hex')`, guardado no servidor pelo **hash sha256** (não em texto puro), `TTL = 60s`, **uso único** (é consumido/apagado ao ser lido). Tickets de sessão (`/pedidos`) ficam em tabela no banco (`realtimeTicketsModel`); tickets de updates (`/atualizacoes`) ficam num `Map` em memória.
+2. Ticket = `randomBytes(24).toString('hex')`, guardado no servidor pelo **hash sha256** (não em texto puro), `TTL = 60s`, **uso único** (`used_at` marcado na mesma query que valida). **Os dois tipos ficam na tabela `realtime_tickets`** (`realtimeTicketsModel`): `order_session_id` preenchido = ticket de sessão; `NULL` = ticket de atualizações (migration `073_realtime_tickets_updates_channel.sql`). O de atualizações já morou num `Map` em memória, o que quebrava com 2 Machines: o mint (requisição HTTP) e o consumo (handshake do WebSocket) são conexões separadas e o proxy do Fly as roteia de forma independente. `/atualizacoes` só aceita o ticket sem sessão; `/pedidos` aceita os dois, numa transação só. O mint apaga os tickets vencidos do próprio usuário na mesma transação (antes nada limpava a tabela).
 3. Cliente conecta com `io(url, { auth: { tenantSlug, ticket } })`. O middleware `ns.use(...)` de cada namespace lê **`handshake.auth`** (só ele — `handshake.query` fica vazio por causa do descarte da requisição HTTP, ver acima), consome o ticket e anexa `{ tenant, user, ... }` a `socket.data` (tipado por namespace em [`backend/src/realtime/types.ts`](../../backend/src/realtime/types.ts)). Ticket inválido/expirado/reutilizado → `next(new Error(...))` rejeita a conexão.
 4. Como o ticket é de uso único com TTL de 60s, o cliente **desliga a reconexão automática do Socket.IO** (`reconnection: false`) e implementa reconexão manual, sempre mintando um ticket novo a cada tentativa (senão a reconexão nativa reenviaria um ticket já consumido).
 
@@ -49,7 +52,7 @@ Fluxo (ver [`backend/src/services/realtime/ticketService.ts`](../../backend/src/
 Arquivo: [`backend/src/realtime/pedidosNamespace.ts`](../../backend/src/realtime/pedidosNamespace.ts)
 
 - Uma **room por sessão de pedido**: `session:{sessionId}`.
-- Presença em memória: `Map<sessionId, Map<socketId, PresenceEntry>>` — quem está olhando/participando de uma sessão agora.
+- Presença derivada dos sockets na room do pedido — `ns.in(room).fetchSockets()`, que com o adapter Redis inclui os sockets de **todas** as Machines (antes era um `Map` do processo). Se o adapter não responder, cai pros sockets locais e anuncia esse roster parcial **só localmente** (`ns.local`), pra não sobrescrever o roster completo que as outras Machines anunciam. No `disconnect` por `server shutting down` usa direto a lista local (o adapter já está se desinscrevendo). `socket.data.initialSnapshot` é descartado depois do join: `fetchSockets()` serializa o `data` de cada socket entre Machines.
 - Eventos:
 
 | Evento                      | Direção                          | O que faz                                                                                                                                                                                         |
@@ -91,9 +94,10 @@ Funções que disparam broadcasts (`updateBroadcast.ts`): `notifySessionCreated`
 
 - [`frontend/src/lib/realtime/usePedidoRealtime.ts`](../../frontend/src/lib/realtime/usePedidoRealtime.ts) — conecta em `/pedidos` para uma sessão específica. Minta ticket via `POST /sessions/:id/realtime-ticket` (ou `/realtime-ticket` para fluxo de cliente), conecta com `transports: ['websocket']` e `reconnection: false`, expõe `emitWithAck` (usa `socket.timeout(10_000)`, mensagens de erro em PT-BR).
 - [`frontend/src/lib/realtime/useUpdatesRealtime.ts`](../../frontend/src/lib/realtime/useUpdatesRealtime.ts) — conecta em `/atualizacoes`. Mesmo padrão de ticket + reconexão manual.
-- Ambos: reconexão manual com backoff exponencial (1s → dobra → teto de 10s), disparada em `connect_error`/`disconnect` (exceto quando a causa é `'io client disconnect'`, ou seja, desconexão intencional local). A cada tentativa, ticket novo é mintado (porque é uso único).
+- Ambos: reconexão manual com backoff exponencial com jitter (teto de 60s), disparada em `connect_error`/`disconnect` (exceto quando a causa é `'io client disconnect'`, ou seja, desconexão intencional local). A cada tentativa, ticket novo é mintado (porque é uso único).
 - [`backend/src/realtime/types.ts`](../../backend/src/realtime/types.ts) — generics por namespace (`Server`/`Namespace`/`Socket`/`socket.data`).
 - [`backend/scripts/testar-realtime-shutdown.ts`](../../backend/scripts/testar-realtime-shutdown.ts) — `npm run test:realtime`: confere contra a lib de verdade o shutdown com `io.close()`, a união de rooms e o efeito do descarte da requisição HTTP no handshake.
+- [`backend/scripts/testar-realtime-cluster.ts`](../../backend/scripts/testar-realtime-cluster.ts) — `npm run test:realtime-cluster`: sobe duas instâncias (processos separados, via `setupRealtime`) contra Redis e Postgres **locais** e confere tickets entre processos, broadcast e presença entre instâncias, invalidação de tenant, rate limit compartilhado, shutdown de uma instância e uma terceira instância com o Redis fora do ar. Instruções no cabeçalho do arquivo.
 - [`frontend/src/lib/realtime/applySessionEvent.ts`](../../frontend/src/lib/realtime/applySessionEvent.ts) — aplica patches incrementais de `atualizacao_v2` no estado local.
 - `realtimeUrl()` resolve a origem do socket a partir de `NEXT_PUBLIC_REALTIME_URL` (env **de build**, embutida no bundle do browser), com fallback para `${protocol}//${hostname}:3011` em dev.
 
@@ -125,10 +129,33 @@ Os dois mecanismos coexistem de propósito, e a doc oficial (`typescript.md`) é
 | --- | --- | --- |
 | Cliente→servidor | `PedidosClientToServerEvents` (`entrar_sessao`, `criar_sessao_cliente`, `atualizar_sessao`, `sair_sessao`) | `AtualizacoesClientToServerEvents` = vazio (canal unidirecional) |
 | Servidor→cliente | `PedidosServerToClientEvents` (`sessao_snapshot`, `sessao_atualizada`, `presenca_atualizada`, `participantes_atualizados`) | `AtualizacoesServerToClientEvents` (`atualizacao`, `atualizacao_v2`) |
-| Servidor↔servidor | `RealtimeInterServerEvents` = vazio (instância única, sem adapter) | idem |
+| Servidor↔servidor | `RealtimeInterServerEvents`: `tenant_invalidated` (aviso de cache entre Machines, via adapter) | idem |
 | `socket.data` | `PedidosSocketData` | `UpdatesSocketData` |
 
 O namespace raiz (`/`) não é usado e por isso tem mapas vazios: um `io.emit(...)` acidental nele vira erro de compilação em vez de um evento que ninguém recebe. `PedidoPresence`, `PedidoParticipant` e `RealtimeUpdate` continuam exportados pelos hooks do frontend (reexport), então nenhuma tela precisou mudar de import.
+
+## Mais de uma Machine (adapter Redis)
+
+Tudo que era estado por processo e precisava valer entre Machines:
+
+| Estado | Antes | Agora | Por quê |
+| --- | --- | --- | --- |
+| Broadcast (`to(room).emit`) | adapter em memória | `@socket.io/redis-adapter` ([`redisAdapter.ts`](../../backend/src/realtime/redisAdapter.ts)) | sem adapter, só os sockets do processo que emitiu recebem |
+| Ticket de `/atualizacoes` | `Map` em memória | `realtime_tickets` com `order_session_id` NULL | mint (HTTP) e consumo (handshake) caem em Machines diferentes |
+| Presença de `/pedidos` | `Map` por processo | `fetchSockets()` da room | com adapter, enxerga todas as Machines |
+| Rate limiter | `Map` por processo | contador no Redis (Lua: `INCR` + `PEXPIRE`), `Map` local de fallback | o limite efetivo virava limite × número de Machines |
+| Cache slug → tenant | `Map` por módulo (duplicado entre tsx e bundle do Next) | `globalThis` + `tenant_invalidated` via `serverSideEmit` | a invalidação chega às outras Machines; o TTL de 60s continua de rede de segurança |
+| Debounce de `sessao_atualizada` | timers por processo | **igual, de propósito** | duplicata eventual é inofensiva: snapshot completo + guarda de `updatedAt` nos consumidores |
+
+Pontos de operação:
+
+- **Ligado por `REDIS_URL`** (o mesmo secret do cache). Sem ele o adapter é o em memória e **não se deve rodar mais de uma Machine**.
+- **Sticky session não é necessário**, apesar do aviso de `redis-adapter.md`: o aviso vale pro handshake em HTTP long-polling (várias requisições). Os dois hooks conectam com `transports: ['websocket']`, então o handshake é uma requisição só. Tirar esse `transports` muda isso.
+- **Redis fora do ar degrada, não derruba.** O adapter chama `publish`/`subscribe` sem `await` nem `catch`; no ioredis isso vira unhandled rejection e derrubaria o processo — `catchRejections` em `redisAdapter.ts` anexa o catch. Com o Redis fora: broadcast só local, presença local anunciada localmente, rate limiter no `Map` local; tickets não dependem do Redis. Logs `Redis do adapter indisponível` são limitados a um a cada 30s.
+- Conexões do adapter são **próprias** (par pub/sub), nunca o client de cache de `lib/redis.ts` (timeout de 300ms, desiste de reconectar, trata erro como cache miss — o oposto do que o adapter precisa). O pub não tem fila offline (não acumula broadcasts atrasados); o sub tem (as inscrições são pedidas uma vez só, no boot).
+- Canais prefixados `socket.io:${FLY_APP_NAME}`: outro app no mesmo Redis não recebe broadcasts deste.
+- Custo: cada broadcast vira um `PUBLISH` cobrado no Upstash; cada consulta de presença, um `PUBSUB NUMSUB` + `PUBLISH` + respostas.
+- No boot: `[realtime-cluster] Adapter Redis conectado (pub).` e `(sub).`
 
 ## Backpressure (avaliado, sem mudança)
 
@@ -156,11 +183,11 @@ Conclusão: **nenhum tratamento hoje.** Ir abaixo da abstração (`socket.conn.t
 | `REALTIME_ALLOWED_ORIGINS` | backend               | Allow-list CSV de origens para CORS (Socket.IO + HTTP)                                                            |
 | `DEV_LAN_ACCESS`           | backend               | `true`/`false` — libera origens de LAN em dev                                                                     |
 | `NEXT_PUBLIC_REALTIME_URL` | frontend (build-time) | Origem do servidor de socket, embutida no bundle do browser — **precisa ser passada como build arg**, não runtime |
-| `REDIS_URL`                | backend               | Cache best-effort (ERP token, estoque) — **não** relacionado ao Socket.IO                                         |
+| `REDIS_URL`                | backend               | Cache de estoque e contagem do rate limiter (best-effort) **e adapter Redis do Socket.IO** (broadcast entre Machines). Sem ele: um processo só |
 
 Nenhuma variável de ambiente nova foi introduzida pela auditoria de realtime. O único ajuste de deploy é `kill_timeout = "12s"` em `backend/fly.toml` (padrão do Fly é 5s, curto demais pro drain) — é mudança de arquivo versionado, aplicada no próximo `fly deploy`.
 
-`backend/fly.toml` documenta explicitamente por que a máquina não pode dormir/escalar horizontalmente: conexões WebSocket ativas e o rate limiter em memória não sobrevivem a isso. Não existe hoje adapter Redis para Socket.IO — se o backend precisar rodar em múltiplas instâncias no futuro, isso é um pré-requisito.
+A escala pra mais de uma Machine também não introduziu variável nova: o adapter usa o `REDIS_URL` que já existia. O que ela exige é a migration `073_realtime_tickets_updates_channel.sql` aplicada **antes** do deploy do backend (o código novo grava ticket com `order_session_id` NULL; a migration é compatível com o código antigo). `backend/fly.toml` documenta por que a Machine não pode dormir (conexões WebSocket ativas) e que mais de uma Machine exige `REDIS_URL`.
 
 ## Histórico relevante
 
@@ -169,7 +196,9 @@ Nenhuma variável de ambiente nova foi introduzida pela auditoria de realtime. O
 
 ## Arquivos-chave
 
-- [`backend/server.ts`](../../backend/server.ts) — bootstrap do servidor HTTP + Socket.IO, CORS.
+- [`backend/server.ts`](../../backend/server.ts) — bootstrap do servidor HTTP, CORS, sinais de shutdown.
+- [`backend/src/realtime/setupRealtime.ts`](../../backend/src/realtime/setupRealtime.ts) — montagem do Socket.IO (adapter, namespaces, aviso entre Machines, `close()`).
+- [`backend/src/realtime/redisAdapter.ts`](../../backend/src/realtime/redisAdapter.ts) — adapter Redis e as conexões dele.
 - [`backend/src/realtime/pedidosNamespace.ts`](../../backend/src/realtime/pedidosNamespace.ts)
 - [`backend/src/realtime/updatesNamespace.ts`](../../backend/src/realtime/updatesNamespace.ts)
 - [`backend/src/services/realtime/sessionBroadcast.ts`](../../backend/src/services/realtime/sessionBroadcast.ts)

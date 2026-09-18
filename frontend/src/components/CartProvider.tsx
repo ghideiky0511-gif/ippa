@@ -1,5 +1,5 @@
 'use client';
-import { createContext, ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { useTalao } from './TalaoProvider';
 import { useClientSession } from './ClientSessionProvider';
@@ -102,7 +102,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   // quando uma vendedora assumiu o atendimento.
   const [personalCart, setPersonalCart] = useState<CartItem[]>([]);
   const [personalFreight, setPersonalFreight] = useState<SessionFreight | null>(null);
-  const customerSessionCreation = useRef(false);
+  const [isCustomerSessionCreating, setCustomerSessionCreating] = useState(false);
   const [isCartOpen, setCartOpen] = useState(false);
   const authUserCtx = useAuthUser();
 
@@ -181,10 +181,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
     if (authUserCtx.authUser?.role === 'cliente' && clientSession) {
       setPersonalCart(items);
-      if (!customerSessionCreation.current) {
-        customerSessionCreation.current = true;
+      if (!isCustomerSessionCreating) {
+        setCustomerSessionCreating(true);
         void clientSession.createActiveSession(items).finally(() => {
-          customerSessionCreation.current = false;
+          setCustomerSessionCreating(false);
         });
       }
       return;

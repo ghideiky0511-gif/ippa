@@ -29,7 +29,7 @@ export async function GET(
     const token = requestToken(request, route.tenant.slug);
     // Antes de autenticar: getAuthenticatedSession abre transação e gasta
     // conexão do pool, que é exatamente o recurso que a rajada esgota.
-    const limitResult = rateLimit(
+    const limitResult = await rateLimit(
         "sessions-mine",
         sessionRateLimitKey(token),
         SESSION_POLL_RATE_LIMIT.limit,

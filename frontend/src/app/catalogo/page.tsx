@@ -91,7 +91,10 @@ export async function generateMetadata({
   const collectionFirstProduct = collection
     ? catalog.sections.find((section) => section.id === collection.id)?.items[0]
     : undefined;
-  const firstProduct = collectionFirstProduct ?? catalog.all.items[0];
+  // Quando existem 2+ vitrines, catalog-sections não replica a primeira
+  // página em `all` (a grade exibida é `outros`). Para os metadados, a
+  // primeira peça de qualquer vitrine continua sendo uma boa imagem social.
+  const firstProduct = collectionFirstProduct ?? catalog.all.items[0] ?? catalog.sections.flatMap((section) => section.items)[0];
   const scope = catalogScopeLabel(params, collection?.label);
   const title = `${scope} — ${tenant.name}`;
   const details = firstProduct ? `Confira ${firstProduct.name} e outras peças.` : `Confira as peças disponíveis.`;

@@ -4,8 +4,11 @@ import { logger, errorMeta } from './logger';
 let client: Redis | undefined;
 let nextConnectAttemptAt = 0;
 
-// Redis é só uma camada de cache (ver stockCacheService) -- nunca uma
-// dependência obrigatória. lazyConnect + timeouts curtos + sem retry
+// Este client é a camada best-effort (cache de stockCacheService e contagem
+// do rate limiter em lib/http/apiHelpers.ts) -- nunca uma dependência
+// obrigatória. O adapter do Socket.IO NÃO usa este client: ele precisa de
+// conexões persistentes que reconectam sozinhas, e tem as suas em
+// realtime/redisAdapter.ts. lazyConnect + timeouts curtos + sem retry
 // automático garantem que uma instância fora do ar/mal configurada nunca
 // trava quem chama; o efeito deve sempre ser "trate como cache miss",
 // nunca uma exceção subindo pro código de negócio.

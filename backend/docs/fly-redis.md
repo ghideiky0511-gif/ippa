@@ -1,9 +1,18 @@
 # Redis no Fly.io
 
-O backend usa Redis só como cache best-effort (ver `src/lib/redis.ts` — qualquer
-falha de conexão/timeout vira "sem cache", nunca derruba a request). Isso
-significa que a instância pode ficar na mesma organização/região do app do
-backend sem risco de acoplamento forte.
+O backend usa Redis em três papéis, todos degradáveis — nenhum derruba uma
+request ou o processo quando o Redis some:
+
+- **Cache de estoque** e **contagem do rate limiter** (`src/lib/redis.ts` —
+  qualquer falha de conexão/timeout vira "sem cache"; o rate limiter volta a
+  contar por Machine).
+- **Adapter do Socket.IO** (`src/realtime/redisAdapter.ts`, conexões
+  próprias): é o que faz um broadcast emitido numa Machine chegar aos sockets
+  conectados nas outras. Com o Redis fora, cada Machine só entrega aos
+  próprios sockets.
+
+Com mais de uma Machine do backend, `REDIS_URL` deixa de ser opcional na
+prática: sem ele o realtime fica partido entre as Machines.
 
 O Fly.io não tem mais um "Redis self-hosted" oficial: o caminho atual é
 `fly redis create`, que provisiona uma instância gerenciada (Upstash) dentro
@@ -33,11 +42,11 @@ O comando pergunta:
    `fly-ippa-redis.upstash.io`).
 3. **Região primária** — use a mesma região do app `ippa-backend` (menor
    latência; ex.: `gru` para São Paulo).
-4. **Réplicas de leitura** — não precisa pro nosso caso (é só cache); pode
-   pular.
-5. **Plano de eviction** — "noeviction" é o padrão; como é cache, tanto faz,
-   mas "allkeys-lru" evita a instância encher e recusar escrita se um dia
-   passar do limite do plano gratuito/plano contratado.
+4. **Réplicas de leitura** — não precisa pro nosso caso; pode pular.
+5. **Plano de eviction** — "allkeys-lru" evita a instância encher e recusar
+   escrita se um dia passar do limite do plano. Tudo que fica em chave aqui
+   pode ser descartado (cache, e contadores do rate limiter — perder um só
+   zera aquela janela); o pub/sub do adapter não guarda chave nenhuma.
 
 Ao final, o comando imprime a `REDIS_URL` (formato
 `redis://default:<senha>@fly-ippa-redis.upstash.io`). **Copie esse valor.**
@@ -59,12 +68,21 @@ fly redis status ippa-redis
 fly logs -a ippa-backend | grep redis
 ```
 
-Deve aparecer o log `Conexão Redis estabelecida.` (de `src/lib/redis.ts`) sem
-erros de timeout repetidos.
+Devem aparecer, sem erros repetidos:
+
+- `> Socket.IO com adapter Redis (broadcast entre Machines).` no boot (de
+  `server.ts`) — se aparecer "adapter em memória", o `REDIS_URL` não chegou
+  no processo;
+- `[realtime-cluster] Adapter Redis conectado (pub).` e `(sub).` (de
+  `src/realtime/redisAdapter.ts`);
+- `Conexão Redis estabelecida.` (de `src/lib/redis.ts`) na primeira
+  requisição que usa cache ou rate limit.
 
 ## Custo
 
 Cobrança por requisição (pay-as-you-go), agregada na fatura mensal do Fly.
-Para o volume de cache deste backend (só `stockCacheService`), o custo
-esperado é baixo — vale checar `fly redis status` após alguns dias de uso
-real para confirmar antes de considerar um plano fixo.
+Além do cache, agora entram na conta: um comando por requisição de rota com
+rate limit (login, tickets de realtime, `sessions/mine`...), um `PUBLISH` por
+broadcast do Socket.IO e alguns comandos por consulta de presença. Vale
+checar `fly redis status` após alguns dias de uso real para confirmar antes
+de considerar um plano fixo.

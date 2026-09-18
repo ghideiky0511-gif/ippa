@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { ShoppingBag } from 'lucide-react';
 import ProductDetailContent from './ProductDetailContent';
@@ -30,20 +30,25 @@ export default function ProductQuickView({ product, onClose }: { product: Produc
   // Mantém o último produto exibido até a animação de saída do Sheet
   // terminar — se desmontássemos assim que `product` vira null, a
   // AnimatePresence nunca chegaria a rodar a transição de fechamento.
-  const [displayedProduct, setDisplayedProduct] = useState<Product | null>(product);
-  const wasPageTransitionRef = useRef(false);
+  const [quickViewState, setQuickViewState] = useState({
+    displayedProduct: product,
+    wasPageTransition: false,
+  });
+  const { displayedProduct, wasPageTransition } = quickViewState;
+  const isPageTransition = product !== null && transitioningProductId === product.id;
 
-  if (product && product !== displayedProduct) setDisplayedProduct(product);
-  if (product) wasPageTransitionRef.current = transitioningProductId === product.id;
+  if (product && (product !== displayedProduct || wasPageTransition !== isPageTransition)) {
+    setQuickViewState({ displayedProduct: product, wasPageTransition: isPageTransition });
+  }
   // Exceção: fechamento por navegação pra página cheia do produto já é
   // resolvido visualmente pelo layoutId compartilhado (ProductDetailContent)
   // — desmonta na hora, sem animação própria do Sheet, senão o painel
   // (já transparente) arrasta esse elemento junto ao deslizar pra fora.
-  if (product === null && displayedProduct !== null && wasPageTransitionRef.current) {
+  if (product === null && displayedProduct !== null && wasPageTransition) {
     // `completeProductPageTransition` is called by the destination only after
     // Motion finishes the shared layout. Skipping the Sheet exit here prevents
     // a second animation from pulling the already-finished detail sideways.
-    setDisplayedProduct(null);
+    setQuickViewState({ displayedProduct: null, wasPageTransition: false });
   }
 
   if (!displayedProduct) return null;
@@ -53,7 +58,7 @@ export default function ProductQuickView({ product, onClose }: { product: Produc
       product={displayedProduct}
       isOpen={product !== null}
       onClose={onClose}
-      onClosed={() => setDisplayedProduct(null)}
+      onClosed={() => setQuickViewState({ displayedProduct: null, wasPageTransition: false })}
     />
   );
 }

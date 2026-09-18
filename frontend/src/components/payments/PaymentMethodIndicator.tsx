@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { fetchOrderPaymentCharges } from '@/lib/ordersClient';
-import { methodIcon, providerLabel } from './paymentMethodMeta';
-import { providerIcon } from './providerIcons';
+import { PaymentMethodIcon, providerLabel } from './paymentMethodMeta';
+import { hasProviderIcon, PaymentProviderIcon } from './providerIcons';
 import type { OrderPaymentCharge } from '@/domain/payments/types';
 
 // Ícone do método (Pix/cartão/boleto) + nome do provider (Stripe hoje, outro
@@ -28,14 +28,13 @@ export default function PaymentMethodIndicator({ orderId }: { orderId: string })
 
   if (!charge) return null;
 
-  const Icon = methodIcon(charge.method);
-  const ProviderIcon = providerIcon(charge.provider);
   const label = providerLabel(charge.provider);
+  const showsProviderIcon = hasProviderIcon(charge.provider);
 
   return (
     <span className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground" title={label}>
-      <Icon className="size-3.5 shrink-0 text-brand-primary" aria-hidden="true" />
-      {ProviderIcon ? <ProviderIcon className="size-3.5 shrink-0" /> : label}
+      <PaymentMethodIcon method={charge.method} className="size-3.5 shrink-0 text-brand-primary" aria-hidden="true" />
+      {showsProviderIcon ? <PaymentProviderIcon provider={charge.provider} className="size-3.5 shrink-0" /> : label}
     </span>
   );
 }

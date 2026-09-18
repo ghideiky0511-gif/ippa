@@ -139,6 +139,10 @@ export async function proxy(request: NextRequest) {
   }
 
   if (tenantPath.startsWith('/workspace')) {
+    // O workspace usa seu próprio shell. Sinaliza isso para o RootLayout não
+    // buscar dados exclusivos da vitrine pública (categorias, configurações e
+    // a sessão de cliente) antes de renderizar cada tela interna.
+    requestHeaders.set('x-ippa-workspace', '1');
     if (tenantPath.startsWith('/workspace/login')) return NextResponse.rewrite(new URL('/workspace/login', request.url), { request: { headers: requestHeaders } });
     const authenticated = await validateWorkspaceAccess(request, slugFromPath);
     return authenticated

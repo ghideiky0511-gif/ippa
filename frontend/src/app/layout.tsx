@@ -40,6 +40,9 @@ export async function generateMetadata(): Promise<Metadata> {
   if (incomingHeaders.get('x-ippa-control') === '1') {
     return { title: 'Control IPPA', description: 'Gestão de tenants da plataforma IPPA' };
   }
+  if (incomingHeaders.get('x-ippa-workspace') === '1') {
+    return { title: 'Bippa — Workspace interno', description: 'Área operacional da equipe do tenant' };
+  }
   const tenantSlug = incomingHeaders.get('x-ippa-tenant') ?? '';
   const tenant = await backendJson('/api/tenant', TenantProfileSchema, {
     next: { revalidate: 60, tags: tenantSlug ? [cacheTag('tenant', tenantSlug)] : [] },
@@ -64,6 +67,22 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     );
   }
   const tenantSlug = incomingHeaders.get('x-ippa-tenant') ?? '';
+  if (incomingHeaders.get('x-ippa-workspace') === '1') {
+    // O Workspace precisa do TenantProvider para links e identidade visual,
+    // mas não renderiza o shell do catálogo. Evitar as três leituras extras
+    // aqui remove uma etapa inteira do carregamento de cada rota interna.
+    const tenant = await backendJson('/api/tenant', TenantProfileSchema, {
+      next: { revalidate: 60, tags: tenantSlug ? [cacheTag('tenant', tenantSlug)] : [] },
+    });
+    return (
+      <html lang="pt-BR" className={`${manrope.variable} ${cormorant.variable}`}>
+        <body className="min-h-screen bg-surface-muted font-sans text-foreground">
+          <TenantProvider tenant={tenant}>{children}</TenantProvider>
+          <AppToaster />
+        </body>
+      </html>
+    );
+  }
   const [categoryTree, authResponse, tenant, storeSettings] = await Promise.all([
     backendJson('/api/categories', z.array(CategoryTreeEntrySchema), {
       next: { revalidate: 30, tags: tenantSlug ? [cacheTag('classifications', tenantSlug)] : [] },

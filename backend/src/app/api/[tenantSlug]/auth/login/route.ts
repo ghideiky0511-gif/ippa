@@ -26,7 +26,7 @@ export async function POST(
     const route = await resolveTenantRoute(request, context.params);
     if (isTenantRouteError(route)) return route;
     const contextData = auditContext(request);
-    const limitResult = rateLimit(
+    const limitResult = await rateLimit(
         "auth-login",
         clientIp(request),
         AUTH_RATE_LIMIT.limit,

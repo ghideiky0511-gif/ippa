@@ -1,4 +1,5 @@
 import type { PoolClient } from 'pg';
+import { errorMeta, logger } from '@/lib/logger';
 import { getPool } from './pool';
 
 export type { Tenant } from '@/contracts/tenant';
@@ -19,22 +20,62 @@ export interface ActorContext {
 //
 // TTL curto porque desativar um tenant precisa ter efeito rápido: o caminho de
 // desativação chama forgetTenant (ver changeTenantStatus em tenantService.ts),
-// mas isso só limpa o cache DESTA instância -- com mais de uma Machine no ar, o
-// TTL é o que garante que as outras convirjam.
+// que limpa este processo e avisa as outras Machines pelo adapter Redis (ver
+// setTenantCachePeerNotifier abaixo). O TTL continua sendo a rede de
+// segurança: com o Redis fora do ar o aviso não chega, e as outras Machines
+// convergem em no máximo 60s.
 const TENANT_CACHE_TTL_MS = 60_000;
 // Slug inexistente também entra no cache: sem isso, bater em slugs inválidos
 // (mas bem formados) continuaria sendo uma query por request. O teto abaixo
 // existe porque esse é justamente o caso em que a chave é escolhida por quem
 // chama -- estourou, descarta tudo; é cache, o custo é uma query a mais.
 const TENANT_CACHE_MAX_ENTRIES = 500;
-const tenantCache = new Map<string, { tenant: Tenant | null; expiresAt: number }>();
+
+// globalThis pelo mesmo motivo de services/realtime/sessionBroadcast.ts: o
+// server.ts (carregado pelo tsx) e as rotas do Next (bundle próprio) carregam
+// CÓPIAS separadas deste módulo. Sem isso havia dois caches no mesmo processo
+// — o forgetTenant chamado por uma rota do Next nunca limpava o que o
+// handshake do socket consulta (ticketService.ts), e o aviso vindo de outra
+// Machine (registrado pelo server.ts) nunca limparia o das rotas.
+const globalForTenantCache = globalThis as unknown as {
+  __tenantCache?: Map<string, { tenant: Tenant | null; expiresAt: number }>;
+  __tenantCachePeerNotifier?: (slug: string) => void;
+};
+const tenantCache = globalForTenantCache.__tenantCache
+  ?? (globalForTenantCache.__tenantCache = new Map());
+
+function normalizeSlug(slug: string): string {
+  return slug.trim().toLowerCase();
+}
+
+/** Registrado pelo server.ts só quando o adapter Redis está ligado: é como
+ * forgetTenant avisa as outras Machines. Sem adapter (um processo só) não há
+ * ninguém pra avisar. */
+export function setTenantCachePeerNotifier(notify: ((slug: string) => void) | undefined): void {
+  globalForTenantCache.__tenantCachePeerNotifier = notify;
+}
 
 export function forgetTenant(slug: string): void {
-  tenantCache.delete(slug.trim().toLowerCase());
+  const normalized = normalizeSlug(slug);
+  tenantCache.delete(normalized);
+  try {
+    globalForTenantCache.__tenantCachePeerNotifier?.(normalized);
+  } catch (error) {
+    // Quem chama já concluiu a mudança de status (depois do commit); uma
+    // falha em avisar as outras Machines não pode virar erro pra ele — o TTL
+    // cobre.
+    logger.error('tenant-cache', 'Falha ao avisar as outras Machines.', errorMeta(error));
+  }
+}
+
+/** Lado de quem RECEBE o aviso de outra Machine: limpa só aqui, sem reemitir —
+ * reemitir faria o aviso ficar quicando entre as Machines. */
+export function forgetTenantLocally(slug: string): void {
+  tenantCache.delete(normalizeSlug(slug));
 }
 
 export async function findActiveTenant(slug: string): Promise<Tenant | null> {
-  const normalized = slug.trim().toLowerCase();
+  const normalized = normalizeSlug(slug);
   if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(normalized)) return null;
   const cached = tenantCache.get(normalized);
   if (cached && cached.expiresAt > Date.now()) return cached.tenant;

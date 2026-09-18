@@ -25,7 +25,7 @@ function hasValidSecret(request: NextRequest): boolean {
 }
 
 export async function POST(request: NextRequest): Promise<Response> {
-    const limitResult = rateLimit(
+    const limitResult = await rateLimit(
         "catalog-sync-reference",
         clientIp(request) ?? "shared",
         REFERENCE_RATE_LIMIT.limit,

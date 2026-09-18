@@ -5,7 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { StatusChip, type StatusChipTone } from '@/components/StatusChip';
 import { fetchOrderPaymentCharges } from '@/lib/ordersClient';
 import { formatBRL } from '@/lib/format';
-import { methodIcon } from './paymentMethodMeta';
+import { PaymentMethodIcon } from './paymentMethodMeta';
 import type { OrderPaymentCharge, PaymentChargeStatus } from '@/domain/payments/types';
 
 // Componente único de exibição de cobrança -- reusado tal e qual no
@@ -39,7 +39,6 @@ function maskCardNumber(lastDigits?: string): string {
 }
 
 function ChargeRow({ charge }: { charge: OrderPaymentCharge }) {
-  const Icon = methodIcon(charge.method);
   const card = charge.card;
   // QR code/copia-e-cola só fazem sentido enquanto a cliente ainda está
   // tentando pagar -- isso vive em /pagar/[token] (fluxo ativo), não aqui
@@ -49,7 +48,7 @@ function ChargeRow({ charge }: { charge: OrderPaymentCharge }) {
   return (
     <div className="flex flex-col gap-3 border-b border-border py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-start gap-3">
-        <Icon className="mt-0.5 size-5 shrink-0 text-brand-primary" aria-hidden="true" />
+        <PaymentMethodIcon method={charge.method} className="mt-0.5 size-5 shrink-0 text-brand-primary" aria-hidden="true" />
         <div>
           <p className="font-semibold text-foreground">
             {card

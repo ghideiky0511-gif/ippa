@@ -19,7 +19,7 @@ export async function POST(
 ): Promise<Response> {
     const route = await resolveTenantRoute(request, context.params);
     if (isTenantRouteError(route)) return route;
-    const limited = rateLimit(
+    const limited = await rateLimit(
         "order-access-exchange",
         clientIp(request),
         EXCHANGE_RATE_LIMIT.limit,

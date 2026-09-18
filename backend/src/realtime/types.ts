@@ -44,11 +44,13 @@ export interface PedidosSocketData extends RealtimeSocketData {
  * sem nada além disso (membership de room é derivada do papel no join). */
 export type UpdatesSocketData = RealtimeSocketData;
 
-// O namespace raiz ("/") não é usado: os dois canais reais são /pedidos e
-// /atualizacoes, e um socket que ficasse no raiz nunca passaria por um
-// middleware de ticket. Por isso os mapas do Server são vazios — qualquer
-// `io.emit(...)`/`io.on("algum_evento")` acidental no raiz vira erro de
-// compilação em vez de um evento que ninguém recebe.
+// O namespace raiz ("/") não recebe sockets: os dois canais reais são
+// /pedidos e /atualizacoes, e um socket que ficasse no raiz nunca passaria por
+// um middleware de ticket. Por isso os mapas cliente↔servidor do Server são
+// vazios — qualquer `io.emit(...)` acidental no raiz vira erro de compilação em
+// vez de um evento que ninguém recebe. O que o raiz carrega é o canal entre
+// Machines (`io.serverSideEmit`/`io.on`, RealtimeInterServerEvents), que passa
+// pelo adapter Redis.
 export type RealtimeServer = Server<
     Record<string, never>,
     Record<string, never>,

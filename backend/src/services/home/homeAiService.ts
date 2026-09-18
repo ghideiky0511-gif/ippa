@@ -4,7 +4,7 @@ import { withTenantTransaction } from "@/lib/db/tenant";
 import type { AuthUser, Banner, HomeSection, Product } from "@/lib/types";
 import type { HomeAiHistoryItem } from "@/contracts/catalog";
 import { insertHomeAiHistoryRow, listHomeAiHistoryRows } from "@/models/homeAiModel";
-import { listCatalog } from "@/services/catalog";
+import { listCatalogSnapshot } from "@/services/catalog";
 import { ForbiddenError, ServiceError, ValidationError } from "@/services/shared/errors";
 import { productClassificationSummary } from "@/lib/catalogFacets";
 
@@ -110,7 +110,7 @@ export async function generateHome(
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
   if (!prompt) throw new ValidationError("PROMPT_REQUIRED");
   if (!process.env.OPENAI_API_KEY) throw new ServiceError("OPENAI_NOT_CONFIGURED", 500);
-  const products = await listCatalog(tenant);
+  const products = await listCatalogSnapshot(tenant);
   const byId = new Map(products.map((product) => [product.id, product]));
   const currentSections = Array.isArray(body.currentSections) ? body.currentSections as HomeSection[] : [];
 

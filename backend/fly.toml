@@ -1,8 +1,20 @@
 # Configuração Fly.io do backend (Socket.IO + Next.js custom server).
-# Requer processo de longa duração (ver server.ts e o rate-limiter em memória
-# em src/lib/http/apiHelpers.ts) — por isso min_machines_running=1 e
-# auto_stop_machines=false: uma Machine dormindo derrubaria conexões
-# WebSocket ativas e zeraria o estado do rate limiter a qualquer momento.
+# Requer processo de longa duração (ver server.ts) — por isso
+# min_machines_running=1 e auto_stop_machines=false: uma Machine dormindo
+# derrubaria as conexões WebSocket ativas.
+#
+# Mais de uma Machine é suportado, DESDE QUE REDIS_URL esteja definido: os
+# broadcasts do Socket.IO atravessam Machines pelo adapter Redis
+# (src/realtime/redisAdapter.ts), os tickets de socket moram em Postgres e o
+# rate limiter conta no Redis. Sem REDIS_URL cada Machine só entrega eventos
+# aos próprios sockets — não rode mais de uma assim.
+#
+# A quantidade de Machines é manual: `fly scale count N -a ippa-backend`. O Fly
+# não cria Machines sozinho (auto_start só liga as que já existem) e, com
+# auto_stop desligado, todas ficam de pé o tempo todo. Antes de subir N, faça a
+# conta do Postgres: cada Machine abre até DATABASE_POOL_MAX (10) +
+# CONTROL_DATABASE_POOL_MAX (3) conexões, e N × 13 precisa caber no limite do
+# plano do Supabase.
 app = "ippa-backend"
 primary_region = "gru"
 # O padrão do Fly é SIGKILL 5s depois do SIGTERM. O shutdown gracioso do
@@ -16,15 +28,37 @@ kill_timeout = "12s"
 
 [env]
   PORT = "3011"
-  HOSTNAME = "0.0.0.0"
+  # A rede privada Fly 6PN usa IPv6; Node aceita também conexões IPv4 nesse
+  # bind dual-stack. O frontend chega pelo Flycast (ver frontend/fly.toml); o
+  # bind em "::" mantém também o acesso direto por ippa-backend.internal, útil
+  # pra diagnóstico a partir de outra Machine.
+  HOSTNAME = "::"
 
 [http_service]
   internal_port = 3011
-  force_https = true
+  # false porque o frontend chama o backend por Flycast
+  # (http://ippa-backend.flycast), que só fala HTTP: com true o proxy
+  # responderia a essas chamadas com redirect pra https://ippa-backend.flycast,
+  # que não existe. O tráfego público continua em HTTPS — as URLs públicas são
+  # https:// e o domínio .dev inteiro é HSTS preload, então navegador nenhum
+  # fala HTTP puro com ippa-backend.fly.dev.
+  force_https = false
   auto_stop_machines = false
   auto_start_machines = true
   min_machines_running = 1
   processes = ["app"]
+
+  # Sem este bloco o Fly usa type "connections" com soft_limit 20. "requests"
+  # balanceia requisição por requisição — as chamadas SSR do frontend chegam
+  # por poucas conexões keep-alive, e por conexão elas grudariam numa Machine
+  # só. Acima do soft_limit o proxy prefere as outras Machines; no hard_limit
+  # para de mandar tráfego novo e enfileira. hard_limit alto de propósito
+  # (recomendação do Fly enquanto não há medição): é teto de proteção, não de
+  # operação. Ajuste os dois olhando concorrência e memória nas métricas.
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 1000
 
   [[http_service.checks]]
     grace_period = "10s"

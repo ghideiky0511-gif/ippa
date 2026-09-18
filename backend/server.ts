@@ -1,10 +1,6 @@
 import { createServer } from "node:http";
 import next from "next";
-import { Server } from "socket.io";
-import type { RealtimeInterServerEvents } from "@/contracts/realtime";
-import type { RealtimeServer, RealtimeSocketData } from "@/realtime/types";
-import { setupPedidosNamespace } from "@/realtime/pedidosNamespace";
-import { setupUpdatesNamespace } from "@/realtime/updatesNamespace";
+import { setupRealtime } from "@/realtime/setupRealtime";
 
 // Custom server: só existe pra pendurar o WebSocket (Socket.IO) no mesmo
 // http.Server que atende as rotas Next — `next start` sozinho não expõe
@@ -85,54 +81,25 @@ app.prepare().then(() => {
         handle(req, res);
     });
 
-    // Os quatro generics (ListenEvents, EmitEvents, ServerSideEvents,
-    // SocketData) do namespace RAIZ, que aqui não é usado — os dois canais
-    // reais são /pedidos e /atualizacoes, cada um com seus próprios tipos
-    // (ver src/realtime/types.ts, padrão "Custom types for each namespace"
-    // de socket.io/doc/typescript.md). Mapas vazios no raiz fazem qualquer
-    // `io.emit(...)` acidental virar erro de compilação em vez de um evento
-    // que ninguém escuta.
-    //
-    // pingInterval/pingTimeout ficam no padrão (25s/20s = 45s): a checagem
-    // que a doc manda fazer (proxy com idle timeout menor que a soma, ver
-    // socket.io/doc/troubleshooting.md) deu negativo — o fly-proxy não fecha
-    // mais conexão TCP por ociosidade desde 2023-09-01
-    // (community.fly.io/t/tcp-idle-timeouts-restrictions-have-been-removed/15160).
-    const io: RealtimeServer = new Server<
-        Record<string, never>,
-        Record<string, never>,
-        RealtimeInterServerEvents,
-        RealtimeSocketData
-    >(httpServer, {
+    // Montagem do Socket.IO (adapter, namespaces, generics, otimização de
+    // memória): src/realtime/setupRealtime.ts.
+    const realtime = setupRealtime(httpServer, {
         cors: { origin: allowSocketOrigin, credentials: false },
     });
-
-    // Descarta a requisição HTTP do handshake, que o Socket.IO guardaria pela
-    // vida inteira de cada conexão (socket.io/doc/memory-usage.md). Nada aqui
-    // precisa dela depois do handshake: a autenticação é por ticket em
-    // `handshake.auth`, não por sessão HTTP anexada ao socket. Efeito
-    // colateral assumido: `handshake.query`/`handshake.headers` ficam vazios,
-    // por isso os middlewares dos dois namespaces leem só `handshake.auth`.
-    io.engine.on("connection", (rawSocket: { request: unknown }) => {
-        rawSocket.request = null;
-    });
-
-    setupPedidosNamespace(io);
-    setupUpdatesNamespace(io);
+    console.log(realtime.adapter === "redis"
+        ? "> Socket.IO com adapter Redis (broadcast entre Machines)."
+        : "> Socket.IO com adapter em memória (sem REDIS_URL: um processo só).");
 
     httpServer.listen(port, hostname, () => {
         console.log(`> Backend pronto em http://${hostname}:${port} (${dev ? "dev" : "production"})`);
     });
 
-    // Fechar só o httpServer NÃO desconecta quem já está em WebSocket — a
-    // própria doc avisa ("Only closing the underlying HTTP server is not
-    // sufficient...", socket.io/doc/server-api.md). Sem isso, todo deploy do
-    // Fly matava as conexões no SIGKILL do fim do kill_timeout, e o motivo de
-    // desconexão nativo `server shutting down` nunca era emitido: pro cliente
-    // um deploy era indistinguível de uma queda de rede.
-    //
-    // `io.close()` faz as duas coisas — encerra cada socket com esse motivo e
-    // fecha o httpServer subjacente (para de aceitar conexão nova).
+    // Sem shutdown explícito, todo deploy do Fly matava as conexões no SIGKILL
+    // do fim do kill_timeout, e o motivo de desconexão nativo `server shutting
+    // down` nunca era emitido: pro cliente um deploy era indistinguível de uma
+    // queda de rede. `realtime.close()` (io.close() por baixo, ver
+    // setupRealtime.ts) encerra cada socket com esse motivo e fecha o
+    // httpServer subjacente (para de aceitar conexão nova).
     let shuttingDown = false;
     const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
         if (shuttingDown) return;
@@ -151,7 +118,7 @@ app.prepare().then(() => {
         forceExit.unref();
 
         try {
-            const closed = io.close();
+            const closed = realtime.close();
             // Conexão keep-alive ociosa não fecha sozinha e seguraria o
             // `httpServer.close()` de dentro do `io.close()`.
             httpServer.closeIdleConnections();

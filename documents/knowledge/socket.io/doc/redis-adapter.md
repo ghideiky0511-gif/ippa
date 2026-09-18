@@ -64,23 +64,30 @@ Compatível com `redis`, `ioredis`, Redis Cluster, Sharded Pub/Sub (Redis 7+).
 
 ## Relevante pro nosso caso (IPPA)
 
-- **Decisão já tomada** (ver `documents/knowledge/realtime-sockets.md` e
-  discussão no chat): Redis adapter, não Postgres adapter — Supabase free
-  tier usa pooler em modo transaction (Supavisor/PgBouncer), que não
-  suporta `LISTEN`/`NOTIFY` (exigido pelo Postgres adapter) sem conexão
-  de sessão dedicada, disputando o mesmo recurso escasso que já causou o
-  incidente de pool exhaustion. Redis (`ioredis`, protocolo padrão) não
-  tem essa restrição.
-- **Não implementar agora**: hoje 1 Machine só
-  (`min_machines_running=1`), adapter em memória padrão já resolve.
-  Ligar o Redis adapter agora só adicionaria custo por comando
-  (Upstash pay-as-you-go, `$0.20/100k`) sem benefício. Gatilho: decisão
-  de rodar 2+ Machines.
-- **Aviso de sticky session** é irrelevante pro Fly enquanto for 1
-  Machine só — mas se escalar horizontal, precisa garantir sticky
-  session no proxy do Fly além de ligar o adapter (o adapter sincroniza
-  broadcast entre servidores, não substitui sticky session pro handshake
-  inicial).
-- Redis adapter **não resolve** o rate limiter em memória nem o Map de
-  tickets do `/atualizacoes` (ambos por-processo, fora do escopo do
-  adapter) — ponto já registrado como limitação conhecida separada.
+- **Redis adapter, não Postgres adapter** — Supabase free tier usa pooler
+  em modo transaction (Supavisor/PgBouncer), que não suporta
+  `LISTEN`/`NOTIFY` (exigido pelo Postgres adapter) sem conexão de sessão
+  dedicada, disputando o mesmo recurso escasso que já causou o incidente
+  de pool exhaustion. Redis (`ioredis`, protocolo padrão) não tem essa
+  restrição.
+- **Implementado** quando o backend passou a rodar 2 Machines (o gatilho
+  registrado antes aqui): `backend/src/realtime/redisAdapter.ts`, ligado
+  por `REDIS_URL`. Detalhes de operação em
+  `documents/knowledge/realtime-sockets.md`, seção "Mais de uma Machine".
+- **Sticky session: não precisa aqui.** O "Sim" da FAQ acima vale pro
+  handshake em HTTP long-polling, que são várias requisições. Os dois
+  clientes do frontend conectam com `transports: ['websocket']`, então o
+  handshake é uma requisição só, que já vira a conexão persistente. Se
+  alguém tirar esse `transports`, volta a precisar.
+- **"Redis cai → só entrega local"** só vale se as Promises do ioredis
+  forem tratadas: o adapter chama `publish`/`subscribe` sem `await` nem
+  `catch`, e uma rejeição sem tratamento derruba o processo Node. O
+  wrapper `catchRejections` em `redisAdapter.ts` existe por isso.
+- O adapter **não resolve** estado por processo fora do Socket.IO. Cada
+  caso foi tratado à parte: tickets de `/atualizacoes` foram pra Postgres
+  (migration 073), o rate limiter conta no Redis, e o cache de tenant é
+  invalidado entre Machines por `serverSideEmit` (o recurso de
+  "comunicação entre servidores" da tabela acima).
+- Custo: Upstash pay-as-you-go (`$0.20/100k` comandos) — cada broadcast é
+  um `PUBLISH`, cada `fetchSockets()` um `PUBSUB NUMSUB` + `PUBLISH` +
+  respostas.

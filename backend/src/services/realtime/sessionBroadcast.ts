@@ -12,6 +12,15 @@ const globalForRealtime = globalThis as unknown as {
     __sessionBroadcastTimers?: Map<string, ReturnType<typeof setTimeout>>;
 };
 const timers = globalForRealtime.__sessionBroadcastTimers ?? (globalForRealtime.__sessionBroadcastTimers = new Map());
+// Os timers ficam por processo DE PROPÓSITO, mesmo com várias Machines: cada
+// mutação é processada numa Machine só, o debounce acontece ali, e o emit final
+// atravessa o adapter Redis como qualquer broadcast. Se cliente e vendedora
+// mexerem no mesmo pedido a partir de Machines diferentes, saem dois
+// `sessao_atualizada` em vez de um — inofensivo: é sempre o snapshot completo,
+// e os dois consumidores (ClientSessionProvider/TalaoProvider no frontend)
+// descartam o que tiver `updatedAt` mais velho que o que já têm. Coordenar o
+// debounce entre Machines custaria uma ida ao Redis por mutação pra economizar
+// um evento redundante.
 
 const DEBOUNCE_MS = 200;
 
