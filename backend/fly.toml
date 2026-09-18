@@ -69,4 +69,8 @@ kill_timeout = "12s"
 
 [[vm]]
   size = "shared-cpu-1x"
+  # Não baixe pra 256mb: testado em produção em 2026-09-18, o kernel matou o
+  # node por falta de memória (OOM) 40s e 130s depois do boot, nas duas
+  # Machines. O processo usa ~140MB de RSS parado (node ~110MB + wrapper do
+  # tsx ~10MB + npm start ~20MB), e uma Machine de 256mb só enxerga ~207MB.
   memory = "512mb"

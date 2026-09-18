@@ -19,9 +19,8 @@ import { RECONNECT_MAX_DELAY_MS, realtimeUrl } from './usePedidoRealtime';
 type UpdatesSocket = Socket<AtualizacoesServerToClientEvents, AtualizacoesClientToServerEvents>;
 
 /** Janela em que reconexões sucessivas viram um único resync. Curta o
- * bastante pra não atrasar a correção de estado de forma perceptível (o
- * heartbeat do caller é de 30s), longa o bastante pra absorver um ciclo de
- * queda-e-volta do socket. */
+ * bastante pra não atrasar a correção de estado de forma perceptível, longa
+ * o bastante pra absorver um ciclo de queda-e-volta do socket. */
 const RESYNC_COALESCE_MS = 2_000;
 
 // Reexportado pra nao mexer nos imports das telas; a definicao virou contrato
@@ -33,12 +32,16 @@ interface UpdatesRealtimeOptions {
    * applySessionEvent.ts. Só TalaoProvider/ClientSessionProvider usam isso
    * hoje; as demais telas continuam só no `onUpdate` legado abaixo. */
   onEvent?: (event: RealtimeEvent) => void;
-  /** Disparado em toda (re)conexão. O namespace /atualizacoes não manda
-   * snapshot no join (ao contrário de /pedidos) — cada reconexão pode ter
-   * perdido eventos no meio (o socket usa `reconnection: false` + ticket de
-   * uso único, ver connect() abaixo), então quem usa `onEvent` precisa de
-   * um jeito de re-sincronizar do zero. Não dispara na primeira conexão
-   * (o caller já faz o fetch inicial no mount). */
+  /** Disparado em toda conexão, inclusive a primeira. O namespace
+   * /atualizacoes não manda snapshot no join (ao contrário de /pedidos) e é
+   * a única fonte de mudanças — quem usa isto não faz polling. Então:
+   * - reconexão: pode ter perdido eventos no meio (o socket usa
+   *   `reconnection: false` + ticket de uso único, ver connect() abaixo);
+   * - primeira conexão: o fetch do mount leu o banco antes de o socket
+   *   entrar nas rooms, e um evento nesse intervalo se perderia de vez.
+   * O servidor entra nas rooms no handler de `connection`, antes de o
+   * cliente ver `connect` — um fetch disparado daqui em diante não tem
+   * buraco. */
   onResync?: () => void;
 }
 
@@ -63,7 +66,6 @@ export function useUpdatesRealtime(onUpdate: (update: RealtimeUpdate) => void, o
     let retryTimer: number | null = null;
     let resyncTimer: number | null = null;
     let retryDelay = 1_000;
-    let hasConnectedOnce = false;
 
     const scheduleReconnect = () => {
       if (disposed || retryTimer) return;
@@ -105,10 +107,8 @@ export function useUpdatesRealtime(onUpdate: (update: RealtimeUpdate) => void, o
         });
         socket.on('connect', () => {
           retryDelay = 1_000;
-          // Sem snapshot-on-join neste namespace — toda reconexão (não a
-          // primeira conexão) pode ter perdido eventos no meio.
-          if (hasConnectedOnce) requestResync();
-          hasConnectedOnce = true;
+          // Sem snapshot-on-join neste namespace — ver onResync acima.
+          requestResync();
         });
         socket.on('atualizacao', (event) => {
           if (event?.type) onUpdateRef.current(event.type);

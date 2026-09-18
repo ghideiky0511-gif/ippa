@@ -1,10 +1,20 @@
 'use client';
 
-import { useState, type ComponentProps } from 'react';
+import { useEffect, useState, type ComponentProps } from 'react';
 import { cn } from '@/lib/cn';
 import { Skeleton } from '@/components/ui/skeleton';
 
-const FALLBACK_IMAGE = 'https://via.placeholder.com/500x620?text=Sem+imagem';
+// SVG local (data URI) em vez de um serviço externo (via.placeholder.com,
+// que já teve quedas prolongadas) — precisa estar sempre disponível, já que
+// é o próprio fallback exibido quando a imagem real falha.
+const FALLBACK_IMAGE =
+  'data:image/svg+xml,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="620" viewBox="0 0 500 620">' +
+      '<rect width="500" height="620" fill="#e8e2df"/>' +
+      '<text x="250" y="310" font-family="sans-serif" font-size="28" fill="#9c8f89" text-anchor="middle" dominant-baseline="middle">Sem imagem</text>' +
+      '</svg>',
+  );
 
 type ProductImageProps = Omit<ComponentProps<'img'>, 'src'> & {
   src?: string | null;
@@ -22,6 +32,14 @@ type ProductImageProps = Omit<ComponentProps<'img'>, 'src'> & {
  */
 export default function ProductImage({ src, alt, className, priority, onLoad, onError, ...props }: ProductImageProps) {
   const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+  // Se `src` mudar (ex.: troca de cor selecionada), tenta a imagem nova de
+  // novo em vez de continuar preso no fallback de uma falha anterior.
+  useEffect(() => {
+    setLoaded(false);
+    setFailed(false);
+  }, [src]);
+
   return (
     <span className={cn('relative block max-w-full overflow-hidden', className)}>
       {!loaded && <Skeleton className="absolute inset-0 size-full rounded-none" />}
@@ -31,14 +49,18 @@ export default function ProductImage({ src, alt, className, priority, onLoad, on
         fetchPriority={priority ? 'high' : 'auto'}
         decoding="async"
         {...props}
-        src={src || FALLBACK_IMAGE}
+        src={failed || !src ? FALLBACK_IMAGE : src}
         alt={alt}
         onLoad={(e) => {
           setLoaded(true);
           onLoad?.(e);
         }}
         onError={(e) => {
-          // Sem isso, uma URL quebrada deixaria o skeleton pulsando pra sempre.
+          // A requisição pode ter vindo 200 e mesmo assim falhar aqui (corpo
+          // vazio/corrompido, Content-Type errado etc.) — sem isso, ficava
+          // preso no ícone de imagem quebrada do navegador em vez de cair
+          // pro fallback local.
+          if (!failed) setFailed(true);
           setLoaded(true);
           onError?.(e);
         }}

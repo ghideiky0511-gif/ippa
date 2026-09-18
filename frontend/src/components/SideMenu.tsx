@@ -2,7 +2,7 @@
 
 import { ArrowLeft, ChevronRight, Search, X } from "lucide-react";
 import { createPortal } from "react-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "@/components/TenantLink";
 import { CONFIG } from "@/lib/config";
 import { formatBRL } from "@/lib/format";
@@ -33,6 +33,7 @@ export default function SideMenu({
     const [catalog, setCatalog] = useState<Product[]>([]);
     const [loadingCatalog, setLoadingCatalog] = useState(false);
     const [highlights, setHighlights] = useState<Highlight[]>([]);
+    const menuTriggerRef = useRef<HTMLButtonElement>(null);
     // /api/highlights devolve toda coleção cadastrada (é o mesmo endpoint que
     // o editor de /workspace/colecoes usa pra listar rascunhos ainda ocultos)
     // — o menu só deve linkar as que a vendedora publicou, igual a barra de
@@ -50,6 +51,9 @@ export default function SideMenu({
     }, []);
 
     function closeMenu() {
+        // Move focus before the panel becomes inert. Otherwise, a clicked link
+        // inside the panel can remain focused after the menu is hidden.
+        menuTriggerRef.current?.focus();
         setOpen(false);
         setPanel("menu");
         setSearchOpen(false);
@@ -114,7 +118,7 @@ export default function SideMenu({
             <aside
                 className={`fixed inset-y-0 left-0 z-[101] w-[min(22rem,88vw)] overflow-hidden bg-surface shadow-float transition-transform duration-300 ${open ? "translate-x-0" : "-translate-x-full"}`}
                 aria-label="Menu lateral"
-                aria-hidden={!open}
+                inert={!open}
             >
                 <div
                     className={`absolute inset-0 flex flex-col overflow-y-auto bg-surface transition-transform duration-300 ${panel === "categories" ? "-translate-x-full" : ""}`}
@@ -320,6 +324,7 @@ export default function SideMenu({
             {/* The trigger remains in the header; the layer is portalled to escape its stacking context. */}
             <button
                 type="button"
+                ref={menuTriggerRef}
                 className="flex size-11 items-center justify-center rounded-control text-foreground hover:bg-brand-background"
                 aria-label="Abrir menu"
                 onClick={() => setOpen(true)}

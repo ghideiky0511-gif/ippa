@@ -136,34 +136,15 @@ export function TalaoProvider({ children }: { children: ReactNode }) {
           return result.sessions;
         });
       },
-      // /atualizacoes não manda snapshot no join — toda reconexão pode ter
-      // perdido eventos no meio, então refaz o fetch completo uma vez.
+      // /atualizacoes não manda snapshot no join — a cada conexão refaz o
+      // fetch completo uma vez (ver onResync em useUpdatesRealtime.ts). Fora
+      // isso não há polling: sessões e talões só mudam por evento.
       onResync: () => {
         void refetchSessions();
         void refetchBooks();
       },
     },
   );
-
-  // Rede de segurança: mesmo com os eventos acima, um heartbeat de 30s
-  // corrige qualquer drift silencioso — só com a aba visível, pra não
-  // queimar recurso do plano free do Render em abas de fundo.
-  useEffect(() => {
-    function tick() {
-      if (document.visibilityState !== 'visible') return;
-      void refetchSessions();
-      void refetchBooks();
-    }
-    const interval = window.setInterval(tick, 30_000);
-    function onVisible() {
-      if (document.visibilityState === 'visible') tick();
-    }
-    document.addEventListener('visibilitychange', onVisible);
-    return () => {
-      window.clearInterval(interval);
-      document.removeEventListener('visibilitychange', onVisible);
-    };
-  }, []);
 
   const openSessions = sessions.filter((s) => s.status === 'aberto' || s.status === 'aguardando_pagamento');
   const activeSession = sessions.find((s) => s.id === activeSessionId) || null;

@@ -275,8 +275,16 @@ export async function ensureCustomerOrderSession(
         if (!sellerId) sellerId = administratorIds[0] ?? null;
         if (!sellerId) return { session: null, created: false, reconciled };
 
-        const book = (await findActiveOrderBookRow(client, sellerId))
-            ?? await insertOrderBookRow(client, sellerId, "Atendimentos online");
+        // Sem talão ativo, a vendedora ganha um aqui mesmo. Ele precisa sair
+        // como book_upsert (ver notifyOrderBook abaixo): sem isso o
+        // session_created chega apontando pra um talão que não está na lista
+        // dela, e nada mais corrige — o talão não faz polling.
+        let book = await findActiveOrderBookRow(client, sellerId);
+        let createdBook: OrderBookRow | null = null;
+        if (!book) {
+            createdBook = await insertOrderBookRow(client, sellerId, "Atendimentos online");
+            book = createdBook;
+        }
         const order = await getOrCreateOpenOrder(client, {
             clientId: registration.id,
             sellerId,
@@ -316,10 +324,12 @@ export async function ensureCustomerOrderSession(
             context,
             metadata: { channel: "online", hasClient: true, itemCount: requestedItems.length },
         });
-        return { session, created: true, reconciled };
+        return { session, created: true, reconciled, createdBook };
     });
 
     notifyReconciledSessions(tenant.id, result.reconciled);
+    // Antes do session_created, pra a sessão já encontrar o talão na lista.
+    if (result.createdBook) notifyOrderBook(tenant.id, toOrderBook(result.createdBook));
     if (result.session && result.created) {
         notifySessionCreated(tenant.id, result.session);
         scheduleSessionBroadcast(result.session);
@@ -340,9 +350,16 @@ export async function createOrderSession(
     const result = await withTenantTransaction(tenant, user, async (client) => {
         const items = data.items ?? [];
         const requestedBookId = data.orderBookId;
-        const book = requestedBookId
+        let book = requestedBookId
             ? await findOrderBookRow(client, requestedBookId)
-            : (await findActiveOrderBookRow(client, user.id)) ?? await insertOrderBookRow(client, user.id, "Talão atual");
+            : await findActiveOrderBookRow(client, user.id);
+        // Mesmo caso de ensureCustomerOrderSession: o talão criado aqui sai
+        // como book_upsert depois da transação.
+        let createdBook: OrderBookRow | null = null;
+        if (!book && !requestedBookId) {
+            createdBook = await insertOrderBookRow(client, user.id, "Talão atual");
+            book = createdBook;
+        }
         if (!book) throw new NotFoundError("ORDER_BOOK_NOT_FOUND");
         if (book.seller_id !== user.id || book.status !== "aberto") throw new ForbiddenError();
         const requestedClientId = data.clientId;
@@ -359,7 +376,7 @@ export async function createOrderSession(
             const existing = await findLatestOpenOrderSessionRowByClient(client, registration.id);
             if (existing) {
                 const items = (await listOrderSessionItemRowsBySession(client, existing.id)).map((item) => item.snapshot);
-                return { session: toOrderSession(existing, items), created: false };
+                return { session: toOrderSession(existing, items), created: false, createdBook };
             }
         }
         // Upsell: cliente com pedido em aberto pra essa mesma vendedora
@@ -393,10 +410,11 @@ export async function createOrderSession(
                 itemCount: created.items.length,
             },
         });
-        return { session: created, created: true };
+        return { session: created, created: true, createdBook };
     });
+    if (result.createdBook) notifyOrderBook(tenant.id, toOrderBook(result.createdBook));
     // O caminho de reaproveitamento (cliente já tinha sessão online aberta)
-    // não mudou nada — não notifica, só devolve o que já existia.
+    // não mudou a sessão — não notifica, só devolve o que já existia.
     if (result.created) {
         notifySessionCreated(tenant.id, result.session);
         scheduleSessionBroadcast(result.session);

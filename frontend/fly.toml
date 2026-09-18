@@ -39,4 +39,5 @@ primary_region = "gru"
 
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "512mb"
+  # 256mb no MVP: o next-server usa ~90MB de RSS, sobra ~110MB.
+  memory = "256mb"
