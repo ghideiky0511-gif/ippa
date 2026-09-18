@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ComponentProps } from 'react';
+import { useState, type ComponentProps } from 'react';
 import { cn } from '@/lib/cn';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -31,14 +31,13 @@ type ProductImageProps = Omit<ComponentProps<'img'>, 'src'> & {
  * vez de cada tela precisar lidar com isso na mão.
  */
 export default function ProductImage({ src, alt, className, priority, onLoad, onError, ...props }: ProductImageProps) {
-  const [loaded, setLoaded] = useState(false);
-  const [failed, setFailed] = useState(false);
-  // Se `src` mudar (ex.: troca de cor selecionada), tenta a imagem nova de
-  // novo em vez de continuar preso no fallback de uma falha anterior.
-  useEffect(() => {
-    setLoaded(false);
-    setFailed(false);
-  }, [src]);
+  const [imageState, setImageState] = useState({ src, loaded: false, failed: false });
+  // Comparar a URL no render reseta o estado de forma síncrona quando a
+  // imagem muda. Um useEffect aqui podia executar depois do onLoad de uma
+  // imagem já em cache e voltar `loaded` para false.
+  const isCurrentSource = imageState.src === src;
+  const loaded = isCurrentSource && imageState.loaded;
+  const failed = isCurrentSource && imageState.failed;
 
   return (
     <span className={cn('relative block max-w-full overflow-hidden', className)}>
@@ -52,7 +51,11 @@ export default function ProductImage({ src, alt, className, priority, onLoad, on
         src={failed || !src ? FALLBACK_IMAGE : src}
         alt={alt}
         onLoad={(e) => {
-          setLoaded(true);
+          setImageState((current) => ({
+            src,
+            loaded: true,
+            failed: current.src === src && current.failed,
+          }));
           onLoad?.(e);
         }}
         onError={(e) => {
@@ -60,8 +63,7 @@ export default function ProductImage({ src, alt, className, priority, onLoad, on
           // vazio/corrompido, Content-Type errado etc.) — sem isso, ficava
           // preso no ícone de imagem quebrada do navegador em vez de cair
           // pro fallback local.
-          if (!failed) setFailed(true);
-          setLoaded(true);
+          setImageState({ src, loaded: true, failed: true });
           onError?.(e);
         }}
         className={cn('block size-full object-cover opacity-0 transition-opacity duration-300', loaded && 'opacity-100')}
