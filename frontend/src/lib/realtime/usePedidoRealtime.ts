@@ -90,6 +90,12 @@ function sessionEvents(previous: OrderSession, current: OrderSession): PedidoRea
   return events;
 }
 
+/** Teto do backoff de reconexão, compartilhado com useUpdatesRealtime.ts: os
+ * dois hooks mantêm sockets independentes e reconectam por conta própria, então
+ * uma política de retry diferente em cada um significaria dobrar a pressão no
+ * backend sem querer. */
+export const RECONNECT_MAX_DELAY_MS = 60_000;
+
 export function realtimeUrl(): string {
   // O backend de WebSocket pode ficar em outra origem do frontend. Em
   // desenvolvimento o fallback acompanha a porta exposta pelo compose.
@@ -196,11 +202,13 @@ export function usePedidoRealtime({ sessionId, onSession, onPresence, onParticip
 
     const scheduleReconnect = () => {
       if (disposed || retryTimer) return;
+      // Jitter + teto alto pelo mesmo motivo de useUpdatesRealtime.ts: clientes
+      // que caem juntos não podem voltar todos no mesmo instante.
       retryTimer = window.setTimeout(() => {
         retryTimer = null;
         void connect();
-      }, retryDelay);
-      retryDelay = Math.min(retryDelay * 2, 10_000);
+      }, retryDelay * (0.5 + Math.random()));
+      retryDelay = Math.min(retryDelay * 2, RECONNECT_MAX_DELAY_MS);
     };
 
     const connect = async () => {

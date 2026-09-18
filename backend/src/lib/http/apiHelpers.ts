@@ -1,4 +1,4 @@
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
 import { NextRequest, NextResponse } from "next/server";
 import * as authentication from "@/services/auth";
@@ -234,6 +234,29 @@ export const GENERAL_RATE_LIMIT = {
 // parte por IP+rota pra uma rajada de cadastro não consumir o orçamento do
 // login e vice-versa.
 export const AUTH_RATE_LIMIT = { limit: 20, windowMs: 10 * 60_000 };
+
+// Limite para as rotas que o cliente repete em loop: /sessions/mine (heartbeat
+// de 30s + resync de socket) e os dois /realtime-ticket (um ticket novo por
+// tentativa de reconexão). Todas fazem trabalho no banco antes de responder,
+// então são justamente as que transformam um loop de cliente em pool esgotado.
+//
+// Contado por SESSÃO, não por IP: é o identificador que falta ao
+// GENERAL_RATE_LIMIT (desligado porque IP atrás de proxy/NAT agrupa visitantes
+// distintos no mesmo balde). O coalesce e o backoff do front reduzem essa
+// carga na origem, mas são código que roda no browser -- dá pra editar ou
+// ignorar. Este teto é o que vale independente do cliente.
+//
+// Folgado de propósito: o uso legítimo (2/min de heartbeat + resyncs + sockets
+// de várias abas) cabe com sobra, então estourar aqui já significa loop.
+export const SESSION_POLL_RATE_LIMIT = { limit: 60, windowMs: 60_000 };
+
+/** Identificador de rate limit derivado do token de sessão. O digest evita
+ * manter o token em claro num Map de vida longa, e dispensa ida ao banco --
+ * dá pra barrar a rajada ANTES de gastar conexão autenticando. */
+export function sessionRateLimitKey(token: string | undefined): string | undefined {
+    if (!token) return undefined;
+    return createHash("sha256").update(token).digest("base64url").slice(0, 32);
+}
 
 export function parseIdsParam(value: string | null): string[] | undefined {
     if (!value) return undefined;

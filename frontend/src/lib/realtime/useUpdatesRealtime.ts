@@ -5,7 +5,13 @@ import { io, type Socket } from 'socket.io-client';
 import { useTenant } from '@/components/TenantProvider';
 import { apiFetch } from '@/lib/api-client';
 import { RealtimeEventSchema, type RealtimeEvent } from '@/contracts/realtime';
-import { realtimeUrl } from './usePedidoRealtime';
+import { RECONNECT_MAX_DELAY_MS, realtimeUrl } from './usePedidoRealtime';
+
+/** Janela em que reconexões sucessivas viram um único resync. Curta o
+ * bastante pra não atrasar a correção de estado de forma perceptível (o
+ * heartbeat do caller é de 30s), longa o bastante pra absorver um ciclo de
+ * queda-e-volta do socket. */
+const RESYNC_COALESCE_MS = 2_000;
 
 export type RealtimeUpdate = 'sessions_updated' | 'orders_updated' | 'order_books_updated' | 'notifications_updated';
 
@@ -42,16 +48,35 @@ export function useUpdatesRealtime(onUpdate: (update: RealtimeUpdate) => void, o
     let disposed = false;
     let socket: Socket | null = null;
     let retryTimer: number | null = null;
+    let resyncTimer: number | null = null;
     let retryDelay = 1_000;
     let hasConnectedOnce = false;
 
     const scheduleReconnect = () => {
       if (disposed || retryTimer) return;
+      // Jitter: sem ele, todo cliente que caiu junto (deploy, instabilidade do
+      // backend) espera exatamente o mesmo tempo e reconecta no mesmo instante,
+      // derrubando o backend de novo assim que ele volta. O teto alto é a outra
+      // metade: insistir a cada 10s com o backend fora do ar só alimenta o
+      // problema -- foi uma rajada dessas que esgotou o pool do Postgres.
       retryTimer = window.setTimeout(() => {
         retryTimer = null;
         void connect();
-      }, retryDelay);
-      retryDelay = Math.min(retryDelay * 2, 10_000);
+      }, retryDelay * (0.5 + Math.random()));
+      retryDelay = Math.min(retryDelay * 2, RECONNECT_MAX_DELAY_MS);
+    };
+
+    // Uma sequência de quedas e reconexões em poucos segundos precisa de UM
+    // resync, não de um por reconexão: o refetch traz o estado inteiro, então
+    // o segundo seguido não acrescenta nada e só multiplica carga justamente
+    // quando o backend está mal. Agenda no fim da janela (não na borda de
+    // entrada) pra que reconexões em sequência caiam todas no mesmo timer.
+    const requestResync = () => {
+      if (disposed || resyncTimer) return;
+      resyncTimer = window.setTimeout(() => {
+        resyncTimer = null;
+        onResyncRef.current?.();
+      }, RESYNC_COALESCE_MS * (0.5 + Math.random()));
     };
 
     const connect = async () => {
@@ -69,7 +94,7 @@ export function useUpdatesRealtime(onUpdate: (update: RealtimeUpdate) => void, o
           retryDelay = 1_000;
           // Sem snapshot-on-join neste namespace — toda reconexão (não a
           // primeira conexão) pode ter perdido eventos no meio.
-          if (hasConnectedOnce) onResyncRef.current?.();
+          if (hasConnectedOnce) requestResync();
           hasConnectedOnce = true;
         });
         socket.on('atualizacao', (event: { type?: RealtimeUpdate }) => {
@@ -92,6 +117,7 @@ export function useUpdatesRealtime(onUpdate: (update: RealtimeUpdate) => void, o
     return () => {
       disposed = true;
       if (retryTimer) window.clearTimeout(retryTimer);
+      if (resyncTimer) window.clearTimeout(resyncTimer);
       socket?.disconnect();
     };
   }, [tenant.slug]);

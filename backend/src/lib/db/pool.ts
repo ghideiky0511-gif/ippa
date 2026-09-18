@@ -27,7 +27,14 @@ export function getPool(): Pool {
       connectionString: databaseUrl(),
       max: Number(process.env.DATABASE_POOL_MAX || 10),
       idleTimeoutMillis: Number(process.env.DATABASE_IDLE_TIMEOUT_MS || 30_000),
-      connectionTimeoutMillis: Number(process.env.DATABASE_CONNECT_TIMEOUT_MS || 5_000),
+      // Sob rajada, esperar muito por uma conexão livre é pior que desistir
+      // cedo: com 5s, cada handler numa fila saturada ficava preso 5s antes de
+      // falhar, segurando memória e socket enquanto a fila só crescia -- o
+      // backend demorava a se recuperar mesmo depois da rajada passar. Com 2s
+      // a carga é descartada rápido e o cliente (que já tem backoff com
+      // jitter) volta depois. Em operação normal a aquisição é quase
+      // instantânea, então isso só age quando o pool está realmente saturado.
+      connectionTimeoutMillis: Number(process.env.DATABASE_CONNECT_TIMEOUT_MS || 2_000),
       statement_timeout: Number(process.env.DATABASE_STATEMENT_TIMEOUT_MS || 10_000),
       application_name: 'ippa-backend',
       ssl: sslConfig(),

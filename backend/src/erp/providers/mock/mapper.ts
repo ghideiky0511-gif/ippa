@@ -1,5 +1,10 @@
 import type { CartItem, Client, Company, Order, Product } from "@/lib/types";
-import type { MockRawClient, MockRawCompany, MockRawOrder, MockRawProduct } from "./fixtures";
+import type {
+    MockRawClient,
+    MockRawCompany,
+    MockRawOrder,
+    MockRawProduct,
+} from "./fixtures";
 
 // Aqui, e só aqui, mora a adequação do formato bruto do mock (nomes de
 // campo/estrutura arbitrários, ver fixtures.ts) para os tipos internos —
@@ -13,14 +18,18 @@ export function mapMockProduct(raw: MockRawProduct): Omit<Product, "id"> {
         referenceId: raw.referencia ?? raw.codigo,
         price: raw.precoVenda,
         suggestedRetailPrice: raw.precoSugerido,
-        markup: raw.precoSugerido ? raw.precoSugerido / raw.precoVenda : undefined,
+        markup: raw.precoSugerido
+            ? raw.precoSugerido / raw.precoVenda
+            : undefined,
         colors: [],
         sizes: [],
         variants: [],
     };
 }
 
-export function mapMockOrder(raw: MockRawOrder): Omit<Order, "id" | "orderNumber"> {
+export function mapMockOrder(
+    raw: MockRawOrder,
+): Omit<Order, "id" | "orderNumber"> {
     const items: CartItem[] = raw.itens.map((item) => ({
         key: item.sku,
         id: item.sku,
@@ -37,7 +46,9 @@ export function mapMockOrder(raw: MockRawOrder): Omit<Order, "id" | "orderNumber
     };
 }
 
-export function mapMockClient(raw: MockRawClient): Omit<Client, "id" | "createdAt" | "updatedAt"> {
+export function mapMockClient(
+    raw: MockRawClient,
+): Omit<Client, "id" | "createdAt" | "updatedAt"> {
     return {
         name: raw.nomeCompleto,
         cpfCnpj: raw.documento,
@@ -52,7 +63,9 @@ export function mapMockClient(raw: MockRawClient): Omit<Client, "id" | "createdA
     };
 }
 
-export function mapMockCompany(raw: MockRawCompany): Omit<Company, "id" | "createdAt" | "updatedAt"> {
+export function mapMockCompany(
+    raw: MockRawCompany,
+): Omit<Company, "id" | "createdAt" | "updatedAt"> {
     return {
         cnpj: raw.cnpj,
         razaoSocial: raw.razaoSocial,

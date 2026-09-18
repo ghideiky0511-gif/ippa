@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveTenantRoute, isTenantRouteError } from "@/lib/http/tenantRoute";
-import { auditContext, execute, requestToken } from "@/lib/http/apiHelpers";
+import {
+    auditContext,
+    execute,
+    rateLimit,
+    requestToken,
+    sessionRateLimitKey,
+    SESSION_POLL_RATE_LIMIT,
+    tooManyRequests,
+} from "@/lib/http/apiHelpers";
 import * as authentication from "@/services/auth";
 import * as orders from "@/services/orders";
 
@@ -18,10 +26,17 @@ export async function GET(
 ): Promise<Response> {
     const route = await resolveTenantRoute(request, context.params);
     if (isTenantRouteError(route)) return route;
-    const session = await authentication.getAuthenticatedSession(
-        route.tenant,
-        requestToken(request, route.tenant.slug),
+    const token = requestToken(request, route.tenant.slug);
+    // Antes de autenticar: getAuthenticatedSession abre transação e gasta
+    // conexão do pool, que é exatamente o recurso que a rajada esgota.
+    const limitResult = rateLimit(
+        "sessions-mine",
+        sessionRateLimitKey(token),
+        SESSION_POLL_RATE_LIMIT.limit,
+        SESSION_POLL_RATE_LIMIT.windowMs,
     );
+    if (!limitResult.allowed) return tooManyRequests(limitResult.retryAfterSeconds);
+    const session = await authentication.getAuthenticatedSession(route.tenant, token);
     if (!session)
         return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
     return execute(() => orders.customerActiveSession(route.tenant, session.user));
