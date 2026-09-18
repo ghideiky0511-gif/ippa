@@ -4,8 +4,19 @@ import { useEffect, useRef } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { useTenant } from '@/components/TenantProvider';
 import { apiFetch } from '@/lib/api-client';
-import { RealtimeEventSchema, type RealtimeEvent } from '@/contracts/realtime';
+import {
+  RealtimeEventSchema,
+  type AtualizacoesClientToServerEvents,
+  type AtualizacoesServerToClientEvents,
+  type RealtimeEvent,
+  type RealtimeUpdate,
+} from '@/contracts/realtime';
 import { RECONNECT_MAX_DELAY_MS, realtimeUrl } from './usePedidoRealtime';
+
+// Generics invertidos em relacao ao servidor (typescript.md). Este namespace e
+// unidirecional: o cliente so escuta, por isso o mapa cliente->servidor e
+// vazio -- um emit acidental daqui vira erro de compilacao.
+type UpdatesSocket = Socket<AtualizacoesServerToClientEvents, AtualizacoesClientToServerEvents>;
 
 /** Janela em que reconexões sucessivas viram um único resync. Curta o
  * bastante pra não atrasar a correção de estado de forma perceptível (o
@@ -13,7 +24,9 @@ import { RECONNECT_MAX_DELAY_MS, realtimeUrl } from './usePedidoRealtime';
  * queda-e-volta do socket. */
 const RESYNC_COALESCE_MS = 2_000;
 
-export type RealtimeUpdate = 'sessions_updated' | 'orders_updated' | 'order_books_updated' | 'notifications_updated';
+// Reexportado pra nao mexer nos imports das telas; a definicao virou contrato
+// compartilhado com o backend (@/contracts/realtime).
+export type { RealtimeUpdate };
 
 interface UpdatesRealtimeOptions {
   /** Evento tipado com payload (canal 'atualizacao_v2') — ver
@@ -46,7 +59,7 @@ export function useUpdatesRealtime(onUpdate: (update: RealtimeUpdate) => void, o
 
   useEffect(() => {
     let disposed = false;
-    let socket: Socket | null = null;
+    let socket: UpdatesSocket | null = null;
     let retryTimer: number | null = null;
     let resyncTimer: number | null = null;
     let retryDelay = 1_000;
@@ -97,10 +110,15 @@ export function useUpdatesRealtime(onUpdate: (update: RealtimeUpdate) => void, o
           if (hasConnectedOnce) requestResync();
           hasConnectedOnce = true;
         });
-        socket.on('atualizacao', (event: { type?: RealtimeUpdate }) => {
-          if (event.type) onUpdateRef.current(event.type);
+        socket.on('atualizacao', (event) => {
+          if (event?.type) onUpdateRef.current(event.type);
         });
-        socket.on('atualizacao_v2', (event: unknown) => {
+        // O generic garante o formato em tempo de compilacao; o Zod continua
+        // sendo a validacao de runtime, porque o que chega pelo fio e entrada
+        // nao confiavel -- a propria doc do Socket.IO avisa que os type hints
+        // "do not replace proper validation/sanitization of the input"
+        // (typescript.md).
+        socket.on('atualizacao_v2', (event) => {
           const parsed = RealtimeEventSchema.safeParse(event);
           if (parsed.success) onEventRef.current?.(parsed.data);
         });
