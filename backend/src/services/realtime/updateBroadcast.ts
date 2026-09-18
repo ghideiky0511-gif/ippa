@@ -1,11 +1,13 @@
-import type { Namespace } from "socket.io";
 import type { CartItem, Order, OrderBook, OrderSession } from "@/lib/types";
-import type { RealtimeEvent } from "@/contracts/realtime";
+import type { RealtimeEvent, RealtimeUpdate } from "@/contracts/realtime";
+import type { UpdatesNamespace } from "@/realtime/types";
 
-export type RealtimeUpdate = "sessions_updated" | "orders_updated" | "order_books_updated" | "notifications_updated";
+// Reexportado pra não quebrar quem já importava daqui; a definição virou
+// contrato compartilhado com o frontend (@/contracts/realtime).
+export type { RealtimeUpdate };
 
 const globalForRealtimeUpdates = globalThis as unknown as {
-    __updatesNamespace?: Namespace;
+    __updatesNamespace?: UpdatesNamespace;
 };
 
 function tenantRoom(tenantId: string): string {
@@ -52,7 +54,7 @@ export function updatesRoomsForUser(tenantId: string, user: { id: string; role: 
     return [...rooms, tenantRoom(tenantId), sellerRoom(tenantId, user.id)];
 }
 
-export function registerUpdatesNamespace(namespace: Namespace): void {
+export function registerUpdatesNamespace(namespace: UpdatesNamespace): void {
     globalForRealtimeUpdates.__updatesNamespace = namespace;
 }
 
@@ -60,14 +62,16 @@ export function registerUpdatesNamespace(namespace: Namespace): void {
  * de pedidos) que ainda reage a ele com refetch. Ver plano de realtime
  * incremental: só TalaoProvider/ClientSessionProvider migraram pro evento
  * com payload abaixo. */
-function emitSignal(room: string, update: RealtimeUpdate): void {
-    globalForRealtimeUpdates.__updatesNamespace?.to(room).emit("atualizacao", { type: update });
+function emitSignal(rooms: string[], update: RealtimeUpdate): void {
+    if (rooms.length === 0) return;
+    globalForRealtimeUpdates.__updatesNamespace?.to(rooms).emit("atualizacao", { type: update });
 }
 
 /** Evento tipado com payload, canal novo — quem escuta aplica incrementalmente
  * em vez de refazer fetch. */
-function emitEvent(room: string, event: RealtimeEvent): void {
-    globalForRealtimeUpdates.__updatesNamespace?.to(room).emit("atualizacao_v2", event);
+function emitEvent(rooms: string[], event: RealtimeEvent): void {
+    if (rooms.length === 0) return;
+    globalForRealtimeUpdates.__updatesNamespace?.to(rooms).emit("atualizacao_v2", event);
 }
 
 function omit<T extends object, K extends keyof T>(obj: T, keys: readonly K[]): Omit<T, K> {
@@ -92,10 +96,16 @@ function forClientRoom<T extends { notes?: string }>(patch: T): Omit<T, "notes">
     return omit(patch, ["notes"]);
 }
 
+// União de rooms (`io.to([a, b]).emit(...)`) em vez de um emit por room: o
+// Socket.IO entrega UMA vez a cada socket mesmo que ele esteja em várias das
+// rooms da lista (ver documents/knowledge/socket.io/doc/rooms.md). Isso não é
+// só economia de pacote — administrador/expedição/entregador estão ao mesmo
+// tempo no tenantRoom E na própria sellerRoom (updatesRoomsForUser acima),
+// então o emit separado entregava o MESMO evento duas vezes pra eles.
 function broadcastSessionSignal(tenantId: string, session: Pick<OrderSession, "sellerId" | "clientId">): void {
-    emitSignal(tenantRoom(tenantId), "sessions_updated");
-    emitSignal(sellerRoom(tenantId, session.sellerId), "sessions_updated");
-    if (session.clientId) emitSignal(clientRoom(tenantId, session.clientId), "sessions_updated");
+    const rooms = [tenantRoom(tenantId), sellerRoom(tenantId, session.sellerId)];
+    if (session.clientId) rooms.push(clientRoom(tenantId, session.clientId));
+    emitSignal(rooms, "sessions_updated");
 }
 
 /** Sessão nova entrando no escopo de quem escuta (criada pela vendedora ou
@@ -104,11 +114,14 @@ function broadcastSessionSignal(tenantId: string, session: Pick<OrderSession, "s
 export function notifySessionCreated(tenantId: string, session: OrderSession): void {
     broadcastSessionSignal(tenantId, session);
     const event: RealtimeEvent = { t: "session_created", at: session.updatedAt, session };
-    emitEvent(tenantRoom(tenantId), event);
-    emitEvent(sellerRoom(tenantId, session.sellerId), event);
+    emitEvent([tenantRoom(tenantId), sellerRoom(tenantId, session.sellerId)], event);
+    // clientRoom fica FORA da união acima de propósito: o payload dela é
+    // outro (sem `notes`). Nenhum socket está nas duas listas — quem tem
+    // clientRoom é role "cliente", que nunca entra no tenantRoom nem em
+    // sellerRoom (updatesRoomsForUser) —, então não há entrega duplicada.
     if (session.clientId) {
         const clientSession = omit(session, ["notes"]);
-        emitEvent(clientRoom(tenantId, session.clientId), { ...event, session: clientSession as OrderSession });
+        emitEvent([clientRoom(tenantId, session.clientId)], { ...event, session: clientSession as OrderSession });
     }
 }
 
@@ -146,35 +159,38 @@ export function notifySession(
             set: itemsDelta.set,
             del: itemsDelta.del,
         };
-        emitEvent(tenantRoom(tenantId), itemsEvent);
-        emitEvent(sellerRoom(tenantId, session.sellerId), itemsEvent);
-        if (session.clientId) emitEvent(clientRoom(tenantId, session.clientId), itemsEvent);
+        // Payload idêntico pras três rooms (o diff de item não tem campo
+        // sensível a filtrar), então uma união só resolve.
+        const itemsRooms = [tenantRoom(tenantId), sellerRoom(tenantId, session.sellerId)];
+        if (session.clientId) itemsRooms.push(clientRoom(tenantId, session.clientId));
+        emitEvent(itemsRooms, itemsEvent);
     }
 
     if (options?.skipPatch) return;
 
     const patch = sessionPatchFrom(session);
     const event: RealtimeEvent = { t: "session_patch", sid: session.id, at: session.updatedAt, patch };
-    emitEvent(tenantRoom(tenantId), event);
-    emitEvent(sellerRoom(tenantId, session.sellerId), event);
-    if (session.clientId) emitEvent(clientRoom(tenantId, session.clientId), { ...event, patch: forClientRoom(patch) });
+    emitEvent([tenantRoom(tenantId), sellerRoom(tenantId, session.sellerId)], event);
+    // Idem session_created: a cliente recebe o patch sem `notes`, por isso
+    // não entra na união.
+    if (session.clientId) emitEvent([clientRoom(tenantId, session.clientId)], { ...event, patch: forClientRoom(patch) });
 }
 
 export function notifyOrderBook(tenantId: string, book: OrderBook): void {
-    emitSignal(tenantRoom(tenantId), "order_books_updated");
-    emitSignal(sellerRoom(tenantId, book.sellerId), "order_books_updated");
+    emitSignal([tenantRoom(tenantId), sellerRoom(tenantId, book.sellerId)], "order_books_updated");
     // Payload só pra sellerRoom — GET /order-books é sempre escopado ao
     // próprio vendedor (orderBookService.ts), inclusive pra quem tem
     // adminAccess; não existe endpoint HTTP de "talões de outra pessoa", e o
     // tenantRoom tem admin/expedição/entregador. Empurrar o objeto completo
     // ali seria vazamento novo.
-    emitEvent(sellerRoom(tenantId, book.sellerId), { t: "book_upsert", book });
+    emitEvent([sellerRoom(tenantId, book.sellerId)], { t: "book_upsert", book });
 }
 
 export function notifyOrder(tenantId: string, order: Pick<Order, "sellerId" | "clientId">): void {
-    emitSignal(tenantRoom(tenantId), "orders_updated");
-    if (order.sellerId) emitSignal(sellerRoom(tenantId, order.sellerId), "orders_updated");
-    if (order.clientId) emitSignal(clientRoom(tenantId, order.clientId), "orders_updated");
+    const rooms = [tenantRoom(tenantId)];
+    if (order.sellerId) rooms.push(sellerRoom(tenantId, order.sellerId));
+    if (order.clientId) rooms.push(clientRoom(tenantId, order.clientId));
+    emitSignal(rooms, "orders_updated");
 }
 
 /** Uma notificação nova foi enfileirada pra este usuário (ver
@@ -182,5 +198,5 @@ export function notifyOrder(tenantId: string, order: Pick<Order, "sellerId" | "c
  * NotificationCenter reage refazendo GET /api/notifications/summary em vez
  * de fazer polling a cada 60s pra descobrir isso. */
 export function notifyUserNotification(tenantId: string, userId: string): void {
-    emitSignal(userRoom(tenantId, userId), "notifications_updated");
+    emitSignal([userRoom(tenantId, userId)], "notifications_updated");
 }

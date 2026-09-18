@@ -1,5 +1,5 @@
-import type { Namespace } from "socket.io";
 import type { OrderSession } from "@/lib/types";
+import type { PedidosNamespace } from "@/realtime/types";
 
 // Este módulo é importado tanto
 // pelo server.js (processo único, plano) quanto por orderSessionService.ts
@@ -8,7 +8,7 @@ import type { OrderSession } from "@/lib/types";
 // inteiro, senão o broadcast nunca alcançaria o namespace registrado pelo
 // server.js.
 const globalForRealtime = globalThis as unknown as {
-    __pedidosNamespace?: Namespace;
+    __pedidosNamespace?: PedidosNamespace;
     __sessionBroadcastTimers?: Map<string, ReturnType<typeof setTimeout>>;
 };
 const timers = globalForRealtime.__sessionBroadcastTimers ?? (globalForRealtime.__sessionBroadcastTimers = new Map());
@@ -19,7 +19,7 @@ export function sessionRoom(sessionId: string): string {
     return `session:${sessionId}`;
 }
 
-export function registerPedidosNamespace(namespace: Namespace): void {
+export function registerPedidosNamespace(namespace: PedidosNamespace): void {
     globalForRealtime.__pedidosNamespace = namespace;
 }
 

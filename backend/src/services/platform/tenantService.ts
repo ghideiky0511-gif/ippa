@@ -1,5 +1,6 @@
 import { hash } from "@node-rs/argon2";
 import { withControlTransaction } from "@/lib/db/control";
+import { forgetTenant } from "@/lib/db/tenant";
 import {
     insertDefaultInventoryLocationRow,
     insertTenantAdministratorRow,
@@ -136,7 +137,7 @@ export async function changeTenantStatus(id: string, status: string): Promise<Pl
     if (!/^[0-9a-f-]{36}$/i.test(id) || !statuses.includes(status as TenantStatus)) {
         throw new Error("INVALID_TENANT_STATUS");
     }
-    return withControlTransaction(async (client) => {
+    const tenant = await withControlTransaction(async (client) => {
         const row = await updateTenantStatusRow(client, id, status as TenantStatus, status === "active");
         return row ? {
             id: row.id,
@@ -149,4 +150,9 @@ export async function changeTenantStatus(id: string, status: string): Promise<Pl
             contract: null,
         } : null;
     });
+    // Depois do commit, nunca dentro da transação: invalidar antes deixaria uma
+    // leitura concorrente repovoar o cache com o valor pré-commit, e aí o tenant
+    // desativado continuaria atendendo pelo TTL inteiro.
+    if (tenant) forgetTenant(tenant.slug);
+    return tenant;
 }

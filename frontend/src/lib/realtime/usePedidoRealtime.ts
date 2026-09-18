@@ -3,24 +3,28 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { useTenant } from '@/components/TenantProvider';
-import type { AuthUser } from '@/domain/clients/types';
-import type { CartItem, OrderSession, SessionFreight } from '@/domain/orders/types';
+import type { CartItem, OrderSession, OrderSessionParticipant, SessionFreight } from '@/domain/orders/types';
+import type {
+  CriarSessaoClienteAck,
+  PedidoPresence,
+  PedidosClientToServerEvents,
+  PedidosServerToClientEvents,
+  RealtimeAck,
+} from '@/contracts/realtime';
 import { apiFetch } from '@/lib/api-client';
 
-export interface PedidoPresence {
-  userId: string;
-  role: AuthUser['role'];
-  name: string;
-}
+// Reexportados pra nao mexer nos imports das telas (ClientSessionProvider,
+// TalaoProvider, OrderSessionPeople*). A definicao mora no contrato
+// compartilhado com o backend -- ver @/contracts/realtime.
+export type { PedidoPresence };
+export type PedidoParticipant = OrderSessionParticipant;
 
-export interface PedidoParticipant {
-  userId: string;
-  firstJoinedAt: string;
-  lastJoinedAt: string;
-  lastLeftAt?: string;
-  joinCount: number;
-  user: Pick<AuthUser, 'id' | 'name' | 'role'>;
-}
+// Generics invertidos em relacao ao servidor, como manda a doc
+// (documents/knowledge/socket.io/doc/typescript.md): o que o servidor emite e
+// o que este socket escuta, e vice-versa.
+type PedidoSocket = Socket<PedidosServerToClientEvents, PedidosClientToServerEvents>;
+
+const ACK_TIMEOUT_MS = 10_000;
 
 interface PedidoRealtimeOptions {
   sessionId: string | null | undefined;
@@ -33,7 +37,7 @@ interface PedidoRealtimeOptions {
 
 interface SocketWaiter {
   sessionId: string | null;
-  resolve: (socket: Socket) => void;
+  resolve: (socket: PedidoSocket) => void;
 }
 
 export interface PedidoRealtimeConnection {
@@ -69,6 +73,13 @@ export function pedidoRealtimeEventMessage(event: PedidoRealtimeEvent): string {
   }
 }
 
+/** Todo ack dos eventos de /pedidos segue o mesmo contrato: `ok` falso vira
+ * excecao com a mensagem que o servidor mandou. */
+function ensureOk<T extends RealtimeAck>(response: T | undefined): T {
+  if (!response?.ok) throw new Error(response?.motivo || 'Não foi possível atualizar o pedido.');
+  return response;
+}
+
 function sameFreight(a?: SessionFreight, b?: SessionFreight): boolean {
   return a?.quoteId === b?.quoteId && a?.label === b?.label && a?.price === b?.price && a?.etaLabel === b?.etaLabel;
 }
@@ -89,6 +100,12 @@ function sessionEvents(previous: OrderSession, current: OrderSession): PedidoRea
   if (!sameFreight(previous.freight, current.freight)) events.push({ type: 'frete_alterado', freight: current.freight });
   return events;
 }
+
+/** Teto do backoff de reconexão, compartilhado com useUpdatesRealtime.ts: os
+ * dois hooks mantêm sockets independentes e reconectam por conta própria, então
+ * uma política de retry diferente em cada um significaria dobrar a pressão no
+ * backend sem querer. */
+export const RECONNECT_MAX_DELAY_MS = 60_000;
 
 export function realtimeUrl(): string {
   // O backend de WebSocket pode ficar em outra origem do frontend. Em
@@ -112,16 +129,16 @@ export function usePedidoRealtime({ sessionId, onSession, onPresence, onParticip
   const onPresenceRef = useRef(onPresence);
   const onParticipantsRef = useRef(onParticipants);
   const onEventRef = useRef(onEvent);
-  const socketRef = useRef<Socket | null>(null);
+  const socketRef = useRef<PedidoSocket | null>(null);
   // O socket de criação nasce sem sessão e passa a representar uma sessão
   // depois de `criar_sessao_cliente`. Guardar esse vínculo evita enviar a
   // primeira alteração para o socket anterior enquanto a troca reconecta.
   const socketSessionIdRef = useRef<string | null>(null);
   const socketWaitersRef = useRef(new Set<SocketWaiter>());
 
-  const waitForSocket = useCallback((expectedSessionId: string | null): Promise<Socket> => {
+  const waitForSocket = useCallback((expectedSessionId: string | null): Promise<PedidoSocket> => {
     if (socketRef.current && socketSessionIdRef.current === expectedSessionId) return Promise.resolve(socketRef.current);
-    return new Promise<Socket>((resolve, reject) => {
+    return new Promise<PedidoSocket>((resolve, reject) => {
       let timer: number;
       const waiter: SocketWaiter = {
         sessionId: expectedSessionId,
@@ -133,27 +150,26 @@ export function usePedidoRealtime({ sessionId, onSession, onPresence, onParticip
       timer = window.setTimeout(() => {
         socketWaitersRef.current.delete(waiter);
         reject(new Error('Conexão em tempo real indisponível.'));
-      }, 10_000);
+      }, ACK_TIMEOUT_MS);
       socketWaitersRef.current.add(waiter);
     });
   }, []);
 
-  const emitWithAck = useCallback(async <T,>(event: string, payload: unknown): Promise<T> => {
+  /** Socket pronto pra emitir. O emit em si ficou nos dois metodos abaixo
+   * porque, com os generics ligados, cada evento precisa ser emitido com o
+   * NOME LITERAL pro socket.io-client inferir o payload e a resposta do ack --
+   * um `emit(event: string, ...)` generico voltaria a ser `any` dos dois
+   * lados. */
+  const connectedSocket = useCallback(async (): Promise<PedidoSocket> => {
     const socket = await waitForSocket(sessionId ?? null);
     if (!socket.connected) {
       await new Promise<void>((resolve, reject) => {
-        const timer = window.setTimeout(() => reject(new Error('A conexão em tempo real expirou.')), 10_000);
+        const timer = window.setTimeout(() => reject(new Error('A conexão em tempo real expirou.')), ACK_TIMEOUT_MS);
         socket.once('connect', () => { window.clearTimeout(timer); resolve(); });
         socket.once('connect_error', () => { window.clearTimeout(timer); reject(new Error('Conexão em tempo real indisponível.')); });
       });
     }
-    return new Promise<T>((resolve, reject) => {
-      socket.timeout(10_000).emit(event, payload, (error: Error | null, response?: T & { ok?: boolean; motivo?: string }) => {
-        if (error) return reject(new Error('A conexão em tempo real expirou.'));
-        if (!response?.ok) return reject(new Error(response?.motivo || 'Não foi possível atualizar o pedido.'));
-        resolve(response);
-      });
-    });
+    return socket;
   }, [sessionId, waitForSocket]);
 
   useEffect(() => {
@@ -167,7 +183,7 @@ export function usePedidoRealtime({ sessionId, onSession, onPresence, onParticip
     if (!sessionId && !allowCustomerSessionCreation) return;
 
     let disposed = false;
-    let socket: Socket | null = null;
+    let socket: PedidoSocket | null = null;
     let retryTimer: number | null = null;
     let retryDelay = 1_000;
     let previousSession: OrderSession | null = null;
@@ -196,11 +212,13 @@ export function usePedidoRealtime({ sessionId, onSession, onPresence, onParticip
 
     const scheduleReconnect = () => {
       if (disposed || retryTimer) return;
+      // Jitter + teto alto pelo mesmo motivo de useUpdatesRealtime.ts: clientes
+      // que caem juntos não podem voltar todos no mesmo instante.
       retryTimer = window.setTimeout(() => {
         retryTimer = null;
         void connect();
-      }, retryDelay);
-      retryDelay = Math.min(retryDelay * 2, 10_000);
+      }, retryDelay * (0.5 + Math.random()));
+      retryDelay = Math.min(retryDelay * 2, RECONNECT_MAX_DELAY_MS);
     };
 
     const connect = async () => {
@@ -230,10 +248,12 @@ export function usePedidoRealtime({ sessionId, onSession, onPresence, onParticip
           retryDelay = 1_000;
           if (sessionId) socket?.emit('entrar_sessao', {});
         });
-        socket.on('sessao_snapshot', (session: OrderSession) => receiveSession(session, true));
-        socket.on('sessao_atualizada', receiveSession);
+        // Nenhum handler precisa mais anotar o tipo do payload: todos vem
+        // inferidos de PedidosServerToClientEvents.
+        socket.on('sessao_snapshot', (session) => receiveSession(session, true));
+        socket.on('sessao_atualizada', (session) => receiveSession(session));
         socket.on('presenca_atualizada', receivePresence);
-        socket.on('participantes_atualizados', (participants: PedidoParticipant[]) => onParticipantsRef.current?.(participants));
+        socket.on('participantes_atualizados', (participants) => onParticipantsRef.current?.(participants));
         socket.on('connect_error', scheduleReconnect);
         socket.on('disconnect', (reason) => {
           if (reason !== 'io client disconnect') scheduleReconnect();
@@ -255,13 +275,22 @@ export function usePedidoRealtime({ sessionId, onSession, onPresence, onParticip
 
   return useMemo(() => ({
     async updateSession(changes: { itemsDelta: { set: CartItem[]; del: string[] } }) {
-      await emitWithAck<{ ok: boolean; motivo?: string }>('atualizar_sessao', changes);
+      const socket = await connectedSocket();
+      ensureOk(await new Promise<RealtimeAck | undefined>((resolve, reject) => {
+        socket.timeout(ACK_TIMEOUT_MS).emit('atualizar_sessao', changes, (error, ack) => {
+          if (error) return reject(new Error('A conexão em tempo real expirou.'));
+          resolve(ack);
+        });
+      }));
     },
     async createCustomerSession(items: CartItem[]) {
-      const response = await emitWithAck<{
-        ok: boolean; session?: OrderSession; motivo?: string;
-        pendingAssignment?: boolean; aviso?: string;
-      }>('criar_sessao_cliente', { items });
+      const socket = await connectedSocket();
+      const response = ensureOk(await new Promise<CriarSessaoClienteAck | undefined>((resolve, reject) => {
+        socket.timeout(ACK_TIMEOUT_MS).emit('criar_sessao_cliente', { items }, (error, ack) => {
+          if (error) return reject(new Error('A conexão em tempo real expirou.'));
+          resolve(ack);
+        });
+      }));
       if (response.session) socketSessionIdRef.current = response.session.id;
       return {
         session: response.session ?? null,
@@ -269,5 +298,5 @@ export function usePedidoRealtime({ sessionId, onSession, onPresence, onParticip
         aviso: response.aviso,
       };
     },
-  }), [emitWithAck]);
+  }), [connectedSocket]);
 }

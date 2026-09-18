@@ -5,6 +5,12 @@
 # WebSocket ativas e zeraria o estado do rate limiter a qualquer momento.
 app = "ippa-backend"
 primary_region = "gru"
+# O padrão do Fly é SIGKILL 5s depois do SIGTERM. O shutdown gracioso do
+# server.ts (io.close() + drenagem das conexões WebSocket) tem teto próprio de
+# 8s, então 12s aqui deixa margem pro processo registrar a falha em log antes
+# de a Machine ser morta — sem esse ajuste o SIGKILL chegaria no meio da
+# drenagem e o deploy voltaria a derrubar os sockets à força.
+kill_timeout = "12s"
 
 [build]
 
