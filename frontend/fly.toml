@@ -20,7 +20,7 @@ primary_region = "gru"
 
 [build]
   [build.args]
-    NEXT_PUBLIC_APP_URL = "https://ippa-frontend.fly.dev"
+    NEXT_PUBLIC_APP_URL = "https://catalogo.bippa.com.br"
     NEXT_PUBLIC_REALTIME_URL = "https://ippa-backend.fly.dev"
 
 [env]
