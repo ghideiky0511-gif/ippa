@@ -118,8 +118,8 @@ function ColorSelect({
 }
 
 // Uma linha por cor, dentro do bloco do produto (ver CartProductBlock) —
-// sem repetir nome/referência, só a fotinho pequena (troca com a cor), cor,
-// entrega, grade e preço daquela cor. Cada cor tem sua PRÓPRIA grade,
+// sem repetir nome/referência/foto (a imagem é única, no header do bloco),
+// só cor, entrega, grade e preço daquela cor. Cada cor tem sua PRÓPRIA grade,
 // independente das outras — depois que a linha já tem alguma quantidade
 // de verdade (group.color definido), a cor fica travada (não dá pra
 // "trocar" a cor de uma linha só arrastando a quantidade pra outra, isso
@@ -169,10 +169,8 @@ function ColorLine({
   );
 
   // Linha de "+ cor" (isPending) ainda não tem nenhum CartItem de verdade
-  // — nome/preço vêm do produto até a 1ª quantidade ser marcada.
+  // — preço vem do produto até a 1ª quantidade ser marcada.
   const first = group.items[0];
-  const itemName = first?.name || product?.name || '';
-  const image = product ? resolveImageForColor(product, colorValue || group.color) : first?.image;
   const resolvedItems = group.items.filter((i) => i.qty > 0);
   const totalQty = resolvedItems.reduce((s, i) => s + i.qty, 0);
   const totalValue = resolvedItems.reduce((s, i) => s + i.price * i.qty, 0);
@@ -225,8 +223,6 @@ function ColorLine({
 
   return (
     <div className={publicUi.cartLine}>
-      <ProductImage src={image} alt={itemName} className={publicUi.cartLineImage} />
-
       <div className={publicUi.cartLineField}>
         <label>Cor</label>
         <ColorSelect
@@ -316,12 +312,29 @@ function CartProductBlock({
   const [pendingColors, setPendingColors] = useState<string[]>([]);
   const matrix = useMemo(() => (product ? buildVariantMatrix(product) : null), [product]);
 
-  const sample = colorGroups[0]?.items[0] || removedEntries[0]?.group.items[0];
+  // Um rascunho (addProductDraft, sugestão da vendedora) e uma cor já
+  // resolvida do MESMO produto não são a mesma linha — groupCart os separa
+  // por chave (`id|draft` vs `id|cor`) e os dois acabavam renderizando duas
+  // ColorLine lado a lado, uma travada em zero atrás da outra já com
+  // quantidade. Assim que existe pelo menos um grupo real, o rascunho perdeu
+  // a função (a cliente já escolheu cor de verdade) e não deve mais aparecer.
+  const realGroups = colorGroups.filter((g) => !g.isDraft);
+  const draftGroups = realGroups.length === 0 ? colorGroups.filter((g) => g.isDraft) : [];
+  const visibleGroups = [...realGroups, ...draftGroups];
+
+  const sample = visibleGroups[0]?.items[0] || removedEntries[0]?.group.items[0];
   if (!sample) return null;
 
-  const usedColors = new Set(colorGroups.map((g) => g.color).filter(Boolean) as string[]);
+  const usedColors = new Set(realGroups.map((g) => g.color).filter(Boolean) as string[]);
   const visiblePending = pendingColors.filter((c) => !usedColors.has(c));
   const availableToAdd = (matrix?.colors || []).filter((c) => !usedColors.has(c) && !visiblePending.includes(c));
+
+  // Uma foto só por produto (não uma por cor) — a peça em si não muda,
+  // só a cor. Usa a cor da primeira linha (a mais antiga) como referência;
+  // trocar de acordo com qual linha a cliente está mexendo exigiria estado
+  // de "linha em foco" sem ganho real pra decisão de compra.
+  const primaryColor = visibleGroups[0]?.color || sample.color;
+  const image = product ? resolveImageForColor(product, primaryColor) : sample.image;
 
   function handleAddColor() {
     if (availableToAdd.length === 0) return;
@@ -331,11 +344,14 @@ function CartProductBlock({
   return (
     <div className={publicUi.cartProduct}>
       <div className={publicUi.cartProductHeader}>
-        <div className="name">{sample.name}</div>
-        {product?.referenceId && <div className="contents">{product.referenceId}</div>}
+        <ProductImage src={image} alt={sample.name} className={publicUi.cartProductImage} />
+        <div className={publicUi.cartProductHeaderInfo}>
+          <div className="name">{sample.name}</div>
+          {product?.referenceId && <div className="reference">{product.referenceId}</div>}
+        </div>
       </div>
       <div className={publicUi.cartProductLines}>
-        {colorGroups.map((g) => (
+        {visibleGroups.map((g) => (
           <ColorLine key={g.key} group={g} product={product} onRemove={onRemove} />
         ))}
         {visiblePending.map((color) => (

@@ -134,7 +134,7 @@ function OpenProductQuickView({
         className={`w-full md:w-[85vw] ${isTransitioningToPage ? 'pointer-events-none border-transparent bg-transparent shadow-none transition-[transform,background-color,border-color,box-shadow] duration-150' : ''}`}
         dragOffsetY={sheetOffsetY || undefined}
       >
-        <motion.div layoutRoot className="flex h-full min-h-0 flex-col">
+        <div className="flex h-full min-h-0 flex-col">
           <div
             className={`flex touch-none justify-center py-3 transition-opacity duration-150 md:hidden ${isTransitioningToPage ? 'opacity-0' : ''}`}
             onPointerDown={startSheetDrag}
@@ -156,7 +156,7 @@ function OpenProductQuickView({
               <SimilarProducts products={currentSimilar} loading={isLoadingSimilar} />
             </div>
           </motion.div>
-        </motion.div>
+        </div>
       </SheetContent>
     </Sheet>
   );

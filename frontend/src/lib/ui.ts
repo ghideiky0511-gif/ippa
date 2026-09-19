@@ -166,12 +166,12 @@ export const publicUi = {
   cartGroupToggle: 'cursor-pointer border-0 bg-transparent p-1 text-brand-primary hover:underline',
   cartGroupItems: 'mt-2.5 flex flex-col gap-2.5',
   cartGroupEdit: 'mt-2 cursor-pointer self-start border-0 bg-transparent p-0 text-xs font-semibold text-brand-primary hover:underline disabled:opacity-40',
-  cartLine: 'flex flex-wrap items-center gap-3.5 gap-y-2.5 max-sm:grid max-sm:grid-cols-[auto_minmax(0,1fr)] max-sm:items-start',
-  // A página cheia do carrinho tem controles densos por cor/tamanho; esta
-  // miniatura precisa obedecer a linha, nunca o tamanho natural da foto.
-  cartLineImage: 'h-16 w-12 flex-none self-start rounded-[5px] bg-[#eee] max-sm:row-span-2 sm:h-24 sm:w-16',
+  // Sem imagem própria (a foto do produto agora é única, no header do bloco
+  // — ver cartProductImage) a linha de cor é só um flex-wrap comum, também
+  // no mobile.
+  cartLine: 'flex flex-wrap items-center gap-3.5 gap-y-2.5',
   cartLineField: 'flex shrink-0 flex-col gap-1 [&>label]:text-[10px] [&>label]:tracking-[.03em] [&>label]:text-brand-muted [&>label]:uppercase [&>select]:min-w-28 [&>select]:rounded-md [&>select]:border [&>select]:border-[#ddd] [&>select]:bg-white [&>select]:px-2 [&>select]:py-1.5 [&>select]:text-xs',
-  cartLineGrid: 'flex flex-1 flex-wrap items-center gap-3 max-sm:col-span-2 max-sm:w-full',
+  cartLineGrid: 'flex flex-1 flex-wrap items-center gap-3 max-sm:w-full',
   cartLineCell: 'flex min-w-[30px] flex-col items-center gap-1 text-[11px] text-brand-muted [&>.size]:font-semibold [&>.size]:text-brand-text',
   cartLinePrice: 'shrink-0 text-right text-xs whitespace-nowrap text-brand-muted',
   cartLineAction: 'shrink-0 cursor-pointer border-0 bg-transparent p-0 text-[11px] text-brand-primary hover:underline disabled:cursor-default disabled:opacity-40',
@@ -206,8 +206,17 @@ export const publicUi = {
   variantAxisChip: 'flex items-center gap-1.5 rounded-lg border border-[#eee] px-2.5 py-1.5 text-xs',
   variantAxisLabel: 'font-semibold text-brand-text',
   cartProduct: 'border-b border-[#f0f0f0] py-3.5 last:border-b-0',
-  cartProductHeader: 'mb-2.5 flex items-baseline gap-2 [&>.name]:text-[13px] [&>.name]:font-semibold',
-  cartProductLines: 'flex flex-col gap-2.5',
+  // Uma foto só por produto (não uma por linha de cor — ver CartProductBlock).
+  // min-w-0 no texto ao lado é o que deixa o nome truncar numa linha em vez
+  // de empurrar o layout pra baixo quando é longo.
+  cartProductHeader: 'mb-2.5 flex items-center gap-2.5',
+  cartProductImage: 'h-12 w-9 flex-none self-start rounded-[5px] bg-[#eee]',
+  cartProductHeaderInfo: 'min-w-0 flex-1 [&>.name]:overflow-hidden [&>.name]:text-ellipsis [&>.name]:whitespace-nowrap [&>.name]:text-[13px] [&>.name]:font-semibold [&>.reference]:text-[11px] [&>.reference]:text-brand-muted',
+  // Mais de 3 cores rola em vez de empilhar sem limite (o header/imagem do
+  // produto continuam fixos acima). ~3 linhas de cartLine ≈ 220px no mobile
+  // (onde cada linha vira grade de 2 colunas, mais alta); no desktop cabem
+  // mais confortavelmente na mesma altura.
+  cartProductLines: 'flex max-h-[220px] flex-col gap-2.5 overflow-y-auto pr-1',
   cartAddColor: 'mt-2.5 cursor-pointer rounded-full border border-dashed border-[#ccc] bg-transparent px-3.5 py-1.5 text-xs text-brand-muted hover:border-brand-primary hover:text-brand-primary',
   colorSelect: 'relative',
   colorSelectTrigger: 'flex min-w-28 cursor-pointer items-center gap-1.5 rounded-md border border-[#ddd] bg-white px-2 py-1.5 text-xs text-brand-text hover:border-brand-primary disabled:cursor-default disabled:opacity-50',

@@ -106,7 +106,7 @@ export default function LoginPage() {
           <form className="flex flex-col gap-4" onSubmit={startAccess}>
             <div className={publicUi.field}>
               <label>{documentLabel}</label>
-              <input type="text" inputMode="numeric" value={document} onChange={(event) => setDocument(event.target.value)} placeholder={allowCpfSignup ? 'CPF ou CNPJ' : 'CNPJ'} autoFocus required />
+              <input type="text" inputMode="numeric" autoComplete="username" value={document} onChange={(event) => setDocument(event.target.value)} placeholder={allowCpfSignup ? 'CPF ou CNPJ' : 'CNPJ'} autoFocus required />
             </div>
             {error && <p className={publicUi.error}>{error}</p>}
             <button className={`${publicUi.primaryButton} w-full`} type="submit" disabled={loading}>{loading ? 'Verificando…' : 'Continuar'}</button>
@@ -127,11 +127,11 @@ export default function LoginPage() {
             </p>
             <div className={publicUi.field}>
               <label>Senha</label>
-              <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoFocus required minLength={6} />
+              <input type="password" autoComplete={stage === 'first_access' ? 'new-password' : 'current-password'} value={password} onChange={(event) => setPassword(event.target.value)} autoFocus required minLength={6} />
             </div>
             {stage === 'first_access' && <div className={publicUi.field}>
               <label>Confirme sua senha</label>
-              <input type="password" value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} required minLength={6} />
+              <input type="password" autoComplete="new-password" value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} required minLength={6} />
             </div>}
             {error && <p className={publicUi.error}>{error}</p>}
             <button className={`${publicUi.primaryButton} w-full`} type="submit" disabled={loading}>
