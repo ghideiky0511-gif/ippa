@@ -37,25 +37,26 @@ export default function HomeBanner({
 
     return (
         <header className="relative h-full w-full overflow-hidden bg-linear-to-br from-brand-primary to-brand-primary-dark text-white">
-            {current.type === "video" ? (
-                <video
-                    src={current.mediaUrl}
-                    autoPlay
-                    loop
-                    muted
-                    playsInline
-                    className="block size-full object-cover opacity-85"
-                />
-            ) : (
-                // Mídia de banner é URL externa configurável — next/image exigiria
-                // liberar cada origem no build.
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                    src={current.mediaUrl}
-                    alt={current.title || ""}
-                    className="block size-full object-cover opacity-85"
-                />
-            )}
+            {current.mediaUrl &&
+                (current.type === "video" ? (
+                    <video
+                        src={current.mediaUrl}
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        className="block size-full object-cover opacity-85"
+                    />
+                ) : (
+                    // Mídia de banner é URL externa configurável — next/image exigiria
+                    // liberar cada origem no build.
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                        src={current.mediaUrl}
+                        alt={current.title || ""}
+                        className="block size-full object-cover opacity-85"
+                    />
+                ))}
             <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
                 <Heading className="mb-1.5 font-editorial text-[clamp(30px,4vw,48px)] leading-[.9] font-semibold tracking-[-0.025em]">
                     {current.title || fallbackTitle}

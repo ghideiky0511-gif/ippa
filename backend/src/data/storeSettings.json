@@ -1,8 +1,0 @@
-{
-  "defaultMarkup": 3,
-  "features": {
-    "suggestedPrice": true,
-    "hidePriceWithoutLogin": true
-  },
-  "assignmentStrategy": "any"
-}
