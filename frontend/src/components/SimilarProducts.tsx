@@ -1,7 +1,8 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import ProductCard from './ProductCard';
+import { useCart } from './CartProvider';
 import Link from './TenantLink';
 import type { Product } from '@/domain/products/types';
 
@@ -27,7 +28,20 @@ function SimilarProductsSkeleton() {
 // cheia do produto, no quick-view e no carrinho. Setas de navegação em vez
 // de grade, pra não ocupar muito espaço nos dois últimos (drawers
 // estreitos).
-export default function SimilarProducts({ products, loading = false }: { products: Product[]; loading?: boolean }) {
+export default function SimilarProducts({
+  products: suggested,
+  loading = false,
+  // No drawer do carrinho a caixa de "nenhuma sugestão" só ocupa espaço —
+  // ali a fileira some por inteiro em vez de mostrar o aviso.
+  hideWhenEmpty = false,
+}: { products: Product[]; loading?: boolean; hideWhenEmpty?: boolean }) {
+  const { cart } = useCart();
+  // O objetivo da fileira é vender peças adicionais: o que já está no carrinho
+  // (inclusive rascunho sem grade) não deve ser sugerido de novo.
+  const products = useMemo(() => {
+    const inCart = new Set(cart.map((item) => item.id));
+    return suggested.filter((product) => !inCart.has(product.id));
+  }, [suggested, cart]);
   const trackRef = useRef<HTMLDivElement>(null);
   const [atStart, setAtStart] = useState(true);
   const [atEnd, setAtEnd] = useState(false);
@@ -48,6 +62,7 @@ export default function SimilarProducts({ products, loading = false }: { product
   }
 
   if (loading) return <SimilarProductsSkeleton />;
+  if (products.length === 0 && hideWhenEmpty) return null;
   if (products.length === 0) {
     return (
       <section className="mt-8 min-w-0">

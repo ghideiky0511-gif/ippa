@@ -55,10 +55,11 @@ export function computeSimilarProducts(
   anchors: Product[],
   catalog: Product[],
   settings: SimilarProductsSettings,
+  excludeIds: ReadonlySet<string> = new Set(),
 ): Product[] {
   const config: SimilarProductsRuleConfig = settings[context];
   const overrideField = context === "cart" ? "similarProductIdsCart" : "similarProductIdsQuickview";
-  const anchorIds = new Set(anchors.map((anchor) => anchor.id));
+  const anchorIds = new Set([...anchors.map((anchor) => anchor.id), ...excludeIds]);
   const byId = new Map(catalog.map((product) => [product.id, product]));
   const manuallyCurated = anchors.filter((anchor) => (anchor[overrideField]?.length ?? 0) > 0);
   const ruleBased = anchors.filter((anchor) => (anchor[overrideField]?.length ?? 0) === 0);
@@ -88,6 +89,9 @@ export function computeSimilarProducts(
 const RecommendSimilarProductsSchema = z.object({
   context: z.enum(["quickview", "cart"]).optional(),
   productIds: z.array(z.string()).optional(),
+  // Peças que a cliente já selecionou (carrinho) — nunca sugeridas, senão a
+  // fileira perde o objetivo de vender peças adicionais.
+  excludeIds: z.array(z.string()).optional(),
 });
 
 export async function recommendSimilarProducts(
@@ -102,8 +106,9 @@ export async function recommendSimilarProducts(
   const [catalog, settings] = await Promise.all([listCatalogSnapshot(tenant), getSimilarProductsSettings(tenant)]);
   const byId = new Map(catalog.map((product) => [product.id, product]));
   const anchors = productIds.map((id) => byId.get(id)).filter((product): product is Product => Boolean(product));
-  const products = computeSimilarProducts(context, anchors, catalog, settings);
+  const excludeIds = new Set(body.excludeIds ?? []);
+  const products = computeSimilarProducts(context, anchors, catalog, settings, excludeIds);
   return {
-    products: products.length > 0 ? products : randomFallback(catalog, new Set(productIds)),
+    products: products.length > 0 ? products : randomFallback(catalog, new Set([...productIds, ...excludeIds])),
   };
 }

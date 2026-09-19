@@ -2,7 +2,7 @@
 import { publicUi } from '@/lib/ui';
 
 import Link from '@/components/TenantLink';
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
@@ -15,12 +15,9 @@ import CheckoutSteps from '@/components/CheckoutSteps';
 import UnselectedItemsModal from '@/components/UnselectedItemsModal';
 import SimilarProducts from '@/components/SimilarProducts';
 import { useTenant } from '@/components/TenantProvider';
-import { z } from 'zod';
 import type { CartItem } from '@/domain/orders/types';
-import { ProductSchema, type Product } from '@/domain/products/types';
 import { applyStockChangeClamp, buildStockChangeSummary, parseStockChangeDetails } from '@/lib/stockChangeError';
-
-const SimilarProductsResultSchema = z.object({ products: z.array(ProductSchema) });
+import { useCartSimilarProducts } from '@/lib/useCartSimilarProducts';
 
 // Peças que estão no carrinho mas com qty 0 em todo mundo (rascunho nunca
 // resolvido, ou grade zerada — ver decrement em CartRows.tsx, que agora
@@ -43,43 +40,9 @@ export default function CarrinhoPage() {
   const { cart, cartCount, cartSubtotal, cartDiscountLabel, cartDiscountTotal, cartTotal, saveOrderToHistory, freight, changeQty, removeFromCart } = useCart();
   const { showPrices } = useAuthUser();
   const [pendingAction, setPendingAction] = useState<{ names: string[]; run: () => void } | null>(null);
-  const [similar, setSimilar] = useState<Product[]>([]);
   const [isSendingWhatsapp, setSendingWhatsapp] = useState(false);
 
-  // Ids distintos dos produtos já resolvidos no carrinho (rascunho sem
-  // grade/qty 0 não conta) — âncoras da regra de "produtos similares" do
-  // carrinho (ver web/src/lib/similarProducts.ts).
-  const cartProductIds = useMemo(
-    () => Array.from(new Set(cart.filter((i) => i.qty > 0).map((i) => i.id))),
-    [cart]
-  );
-  const cartProductIdsKey = cartProductIds.join(',');
-
-  useEffect(() => {
-    if (cartProductIds.length === 0) {
-      // The similar-products panel must reset immediately when the cart becomes empty.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSimilar([]);
-      return;
-    }
-    let cancelled = false;
-    fetch('/api/similar-products', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ context: 'cart', productIds: cartProductIds }),
-    })
-      .then((r) => (r.ok ? r.json() : { products: [] }))
-      .then((data) => {
-        if (cancelled) return;
-        const parsed = SimilarProductsResultSchema.safeParse(data);
-        setSimilar(parsed.success ? parsed.data.products : []);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- cartProductIdsKey já resume cartProductIds pra evitar refetch por mudança de referência sem mudança de conteúdo
-  }, [cartProductIdsKey]);
+  const similar = useCartSimilarProducts(cart);
 
   async function sendWhatsapp() {
     if (!CONFIG.contact.whatsappNumber) {

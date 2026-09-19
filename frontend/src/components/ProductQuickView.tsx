@@ -75,6 +75,7 @@ function OpenProductQuickView({
   onClosed: () => void;
 }) {
   const { transitioningProductId } = useQuickView();
+  const { cart } = useCart();
   const [similar, setSimilar] = useState<Product[]>([]);
   const [similarProductId, setSimilarProductId] = useState<string | null>(null);
   const [dragStartY, setDragStartY] = useState<number | null>(null);
@@ -109,7 +110,7 @@ function OpenProductQuickView({
   useEffect(() => {
     let cancelled = false;
     fetch('/api/similar-products', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ context: 'quickview', productIds: [productId] }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ context: 'quickview', productIds: [productId], excludeIds: Array.from(new Set(cart.map((item) => item.id))) }),
     })
       .then((r) => (r.ok ? r.json() : { products: [] }))
       .then((data) => {
@@ -123,6 +124,7 @@ function OpenProductQuickView({
         setSimilarProductId(productId);
       });
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- o carrinho é lido só no momento do fetch; SimilarProducts filtra em tempo real depois
   }, [productId]);
 
   return (

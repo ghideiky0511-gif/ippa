@@ -10,6 +10,8 @@ import { useCart } from './CartProvider';
 import { useAuthUser } from './AuthProvider';
 import { applyStockChangeClamp, buildStockChangeSummary, parseStockChangeDetails } from '@/lib/stockChangeError';
 import GroupedCartItems from './GroupedCartItems';
+import SimilarProducts from './SimilarProducts';
+import { useCartSimilarProducts } from '@/lib/useCartSimilarProducts';
 import { useTenant } from './TenantProvider';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader } from '@/components/ui/sheet';
@@ -21,6 +23,7 @@ export default function CartDrawer() {
   const { showPrices } = useAuthUser();
   const { tenant, href } = useTenant();
   const [isSendingWhatsapp, setSendingWhatsapp] = useState(false);
+  const similar = useCartSimilarProducts(cart, isCartOpen);
 
   async function checkoutWhatsapp() {
     if (cartCount === 0) {
@@ -70,8 +73,16 @@ export default function CartDrawer() {
 
   return (
     <Sheet open={isCartOpen} onOpenChange={(open) => !open && closeCart()}>
-      <SheetContent side="right" className="w-[min(100%,26rem)]">
-        <SheetHeader><h2 className="text-lg font-bold">Seu pedido</h2></SheetHeader>
+      {/* 34rem = 3 cards da fileira de sugestões (160px + 12px de gap) mais um
+          pedaço do 4º, que sinaliza a rolagem horizontal; menos que isso corta
+          a fileira no meio, mais que isso estica as linhas de produto. */}
+      <SheetContent side="right" className="w-full md:w-[min(92vw,34rem)]">
+        <SheetHeader>
+          <h2 className="text-lg font-bold">
+            Seu pedido
+            {cartCount > 0 && <span className="font-normal text-muted-foreground"> · {cartCount} peça{cartCount === 1 ? '' : 's'}</span>}
+          </h2>
+        </SheetHeader>
         <div className="flex-1 overflow-y-auto px-5 py-3">
           {cart.length === 0 ? (
             <div className="flex min-h-56 flex-col items-center justify-center text-center">
@@ -80,6 +91,7 @@ export default function CartDrawer() {
               <p className="mt-1 text-sm text-muted-foreground">Escolha peças no catálogo para começar.</p>
             </div>
           ) : <GroupedCartItems cart={cart} />}
+          {cart.length > 0 && <SimilarProducts products={similar} hideWhenEmpty />}
         </div>
         <div className="border-t border-border bg-surface-raised p-5">
           {!showPrices ? <Link href="/login" className="text-sm font-bold text-brand-primary">Entrar para ver o preço</Link> : (
