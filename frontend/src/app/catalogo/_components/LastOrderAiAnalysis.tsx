@@ -6,6 +6,7 @@ import {
   type CatalogLastOrderSummary,
 } from '@/contracts/ai';
 import { apiFetch } from '@/lib/api-client';
+import { useAiAvailability } from '@/components/useAiAvailability';
 import { formatBRL } from '@/lib/format';
 import {
   AiResponseCard,
@@ -117,5 +118,8 @@ function LastOrderAiAnalysisSession({ sessionId }: LastOrderAiAnalysisProps) {
 // A chave interna garante que uma troca de atendimento descarte resultado,
 // erro e request pendente mesmo quando o consumidor reutiliza o componente.
 export default function LastOrderAiAnalysis({ sessionId }: LastOrderAiAnalysisProps) {
+  const available = useAiAvailability('catalog_order_resume');
+  if (!available) return null;
+
   return <LastOrderAiAnalysisSession key={sessionId} sessionId={sessionId} />;
 }

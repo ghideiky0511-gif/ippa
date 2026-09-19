@@ -15,7 +15,7 @@ function toNumber(raw, fallback) {
   return Number.isFinite(n) ? n : fallback;
 }
 
-export default function DiscountEditor({ discount, products, onUpdate }) {
+export default function DiscountEditor({ discount, products, onUpdate, onProductSelected }) {
   const byId = new Map((products || []).map((p) => [p.id, p]));
 
   function handleLabelChange(e) {
@@ -52,7 +52,8 @@ export default function DiscountEditor({ discount, products, onUpdate }) {
     onUpdate((d) => ({ ...d, tiers: d.tiers.filter((_, i) => i !== index) }));
   }
 
-  function addProduct(productId) {
+  function addProduct(productId, product) {
+    if (product) onProductSelected?.(product);
     onUpdate((d) => (d.productIds.includes(productId) ? d : { ...d, productIds: [...d.productIds, productId] }));
   }
 
@@ -156,7 +157,7 @@ export default function DiscountEditor({ discount, products, onUpdate }) {
             })}
             {discount.productIds.length === 0 && <p className={adminUi.previewEmpty}>Nenhuma peça ainda.</p>}
           </div>
-          <ProductPicker products={products} excludeIds={discount.productIds} onAdd={addProduct} />
+          <ProductPicker products={products} excludeIds={discount.productIds} onAdd={addProduct} remoteSearch />
         </>
       )}
     </main>

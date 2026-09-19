@@ -25,6 +25,18 @@ export interface OrderItemRow { order_id: string; item_key: string; snapshot: Ca
 
 const sessionFields = "id, order_book_id, client_name, client_id, seller_id, channel, status, order_id, freight_quote_id, freight_provider_id, freight_kind, freight_label, freight_price, freight_eta_label, delivery_type_id, delivery_offering_id, delivery_provider_id, delivery_fulfillment_mode, delivery_type_name, delivery_provider_name, delivery_destination_cep, payment_token_created_at, notes, created_at, updated_at";
 
+// Sempre estritamente maior que o valor anterior, nunca `now()` sozinho: a
+// guarda monotônica do frontend (isStale em applySessionEvent.ts) compara
+// updatedAt como string, e `now()` é a hora de INÍCIO da transação -- duas
+// transações concorrentes na mesma sessão (ex. dois cliques rápidos de
+// quantidade) podem terminar em ordem trocada e gravar um updated_at
+// "voltando no tempo", o que faz o eco do evento mais antigo sobrescrever a
+// tela com um valor já superado (ver histórico em
+// documents/knowledge/realtime-sockets.md). `clock_timestamp()` é a hora
+// real de EXECUÇÃO deste UPDATE (não da transação), e o +1ms garante avanço
+// mesmo quando duas mutações caem no mesmo milissegundo.
+const sessionUpdatedAt = "GREATEST(clock_timestamp(), updated_at + interval '1 millisecond')";
+
 export async function listOrderSessionRowsBySeller(client: PoolClient, sellerId: string): Promise<OrderSessionRow[]> {
     const result = await client.query<OrderSessionRow>(
         `SELECT ${sessionFields} FROM order_sessions
@@ -50,10 +62,10 @@ export async function listOrderSessionRowsByBook(client: PoolClient, orderBookId
     return result.rows;
 }
 
-export async function findOrderSessionRow(client: PoolClient, id: string): Promise<OrderSessionRow | null> {
+export async function findOrderSessionRow(client: PoolClient, id: string, lock = false): Promise<OrderSessionRow | null> {
     const result = await client.query<OrderSessionRow>(
         `SELECT ${sessionFields} FROM order_sessions
-         WHERE tenant_id = app_tenant_id() AND id = $1`, [id],
+         WHERE tenant_id = app_tenant_id() AND id = $1${lock ? " FOR UPDATE" : ""}`, [id],
     );
     return result.rows[0] ?? null;
 }
@@ -173,7 +185,7 @@ export async function updateOrderSessionRow(client: PoolClient, id: string, valu
            notes = $5,
            payment_token_hash = CASE WHEN $6 THEN NULL ELSE payment_token_hash END,
            payment_token_created_at = CASE WHEN $6 THEN NULL ELSE payment_token_created_at END,
-           updated_at = now()
+           updated_at = ${sessionUpdatedAt}
          WHERE tenant_id = app_tenant_id() AND id = $1
          RETURNING ${sessionFields}`,
         [id, value.clientName, value.clientId ?? null, value.status, value.notes ?? null,
@@ -200,7 +212,7 @@ export async function setOrderSessionFreightRow(client: PoolClient, id: string, 
            delivery_type_id = $8, delivery_offering_id = $9, delivery_provider_id = $10,
            delivery_fulfillment_mode = $11, delivery_type_name = $12, delivery_provider_name = $13,
            delivery_destination_cep = $14,
-           updated_at = now()
+           updated_at = ${sessionUpdatedAt}
          WHERE tenant_id = app_tenant_id() AND id = $1
          RETURNING ${sessionFields}`,
         [id, value.quoteId, value.providerId, value.kind, value.label, value.price, value.etaLabel,
@@ -217,7 +229,7 @@ export async function setOrderSessionPaymentTokenRow(
 ): Promise<OrderSessionRow | null> {
     const result = await client.query<OrderSessionRow>(
         `UPDATE order_sessions SET payment_token_hash = $2, payment_token_created_at = now(),
-           status = 'aguardando_pagamento', updated_at = now()
+           status = 'aguardando_pagamento', updated_at = ${sessionUpdatedAt}
          WHERE tenant_id = app_tenant_id() AND id = $1
          RETURNING ${sessionFields}`,
         [id, tokenHash],
@@ -233,7 +245,7 @@ export async function setOrderSessionPaymentTokenRow(
 export async function closeOpenOrderSessionRowsByOrder(client: PoolClient, orderId: string): Promise<OrderSessionRow[]> {
     const result = await client.query<OrderSessionRow>(
         `UPDATE order_sessions SET status = 'fechado', payment_token_hash = NULL,
-           payment_token_created_at = NULL, updated_at = now()
+           payment_token_created_at = NULL, updated_at = ${sessionUpdatedAt}
          WHERE tenant_id = app_tenant_id() AND order_id = $1
            AND status IN ('aberto', 'aguardando_pagamento')
          RETURNING ${sessionFields}`,
@@ -249,7 +261,7 @@ export async function closeOpenOrderSessionRowsByOrder(client: PoolClient, order
 export async function cancelOpenOrderSessionRowsByOrder(client: PoolClient, orderId: string): Promise<OrderSessionRow[]> {
     const result = await client.query<OrderSessionRow>(
         `UPDATE order_sessions SET status = 'cancelado', payment_token_hash = NULL,
-           payment_token_created_at = NULL, updated_at = now()
+           payment_token_created_at = NULL, updated_at = ${sessionUpdatedAt}
          WHERE tenant_id = app_tenant_id() AND order_id = $1
            AND status IN ('aberto', 'aguardando_pagamento')
          RETURNING ${sessionFields}`,
@@ -265,7 +277,7 @@ export async function cancelOpenOrderSessionRowsByOrder(client: PoolClient, orde
 export async function closeStaleOrderSessionRowsByClient(client: PoolClient, clientId: string): Promise<OrderSessionRow[]> {
     const result = await client.query<OrderSessionRow>(
         `UPDATE order_sessions AS session SET status = 'fechado', payment_token_hash = NULL,
-           payment_token_created_at = NULL, updated_at = now()
+           payment_token_created_at = NULL, updated_at = GREATEST(clock_timestamp(), session.updated_at + interval '1 millisecond')
          FROM orders AS "order"
          WHERE session.tenant_id = app_tenant_id() AND "order".tenant_id = app_tenant_id()
            AND session.client_id = $1 AND session.order_id = "order".id
@@ -287,7 +299,7 @@ export async function closeStaleOrderSessionRowsByClient(client: PoolClient, cli
 export async function cancelOpenOrderSessionRowsByBook(client: PoolClient, orderBookId: string): Promise<OrderSessionRow[]> {
     const result = await client.query<OrderSessionRow>(
         `UPDATE order_sessions SET status = 'cancelado', payment_token_hash = NULL,
-           payment_token_created_at = NULL, updated_at = now()
+           payment_token_created_at = NULL, updated_at = ${sessionUpdatedAt}
          WHERE tenant_id = app_tenant_id() AND order_book_id = $1
            AND status IN ('aberto', 'aguardando_pagamento')
          RETURNING ${sessionFields}`,

@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Save } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { HOME_DEVICES, withDeviceLayout, type HomeDevice } from '@/lib/homeLayout';
@@ -12,13 +12,17 @@ import BuilderMobileList from './BuilderMobileList';
 import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
+import { useAiAvailability } from '@/components/useAiAvailability';
 import { BLOCK_REGISTRY, CANVAS_WIDTH } from '@/workspace/lib/blockRegistry';
 import { saveHomeSections, generateHomeSections, fetchHomeAiHistory } from '@/workspace/lib/homeSectionsClient';
+import { fetchProductPicker } from '@/workspace/lib/catalogClient';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
-/** @param {{ initialSections: import('@/workspace/lib/homeSectionTypes').HomeSection[], products: import('@/workspace/lib/homeSectionTypes').Product[] }} props */
-export default function BuilderApp({ initialSections, products }) {
+/** @param {{ initialSections: import('@/workspace/lib/homeSectionTypes').HomeSection[], products?: import('@/workspace/lib/homeSectionTypes').Product[] }} props */
+export default function BuilderApp({ initialSections, products: initialProducts = [] }) {
+  const homeAiAvailable = useAiAvailability('home_generation');
   const [sections, setSections] = useState(initialSections || []);
+  const [products, setProducts] = useState(initialProducts);
   const [selectedId, setSelectedId] = useState(null);
   const [saveState, setSaveState] = useState('idle'); // idle | saving | saved | error
   const [dirty, setDirty] = useState(false);
@@ -42,6 +46,43 @@ export default function BuilderApp({ initialSections, products }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   const selectedSection = sections.find((s) => s.id === selectedId) || null;
+
+  // O editor precisa conhecer somente os produtos que já estão em blocos.
+  // A busca do picker é sob demanda (ProductPicker), em vez de fazer o SSR
+  // carregar variantes, galerias e classificações de todo o catálogo.
+  const selectedProductIds = [...new Set(
+    sections
+      .filter((section) => section.type === 'product' && section.productId)
+      .map((section) => String(section.productId)),
+  )];
+  const selectedProductIdsKey = selectedProductIds.join(',');
+
+  useEffect(() => {
+    if (!selectedProductIdsKey) return;
+    let cancelled = false;
+    fetchProductPicker({ ids: selectedProductIdsKey.split(',') })
+      .then((items) => {
+        if (cancelled) return;
+        setProducts((current) => {
+          const byId = new Map(current.map((product) => [String(product.id), product]));
+          items.forEach((product) => byId.set(String(product.id), product));
+          return [...byId.values()];
+        });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [selectedProductIdsKey]);
+
+  const rememberProduct = useCallback((product) => {
+    if (!product) return;
+    setProducts((current) => {
+      const index = current.findIndex((item) => String(item.id) === String(product.id));
+      if (index === -1) return [...current, product];
+      const next = [...current];
+      next[index] = product;
+      return next;
+    });
+  }, []);
 
   // Todos com identidade estável (deps vazias, sempre a forma funcional do
   // setState) de propósito: CanvasBlock.js é React.memo, e só fica leve de
@@ -206,7 +247,7 @@ export default function BuilderApp({ initialSections, products }) {
           primaryAction={{ label: saveState === 'saving' ? 'Salvando…' : 'Salvar', onClick: handleSave, disabled: saveState === 'saving', icon: <Save className="size-5" aria-hidden="true" /> }}
         />
 
-        <section className={adminUi.builderAiPanel} aria-label="Gerar estrutura com IA">
+        {homeAiAvailable && <section className={adminUi.builderAiPanel} aria-label="Gerar estrutura com IA">
           <form className={adminUi.builderAiForm} onSubmit={handleGenerateAI}>
             <div className={`${adminUi.field} min-w-0 flex-1`}>
               <label htmlFor="builder-ai-prompt">Monte a página com IA</label>
@@ -256,7 +297,7 @@ export default function BuilderApp({ initialSections, products }) {
               )}
             </div>
           )}
-        </section>
+        </section>}
 
         <div className="hidden border-b border-border bg-surface px-4 py-2.5 sm:px-6 lg:block">
           <div className="mx-auto flex max-w-6xl items-center gap-2">
@@ -305,6 +346,7 @@ export default function BuilderApp({ initialSections, products }) {
             onUpdate={(updater) => updateSection(selectedId, updater)}
             onDeselect={() => setSelectedId(null)}
             onRemove={() => removeSection(selectedId)}
+            onProductSelected={rememberProduct}
           />
         </div>
 
@@ -329,6 +371,7 @@ export default function BuilderApp({ initialSections, products }) {
               onUpdate={(updater) => updateSection(selectedId, updater)}
               onDeselect={() => { setMobileEditorOpen(false); setSelectedId(null); }}
               onRemove={() => removeSection(selectedId)}
+              onProductSelected={rememberProduct}
             />
           </SheetContent>
         </Sheet>

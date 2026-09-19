@@ -1,6 +1,6 @@
 "use client";
 import { publicUi } from "@/lib/ui";
-import ProductImage from "@/components/ProductImage";
+import { OrderItemRow } from "@/components/ui/order-item-row";
 
 import { useEffect, useState } from "react";
 import { ArrowLeft, UserRound } from "lucide-react";
@@ -283,32 +283,18 @@ export default function PedidosPage() {
                             </button>
 
                             {isExpanded && (
-                                <div className={`${publicUi.orderItems} mt-3`}>
+                                <div className={`${publicUi.orderRowList} mt-3`}>
                                     {order.items.map((item) => (
-                                        <div
-                                            className={publicUi.orderItem}
+                                        <OrderItemRow
                                             key={item.key}
-                                        >
-                                            <ProductImage
-                                                src={item.image}
-                                                alt={item.name}
-                                                className={
-                                                    publicUi.orderItemImage
-                                                }
-                                            />
-                                            <div>
-                                                <div className="text-[13px] font-semibold">
-                                                    {item.name}
-                                                </div>
-                                                <div className="text-xs text-brand-muted">
-                                                    {[item.color, item.size]
-                                                        .filter(Boolean)
-                                                        .join(" · ")}{" "}
-                                                    — {item.qty}x{" "}
+                                            item={item}
+                                            mode="view"
+                                            trailing={
+                                                <div className="text-xs whitespace-nowrap text-brand-muted">
                                                     {formatBRL(item.price)}
                                                 </div>
-                                            </div>
-                                        </div>
+                                            }
+                                        />
                                     ))}
                                 </div>
                             )}

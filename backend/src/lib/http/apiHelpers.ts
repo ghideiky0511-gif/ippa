@@ -333,15 +333,27 @@ export async function execute(
     operation: () => Promise<unknown>,
     status = 200,
 ): Promise<NextResponse> {
+    const startedAt = performance.now();
+    const withServerTiming = (response: NextResponse): NextResponse => {
+        response.headers.set(
+            "Server-Timing",
+            `app;dur=${(performance.now() - startedAt).toFixed(1)}`,
+        );
+        return response;
+    };
     try {
         const result = await operation();
         // Algumas operações representam apenas uma ação aceita. NextResponse.json
         // não aceita undefined, portanto o contrato HTTP correto nesse caso é 204.
-        if (result === undefined) return new NextResponse(null, { status: status === 200 ? 204 : status });
-        return NextResponse.json(result, { status });
+        if (result === undefined) {
+            return withServerTiming(
+                new NextResponse(null, { status: status === 200 ? 204 : status }),
+            );
+        }
+        return withServerTiming(NextResponse.json(result, { status }));
     } catch (error) {
         const response = serviceError(error);
-        if (response) return response;
+        if (response) return withServerTiming(response);
         logger.error("tenant-api", "Erro inesperado ao executar operação", errorMeta(error));
         throw error;
     }

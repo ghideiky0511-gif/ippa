@@ -7,6 +7,7 @@ import { insertHomeAiHistoryRow, listHomeAiHistoryRows } from "@/models/homeAiMo
 import { listCatalogSnapshot } from "@/services/catalog";
 import { ForbiddenError, ServiceError, ValidationError } from "@/services/shared/errors";
 import { productClassificationSummary } from "@/lib/catalogFacets";
+import { isOpenAiApiKeyConfigured } from "@/services/ai/config";
 
 // Larguras de referência de cada modo de visualização do editor da home
 // (ver HOME_CANVAS_WIDTH em web/src/lib/homeLayout.ts). O layout do topo da
@@ -37,6 +38,10 @@ interface DraftSection extends DraftLayout {
 
 function requireAdministrator(actor: AuthUser): void {
   if (actor.role !== "administrador" || actor.permissions?.adminAccess !== true) throw new ForbiddenError();
+}
+
+export function isHomeAiConfigured(): boolean {
+  return isOpenAiApiKeyConfigured(process.env.OPENAI_API_KEY);
 }
 
 /** Só os campos numéricos finitos de um layout — undefined se nada sobrar. */
@@ -109,7 +114,7 @@ export async function generateHome(
   requireAdministrator(actor);
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
   if (!prompt) throw new ValidationError("PROMPT_REQUIRED");
-  if (!process.env.OPENAI_API_KEY) throw new ServiceError("OPENAI_NOT_CONFIGURED", 500);
+  if (!isHomeAiConfigured()) throw new ServiceError("OPENAI_NOT_CONFIGURED", 500);
   const products = await listCatalogSnapshot(tenant);
   const byId = new Map(products.map((product) => [product.id, product]));
   const currentSections = Array.isArray(body.currentSections) ? body.currentSections as HomeSection[] : [];

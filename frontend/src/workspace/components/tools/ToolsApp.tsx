@@ -94,7 +94,7 @@ const DEFAULT_SIMILAR_PRODUCTS_SETTINGS = {
   complementaryCategories: {},
 };
 
-export default function ToolsApp({ initialSettings, initialSimilarProductsSettings, products, initialClassifications }) {
+export default function ToolsApp({ initialSettings, initialSimilarProductsSettings, initialClassifications }) {
   const [settings, setSettings] = useState(initialSettings || {});
   const [pendingId, setPendingId] = useState(null);
   const [errorId, setErrorId] = useState(null);
@@ -116,8 +116,10 @@ export default function ToolsApp({ initialSettings, initialSimilarProductsSettin
   const [newComplementaryCategory, setNewComplementaryCategory] = useState('');
 
   const categories = useMemo(
-    () => Array.from(new Set((products || []).map((p) => p.category).filter(Boolean))).sort(),
-    [products]
+    () => Array.from(new Set(
+      classifications.filter((classification) => classification.kind === 'category').map((classification) => classification.name).filter(Boolean),
+    )).sort(),
+    [classifications],
   );
 
   // TODO(configuração): incluir aqui a regra `allowPublicCart` quando a loja

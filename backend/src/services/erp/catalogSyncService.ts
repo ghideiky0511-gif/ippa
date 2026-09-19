@@ -13,7 +13,10 @@ import type {
     ErpStockSnapshot,
 } from "@/erp/types";
 import { createExternalApiCallReporter } from "@/services/erp/externalApiLogService";
-import { findActiveErpIntegrationRow, type ErpIntegrationRow } from "@/models/erpIntegrationsModel";
+import {
+    findActiveErpIntegrationRow,
+    type ErpIntegrationRow,
+} from "@/models/erpIntegrationsModel";
 import {
     acquireCatalogSyncLeaseRow,
     claimDueCatalogSyncItemsRow,
@@ -45,7 +48,10 @@ import {
     upsertErpProductVariantRow,
     type ProductVariantRow,
 } from "@/models/catalogModel";
-import { deactivateErpDiscountRow, upsertErpDiscountRow } from "@/models/settingsModel";
+import {
+    deactivateErpDiscountRow,
+    upsertErpDiscountRow,
+} from "@/models/settingsModel";
 import {
     lockClassificationIntegrationRow,
     replaceVariantClassificationsRow,
@@ -88,32 +94,58 @@ function errorMessage(error: unknown): string {
 
 export function shouldPublishReference(
     reference: ErpReferenceSnapshot,
-    config: Pick<CatalogSyncConfigRow, "classification_type_code" | "classification_codes">,
+    config: Pick<
+        CatalogSyncConfigRow,
+        "classification_type_code" | "classification_codes"
+    >,
 ): boolean {
-    const allowed = new Set(config.classification_codes.map((code) => code.trim()).filter(Boolean));
-    const classificationMatches = config.classification_type_code !== null
-        && reference.classifications.some((classification) =>
-            classification.typeCode === config.classification_type_code
-            && Boolean(classification.code && allowed.has(classification.code)),
+    const allowed = new Set(
+        config.classification_codes.map((code) => code.trim()).filter(Boolean),
+    );
+    const classificationMatches =
+        config.classification_type_code !== null &&
+        reference.classifications.some(
+            (classification) =>
+                classification.typeCode === config.classification_type_code &&
+                Boolean(
+                    classification.code && allowed.has(classification.code),
+                ),
         );
-    return classificationMatches
-        && reference.skus.some((sku) => sku.isActive && !sku.isBlocked);
+    return (
+        classificationMatches &&
+        reference.skus.some((sku) => sku.isActive && !sku.isBlocked)
+    );
 }
 
 export function retryDelaySeconds(attemptsAlreadyMade: number): number | null {
     return RETRY_DELAYS_SECONDS[attemptsAlreadyMade] ?? null;
 }
 
-function chooseMode(requested: CatalogSyncMode, state: CatalogSyncStateRow): CatalogSyncMode {
+function chooseMode(
+    requested: CatalogSyncMode,
+    state: CatalogSyncStateRow,
+): CatalogSyncMode {
     if (requested === "full" || !state.checkpoint_at) return "full";
-    if (!state.last_full_sync_at || Date.now() - state.last_full_sync_at.getTime() >= FULL_SYNC_INTERVAL_MS) return "full";
+    if (
+        !state.last_full_sync_at ||
+        Date.now() - state.last_full_sync_at.getTime() >= FULL_SYNC_INTERVAL_MS
+    )
+        return "full";
     return "incremental";
 }
 
-function stockTotalForSku(stock: ErpStockSnapshot[], skuExternalId: string): number {
-    return Math.max(0, Math.trunc(stock
-        .filter((entry) => entry.skuExternalId === skuExternalId)
-        .reduce((sum, entry) => sum + entry.quantity, 0)));
+function stockTotalForSku(
+    stock: ErpStockSnapshot[],
+    skuExternalId: string,
+): number {
+    return Math.max(
+        0,
+        Math.trunc(
+            stock
+                .filter((entry) => entry.skuExternalId === skuExternalId)
+                .reduce((sum, entry) => sum + entry.quantity, 0),
+        ),
+    );
 }
 
 export async function applyStock(
@@ -175,14 +207,18 @@ export async function processSku(
         metadata: {
             sku: input.sku.sku ?? null,
             referenceCode: input.referenceCode,
-            ...(input.runtime.run.mode === "full" ? { lastFullRunId: input.runtime.run.id } : {}),
+            ...(input.runtime.run.mode === "full"
+                ? { lastFullRunId: input.runtime.run.id }
+                : {}),
         },
     });
     await applyStock(client, {
         runtime: input.runtime,
         variantId: variant.id,
         sku: input.sku,
-        entries: input.stock.filter((entry) => entry.skuExternalId === input.sku.externalId),
+        entries: input.stock.filter(
+            (entry) => entry.skuExternalId === input.sku.externalId,
+        ),
     });
     return variant.id;
 }
@@ -208,25 +244,36 @@ export function matchExistingVariantId(input: {
     let existingId = externalVariantId.get(sku.externalId);
 
     if (!existingId) {
-        const byBootstrapCode = variants.filter((variant) =>
-            variant.bootstrap_external_code === sku.externalId && !usedVariantIds.has(variant.id),
+        const byBootstrapCode = variants.filter(
+            (variant) =>
+                variant.bootstrap_external_code === sku.externalId &&
+                !usedVariantIds.has(variant.id),
         );
         if (byBootstrapCode.length > 1) {
-            throw new Error(`CATALOG_VARIANT_MATCH_AMBIGUOUS:${sku.externalId}`);
+            throw new Error(
+                `CATALOG_VARIANT_MATCH_AMBIGUOUS:${sku.externalId}`,
+            );
         }
         if (byBootstrapCode.length === 1) existingId = byBootstrapCode[0].id;
     }
     if (!existingId && sku.sku) {
-        const bySku = variants.filter((variant) => variant.sku === sku.sku && !usedVariantIds.has(variant.id));
+        const bySku = variants.filter(
+            (variant) =>
+                variant.sku === sku.sku && !usedVariantIds.has(variant.id),
+        );
         if (bySku.length === 1) existingId = bySku[0].id;
     }
     if (!existingId) {
-        const colorSizeMatch = variants.filter((variant) =>
-            variant.color === sku.color && variant.size === sku.size
-            && !usedVariantIds.has(variant.id),
+        const colorSizeMatch = variants.filter(
+            (variant) =>
+                variant.color === sku.color &&
+                variant.size === sku.size &&
+                !usedVariantIds.has(variant.id),
         );
         if (colorSizeMatch.length > 1) {
-            throw new Error(`CATALOG_VARIANT_MATCH_AMBIGUOUS:${sku.externalId}`);
+            throw new Error(
+                `CATALOG_VARIANT_MATCH_AMBIGUOUS:${sku.externalId}`,
+            );
         }
         if (colorSizeMatch.length === 1) existingId = colorSizeMatch[0].id;
     }
@@ -236,61 +283,104 @@ export function matchExistingVariantId(input: {
 export async function processReference(
     runtime: SyncRuntime,
     referenceCode: string,
+    options: {
+        /**
+         * Notifica assim que a referência foi encontrada, antes das leituras de
+         * preço/estoque e das gravações. A sincronização sob demanda usa este
+         * ponto para sobrepor a leitura opcional de composição às demais
+         * chamadas ao ERP, sem alterar o fluxo do sincronismo em lote.
+         */
+        onReferenceFound?: (referenceCode: string) => void;
+    } = {},
 ): Promise<boolean> {
     const reference = await runtime.provider.fetchReference(referenceCode);
     if (!reference) {
-        await withTenantTransaction(runtime.tenant, SYSTEM_ACTOR, async (client) => {
-            const productId = await findInternalIdByExternalId(
-                client, runtime.integration.id, "product", referenceCode,
-            );
-            if (productId) await setProductSyncActiveRow(client, productId, false);
-        });
+        await withTenantTransaction(
+            runtime.tenant,
+            SYSTEM_ACTOR,
+            async (client) => {
+                const productId = await findInternalIdByExternalId(
+                    client,
+                    runtime.integration.id,
+                    "product",
+                    referenceCode,
+                );
+                if (productId)
+                    await setProductSyncActiveRow(client, productId, false);
+            },
+        );
         return false;
     }
+    options.onReferenceFound?.(reference.externalId);
 
     const skuExternalIds = reference.skus.map((sku) => sku.externalId);
     const [prices, stock] = await Promise.all([
         runtime.provider.fetchPrices(skuExternalIds),
         runtime.provider.fetchStock(skuExternalIds),
     ]);
-    const priceBySku = new Map(prices.map((price) => [price.skuExternalId, price]));
+    const priceBySku = new Map(
+        prices.map((price) => [price.skuExternalId, price]),
+    );
     const activePriceSnapshots = reference.skus
         .filter((sku) => sku.isActive && !sku.isBlocked)
         .map((sku) => priceBySku.get(sku.externalId))
-        .filter((price): price is ErpPriceSnapshot => price !== undefined && price.price >= 0);
+        .filter(
+            (price): price is ErpPriceSnapshot =>
+                price !== undefined && price.price >= 0,
+        );
     const activePrices = activePriceSnapshots.map((snapshot) => snapshot.price);
-    const productPrice = activePrices.length > 0 ? Math.min(...activePrices) : 0;
+    const productPrice =
+        activePrices.length > 0 ? Math.min(...activePrices) : 0;
     // Preço promocional do produto: o menor promotionalPrice válido (abaixo
     // do preço normal escolhido) entre os SKUs ativos -- mesmo critério de
     // "pega o mais barato entre os SKUs" já usado para productPrice acima,
     // nunca sobrescreve productPrice, vira desconto separado (ver abaixo).
     const promotionalPrices = activePriceSnapshots
         .map((snapshot) => snapshot.promotionalPrice)
-        .filter((value): value is number => value !== undefined && value > 0 && value < productPrice);
-    const productPromotionalPrice = promotionalPrices.length > 0 ? Math.min(...promotionalPrices) : undefined;
+        .filter(
+            (value): value is number =>
+                value !== undefined && value > 0 && value < productPrice,
+        );
+    const productPromotionalPrice =
+        promotionalPrices.length > 0
+            ? Math.min(...promotionalPrices)
+            : undefined;
     const missingPriceSkuIds = reference.skus
-        .filter((sku) => sku.isActive && !sku.isBlocked && !priceBySku.has(sku.externalId))
+        .filter(
+            (sku) =>
+                sku.isActive &&
+                !sku.isBlocked &&
+                !priceBySku.has(sku.externalId),
+        )
         .map((sku) => sku.externalId);
-    logger.info("catalog-sync", "Preço do produto calculado para persistência", {
-        tenantId: runtime.tenant.id,
-        integrationId: runtime.integration.id,
-        runId: runtime.run.id,
-        referenceCode: reference.externalId,
-        skuCount: reference.skus.length,
-        returnedPriceCount: prices.length,
-        activePrices: activePrices.join(","),
-        missingPriceSkuIds: missingPriceSkuIds.join(","),
-        productPrice,
-        productPromotionalPrice: productPromotionalPrice ?? null,
-    });
-    if (activePrices.length === 0) {
-        logger.warn("catalog-sync", "Produto será salvo com preço zero porque o ERP não forneceu preço válido", {
+    logger.info(
+        "catalog-sync",
+        "Preço do produto calculado para persistência",
+        {
             tenantId: runtime.tenant.id,
             integrationId: runtime.integration.id,
             runId: runtime.run.id,
             referenceCode: reference.externalId,
-            skuExternalIds: skuExternalIds.join(","),
-        });
+            skuCount: reference.skus.length,
+            returnedPriceCount: prices.length,
+            activePrices: activePrices.join(","),
+            missingPriceSkuIds: missingPriceSkuIds.join(","),
+            productPrice,
+            productPromotionalPrice: productPromotionalPrice ?? null,
+        },
+    );
+    if (activePrices.length === 0) {
+        logger.warn(
+            "catalog-sync",
+            "Produto será salvo com preço zero porque o ERP não forneceu preço válido",
+            {
+                tenantId: runtime.tenant.id,
+                integrationId: runtime.integration.id,
+                runId: runtime.run.id,
+                referenceCode: reference.externalId,
+                skuExternalIds: skuExternalIds.join(","),
+            },
+        );
     }
     const publicationActive = shouldPublishReference(reference, runtime.config);
 
@@ -301,108 +391,150 @@ export async function processReference(
     // de preço/promoção que o ERP já confirmou -- deixando uma promoção
     // velha (ex.: 100% de desconto de uma sincronização anterior) presa no
     // produto até a causa da ambiguidade ser resolvida.
-    const productId = await withTenantTransaction(runtime.tenant, SYSTEM_ACTOR, async (client) => {
-        await lockClassificationIntegrationRow(client, runtime.integration.id);
-        const product = await upsertErpProductRow(client, {
-            name: reference.name,
-            description: reference.description,
-            referenceId: reference.externalId,
-            price: productPrice,
-            isActive: publicationActive,
-            sourceOrigin: "erp",
-        });
-        logger.info("catalog-sync", "Preço do produto salvo", {
-            tenantId: runtime.tenant.id,
-            integrationId: runtime.integration.id,
-            runId: runtime.run.id,
-            referenceCode: reference.externalId,
-            productId: product.row.id,
-            requestedPrice: productPrice,
-            persistedPrice: product.row.price,
-            created: product.created,
-        });
+    const productId = await withTenantTransaction(
+        runtime.tenant,
+        SYSTEM_ACTOR,
+        async (client) => {
+            await lockClassificationIntegrationRow(
+                client,
+                runtime.integration.id,
+            );
+            const product = await upsertErpProductRow(client, {
+                name: reference.name,
+                description: reference.description,
+                referenceId: reference.externalId,
+                price: productPrice,
+                isActive: publicationActive,
+                sourceOrigin: "erp",
+            });
+            logger.info("catalog-sync", "Preço do produto salvo", {
+                tenantId: runtime.tenant.id,
+                integrationId: runtime.integration.id,
+                runId: runtime.run.id,
+                referenceCode: reference.externalId,
+                productId: product.row.id,
+                requestedPrice: productPrice,
+                persistedPrice: product.row.price,
+                created: product.created,
+            });
 
-        // Preço promocional do ERP vira desconto "peças específicas" deste
-        // produto (source='erp'), nunca troca productPrice -- ver comentário
-        // em ErpPriceSnapshot.promotionalPrice. Sem promoção válida nesta
-        // sincronização, desativa a promoção anterior em vez de deixá-la
-        // travada num preço que o ERP já não pratica mais.
-        if (productPromotionalPrice !== undefined) {
-            const percent = Math.round((1 - productPromotionalPrice / productPrice) * 100);
-            if (percent > 0) {
-                await upsertErpDiscountRow(client, {
-                    productId: product.row.id,
-                    label: "Promoção ERP",
-                    percent,
-                    active: publicationActive,
-                });
-                logger.info("catalog-sync", "Desconto de promoção do ERP salvo", {
-                    tenantId: runtime.tenant.id,
-                    integrationId: runtime.integration.id,
-                    runId: runtime.run.id,
-                    referenceCode: reference.externalId,
-                    productId: product.row.id,
-                    productPrice,
-                    productPromotionalPrice,
-                    percent,
-                });
+            // Preço promocional do ERP vira desconto "peças específicas" deste
+            // produto (source='erp'), nunca troca productPrice -- ver comentário
+            // em ErpPriceSnapshot.promotionalPrice. Sem promoção válida nesta
+            // sincronização, desativa a promoção anterior em vez de deixá-la
+            // travada num preço que o ERP já não pratica mais.
+            if (productPromotionalPrice !== undefined) {
+                const percent = Math.round(
+                    (1 - productPromotionalPrice / productPrice) * 100,
+                );
+                if (percent > 0) {
+                    await upsertErpDiscountRow(client, {
+                        productId: product.row.id,
+                        label: "Promoção ERP",
+                        percent,
+                        active: publicationActive,
+                    });
+                    logger.info(
+                        "catalog-sync",
+                        "Desconto de promoção do ERP salvo",
+                        {
+                            tenantId: runtime.tenant.id,
+                            integrationId: runtime.integration.id,
+                            runId: runtime.run.id,
+                            referenceCode: reference.externalId,
+                            productId: product.row.id,
+                            productPrice,
+                            productPromotionalPrice,
+                            percent,
+                        },
+                    );
+                } else {
+                    await deactivateErpDiscountRow(client, product.row.id);
+                }
             } else {
                 await deactivateErpDiscountRow(client, product.row.id);
             }
-        } else {
-            await deactivateErpDiscountRow(client, product.row.id);
-        }
 
-        await upsertExternalReferenceRow(client, {
-            integrationId: runtime.integration.id,
-            entityType: "product",
-            internalId: product.row.id,
-            externalId: reference.externalId,
-            metadata: runtime.run.mode === "full" ? { lastFullRunId: runtime.run.id } : {},
-        });
+            await upsertExternalReferenceRow(client, {
+                integrationId: runtime.integration.id,
+                entityType: "product",
+                internalId: product.row.id,
+                externalId: reference.externalId,
+                metadata:
+                    runtime.run.mode === "full"
+                        ? { lastFullRunId: runtime.run.id }
+                        : {},
+            });
 
-        return product.row.id;
-    });
+            return product.row.id;
+        },
+    );
 
     let touchedVariantIds: string[] = [];
-    await withTenantTransaction(runtime.tenant, SYSTEM_ACTOR, async (client) => {
-        const variants = await listProductVariantsForSyncRow(client, productId);
-        const variantReferences = await listExternalReferencesByEntityRow(
-            client, runtime.integration.id, "product_variant",
-        );
-        const externalVariantId = new Map(variantReferences.map((row) => [row.external_id, row.internal_id]));
-        const usedVariantIds = new Set<string>();
-        const seenVariantIds: string[] = [];
-
-        for (const sku of reference.skus) {
-            let existingId: string | undefined;
-            try {
-                existingId = matchExistingVariantId({ sku, variants, externalVariantId, usedVariantIds });
-            } catch (error) {
-                throw new Error(`CATALOG_VARIANT_MATCH_AMBIGUOUS:${reference.externalId}:${sku.externalId}`, { cause: error });
-            }
-            if (existingId) usedVariantIds.add(existingId);
-            const variantId = await processSku(client, {
-                runtime,
+    await withTenantTransaction(
+        runtime.tenant,
+        SYSTEM_ACTOR,
+        async (client) => {
+            const variants = await listProductVariantsForSyncRow(
+                client,
                 productId,
-                sku,
-                price: priceBySku.get(sku.externalId),
-                stock,
-                existingVariantId: existingId,
-                referenceCode: reference.externalId,
-            });
-            usedVariantIds.add(variantId);
-            seenVariantIds.push(variantId);
-            await replaceVariantClassificationsRow(client, {
-                integrationId: runtime.integration.id,
-                variantId,
-                classifications: sku.classifications,
-            });
-        }
-        await deactivateMissingProductVariantsRow(client, productId, seenVariantIds);
-        await setProductSyncActiveRow(client, productId, publicationActive);
-        touchedVariantIds = seenVariantIds;
-    });
+            );
+            const variantReferences = await listExternalReferencesByEntityRow(
+                client,
+                runtime.integration.id,
+                "product_variant",
+            );
+            const externalVariantId = new Map(
+                variantReferences.map((row) => [
+                    row.external_id,
+                    row.internal_id,
+                ]),
+            );
+            const usedVariantIds = new Set<string>();
+            const seenVariantIds: string[] = [];
+
+            for (const sku of reference.skus) {
+                let existingId: string | undefined;
+                try {
+                    existingId = matchExistingVariantId({
+                        sku,
+                        variants,
+                        externalVariantId,
+                        usedVariantIds,
+                    });
+                } catch (error) {
+                    throw new Error(
+                        `CATALOG_VARIANT_MATCH_AMBIGUOUS:${reference.externalId}:${sku.externalId}`,
+                        { cause: error },
+                    );
+                }
+                if (existingId) usedVariantIds.add(existingId);
+                const variantId = await processSku(client, {
+                    runtime,
+                    productId,
+                    sku,
+                    price: priceBySku.get(sku.externalId),
+                    stock,
+                    existingVariantId: existingId,
+                    referenceCode: reference.externalId,
+                });
+                usedVariantIds.add(variantId);
+                seenVariantIds.push(variantId);
+                await replaceVariantClassificationsRow(client, {
+                    integrationId: runtime.integration.id,
+                    variantId,
+                    classifications: sku.classifications,
+                });
+            }
+            await deactivateMissingProductVariantsRow(
+                client,
+                productId,
+                seenVariantIds,
+            );
+            await setProductSyncActiveRow(client, productId, publicationActive);
+            touchedVariantIds = seenVariantIds;
+        },
+    );
     // Depois do commit, não antes -- invalidar antes deixaria um leitor
     // concorrente recachear o valor antigo (ainda visível via MVCC) bem no
     // instante em que o novo valor está sendo gravado.
@@ -425,64 +557,150 @@ export async function processReference(
 export async function syncReferenceOnDemand(
     tenant: Tenant,
     referenceCode: string,
+    options: { deferCompositions?: boolean } = {},
 ): Promise<{ status: "updated" | "not_found"; runId: string }> {
     const { integration, config } = await loadSyncContext(tenant);
-    logger.info("catalog-sync", "Iniciando sincronização pontual de referência", {
-        tenantId: tenant.id,
-        integrationId: integration.id,
-        provider: integration.provider,
-        referenceCode,
-    });
+    logger.info(
+        "catalog-sync",
+        "Iniciando sincronização pontual de referência",
+        {
+            tenantId: tenant.id,
+            integrationId: integration.id,
+            provider: integration.provider,
+            referenceCode,
+        },
+    );
     const provider = createErpProviderForIntegration(
-        tenant, SYSTEM_ACTOR, integration,
-        createExternalApiCallReporter(tenant, SYSTEM_ACTOR, integration.provider),
+        tenant,
+        SYSTEM_ACTOR,
+        integration,
+        createExternalApiCallReporter(
+            tenant,
+            SYSTEM_ACTOR,
+            integration.provider,
+        ),
     );
     const run = await withTenantTransaction(tenant, SYSTEM_ACTOR, (client) =>
         insertCatalogSyncRunRow(client, {
-            integrationId: integration.id, mode: "incremental", windowEnd: new Date(),
+            integrationId: integration.id,
+            mode: "incremental",
+            windowEnd: new Date(),
         }),
     );
     const runtime: SyncRuntime = { tenant, integration, config, provider, run };
+    // A consulta de composição do TOTVS pode ser lenta. Ela só depende da
+    // referência (que processReference já confirmou) e não dos preços, saldos
+    // ou writes seguintes, portanto pode rodar em paralelo com eles. O catch
+    // anexado desde o início evita uma rejeição sem handler caso outra etapa
+    // falhe antes de chegarmos ao await abaixo; o await original ainda preserva
+    // a semântica de falha do sync quando a referência foi processada.
+    let compositionsPromise:
+        | ReturnType<NonNullable<typeof provider.fetchCompositions>>
+        | undefined;
+    let compositionsReferenceCode: string | undefined;
     try {
-        const found = await processReference(runtime, referenceCode);
-        if (found && provider.fetchCompositions) {
-            const compositions = await provider.fetchCompositions(referenceCode);
-            await withTenantTransaction(tenant, SYSTEM_ACTOR, async (client) => {
-                const productId = await findInternalIdByExternalId(
-                    client, integration.id, "product", referenceCode,
-                );
-                if (productId) {
-                    await replaceProductCompositionsRow(client, {
-                        productId, provider: integration.provider, compositions,
+        const found = await processReference(runtime, referenceCode, {
+            onReferenceFound: (foundReferenceCode) => {
+                if (!provider.fetchCompositions) return;
+                compositionsReferenceCode = foundReferenceCode;
+                compositionsPromise =
+                    provider.fetchCompositions(foundReferenceCode);
+                void compositionsPromise.catch(() => undefined);
+            },
+        });
+        const persistCompositions = async (): Promise<void> => {
+            if (!compositionsPromise) return;
+            const compositions = await compositionsPromise;
+            await withTenantTransaction(
+                tenant,
+                SYSTEM_ACTOR,
+                async (client) => {
+                    const productId = await findInternalIdByExternalId(
+                        client,
+                        integration.id,
+                        "product",
+                        compositionsReferenceCode ?? referenceCode,
+                    );
+                    if (productId) {
+                        await replaceProductCompositionsRow(client, {
+                            productId,
+                            provider: integration.provider,
+                            compositions,
+                        });
+                    }
+                },
+            );
+        };
+        if (found && compositionsPromise) {
+            if (options.deferCompositions) {
+                // O Flycast encerra o proxy frontend→backend perto de 30 s.
+                // Composição é um enriquecimento do produto e pode ser gravada
+                // depois que a atualização principal já foi confirmada ao usuário.
+                // O catch também torna essa falha observável sem transformar uma
+                // sincronização válida de dados/preço/estoque em HTTP 500.
+                void persistCompositions()
+                    .then(() => {
+                        logger.info(
+                            "catalog-sync",
+                            "Composição do ERP salva em segundo plano",
+                            {
+                                tenantId: tenant.id,
+                                integrationId: integration.id,
+                                runId: run.id,
+                                referenceCode,
+                            },
+                        );
+                    })
+                    .catch((error) => {
+                        logger.warn(
+                            "catalog-sync",
+                            "Falha ao salvar composição do ERP em segundo plano",
+                            {
+                                tenantId: tenant.id,
+                                integrationId: integration.id,
+                                runId: run.id,
+                                referenceCode,
+                                ...errorMeta(error),
+                            },
+                        );
                     });
-                }
-            });
+            } else {
+                await persistCompositions();
+            }
         }
         await withTenantTransaction(tenant, SYSTEM_ACTOR, (client) =>
             finishCatalogSyncRunRow(client, run.id, true),
         );
         const status = found ? "updated" : "not_found";
-        logger.info("catalog-sync", "Sincronização pontual de referência concluída", {
-            tenantId: tenant.id,
-            integrationId: integration.id,
-            provider: integration.provider,
-            referenceCode,
-            runId: run.id,
-            status,
-        });
+        logger.info(
+            "catalog-sync",
+            "Sincronização pontual de referência concluída",
+            {
+                tenantId: tenant.id,
+                integrationId: integration.id,
+                provider: integration.provider,
+                referenceCode,
+                runId: run.id,
+                status,
+            },
+        );
         return { status, runId: run.id };
     } catch (error) {
         await withTenantTransaction(tenant, SYSTEM_ACTOR, (client) =>
             markCatalogSyncRunFailedRow(client, run.id, errorMessage(error)),
         ).catch(() => undefined);
-        logger.warn("catalog-sync", "Falha na sincronização pontual de referência", {
-            tenantId: tenant.id,
-            integrationId: integration.id,
-            provider: integration.provider,
-            referenceCode,
-            runId: run.id,
-            ...errorMeta(error),
-        });
+        logger.warn(
+            "catalog-sync",
+            "Falha na sincronização pontual de referência",
+            {
+                tenantId: tenant.id,
+                integrationId: integration.id,
+                provider: integration.provider,
+                referenceCode,
+                runId: run.id,
+                ...errorMeta(error),
+            },
+        );
         throw error;
     }
 }
@@ -496,16 +714,26 @@ export async function findReferenceCodeByProductCodeOnDemand(
 ): Promise<string | null> {
     const { integration } = await loadSyncContext(tenant);
     const provider = createErpProviderForIntegration(
-        tenant, SYSTEM_ACTOR, integration,
-        createExternalApiCallReporter(tenant, SYSTEM_ACTOR, integration.provider),
+        tenant,
+        SYSTEM_ACTOR,
+        integration,
+        createExternalApiCallReporter(
+            tenant,
+            SYSTEM_ACTOR,
+            integration.provider,
+        ),
     );
     if (!provider.findReferenceCodeByProductCode) {
-        logger.info("catalog-sync", "Provider não suporta resolver referência por productCode", {
-            tenantId: tenant.id,
-            integrationId: integration.id,
-            provider: integration.provider,
-            productCode,
-        });
+        logger.info(
+            "catalog-sync",
+            "Provider não suporta resolver referência por productCode",
+            {
+                tenantId: tenant.id,
+                integrationId: integration.id,
+                provider: integration.provider,
+                productCode,
+            },
+        );
         return null;
     }
     logger.info("catalog-sync", "Buscando referência ERP por productCode", {
@@ -515,58 +743,91 @@ export async function findReferenceCodeByProductCodeOnDemand(
         productCode,
     });
     try {
-        const referenceCode = await provider.findReferenceCodeByProductCode(productCode);
-        logger.info("catalog-sync", "Busca de referência por productCode concluída", {
-            tenantId: tenant.id,
-            integrationId: integration.id,
-            provider: integration.provider,
-            productCode,
-            referenceCode,
-            found: Boolean(referenceCode),
-        });
+        const referenceCode =
+            await provider.findReferenceCodeByProductCode(productCode);
+        logger.info(
+            "catalog-sync",
+            "Busca de referência por productCode concluída",
+            {
+                tenantId: tenant.id,
+                integrationId: integration.id,
+                provider: integration.provider,
+                productCode,
+                referenceCode,
+                found: Boolean(referenceCode),
+            },
+        );
         return referenceCode;
     } catch (error) {
-        logger.warn("catalog-sync", "Falha ao buscar referência ERP por productCode", {
-            tenantId: tenant.id,
-            integrationId: integration.id,
-            provider: integration.provider,
-            productCode,
-            ...errorMeta(error),
-        });
+        logger.warn(
+            "catalog-sync",
+            "Falha ao buscar referência ERP por productCode",
+            {
+                tenantId: tenant.id,
+                integrationId: integration.id,
+                provider: integration.provider,
+                productCode,
+                ...errorMeta(error),
+            },
+        );
         throw error;
     }
 }
 
 async function finalizeRuns(runtime: SyncRuntime): Promise<void> {
-    const runs = await withTenantTransaction(runtime.tenant, SYSTEM_ACTOR, (client) =>
-        listFinalizableCatalogSyncRunsRow(client, runtime.integration.id),
+    const runs = await withTenantTransaction(
+        runtime.tenant,
+        SYSTEM_ACTOR,
+        (client) =>
+            listFinalizableCatalogSyncRunsRow(client, runtime.integration.id),
     );
     for (const run of runs) {
-        await withTenantTransaction(runtime.tenant, SYSTEM_ACTOR, async (client) => {
-            const succeeded = run.failed_count === 0;
-            if (succeeded && run.mode === "full") {
-                await deactivateProductsNotSeenInFullRunRow(client, runtime.integration.id, run.id);
-                await markFullSyncCompletedRow(client, runtime.integration.id);
-            }
-            await finishCatalogSyncRunRow(client, run.id, succeeded);
-        });
+        await withTenantTransaction(
+            runtime.tenant,
+            SYSTEM_ACTOR,
+            async (client) => {
+                const succeeded = run.failed_count === 0;
+                if (succeeded && run.mode === "full") {
+                    await deactivateProductsNotSeenInFullRunRow(
+                        client,
+                        runtime.integration.id,
+                        run.id,
+                    );
+                    await markFullSyncCompletedRow(
+                        client,
+                        runtime.integration.id,
+                    );
+                }
+                await finishCatalogSyncRunRow(client, run.id, succeeded);
+            },
+        );
     }
 }
 
-async function processDueItems(runtime: SyncRuntime): Promise<{ processed: number; failed: number }> {
-    const items = await withTenantTransaction(runtime.tenant, SYSTEM_ACTOR, (client) =>
-        claimDueCatalogSyncItemsRow(client, runtime.integration.id),
+async function processDueItems(
+    runtime: SyncRuntime,
+): Promise<{ processed: number; failed: number }> {
+    const items = await withTenantTransaction(
+        runtime.tenant,
+        SYSTEM_ACTOR,
+        (client) => claimDueCatalogSyncItemsRow(client, runtime.integration.id),
     );
     let processed = 0;
     let failed = 0;
     for (const item of items) {
         try {
-            const itemRun = item.run_id === runtime.run.id
-                ? runtime.run
-                : await loadRun(runtime.tenant, item.run_id);
-            await processReference({ ...runtime, run: itemRun }, item.reference_code);
-            await withTenantTransaction(runtime.tenant, SYSTEM_ACTOR, (client) =>
-                completeCatalogSyncItemRow(client, item.id),
+            const itemRun =
+                item.run_id === runtime.run.id
+                    ? runtime.run
+                    : await loadRun(runtime.tenant, item.run_id);
+            await processReference(
+                { ...runtime, run: itemRun },
+                item.reference_code,
+            );
+            await withTenantTransaction(
+                runtime.tenant,
+                SYSTEM_ACTOR,
+                (client) => completeCatalogSyncItemRow(client, item.id),
             );
             processed += 1;
         } catch (error) {
@@ -577,10 +838,16 @@ async function processDueItems(runtime: SyncRuntime): Promise<{ processed: numbe
                 referenceCode: item.reference_code,
                 ...errorMeta(error),
             });
-            await withTenantTransaction(runtime.tenant, SYSTEM_ACTOR, (client) =>
-                retryCatalogSyncItemRow(
-                    client, item.id, errorMessage(error), retryDelaySeconds(item.attempts),
-                ),
+            await withTenantTransaction(
+                runtime.tenant,
+                SYSTEM_ACTOR,
+                (client) =>
+                    retryCatalogSyncItemRow(
+                        client,
+                        item.id,
+                        errorMessage(error),
+                        retryDelaySeconds(item.attempts),
+                    ),
             );
         }
     }
@@ -588,7 +855,10 @@ async function processDueItems(runtime: SyncRuntime): Promise<{ processed: numbe
     return { processed, failed };
 }
 
-async function loadRun(tenant: Tenant, runId: string): Promise<CatalogSyncRunRow> {
+async function loadRun(
+    tenant: Tenant,
+    runId: string,
+): Promise<CatalogSyncRunRow> {
     return withTenantTransaction(tenant, SYSTEM_ACTOR, async (client) => {
         const result = await client.query<CatalogSyncRunRow>(
             `SELECT id, integration_id, mode, status, window_start, window_end
@@ -623,28 +893,50 @@ export async function syncTenantCatalog(
     const { integration, config, state } = await loadSyncContext(tenant);
     const mode = chooseMode(requestedMode, state);
     const leaseToken = randomUUID();
-    const acquired = await withTenantTransaction(tenant, SYSTEM_ACTOR, (client) =>
-        acquireCatalogSyncLeaseRow(client, integration.id, leaseToken),
+    const acquired = await withTenantTransaction(
+        tenant,
+        SYSTEM_ACTOR,
+        (client) =>
+            acquireCatalogSyncLeaseRow(client, integration.id, leaseToken),
     );
     if (!acquired) {
-        return { tenantId: tenant.id, integrationId: integration.id, mode, acquired: false, discovered: 0, processed: 0, failed: 0 };
+        return {
+            tenantId: tenant.id,
+            integrationId: integration.id,
+            mode,
+            acquired: false,
+            discovered: 0,
+            processed: 0,
+            failed: 0,
+        };
     }
 
     let run: CatalogSyncRunRow | undefined;
     let discovered = 0;
     try {
-        const openFullRun = mode === "full"
-            ? await withTenantTransaction(tenant, SYSTEM_ACTOR, (client) =>
-                findOpenFullCatalogSyncRunRow(client, integration.id),
-            )
-            : null;
+        const openFullRun =
+            mode === "full"
+                ? await withTenantTransaction(tenant, SYSTEM_ACTOR, (client) =>
+                      findOpenFullCatalogSyncRunRow(client, integration.id),
+                  )
+                : null;
         if (openFullRun && openFullRun.status !== "discovering") {
             const provider = createErpProviderForIntegration(
-                tenant, SYSTEM_ACTOR, integration,
-                createExternalApiCallReporter(tenant, SYSTEM_ACTOR, integration.provider),
+                tenant,
+                SYSTEM_ACTOR,
+                integration,
+                createExternalApiCallReporter(
+                    tenant,
+                    SYSTEM_ACTOR,
+                    integration.provider,
+                ),
             );
             const runtime: SyncRuntime = {
-                tenant, integration, config, provider, run: openFullRun,
+                tenant,
+                integration,
+                config,
+                provider,
+                run: openFullRun,
             };
             const itemResult = await processDueItems(runtime);
             return {
@@ -659,35 +951,75 @@ export async function syncTenantCatalog(
         }
         if (openFullRun?.status === "discovering") {
             await withTenantTransaction(tenant, SYSTEM_ACTOR, (client) =>
-                markCatalogSyncRunFailedRow(client, openFullRun.id, "Descoberta interrompida antes de concluir."),
+                markCatalogSyncRunFailedRow(
+                    client,
+                    openFullRun.id,
+                    "Descoberta interrompida antes de concluir.",
+                ),
             );
         }
         const windowEnd = new Date();
-        const windowStart = mode === "incremental" && state.checkpoint_at
-            ? new Date(state.checkpoint_at.getTime() - config.overlap_seconds * 1000)
-            : undefined;
+        const windowStart =
+            mode === "incremental" && state.checkpoint_at
+                ? new Date(
+                      state.checkpoint_at.getTime() -
+                          config.overlap_seconds * 1000,
+                  )
+                : undefined;
         run = await withTenantTransaction(tenant, SYSTEM_ACTOR, (client) =>
             insertCatalogSyncRunRow(client, {
-                integrationId: integration.id, mode, windowStart, windowEnd,
+                integrationId: integration.id,
+                mode,
+                windowStart,
+                windowEnd,
             }),
         );
         const provider = createErpProviderForIntegration(
-            tenant, SYSTEM_ACTOR, integration,
-            createExternalApiCallReporter(tenant, SYSTEM_ACTOR, integration.provider),
+            tenant,
+            SYSTEM_ACTOR,
+            integration,
+            createExternalApiCallReporter(
+                tenant,
+                SYSTEM_ACTOR,
+                integration.provider,
+            ),
         );
-        const runtime: SyncRuntime = { tenant, integration, config, provider, run };
+        const runtime: SyncRuntime = {
+            tenant,
+            integration,
+            config,
+            provider,
+            run,
+        };
 
         const discoveryWindow: ErpProductChangeWindow = {
-            ...(mode === "incremental" ? { startDate: windowStart, endDate: windowEnd } : {}),
-            ...(config.classification_type_code !== null && config.classification_codes.length > 0
-                ? { classificationTypeCode: config.classification_type_code, classificationCodes: config.classification_codes }
+            ...(mode === "incremental"
+                ? { startDate: windowStart, endDate: windowEnd }
+                : {}),
+            ...(config.classification_type_code !== null &&
+            config.classification_codes.length > 0
+                ? {
+                      classificationTypeCode: config.classification_type_code,
+                      classificationCodes: config.classification_codes,
+                  }
                 : {}),
         };
         let cursor: string | undefined;
         do {
-            const page = await provider.discoverProductChanges(discoveryWindow, cursor);
-            discovered += await withTenantTransaction(tenant, SYSTEM_ACTOR, (client) =>
-                stageCatalogSyncItemsRow(client, run!.id, integration.id, page.referenceCodes),
+            const page = await provider.discoverProductChanges(
+                discoveryWindow,
+                cursor,
+            );
+            discovered += await withTenantTransaction(
+                tenant,
+                SYSTEM_ACTOR,
+                (client) =>
+                    stageCatalogSyncItemsRow(
+                        client,
+                        run!.id,
+                        integration.id,
+                        page.referenceCodes,
+                    ),
             );
             cursor = page.nextCursor;
         } while (cursor);
@@ -714,7 +1046,11 @@ export async function syncTenantCatalog(
     } catch (error) {
         if (run) {
             await withTenantTransaction(tenant, SYSTEM_ACTOR, (client) =>
-                markCatalogSyncRunFailedRow(client, run!.id, errorMessage(error)),
+                markCatalogSyncRunFailedRow(
+                    client,
+                    run!.id,
+                    errorMessage(error),
+                ),
             ).catch(() => undefined);
         }
         throw error;
@@ -729,10 +1065,15 @@ interface DispatchTenantRow extends Tenant {
     next_incremental_at: Date | null;
 }
 
-export async function dispatchCatalogSync(input: {
-    tenantId?: string;
-    mode?: CatalogSyncMode;
-} = {}): Promise<{ results: CatalogSyncResult[]; errors: Array<{ tenantId: string; error: string }> }> {
+export async function dispatchCatalogSync(
+    input: {
+        tenantId?: string;
+        mode?: CatalogSyncMode;
+    } = {},
+): Promise<{
+    results: CatalogSyncResult[];
+    errors: Array<{ tenantId: string; error: string }>;
+}> {
     const tenants = await withControlTransaction(async (client) => {
         const result = await client.query<DispatchTenantRow>(
             `SELECT tenant.id, tenant.slug, tenant.name, state.next_incremental_at

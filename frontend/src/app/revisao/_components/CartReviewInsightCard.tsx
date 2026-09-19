@@ -6,6 +6,7 @@ import {
   type CartReviewInsightSummary,
 } from '@/contracts/ai';
 import { apiFetch } from '@/lib/api-client';
+import { useAiAvailability } from '@/components/useAiAvailability';
 import type { CartItem } from '@/domain/orders/types';
 import {
   AiResponseCard,
@@ -119,6 +120,9 @@ function CartReviewInsightCardSession({ items }: CartReviewInsightCardProps) {
 // resultado, erro e request pendente — não há um id de sessão estável aqui
 // como no card de última compra.
 export default function CartReviewInsightCard({ items }: CartReviewInsightCardProps) {
+  const available = useAiAvailability('cart_review_insight');
+  if (!available) return null;
+
   const key = items.map((item) => `${item.key}:${item.qty}`).join('|');
   return <CartReviewInsightCardSession key={key} items={items} />;
 }

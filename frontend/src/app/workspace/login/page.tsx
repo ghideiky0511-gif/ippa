@@ -22,7 +22,10 @@ export default function WorkspaceLoginPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await apiFetch('/api/workspace/auth/login', {
+      // Passa pelo proxy local, que grava tanto o token HttpOnly quanto o
+      // tenant da sessão. O proxy de rota consegue então filtrar o acesso
+      // sem fazer uma chamada remota a cada navegação.
+      const res = await apiFetch('/api/workspace-session/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),

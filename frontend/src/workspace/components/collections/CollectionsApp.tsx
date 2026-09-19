@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Save } from 'lucide-react';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -9,18 +9,41 @@ import CollectionsList from './CollectionsList';
 import CollectionEditor from './CollectionEditor';
 import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import { saveHighlights } from '@/workspace/lib/highlightsClient';
+import { fetchProductPicker } from '@/workspace/lib/catalogClient';
 
 function newId() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-export default function CollectionsApp({ initialHighlights, products }) {
+export default function CollectionsApp({ initialHighlights, products: initialProducts = [] }) {
   const [highlights, setHighlights] = useState(initialHighlights || []);
+  const [products, setProducts] = useState(initialProducts);
   const [selectedId, setSelectedId] = useState(initialHighlights?.[0]?.id || null);
   const [saveState, setSaveState] = useState('idle');
   const [dirty, setDirty] = useState(false);
 
   const selected = highlights.find((h) => h.id === selectedId) || null;
+  const productIdsKey = [...new Set(highlights.flatMap((highlight) => highlight.productIds || []).map(String))].join(',');
+
+  useEffect(() => {
+    if (!productIdsKey) return;
+    let cancelled = false;
+    fetchProductPicker({ ids: productIdsKey.split(',') })
+      .then((items) => {
+        if (!cancelled) setProducts((current) => {
+          const byId = new Map(current.map((product) => [String(product.id), product]));
+          items.forEach((product) => byId.set(String(product.id), product));
+          return [...byId.values()];
+        });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [productIdsKey]);
+
+  const rememberProduct = useCallback((product) => {
+    if (!product) return;
+    setProducts((current) => current.some((item) => String(item.id) === String(product.id)) ? current : [...current, product]);
+  }, []);
 
   // Coleção é só uma lista 1D reordenável (não um canvas livre como a
   // home) — dnd-kit sortable puro serve bem aqui, sem precisar do
@@ -92,6 +115,7 @@ export default function CollectionsApp({ initialHighlights, products }) {
               <CollectionEditor
                 collection={selected}
                 products={products}
+                onProductSelected={rememberProduct}
                 onUpdate={(updater) => updateCollection(selected.id, updater)}
               />
             </SortableContext>

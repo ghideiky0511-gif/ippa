@@ -1,12 +1,13 @@
 // @ts-nocheck
 'use client';
 import { adminUi } from '@/workspace/lib/ui';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Save } from 'lucide-react';
 import DiscountsList from './DiscountsList';
 import DiscountEditor from './DiscountEditor';
 import { HubHeader } from '@/workspace/components/shared/HubHeader';
 import { saveDiscounts } from '@/workspace/lib/discountsClient';
+import { fetchProductPicker } from '@/workspace/lib/catalogClient';
 
 function newId() {
   return Math.random().toString(36).slice(2, 10);
@@ -29,13 +30,35 @@ function newDiscount(label) {
 // clicar "Salvar", que manda o array inteiro pro /api/discounts. Só
 // cadastro por enquanto — aplicar isso no cálculo do carrinho/checkout do
 // app `web` é um próximo passo (ver PLANO-PROXIMOS-PASSOS.md).
-export default function DiscountsApp({ initialDiscounts, products }) {
+export default function DiscountsApp({ initialDiscounts, products: initialProducts = [] }) {
   const [discounts, setDiscounts] = useState(initialDiscounts || []);
+  const [products, setProducts] = useState(initialProducts);
   const [selectedId, setSelectedId] = useState(initialDiscounts?.[0]?.id || null);
   const [saveState, setSaveState] = useState('idle');
   const [dirty, setDirty] = useState(false);
 
   const selected = discounts.find((d) => d.id === selectedId) || null;
+  const productIdsKey = [...new Set(discounts.flatMap((discount) => discount.productIds || []).map(String))].join(',');
+
+  useEffect(() => {
+    if (!productIdsKey) return;
+    let cancelled = false;
+    fetchProductPicker({ ids: productIdsKey.split(',') })
+      .then((items) => {
+        if (!cancelled) setProducts((current) => {
+          const byId = new Map(current.map((product) => [String(product.id), product]));
+          items.forEach((product) => byId.set(String(product.id), product));
+          return [...byId.values()];
+        });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [productIdsKey]);
+
+  const rememberProduct = useCallback((product) => {
+    if (!product) return;
+    setProducts((current) => current.some((item) => String(item.id) === String(product.id)) ? current : [...current, product]);
+  }, []);
 
   function addDiscount(label) {
     const discount = newDiscount(label);
@@ -91,6 +114,7 @@ export default function DiscountsApp({ initialDiscounts, products }) {
           <DiscountEditor
             discount={selected}
             products={products}
+            onProductSelected={rememberProduct}
             onUpdate={(updater) => updateDiscount(selected.id, updater)}
           />
         ) : (

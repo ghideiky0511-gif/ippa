@@ -8,7 +8,7 @@ import { Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CONFIG, COLOR_MAP } from '@/lib/config';
 import { formatBRL, priceWithPercentOff } from '@/lib/format';
-import { ADDABLE_AVAILABILITY, buildVariantMatrix } from '@/lib/variants';
+import { addableCellsForColor, buildVariantMatrix } from '@/lib/variants';
 import { resolveImageForColor } from '@/lib/images';
 import { useCart } from './CartProvider';
 import { useQuickView } from './QuickViewProvider';
@@ -100,7 +100,7 @@ function ColorSelect({
             <li key={c}>
               <button
                 type="button"
-                className={'color-select-option' + (c === value ? ' selected' : '')}
+                className={publicUi.colorSelectOption + (c === value ? ' selected' : '')}
                 onClick={() => {
                   onChange(c);
                   setOpen(false);
@@ -180,12 +180,7 @@ function ColorLine({
   const applied = cartDiscountByProduct[group.productId];
   const discountedTotal = applied ? priceWithPercentOff(totalValue, applied.percent) : totalValue;
 
-  const colorRow = matrix?.rows.find((r) => r.color === colorValue);
-  const gradeCells = matrix
-    ? matrix.sizes
-        .map((size, i) => ({ size, cell: colorRow?.cells[i] || null }))
-        .filter((c) => c.cell && ADDABLE_AVAILABILITY.has(c.cell.availability))
-    : [];
+  const gradeCells = matrix && colorValue ? addableCellsForColor(matrix, colorValue) : [];
 
   function qtyForSize(size: string): number {
     return group.items.find((i) => i.color === colorValue && i.size === size)?.qty || 0;
@@ -256,7 +251,7 @@ function ColorLine({
           const qty = qtyForSize(size);
           return (
             <div key={size} className={publicUi.cartLineCell}>
-              <span className="contents">{size}</span>
+              <span className="size">{size}</span>
               <div className="contents">
                 <button type="button" disabled={qty === 0} onClick={() => decrement(size)}>−</button>
                 <span>{qty}</span>
@@ -336,7 +331,7 @@ function CartProductBlock({
   return (
     <div className={publicUi.cartProduct}>
       <div className={publicUi.cartProductHeader}>
-        <div className="contents">{sample.name}</div>
+        <div className="name">{sample.name}</div>
         {product?.referenceId && <div className="contents">{product.referenceId}</div>}
       </div>
       <div className={publicUi.cartProductLines}>

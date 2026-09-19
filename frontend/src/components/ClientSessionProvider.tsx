@@ -5,8 +5,16 @@ import { OrderSessionSchema, type CartItem, type OrderSession } from '@/domain/o
 import { pedidoRealtimeEventMessage, usePedidoRealtime, type PedidoParticipant, type PedidoPresence } from '@/lib/realtime/usePedidoRealtime';
 import { apiFetch } from '@/lib/api-client';
 import { useUpdatesRealtime } from '@/lib/realtime/useUpdatesRealtime';
-import { applySessionEventToActive } from '@/lib/realtime/applySessionEvent';
-import { diffCartItems } from '@/lib/cartItemsDelta';
+import { applySessionEventToActive, newerSession } from '@/lib/realtime/applySessionEvent';
+import {
+  clearPending,
+  createPendingItems,
+  overlayPending,
+  recordLocalChange,
+  settleBatch,
+  takeBatch,
+  type PendingItems,
+} from '@/lib/realtime/pendingItems';
 
 // Contrato mínimo que CartProvider.tsx precisa pra escrever num pedido
 // compartilhado — mesmo formato que TalaoProvider.tsx expõe (ver
@@ -39,14 +47,34 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
   const [participants, setParticipants] = useState<PedidoParticipant[]>([]);
   const pendingAssignmentRef = useRef(false);
 
+  // Alterações de itens já pedidas pela cliente mas ainda não confirmadas
+  // pelo servidor — ver pendingItems.ts. `activeSession.items` continua
+  // sendo só o estado CONFIRMADO (o que os eventos/refetch escrevem); a tela
+  // mostra confirmado + este overlay. Guarda o id da sessão a que pertence
+  // pra não vazar pendências de uma sessão anterior (ex.: checkout fechou a
+  // sessão e uma nova foi criada) pra a próxima.
+  const pendingRef = useRef<{ sessionId: string | null; items: PendingItems }>({ sessionId: null, items: createPendingItems() });
+  const sendingRef = useRef(false);
+  const [pendingVersion, setPendingVersion] = useState(0);
+
+  function pendingItemsFor(sessionId: string): PendingItems {
+    if (pendingRef.current.sessionId !== sessionId) pendingRef.current = { sessionId, items: createPendingItems() };
+    return pendingRef.current.items;
+  }
+
+  // Guarda monotônica (newerSession, applySessionEvent.ts): um refetch que
+  // responde depois de um evento mais novo já aplicado não pode sobrescrever
+  // a tela com um snapshot velho — resposta a incoming null (sessão some do
+  // servidor, ex. finalizada) continua um replace direto, é mudança de
+  // estado de negócio, não corrida.
   function refetch(): Promise<OrderSession | undefined> {
     return apiFetch('/api/sessions/mine', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((json) => {
         const parsed = OrderSessionSchema.nullable().safeParse(json);
-        const session = parsed.success ? parsed.data : null;
-        setActiveSession(session);
-        return session ?? undefined;
+        const incoming = parsed.success ? parsed.data : null;
+        setActiveSession((prev) => (incoming ? newerSession(prev ?? undefined, incoming) : null));
+        return incoming ?? undefined;
       })
       .catch(() => undefined);
   }
@@ -70,10 +98,7 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
     // Guarda monotônica (mesmo updatedAt usado pelo canal /atualizacoes,
     // ver applySessionEvent.ts): sem isso, o snapshot deste canal e o do
     // /atualizacoes podiam se sobrescrever fora de ordem.
-    onSession: (session) => setActiveSession((prev) => {
-      if (prev && prev.id === session.id && session.updatedAt < prev.updatedAt) return prev;
-      return session;
-    }),
+    onSession: (session) => setActiveSession((prev) => newerSession(prev ?? undefined, session)),
     onPresence: setPresence,
     onParticipants: setParticipants,
     onEvent: (event) => toast.info(pedidoRealtimeEventMessage(event)),
@@ -98,23 +123,59 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
     },
   );
 
+  // Fila serial por sessão: só um `atualizar_sessao` em voo por vez. Cliques
+  // feitos durante a ida-e-volta se acumulam no Map de pendências (ver
+  // pendingItems.ts) em vez de disparar uma mutação concorrente pra cada
+  // clique — sem isso, o servidor recebia vários `atualizar_sessao` ao
+  // mesmo tempo pra mesma sessão, cada um calculando o diff sobre um
+  // instantâneo diferente.
+  async function flushPending(sessionId: string) {
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    try {
+      while (pendingRef.current.sessionId === sessionId) {
+        const batch = takeBatch(pendingRef.current.items);
+        if (!batch) break;
+        try {
+          await realtime.updateSession({ itemsDelta: batch.delta });
+          settleBatch(pendingRef.current.items, batch.sent);
+          setPendingVersion((v) => v + 1);
+        } catch (error) {
+          // Sem saber quanto deste lote (e do que se acumulou depois dele)
+          // chegou a ser aplicado no servidor, o único jeito seguro de
+          // convergir é descartar tudo que é local e ressincronizar.
+          clearPending(pendingRef.current.items);
+          setPendingVersion((v) => v + 1);
+          // Só diz que fechou depois de confirmar isso no servidor. Uma
+          // queda ou reconexão do WebSocket não altera o status do pedido.
+          const current = await refetch();
+          toast.error(
+            current?.status === 'fechado' || current?.status === 'cancelado'
+              ? 'Este pedido já foi fechado. Atualizando...'
+              : error instanceof Error ? error.message : 'Não foi possível atualizar o pedido. Tente novamente.',
+          );
+          break;
+        }
+      }
+    } finally {
+      sendingRef.current = false;
+      // A sessão ativa pode ter trocado enquanto este loop esperava a rede
+      // (ex. checkout fechou e abriu outra) — se sobrou pendência pra uma
+      // sessão diferente da que este loop acabou de tratar, ninguém mais ia
+      // retomar o flush dela sozinho.
+      const remainingId = pendingRef.current.sessionId;
+      if (remainingId && remainingId !== sessionId && pendingRef.current.items.size > 0) void flushPending(remainingId);
+    }
+  }
+
   async function updateActiveItems(items: CartItem[]) {
     if (!activeSession) return;
     const id = activeSession.id;
-    const itemsDelta = diffCartItems(activeSession.items, items);
-    setActiveSession((prev) => (prev && prev.id === id ? { ...prev, items } : prev));
-    try {
-      await realtime.updateSession({ itemsDelta });
-    } catch (error) {
-      // Só diz que fechou depois de confirmar isso no servidor. Uma queda ou
-      // reconexão do WebSocket não altera o status do pedido.
-      const current = await refetch();
-      toast.error(
-        current?.status === 'fechado' || current?.status === 'cancelado'
-          ? 'Este pedido já foi fechado. Atualizando...'
-          : error instanceof Error ? error.message : 'Não foi possível atualizar o pedido. Tente novamente.',
-      );
-    }
+    const pending = pendingItemsFor(id);
+    const displayed = overlayPending(activeSession.items, pending);
+    recordLocalChange(pending, displayed, items);
+    setPendingVersion((v) => v + 1);
+    void flushPending(id);
   }
 
   async function createActiveSession(items: CartItem[]): Promise<OrderSession | null> {
@@ -149,12 +210,23 @@ export function ClientSessionProvider({ children }: { children: ReactNode }) {
     setActiveSession((current) => current?.id === sessionId ? null : current);
     setPresence([]);
     setParticipants([]);
+    if (pendingRef.current.sessionId === sessionId) {
+      pendingRef.current = { sessionId: null, items: createPendingItems() };
+      setPendingVersion((v) => v + 1);
+    }
   }
 
-  const value = useMemo<ClientSessionContextValue>(
-    () => ({ activeSession, presence, participants, updateActiveItems, createActiveSession, adoptSession, releaseActiveSession }),
-    [activeSession, participants, presence]
-  );
+  const value = useMemo<ClientSessionContextValue>(() => {
+    // O que a tela vê: confirmado + overlay pendente (ver pendingItems.ts) —
+    // `activeSession` em si continua sendo só o estado confirmado.
+    // `pendingVersion` na lista de dependências abaixo é o que faz este
+    // overlay ser recalculado quando só o Map muda (mutação em ref não
+    // dispara re-render sozinha).
+    const displayedSession = activeSession
+      ? { ...activeSession, items: overlayPending(activeSession.items, pendingItemsFor(activeSession.id)) }
+      : null;
+    return { activeSession: displayedSession, presence, participants, updateActiveItems, createActiveSession, adoptSession, releaseActiveSession };
+  }, [activeSession, participants, presence, pendingVersion]);
 
   return <ClientSessionContext.Provider value={value}>{children}</ClientSessionContext.Provider>;
 }

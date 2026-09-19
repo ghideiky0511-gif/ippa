@@ -7,6 +7,8 @@ import { documentDigits } from '@/lib/document';
 import type { CartItem, Order, OrderChannel, OrderSession } from '@/domain/orders/types';
 import type { Product } from '@/domain/products/types';
 import { adminUi } from '@/workspace/lib/ui';
+import { publicUi } from '@/lib/ui';
+import { OrderItemRow } from '@/components/ui/order-item-row';
 import {
   createOrderSession,
   finalizeOrderSession,
@@ -368,26 +370,28 @@ export function OrderTalaoModal({
                 {items.map((item) => {
                   const atCap = item.stockQty !== undefined && item.qty >= item.stockQty;
                   return (
-                    <div key={item.key} className="flex flex-wrap items-center gap-3 rounded-lg border border-[#eee] p-3 text-sm">
-                      <div className="min-w-40 flex-1">
-                        <strong>{item.name}</strong>
-                        <div className="text-xs text-brand-muted">{[item.color, item.size].filter(Boolean).join(' · ')}</div>
-                        {item.stockQty !== undefined && (
+                    <OrderItemRow
+                      key={item.key}
+                      item={item}
+                      mode={session.status === 'fechado' ? 'view' : 'edit'}
+                      className={publicUi.orderRowBordered}
+                      onChangeQty={(key, qty) => changeQuantity(key, qty - item.qty)}
+                      minQty={0}
+                      maxQty={item.stockQty}
+                      meta={
+                        item.stockQty !== undefined && (
                           <div className={`text-xs ${atCap ? 'text-[#b00020]' : 'text-brand-muted'}`}>
                             {item.stockQty === 0 ? 'Sem estoque disponível' : `${Math.max(0, item.stockQty - item.qty)} disponível para pronta entrega`}
                           </div>
-                        )}
-                      </div>
-                      <span>{formatCurrency(item.price)}</span>
-                      {session.status === 'fechado' ? <span>× {item.qty}</span> : (
-                        <div className="flex items-center gap-1">
-                          <button type="button" className={adminUi.button} onClick={() => changeQuantity(item.key, -1)}>−</button>
-                          <span className="min-w-5 text-center">{item.qty}</span>
-                          <button type="button" className={adminUi.button} onClick={() => changeQuantity(item.key, 1)} disabled={atCap}>+</button>
+                        )
+                      }
+                      trailing={
+                        <div className="flex items-center gap-3">
+                          <span>{formatCurrency(item.price)}</span>
+                          <strong>{formatCurrency(item.price * item.qty)}</strong>
                         </div>
-                      )}
-                      <strong>{formatCurrency(item.price * item.qty)}</strong>
-                    </div>
+                      }
+                    />
                   );
                 })}
               </div>

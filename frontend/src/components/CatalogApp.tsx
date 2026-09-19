@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import Filters from "./Filters";
 import ProductCard from "./ProductCard";
 import ProductCardSkeleton from "./ProductCardSkeleton";
-import { RowAutoplayGrid } from "./RowAutoplayGrid";
+import { ProductGrid } from "@/components/ui/product-grid";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { enableImageCache } from "@/lib/image-cache";
@@ -397,12 +397,12 @@ export default function CatalogApp({
     function renderBottomGrid(prioritizeFirstRow: boolean) {
         return (
             <>
-                <RowAutoplayGrid className={publicUi.catalogGrid} gridRef={bottomGridContainerRef}>
+                <ProductGrid gridRef={bottomGridContainerRef}>
                     {bottomGrid.items.map((p, i) => (
                         <ProductCard key={p.id} product={p} index={i} priority={prioritizeFirstRow && i < FIRST_ROW_PRIORITY_COUNT} />
                     ))}
                     {loadingMore && Array.from({ length: 4 }).map((_, i) => <ProductCardSkeleton key={`more-${i}`} />)}
-                </RowAutoplayGrid>
+                </ProductGrid>
                 {bottomGrid.pagination.page < bottomGrid.pagination.totalPages && <div ref={sentinelRef} aria-hidden="true" />}
             </>
         );
@@ -469,11 +469,11 @@ export default function CatalogApp({
                                         className={publicUi.catalogSection}
                                     >
                                         <h2 className={publicUi.catalogSectionTitle}>{s.label}</h2>
-                                        <RowAutoplayGrid className={publicUi.catalogGrid}>
+                                        <ProductGrid>
                                             {s.items.map((p, i) => (
                                                 <ProductCard key={p.id} product={p} index={i} priority={sectionIndex === 0 && i < FIRST_ROW_PRIORITY_COUNT} />
                                             ))}
-                                        </RowAutoplayGrid>
+                                        </ProductGrid>
                                     </section>
                                 ))}
                                 {bottomGrid.pagination.total > 0 && (

@@ -1,4 +1,5 @@
 export { createAiToolRunner, hashAiToolInput, runAiTool } from "./aiToolEngine";
+export { getAiAvailability } from "./availabilityService";
 export {
     activateManagedAiPromptVersion,
     createManagedAiPromptVersion,

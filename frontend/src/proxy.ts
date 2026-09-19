@@ -28,21 +28,24 @@ function internalBackendHeaders(request: NextRequest, init?: HeadersInit): Heade
   return outgoingHeaders;
 }
 
-async function validateWorkspaceAccess(request: NextRequest, tenantSlug: string): Promise<boolean> {
-  const token = request.cookies.get('ippa_workspace_session')?.value;
-  if (!token) return false;
-
-  try {
-    const response = await fetch(`${BACKEND_URL}/api/${tenantSlug}/auth/me`, {
-      headers: internalBackendHeaders(request, { Authorization: `Bearer ${token}` }),
-      cache: 'no-store',
-    });
-    if (!response.ok) return false;
-    const payload = await response.json() as { user?: AuthUser | null };
-    return Boolean(payload.user && payload.user.role !== 'cliente');
-  } catch {
-    return false;
-  }
+/**
+ * O Proxy roda antes de cada request de rota, inclusive RSC e prefetch.
+ *
+ * A sessão do workspace é opaca e sua validação definitiva continua no
+ * backend (cada endpoint protegido consulta a sessão ativa). Portanto, aqui
+ * fazemos somente o filtro otimista: cookie presente e pertencente ao tenant
+ * atual. Consultar `/auth/me` daqui transformava toda troca de tela em mais
+ * uma ida ao backend antes de a página sequer começar a renderizar.
+ */
+function hasWorkspaceSessionForTenant(request: NextRequest, tenantSlug: string): boolean {
+  const sessionTenant = request.cookies.get('ippa_workspace_tenant')?.value;
+  return Boolean(
+    request.cookies.get('ippa_workspace_session')?.value
+    // Sessões anteriores à cookie de tenant continuam funcionais até a
+    // próxima autenticação. As novas, criadas pelo proxy local de login,
+    // sempre precisam coincidir com a URL.
+    && (!sessionTenant || sessionTenant === tenantSlug),
+  );
 }
 
 async function validateControl(request: NextRequest): Promise<boolean> {
@@ -144,7 +147,7 @@ export async function proxy(request: NextRequest) {
     // a sessão de cliente) antes de renderizar cada tela interna.
     requestHeaders.set('x-ippa-workspace', '1');
     if (tenantPath.startsWith('/workspace/login')) return NextResponse.rewrite(new URL('/workspace/login', request.url), { request: { headers: requestHeaders } });
-    const authenticated = await validateWorkspaceAccess(request, slugFromPath);
+    const authenticated = hasWorkspaceSessionForTenant(request, slugFromPath);
     return authenticated
       ? NextResponse.rewrite(new URL(tenantPath, request.url), { request: { headers: requestHeaders } })
       : NextResponse.redirect(new URL(`${tenantPrefix}/workspace/login`, request.url));

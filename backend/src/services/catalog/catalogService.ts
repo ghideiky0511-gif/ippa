@@ -28,6 +28,7 @@ import {
     listProductPackItemRowsByPackIds,
     listProductPackRows,
     listProductPackRowsByProductIds,
+    listProductPickerRows,
     listProductRows,
     listProductVariantRows,
     listProductVariantRowsByProductIds,
@@ -353,6 +354,54 @@ export function canApplyDefaultMarkup(
     return sourceOrigin !== "erp";
 }
 
+/**
+ * Item usado exclusivamente pelos pickers do Workspace. A lista completa de
+ * produtos administrativos inclui variantes, classificações, packs e galerias;
+ * enviá-la para cada editor tornava a navegação proporcional ao catálogo.
+ */
+export interface ProductPickerItem {
+    id: string;
+    name: string;
+    referenceId?: string;
+    price: number;
+    image?: string;
+    activeDiscount?: { label?: string; percent: number } | null;
+}
+
+export async function listProductPickerItems(
+    tenant: Tenant,
+    query: { term?: string; ids?: string[]; limit?: number },
+): Promise<ProductPickerItem[]> {
+    return withTenantTransaction(tenant, {}, async (client) => {
+        const rows = await listProductPickerRows(client, {
+            term: query.term,
+            ids: query.ids,
+            limit: query.limit ?? 8,
+        });
+        const discountRows = await listDiscountRows(client);
+        const tierRows = await listDiscountTierRows(client);
+        const discountProductRows = await listDiscountProductRows(client);
+        const discounts = buildDiscounts(
+            discountRows,
+            tierRows,
+            discountProductRows,
+        );
+        return Promise.all(
+            rows.map(async (row) => {
+                const media = await resolveCatalogMedia(row.media);
+                return {
+                    id: row.id,
+                    name: row.name,
+                    referenceId: row.reference_id ?? undefined,
+                    price: Number(row.price),
+                    image: media.image,
+                    activeDiscount: getActiveProductDiscount(row.id, discounts),
+                };
+            }),
+        );
+    });
+}
+
 /** Visão exclusiva do workspace, com a origem usada para controlar edição. */
 export async function listAdminProducts(
     tenant: Tenant,
@@ -368,6 +417,28 @@ export async function listAdminProducts(
         ...product,
         sourceOrigin: sourceById.get(product.id) ?? "manual",
     }));
+}
+
+/**
+ * Versão pontual da visão administrativa. Evita montar e assinar as mídias
+ * de todo o catálogo quando uma ação acabou de alterar somente um produto.
+ */
+export async function getAdminProductById(
+    tenant: Tenant,
+    id: string,
+): Promise<ProductAdmin | undefined> {
+    return withTenantTransaction(tenant, {}, async (client) => {
+        const [row] = await findProductRowsByIds(client, [id]);
+        if (!row) return undefined;
+        const [product] = await loadAssociatedCatalogProducts(tenant, client, [
+            row,
+        ]);
+        if (!product) return undefined;
+        return {
+            ...product,
+            sourceOrigin: row.source_origin,
+        };
+    });
 }
 
 const DEFAULT_PAGE_SIZE = 24;

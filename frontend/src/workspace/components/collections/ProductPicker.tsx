@@ -3,7 +3,8 @@
 import { adminUi } from '@/workspace/lib/ui';
 import ProductImage from '@/components/ProductImage';
 import ProductPrice from '@/components/ProductPrice';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { fetchProductPicker } from '@/workspace/lib/catalogClient';
 
 export default function ProductPicker({
   products,
@@ -11,16 +12,38 @@ export default function ProductPicker({
   onAdd,
   label = 'Adicionar produto',
   placeholder = 'Buscar por nome, referência ou ID...',
+  remoteSearch = false,
 }) {
   const [query, setQuery] = useState('');
+  const [remoteProducts, setRemoteProducts] = useState([]);
+  const [searching, setSearching] = useState(false);
 
   // Casa por nome (busca parcial, ex. "cropped" acha todos os croppeds),
   // por código de referência (REF do ERP, que é o que aparece no card e na
   // página do produto) e pelo ID interno exato — colar o ID continua
   // funcionando.
   const q = query.trim().toLowerCase();
+  useEffect(() => {
+    if (!remoteSearch || !q) {
+      return undefined;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setSearching(true);
+      fetchProductPicker({ q })
+        .then((items) => { if (!controller.signal.aborted) setRemoteProducts(items); })
+        .catch(() => { if (!controller.signal.aborted) setRemoteProducts([]); })
+        .finally(() => { if (!controller.signal.aborted) setSearching(false); });
+    }, 180);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [q, remoteSearch]);
+
+  const candidates = remoteSearch ? remoteProducts : products || [];
   const results = q
-    ? (products || [])
+    ? candidates
         .filter((p) => !excludeIds.includes(p.id) && (
           (p.name || '').toLowerCase().includes(q)
           || (p.referenceId || '').toLowerCase().includes(q)
@@ -43,7 +66,7 @@ export default function ProductPicker({
               type="button"
               className={adminUi.productPickerResult}
               onClick={() => {
-                onAdd(p.id);
+                onAdd(p.id, p);
                 setQuery('');
               }}
             >
@@ -59,6 +82,7 @@ export default function ProductPicker({
           ))}
         </div>
       )}
+      {searching && <p className="mt-2 text-xs text-muted-foreground">Buscando produtos…</p>}
     </div>
   );
 }

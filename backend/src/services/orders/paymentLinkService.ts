@@ -22,7 +22,7 @@ export async function createPaymentLink(
   actor: AuthUser,
   sessionId: string,
   publicOrigin: string,
-): Promise<{ token: string }> {
+): Promise<{ token: string; session: OrderSession }> {
   if (actor.role === "cliente") throw new ForbiddenError();
   const token = randomBytes(24).toString("hex");
   let changedSession: OrderSession | undefined;
@@ -51,12 +51,15 @@ export async function createPaymentLink(
     whatsappRecipient = toWhatsAppOrderRecipient(registration);
     return { id: user.id, role: user.role, email: user.email, name: user.name };
   });
-  if (changedSession) {
-    notifySession(tenant.id, changedSession);
-    scheduleSessionBroadcast(changedSession);
-  }
+  // Sempre setado dentro da transação acima (qualquer falha antes disso já
+  // teria lançado) -- só a checagem explícita pra o TS estreitar o tipo.
+  if (!changedSession) throw new NotFoundError("SESSION_NOT_FOUND");
+  notifySession(tenant.id, changedSession);
+  scheduleSessionBroadcast(changedSession);
   const paymentUrl = `${publicOrigin}/${tenant.slug}/pagar/${token}`;
   notifyPaymentLink(tenant, recipient, paymentUrl);
   sendPaymentLinkWhatsApp(tenant, whatsappRecipient, paymentUrl, token);
-  return { token };
+  // Devolve a sessão confirmada junto -- quem chama (TalaoProvider) precisa
+  // dela pra aplicar via `newerSession`, não um patch local sem `updatedAt`.
+  return { token, session: changedSession };
 }

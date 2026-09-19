@@ -320,15 +320,26 @@ export function CartProvider({ children }: { children: ReactNode }) {
       // Checkout direto (sem sessão) não tem freight_quote persistida --
       // manda o provider escolhido, o backend calcula preço/label/prazo de
       // novo a partir dele (ver orderService.createCustomerOrder).
-      const payload = CreateCustomerOrderInputSchema.parse({
+      // Quando a cliente tem uma sessao online, a selecao de frete e
+      // persistida nela (e `personalFreight` fica nulo). `freight` ja e a
+      // fonte efetiva do checkout: frete da sessao quando existir, ou o
+      // estado local no checkout sem sessao.
+      const parsedPayload = CreateCustomerOrderInputSchema.safeParse({
         items,
         total,
         channel: 'whatsapp',
-        deliveryOfferingId: personalFreight?.deliveryOfferingId ?? undefined,
-        destinationCep: personalFreight?.destinationCep ?? undefined,
+        deliveryOfferingId: freight?.deliveryOfferingId ?? undefined,
+        destinationCep: freight?.destinationCep ?? undefined,
         ...extra,
         sessionId,
       });
+      if (!parsedPayload.success) {
+        const deliveryIssue = parsedPayload.error.issues.find(
+          (issue) => issue.path[0] === 'deliveryOfferingId',
+        );
+        throw new Error(deliveryIssue?.message ?? 'Revise os dados do pedido antes de confirmar.');
+      }
+      const payload = parsedPayload.data;
       await adminJson('/api/orders', OrderSchema, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

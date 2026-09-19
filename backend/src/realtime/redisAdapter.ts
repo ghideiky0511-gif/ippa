@@ -1,4 +1,5 @@
-import { createAdapter } from "@socket.io/redis-adapter";
+import { randomBytes } from "node:crypto";
+import { createAdapter, type RedisAdapter } from "@socket.io/redis-adapter";
 import Redis, { type RedisOptions } from "ioredis";
 import { errorMeta, logger } from "@/lib/logger";
 
@@ -36,6 +37,24 @@ const REQUESTS_TIMEOUT_MS = 2_000;
 
 const LOG_THROTTLE_MS = 30_000;
 
+// Quantas Machines existem no cluster. O adapter perguntaria ao Redis com
+// `PUBSUB NUMSUB` no canal de requisições — e no Upstash esse comando só
+// enxerga as inscrições do nó onde a PRÓPRIA conexão caiu. Medido em produção
+// em 2026-09-18: duas Machines inscritas e recebendo, cada uma via NUMSUB = 1,
+// e quem publicava num canal com assinante na outra Machine via 0. O adapter
+// concluía que estava sozinho e fetchSockets() devolvia só os sockets locais,
+// sem erro e sem log — a presença de /pedidos mostrava só quem estava na
+// mesma Machine. PUBLISH atravessa os nós normalmente (medido junto), então a
+// contagem vem de um heartbeat no próprio pub/sub: é o mesmo caminho que a
+// resposta do fetchSockets vai percorrer.
+//
+// Custo: um PUBLISH por Machine a cada HEARTBEAT_INTERVAL_MS. Uma Machine que
+// morre sem se despedir continua contada por até HEARTBEAT_TTL_MS; nesse
+// intervalo o fetchSockets espera a resposta dela até REQUESTS_TIMEOUT_MS e
+// pedidosNamespace.ts cai pros sockets locais (com log).
+const HEARTBEAT_INTERVAL_MS = 10_000;
+const HEARTBEAT_TTL_MS = 25_000;
+
 // Nunca desiste (retorna sempre um número): o adapter é o que conecta as
 // Machines, e ficar sem ele é degradar pra entrega só local, não um estado
 // aceitável pra sempre.
@@ -71,6 +90,71 @@ function catchRejections<T extends (...args: never[]) => Promise<unknown>>(metho
         pending.catch(onError);
         return pending;
     }) as T;
+}
+
+interface PeerTracker {
+    /** Total de Machines no cluster, contando esta — a semântica de
+     * `serverCount()` do adapter. */
+    serverCount(): number;
+    close(): void;
+}
+
+function createPeerTracker(pubClient: Redis, subClient: Redis, channel: string): PeerTracker {
+    // Id por PROCESSO, não por Machine: uma Machine reiniciada é um processo
+    // novo que precisa ser anunciado de novo, e com o mesmo id as outras o
+    // tomariam por já conhecido e não responderiam.
+    const selfId = `${process.env.FLY_MACHINE_ID ?? "local"}-${randomBytes(3).toString("hex")}`;
+    const lastSeen = new Map<string, number>();
+
+    const announce = (kind: "alive" | "bye") => {
+        void pubClient.publish(channel, `${kind} ${selfId}`);
+    };
+
+    const isFresh = (id: string, now = Date.now()) => {
+        const seenAt = lastSeen.get(id);
+        return seenAt !== undefined && now - seenAt <= HEARTBEAT_TTL_MS;
+    };
+
+    subClient.on("message", (from: string, message: string) => {
+        if (from !== channel) return;
+        const [kind, id] = message.split(" ");
+        if (!id || id === selfId) return;
+        if (kind === "bye") {
+            if (lastSeen.delete(id)) logger.info("realtime-cluster", "Machine saiu do cluster.", { peer: id, machines: serverCount() });
+            return;
+        }
+        const known = isFresh(id);
+        lastSeen.set(id, Date.now());
+        if (known) return;
+        logger.info("realtime-cluster", "Machine entrou no cluster.", { peer: id, machines: serverCount() });
+        // Responde na hora: sem isso a Machine recém-chegada passaria até um
+        // intervalo inteiro achando que está sozinha.
+        announce("alive");
+    });
+    void subClient.subscribe(channel).then(() => announce("alive"), () => undefined);
+    const timer = setInterval(() => announce("alive"), HEARTBEAT_INTERVAL_MS);
+    timer.unref();
+
+    function serverCount(): number {
+        const now = Date.now();
+        for (const id of lastSeen.keys()) {
+            if (!isFresh(id, now)) {
+                lastSeen.delete(id);
+                logger.warn("realtime-cluster", "Machine sumiu do cluster sem se despedir.", { peer: id });
+            }
+        }
+        return lastSeen.size + 1;
+    }
+
+    return {
+        serverCount,
+        close() {
+            clearInterval(timer);
+            // As outras param de esperar a resposta desta no fetchSockets já
+            // agora, em vez de só depois do TTL.
+            announce("bye");
+        },
+    };
 }
 
 export interface RealtimeCluster {
@@ -123,12 +207,23 @@ export function createRealtimeCluster(redisUrl: string | undefined = process.env
     subClient.unsubscribe = catchRejections(subClient.unsubscribe.bind(subClient), onSubError) as typeof subClient.unsubscribe;
     subClient.punsubscribe = catchRejections(subClient.punsubscribe.bind(subClient), onSubError) as typeof subClient.punsubscribe;
 
+    const peers = createPeerTracker(pubClient, subClient, `${CHANNEL_PREFIX}-machines`);
+    const baseAdapter = createAdapter(pubClient, subClient, {
+        key: CHANNEL_PREFIX,
+        requestsTimeout: REQUESTS_TIMEOUT_MS,
+    });
+    // `function`, não arrow: o Socket.IO instancia o adapter com `new`.
+    const adapter = function (nsp: unknown): RedisAdapter {
+        const instance = baseAdapter(nsp);
+        instance.serverCount = async () => peers.serverCount();
+        return instance;
+    };
+
     return {
-        adapter: createAdapter(pubClient, subClient, {
-            key: CHANNEL_PREFIX,
-            requestsTimeout: REQUESTS_TIMEOUT_MS,
-        }),
+        adapter,
         close() {
+            // Antes de desligar o pub: o "bye" ainda precisa sair.
+            peers.close();
             closing = true;
             // disconnect(), não quit(): quit() entra na fila offline do sub e,
             // com o Redis fora, esperaria para sempre — segurando o shutdown

@@ -5,7 +5,7 @@ import SortableProductRow from './SortableProductRow';
 import ProductPicker from './ProductPicker';
 import SharePanel from './SharePanel';
 
-export default function CollectionEditor({ collection, products, onUpdate }) {
+export default function CollectionEditor({ collection, products, onUpdate, onProductSelected }) {
   const byId = new Map((products || []).map((p) => [p.id, p]));
 
   function handleLabelChange(e) {
@@ -18,7 +18,8 @@ export default function CollectionEditor({ collection, products, onUpdate }) {
     onUpdate((h) => ({ ...h, showInCatalog }));
   }
 
-  function addProduct(productId) {
+  function addProduct(productId, product) {
+    if (product) onProductSelected?.(product);
     onUpdate((h) => (h.productIds.includes(productId) ? h : { ...h, productIds: [...h.productIds, productId] }));
   }
 
@@ -50,7 +51,7 @@ export default function CollectionEditor({ collection, products, onUpdate }) {
         {collection.productIds.length === 0 && <p className={adminUi.previewEmpty}>Nenhum produto ainda.</p>}
       </div>
 
-      <ProductPicker products={products} excludeIds={collection.productIds} onAdd={addProduct} />
+      <ProductPicker products={products} excludeIds={collection.productIds} onAdd={addProduct} remoteSearch />
     </main>
   );
 }

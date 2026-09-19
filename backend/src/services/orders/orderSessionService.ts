@@ -486,18 +486,62 @@ export async function updateSession(
         let order: Awaited<ReturnType<typeof findOrderRowById>> = null;
         if (orderId) {
             // O pedido é sempre o primeiro lock dos fluxos de checkout e
-            // edição. Além de evitar deadlock com sessões irmãs de upsell,
-            // isso faz cliques rápidos calcularem o diff sobre o snapshot já
-            // confirmado pela transação anterior. A vendedora pode reabrir
-            // o atendimento e fazer upsell mesmo depois da confirmação; a
-            // cliente, porém, não pode mandar uma limpeza tardia do carrinho
-            // contra um pedido que já saiu da etapa de montagem.
+            // edição -- evita deadlock com sessões irmãs de upsell (ver
+            // finalizeOrderSession, que loca na mesma ordem). A vendedora
+            // pode reabrir o atendimento e fazer upsell mesmo depois da
+            // confirmação; a cliente, porém, não pode mandar uma limpeza
+            // tardia do carrinho contra um pedido que já saiu da etapa de
+            // montagem.
             order = await findOrderRowById(client, orderId, true);
             if (!order) throw new NotFoundError("ORDER_NOT_FOUND");
             if (!canMutateLinkedOrder(order.status, isClient)) {
                 throw new ValidationError("ORDER_ALREADY_FINALIZED");
             }
         }
+        // Releitura da sessão COM lock, sempre depois do lock do pedido
+        // (nunca antes -- mesma ordem de finalizeOrderSession). Sem isso,
+        // duas chamadas concorrentes de atualizar_sessao/PUT na mesma sessão
+        // (ex. cliques rápidos de quantidade) calculavam o diff de itens
+        // (prevUpdatedAt) em cima do MESMO `currentRow`, lido antes de
+        // qualquer lock -- exatamente a corrida que fazia o eco de
+        // session_items sobrescrever a tela com um valor intermediário já
+        // superado (ver documents/knowledge/realtime-sockets.md). Sem pedido
+        // vinculado, este é o único lock da função: ele já serializa as
+        // chamadas concorrentes entre si.
+        const lockedRow = await findOrderSessionRow(client, id, true);
+        if (!lockedRow) throw new NotFoundError("SESSION_NOT_FOUND");
+        // Mesmo motivo do lock acima, agora pros demais campos: currentRow
+        // (o peek antes de qualquer lock) só serve pra decidir se este PUT
+        // precisa anexar/criar pedido (justAttached, acima) -- não pode ser
+        // a fonte do valor GRAVADO por updateOrderSessionRow logo abaixo.
+        // Sem reler estes campos daqui, um PUT concorrente que só mudou
+        // notes/cliente era silenciosamente revertido por este PUT
+        // reescrevendo-os com o valor velho do peek -- sem nem um evento de
+        // resync pra avisar (pior que o "pisca" de itens, que ao menos
+        // pisca visivelmente em vez de perder a mudança calada).
+        if (lockedRow.status === "cancelado" && (!isSeller || body.status !== "aberto")) {
+            throw new ValidationError("SESSION_CANCELLED");
+        }
+        if (body.clientId === undefined) {
+            clientId = lockedRow.client_id ?? undefined;
+            clientName = lockedRow.client_name;
+        }
+        if (body.notes === undefined) notes = lockedRow.notes ?? undefined;
+        if (body.status === undefined) status = lockedRow.status;
+        // `orderId` (a variável) NÃO é relida aqui, de propósito: ela também
+        // decide, mais abaixo, se este PUT chama syncOrderItems contra um
+        // pedido -- e syncOrderItems não loca a linha sozinho, confia que
+        // o `if (orderId) { order = await findOrderRowById(client, orderId,
+        // true); ... }` alguns blocos acima já locou o pedido certo NESTA
+        // transação. Se `orderId` virasse truthy só por causa de uma
+        // releitura pós-lock, syncOrderItems mexeria num pedido que esta
+        // transação nunca chegou a locar. updateOrderSessionRow já é imune a
+        // esse `orderId` ficar desatualizado (usa COALESCE($orderId,
+        // order_id), nunca apaga o que está gravado com um `undefined`) --
+        // só a comparação de `onlyItemsChanged` abaixo (que não loca nem
+        // escreve nada) usa o valor fresco, pra não dar falso-negativo
+        // quando outra chamada anexou o pedido nesse meio-tempo.
+        const orderIdForComparison = justAttached ? orderId : (lockedRow.order_id ?? undefined);
         const currentItems = (await listOrderSessionItemRowsBySession(client, id)).map((item) => item.snapshot);
         const itemsChanged = body.itemsDelta !== undefined;
         const items = body.itemsDelta ? applyCartItemsDelta(currentItems, body.itemsDelta) : currentItems;
@@ -506,7 +550,7 @@ export async function updateSession(
         // seguem só no session_patch abaixo, que nunca toca em itens.
         if (itemsChanged) {
             changes.itemsDelta = {
-                prevUpdatedAt: currentRow.updated_at.toISOString(),
+                prevUpdatedAt: lockedRow.updated_at.toISOString(),
                 ...diffCartItems(currentItems, items),
             };
         }
@@ -549,22 +593,23 @@ export async function updateSession(
         // Caso quente (só itens mudaram, ex. "+1 peça"): não vale a pena
         // mandar session_patch junto — seria reafirmar campos que não
         // mudaram nesta chamada. Comparado contra o estado ANTES desta
-        // mutação (currentRow), não contra o que updateOrderSessionRow vai
-        // gravar (que é sempre igual a estas variáveis).
+        // mutação (lockedRow, já sob lock), não contra o que
+        // updateOrderSessionRow vai gravar (que é sempre igual a estas
+        // variáveis).
         changes.onlyItemsChanged = itemsChanged
-            && clientId === (currentRow.client_id ?? undefined)
-            && clientName === currentRow.client_name
-            && notes === (currentRow.notes ?? undefined)
-            && status === currentRow.status
-            && orderId === (currentRow.order_id ?? undefined);
+            && clientId === (lockedRow.client_id ?? undefined)
+            && clientName === lockedRow.client_name
+            && notes === (lockedRow.notes ?? undefined)
+            && status === lockedRow.status
+            && orderIdForComparison === (lockedRow.order_id ?? undefined);
         const row = await updateOrderSessionRow(client, id, {
             clientName, clientId, notes, status, orderId,
             // Links de pagamento nao sobrevivem a cancelamento nem a uma
             // reativacao: a proxima cobranca precisa gerar um token novo.
-            clearPaymentToken: (status === "aberto" && currentRow.status !== "aberto") || status === "cancelado",
+            clearPaymentToken: (status === "aberto" && lockedRow.status !== "aberto") || status === "cancelado",
         });
         if (!row) throw new NotFoundError("SESSION_NOT_FOUND");
-        if (status === "aberto" && currentRow.status !== "aberto") {
+        if (status === "aberto" && lockedRow.status !== "aberto") {
             changes.book = (await reopenOrderBookRow(client, row.order_book_id)) ?? undefined;
         } else {
             changes.book = (await closeOrderBookWhenFinished(client, row.order_book_id)) ?? undefined;

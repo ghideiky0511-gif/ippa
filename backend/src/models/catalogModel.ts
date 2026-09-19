@@ -89,6 +89,38 @@ export interface CatalogPageProductQuery {
     offset: number;
 }
 
+/** Dados enxutos para seletores internos; não monta variantes, grades ou galerias. */
+export interface ProductPickerQuery {
+    term?: string;
+    ids?: string[];
+    limit: number;
+}
+
+export async function listProductPickerRows(
+    client: PoolClient,
+    query: ProductPickerQuery,
+): Promise<ProductRow[]> {
+    const ids = [...new Set(query.ids ?? [])].slice(0, 100);
+    const term = query.term?.trim() || null;
+    if (ids.length === 0 && !term) return [];
+
+    const result = await client.query<ProductRow>(
+        `SELECT id, name, description, reference_id, price, suggested_retail_price, markup, media, attributes, is_active, source_origin
+         FROM products
+         WHERE tenant_id = app_tenant_id() AND is_active
+           AND ($1::uuid[] IS NULL OR id = ANY($1))
+           AND ($2::text IS NULL OR name ILIKE '%' || $2 || '%' OR reference_id ILIKE '%' || $2 || '%')
+         ORDER BY display_position NULLS LAST, created_at, id
+         LIMIT $3`,
+        [
+            ids.length > 0 ? ids : null,
+            term,
+            Math.min(Math.max(query.limit, 1), 100),
+        ],
+    );
+    return result.rows;
+}
+
 // Página real de produtos do catálogo público -- filtra, ordena e corta no
 // banco (LIMIT/OFFSET), em vez de carregar o catálogo inteiro e fatiar em
 // memória (ver listCatalogPage em catalogService.ts). `count(*)

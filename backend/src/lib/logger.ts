@@ -6,10 +6,31 @@
 // (ver lib/email.ts).
 
 export type LogMeta = Record<string, unknown>;
+type LogLevel = "info" | "warn" | "error";
 
 function formatMetaValue(value: unknown): string {
-    if (typeof value === "object") return JSON.stringify(value);
-    return String(value);
+    if (typeof value === "string") return JSON.stringify(value);
+    if (typeof value === "bigint") return `${value}n`;
+    if (typeof value !== "object" || value === null) return String(value);
+
+    // O registro nunca pode falhar quando um erro inclui um objeto circular,
+    // como Request ou Response.
+    const seen = new WeakSet<object>();
+    try {
+        return JSON.stringify(value, (_key, nestedValue: unknown) => {
+            if (typeof nestedValue === "bigint") return `${nestedValue}n`;
+            if (nestedValue instanceof Error) {
+                return { name: nestedValue.name, message: nestedValue.message, stack: nestedValue.stack };
+            }
+            if (typeof nestedValue === "object" && nestedValue !== null) {
+                if (seen.has(nestedValue)) return "[Circular]";
+                seen.add(nestedValue);
+            }
+            return nestedValue;
+        });
+    } catch (error) {
+        return `[unserializable: ${error instanceof Error ? error.message : String(error)}]`;
+    }
 }
 
 function serializeMeta(meta?: LogMeta): string {
@@ -20,9 +41,11 @@ function serializeMeta(meta?: LogMeta): string {
         .join(" ");
 }
 
-function log(level: "info" | "warn" | "error", scope: string, message: string, meta?: LogMeta): void {
+function log(level: LogLevel, scope: string, message: string, meta?: LogMeta): void {
     const serialized = serializeMeta(meta);
-    const line = `[${scope}] ${message}${serialized ? ` ${serialized}` : ""}`;
+    // Alguns coletores rotulam toda saida da aplicacao como "info". Manter o
+    // nivel na linha tambem o deixa visivel e pesquisavel nesses casos.
+    const line = `[${level.toUpperCase()}] [${scope}] ${message}${serialized ? ` ${serialized}` : ""}`;
     if (level === "error") { console.error(line); return; }
     if (level === "warn") { console.warn(line); return; }
     console.info(line);

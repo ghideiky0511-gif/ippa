@@ -170,3 +170,22 @@ export const CartReviewInsightSummarySchema = z.discriminatedUnion('status', [
   }).strict(),
 ]);
 export type CartReviewInsightSummary = z.infer<typeof CartReviewInsightSummarySchema>;
+
+// Flags públicas de disponibilidade. Elas permitem que o front esconda uma
+// experiência de IA que ainda não foi configurada, sem jamais expor uma chave
+// ou outro detalhe da configuração do provider.
+export const AiFeatureKeySchema = z.enum([
+  'catalog_order_resume',
+  'cart_review_insight',
+  'home_generation',
+]);
+export type AiFeatureKey = z.infer<typeof AiFeatureKeySchema>;
+
+export const AiAvailabilitySchema = z.object({
+  features: z.object({
+    catalog_order_resume: z.boolean(),
+    cart_review_insight: z.boolean(),
+    home_generation: z.boolean(),
+  }).strict(),
+}).strict();
+export type AiAvailability = z.infer<typeof AiAvailabilitySchema>;

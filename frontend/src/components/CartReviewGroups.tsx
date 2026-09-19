@@ -1,8 +1,8 @@
 'use client';
 import { publicUi } from '@/lib/ui';
 
-import ProductImage from './ProductImage';
 import { formatBRL } from '@/lib/format';
+import { OrderItemRow } from './ui/order-item-row';
 import type { CartItem } from '@/domain/orders/types';
 import type { CartReviewGroup } from '@/contracts/ai';
 
@@ -25,16 +25,13 @@ export default function CartReviewGroups({ groups, cart }: { groups: CartReviewG
               {group.category} <span className="font-normal text-brand-muted">· {totalQty} peça{totalQty === 1 ? '' : 's'}</span>
             </h2>
             {items.map((item) => (
-              <div key={item.key} className={publicUi.cartGroupSummary}>
-                <ProductImage src={item.image} alt={item.name} className={publicUi.cartGroupImage} />
-                <div className={publicUi.cartGroupInfo}>
-                  <div className="name">{item.name}</div>
-                  <div className="variant">
-                    {[item.color, item.size].filter(Boolean).join(' / ')} · {item.qty}x
-                  </div>
-                </div>
-                <div className="text-sm font-semibold">{formatBRL(item.price * item.qty)}</div>
-              </div>
+              <OrderItemRow
+                key={item.key}
+                item={item}
+                mode="view"
+                density="compact"
+                trailing={<div className="text-sm font-semibold">{formatBRL(item.price * item.qty)}</div>}
+              />
             ))}
           </div>
         );

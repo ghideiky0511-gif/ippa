@@ -10,9 +10,9 @@ import { AlertCircle, CheckCircle2, Clock, Copy, Lock, ShieldCheck } from 'lucid
 import { toast } from 'sonner';
 import { formatBRL } from '@/lib/format';
 import { useTenant } from '@/components/TenantProvider';
-import ProductImage from '@/components/ProductImage';
 import TenantLink from '@/components/TenantLink';
 import { PaymentMethodIcon } from '@/components/payments/paymentMethodMeta';
+import { OrderItemRow } from '@/components/ui/order-item-row';
 import type { CartItem } from '@/domain/orders/types';
 
 const PAYMENT_METHODS = [
@@ -132,17 +132,14 @@ function SummaryCard({ summary }: { summary: PaySummary }) {
   return (
     <div className={publicUi.card}>
       <div className="flex flex-col gap-2.5 p-4 sm:p-5">
-        <div className={publicUi.orderItems}>
+        <div className={publicUi.orderRowList}>
           {summary.items.map((item) => (
-            <div className={publicUi.orderItem} key={item.key}>
-              <ProductImage src={item.image} alt={item.name} className={publicUi.orderItemImage} />
-              <div>
-                <div className="contents">{item.name}</div>
-                <div className="contents">
-                  {[item.color, item.size].filter(Boolean).join(' · ')} — {item.qty}x {formatBRL(item.price)}
-                </div>
-              </div>
-            </div>
+            <OrderItemRow
+              key={item.key}
+              item={item}
+              mode="view"
+              trailing={<div className="text-xs whitespace-nowrap text-brand-muted">{formatBRL(item.price)}</div>}
+            />
           ))}
         </div>
 

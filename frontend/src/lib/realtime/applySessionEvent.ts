@@ -17,6 +17,21 @@ function isStale(localUpdatedAt: string, eventAt: string): boolean {
   return eventAt < localUpdatedAt;
 }
 
+/**
+ * Mesma guarda monotônica de `isStale`, só que pra substituição INTEGRAL de
+ * uma sessão (refetch/resync), não pra um evento incremental — usada por
+ * `ClientSessionProvider.refetch()` e `TalaoProvider.refetchSessions()`/
+ * `resyncSession()`. Sem ela, um resync (na conexão, reconexão, ou erro de
+ * `updateActiveItems`) que responde DEPOIS de um evento mais novo já
+ * aplicado sobrescrevia a tela com um snapshot velho — mesma família de bug
+ * do eco otimista (ver pendingItems.ts), só que pelo caminho do refetch em
+ * vez do caminho do evento.
+ */
+export function newerSession(local: OrderSession | undefined, incoming: OrderSession): OrderSession {
+  if (!local || local.id !== incoming.id) return incoming;
+  return isStale(local.updatedAt, incoming.updatedAt) ? local : incoming;
+}
+
 export interface ListApplyResult {
   sessions: OrderSession[];
   /** Buraco na cadeia causal de um session_items — pede resync só dessa

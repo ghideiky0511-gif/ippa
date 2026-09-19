@@ -28,6 +28,29 @@ interface SendEmailParams {
 
 export type EmailDeliveryStatus = "sent" | "not_configured" | "failed";
 
+async function resendErrorMeta(response: Response): Promise<Record<string, unknown>> {
+  const base = {
+    statusCode: response.status,
+    statusText: response.statusText || undefined,
+  };
+
+  try {
+    const body = await response.text();
+    if (!body) return base;
+
+    try {
+      return { ...base, resendResponse: JSON.parse(body) };
+    } catch {
+      // A API normalmente devolve JSON, mas registra a resposta de texto caso
+      // um proxy ou uma falha de infraestrutura devolva outro formato.
+      return { ...base, resendResponse: body.slice(0, 2_000) };
+    }
+  } catch (error) {
+    // Nao substitui o erro original de envio por uma falha ao ler o corpo.
+    return { ...base, resendResponseReadError: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 async function sendEmail({ to, subject, html, storeName }: SendEmailParams): Promise<EmailDeliveryStatus> {
   if (!RESEND_API_KEY) {
     logger.warn("email", "Envio não realizado: RESEND_API_KEY não configurada", { subject, storeName });
@@ -44,7 +67,11 @@ async function sendEmail({ to, subject, html, storeName }: SendEmailParams): Pro
       body: JSON.stringify({ from, to, subject, html }),
     });
     if (!res.ok) {
-      logger.error("email", "Resend recusou o envio", { statusCode: res.status, subject, storeName });
+      logger.error("email", "Resend recusou o envio", {
+        subject,
+        storeName,
+        ...await resendErrorMeta(res),
+      });
       return "failed";
     }
     logger.info("email", "E-mail enviado ao provedor", { subject, storeName, statusCode: res.status });

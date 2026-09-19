@@ -111,7 +111,7 @@ function CtaFields({ section, onUpdate }) {
   );
 }
 
-export default function RightPanel({ selectedSection, products, device = 'desktop', onUpdate, onDeselect, onRemove, className = '' }) {
+export default function RightPanel({ selectedSection, products, device = 'desktop', onUpdate, onDeselect, onRemove, onProductSelected, className = '' }) {
   if (!selectedSection) {
     return <Toolbox />;
   }
@@ -147,7 +147,7 @@ export default function RightPanel({ selectedSection, products, device = 'deskto
         </p>
       )}
 
-      {Editor && <Editor section={selectedSection} onUpdate={onUpdate} products={products} />}
+      {Editor && <Editor section={selectedSection} onUpdate={onUpdate} products={products} onProductSelected={onProductSelected} />}
 
       <div className="mt-4">
         <h3 className="mb-2 text-sm font-extrabold text-foreground">Hiperlink do bloco</h3>

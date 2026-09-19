@@ -6,15 +6,16 @@ import ProductPrice from '@/components/ProductPrice';
 import ProductPicker from '@/workspace/components/collections/ProductPicker';
 import { Trash2 } from 'lucide-react';
 
-export default function ProductBlockEditor({ section, onUpdate, products }) {
+export default function ProductBlockEditor({ section, onUpdate, products, onProductSelected }) {
   // Aceita valor com espaço/quebra de linha vindo de colagem antiga e
   // compara como string dos dois lados (o ID pode ter sido salvo como
   // número em versões anteriores).
   const productId = String(section.productId || '').trim();
   const product = (products || []).find((p) => String(p.id).trim() === productId);
 
-  function setProduct(id) {
+  function setProduct(id, product) {
     onUpdate((s) => ({ ...s, productId: id }));
+    if (product) onProductSelected?.(product);
   }
 
   return (
@@ -50,6 +51,7 @@ export default function ProductBlockEditor({ section, onUpdate, products }) {
         products={products}
         excludeIds={product ? [product.id] : []}
         onAdd={setProduct}
+        remoteSearch
         label={product ? 'Trocar por outro produto' : 'Escolher produto'}
         placeholder="Ex.: Cropped, REF 1234 ou o ID"
       />

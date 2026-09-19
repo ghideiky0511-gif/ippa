@@ -45,10 +45,6 @@ export const publicUi = {
   search: 'min-w-[200px] flex-[2] rounded-lg border border-[#ddd] bg-white px-3 py-2.5 text-sm',
   select: 'min-w-[140px] flex-1 rounded-lg border border-[#ddd] bg-white px-3 py-2.5 text-sm',
   resultCount: '-mt-2 mb-3 text-[13px] text-brand-muted',
-  // Grade responsiva: 2 colunas no celular, 3 já a partir de sm (640px, cobre
-  // celular grande / tablet pequeno que antes ficava com 2 cards altíssimos),
-  // 4 no desktop. Gutter cresce junto (12 → 16 → 20).
-  grid: 'grid grid-cols-2 gap-3 pb-12 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 lg:gap-5',
   // Barra de busca/filtro (só mobile — no desktop os filtros viram a coluna
   // lateral). `top-16` a encaixa logo abaixo do header fixo (min-h-16), sem
   // ficar escondida atrás dele. Alinha com as margens do container (px-4 /
@@ -61,6 +57,10 @@ export const publicUi = {
   catalogContent: 'min-w-0',
   catalogResults: 'mb-3 flex items-center justify-between gap-3 text-[13px] text-brand-muted sm:mb-4',
   catalogGrid: 'grid grid-cols-2 gap-3 pb-12 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 lg:gap-5',
+  // Densidade 'compact' do ProductGrid -- mais colunas/gap menor, pra
+  // contextos que listam produtos sem o respiro da vitrine principal
+  // (ex.: um picker ou carrossel de sugestões futuro).
+  catalogGridCompact: 'grid grid-cols-3 gap-2 pb-8 sm:grid-cols-4 sm:gap-3 lg:grid-cols-6 lg:gap-3',
   // Abas de vitrine: fixas só no desktop (abaixo do header). No mobile
   // rolam junto com o conteúdo — evita empilhar 3 barras fixas numa tela
   // pequena. Alinhadas às margens do container.
@@ -76,10 +76,17 @@ export const publicUi = {
   catalogCardMedia: 'relative aspect-[9/16] overflow-hidden bg-brand-background',
   catalogCardContent: 'flex flex-1 flex-col gap-1.5 p-3 lg:p-4',
   carouselControl: 'inline-flex size-9 cursor-pointer items-center justify-center rounded-full border border-white/20 bg-black/35 text-white shadow-sm backdrop-blur-sm transition-[background,transform,border-color] duration-200 hover:scale-105 hover:border-white/35 hover:bg-black/55 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40',
-  cartItem: 'flex gap-2.5 border-b border-[#f0f0f0] py-2.5',
-  cartItemImage: 'h-[72px] w-14 shrink-0 rounded-md bg-[#eee]',
-  cartItemInfo: 'flex-1 [&>.name]:text-[13px] [&>.name]:font-semibold [&>.variant]:text-xs [&>.variant]:text-brand-muted',
-  qtyRow: 'mt-1 flex items-center gap-1.5 [&>button]:size-[22px] [&>button]:cursor-pointer [&>button]:rounded-[4px] [&>button]:border [&>button]:border-[#ddd] [&>button]:bg-white',
+  // Linha de item de pedido unificada (OrderItemRow) -- carrinho, resumo de
+  // checkout, pedidos e talão do workspace. `orderRowImage`/`orderRowImageSm`
+  // dão as duas densidades (comfortable/compact); cartItem*/orderItem* antigos
+  // foram consolidados aqui por serem strings idênticas ou quase-idênticas.
+  orderRow: 'flex gap-2.5 border-b border-[#f0f0f0] py-2.5 last:border-b-0',
+  orderRowBordered: 'flex gap-2.5 rounded-lg border border-[#eee] p-3',
+  orderRowImage: 'h-[72px] w-14 shrink-0 rounded-md bg-[#eee]',
+  orderRowImageSm: 'h-16 w-12 shrink-0 rounded-md bg-[#eee]',
+  orderRowInfo: 'flex-1 [&>.name]:text-[13px] [&>.name]:font-semibold [&>.variant]:text-xs [&>.variant]:text-brand-muted',
+  orderRowList: 'flex flex-col gap-2.5',
+  qtyRow: 'mt-1 flex items-center gap-1.5 [&>button]:size-[22px] [&>button]:cursor-pointer [&>button]:rounded-[4px] [&>button]:border [&>button]:border-[#ddd] [&>button]:bg-white [&>button:disabled]:cursor-not-allowed [&>button:disabled]:opacity-40',
   cartFooter: 'border-t border-[#eee] p-4',
   cartTotal: 'flex justify-between py-1 text-sm font-bold [&.subtotal]:font-normal [&.discount]:text-[#2e8b57]',
   whatsapp: 'mt-2 w-full cursor-pointer rounded-md border-0 bg-[#25d366] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#1da851]',
@@ -188,6 +195,16 @@ export const publicUi = {
   variantQtyControl: 'inline-flex items-center overflow-hidden rounded-md border border-[#ddd] bg-white shadow-[0_1px_2px_rgba(44,28,36,.04)] [&>button]:flex [&>button]:size-7 [&>button]:cursor-pointer [&>button]:items-center [&>button]:justify-center [&>button]:border-0 [&>button]:bg-transparent [&>button]:text-sm [&>button]:text-brand-primary [&>button]:transition-colors [&>button:hover:not(:disabled)]:bg-brand-background [&>button:disabled]:cursor-not-allowed [&>button:disabled]:text-brand-muted/35 [&>span]:min-w-6 [&>span]:text-center [&>span]:text-xs [&>span]:font-semibold [&>span]:text-brand-text',
   variantQtyPreorder: 'border-[#ecd9aa] bg-[#fffaf0] [&>button]:text-[#87611a]',
   variantQtyExcess: 'ml-1 text-[10px] font-semibold text-[#87611a]',
+  // Produto sem eixo declarado (kind: 'single') — um único controle, sem
+  // tabela nem header de eixo.
+  variantSingle: 'rounded-brand border border-[#eee] bg-white p-3',
+  variantSingleCell: 'flex items-center justify-center',
+  // Produto com só um eixo declarado (kind: 'single-axis') — faixa de chips
+  // em vez de tabela, pra não herdar o min-w-[420px] que sempre scrolla no
+  // mobile (variantMatrixTable).
+  variantAxisList: 'flex flex-wrap gap-2 rounded-brand border border-[#eee] bg-white p-2.5',
+  variantAxisChip: 'flex items-center gap-1.5 rounded-lg border border-[#eee] px-2.5 py-1.5 text-xs',
+  variantAxisLabel: 'font-semibold text-brand-text',
   cartProduct: 'border-b border-[#f0f0f0] py-3.5 last:border-b-0',
   cartProductHeader: 'mb-2.5 flex items-baseline gap-2 [&>.name]:text-[13px] [&>.name]:font-semibold',
   cartProductLines: 'flex flex-col gap-2.5',
@@ -213,9 +230,6 @@ export const publicUi = {
   ordersList: 'flex flex-col gap-3',
   orderCard: 'rounded-brand bg-brand-card p-4 shadow-[0_1px_4px_rgba(0,0,0,0.08)]',
   orderCardHeader: 'mb-2 flex flex-wrap items-center justify-between gap-2',
-  orderItems: 'flex flex-col gap-2.5',
-  orderItem: 'flex gap-2.5',
-  orderItemImage: 'h-[72px] w-14 shrink-0 rounded-md bg-[#eee]',
   paymentOptions: 'mb-5 flex max-w-[360px] flex-col gap-2.5',
   paymentOption: 'flex cursor-pointer items-center gap-2.5 rounded-brand border-2 border-transparent bg-brand-card px-4 py-3.5 text-sm font-semibold shadow-[0_1px_4px_rgba(0,0,0,0.08)]',
 
